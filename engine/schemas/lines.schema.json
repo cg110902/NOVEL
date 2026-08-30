@@ -1,0 +1,111 @@
+{
+  "type": "object",
+  "required": [
+    "foreshadows",
+    "misunderstandings"
+  ],
+  "properties": {
+    "foreshadows": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "plant_ch",
+          "status"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^GUN-\\d{3,}$"
+          },
+          "name": {
+            "type": "string"
+          },
+          "plant_ch": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "埋设章节号（正整数章号；缺省由引擎用提案章节补全）"
+          },
+          "status": {
+            "enum": [
+              "Planted",
+              "Reminded",
+              "Resolved"
+            ]
+          },
+          "target_ch": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1
+              },
+              {
+                "type": "string",
+                "const": "longline"
+              }
+            ],
+            "description": "引爆章号（≥1 的正整数）或 'longline'（长线，无固定章）"
+          },
+          "plan": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "misunderstandings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "parties",
+          "content",
+          "status"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^MIS-\\d{3,}$"
+          },
+          "parties": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string"
+          },
+          "truth": {
+            "type": "string"
+          },
+          "level": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "误会强度（≥1 的整数，越大越难解）"
+          },
+          "target_ch": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1
+              },
+              {
+                "type": "string",
+                "const": "longline"
+              }
+            ],
+            "description": "澄清章号（≥1）或 'longline'（长线）"
+          },
+          "status": {
+            "enum": [
+              "Active",
+              "Resolved"
+            ]
+          }
+        }
+      }
+    }
+  }
+}

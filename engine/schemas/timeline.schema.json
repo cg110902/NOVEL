@@ -1,0 +1,80 @@
+{
+  "type": "object",
+  "required": [
+    "events",
+    "arcs"
+  ],
+  "properties": {
+    "events": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "time",
+          "event"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "time": {
+            "type": "string"
+          },
+          "event": {
+            "type": "string"
+          },
+          "chapter": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "arcs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "baseline": {
+            "type": "string"
+          },
+          "stage": {
+            "type": "string"
+          },
+          "inciting_event": {
+            "type": "string"
+          },
+          "strategy": {
+            "type": "string"
+          },
+          "ultimate": {
+            "type": "string"
+          },
+          "strategy_history": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "chapter",
+                "strategy"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "chapter": {
+                  "type": "string"
+                },
+                "strategy": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

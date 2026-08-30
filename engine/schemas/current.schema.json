@@ -1,0 +1,46 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "description": "主角/场景'此刻'速写；仅供 pack P0 提示上下文。正文才是叙事真值，不一致属事实错。",
+  "properties": {
+    "time": {
+      "type": "string",
+      "description": "此刻时间（timeline 历法口径，如'第二日·午后'）"
+    },
+    "location": {
+      "type": "string",
+      "description": "此刻地点"
+    },
+    "power_level": {
+      "type": "string",
+      "description": "能力/修为阶梯摘要；阶梯里程碑在 timeline.arcs"
+    },
+    "abilities": {
+      "type": "string",
+      "description": "可用能力/技能清单（自由文本）"
+    },
+    "injury": {
+      "type": "string",
+      "description": "当前伤势"
+    },
+    "equipment": {
+      "type": "string",
+      "description": "随身装备"
+    },
+    "assets": {
+      "type": "string",
+      "description": "非资金类资源（资金走 ledger）"
+    },
+    "situation": {
+      "type": "string",
+      "description": "一句话处境，供下一章 pack 快速回温"
+    },
+    "present_characters": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "在场角色名；必须已注册在 state/entities.json（sync 强制闭合）"
+    }
+  }
+}

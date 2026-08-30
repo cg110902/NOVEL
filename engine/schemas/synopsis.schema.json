@@ -1,0 +1,37 @@
+{
+  "type": "object",
+  "required": [
+    "chapters"
+  ],
+  "properties": {
+    "book_logline": {
+      "type": "string"
+    },
+    "chapters": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": [
+          "num"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "num": {
+            "type": "integer"
+          },
+          "title": {
+            "type": "string"
+          },
+          "synopsis": {
+            "type": "string"
+          },
+          "source": {
+            "enum": [
+              "manual"
+            ]
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,12 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "novel-studio"
+description = "LLM 主导的五阶段小说流水线：协议文档 + 确定性引擎（纯 stdlib）"
+requires-python = ">=3.10"
+dynamic = ["version"]
+
+[tool.setuptools.dynamic]
+version = {attr = "engine.__version__"}

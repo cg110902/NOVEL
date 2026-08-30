@@ -1,0 +1,84 @@
+{
+  "type": "object",
+  "required": [
+    "pools",
+    "transactions"
+  ],
+  "properties": {
+    "note": {
+      "type": "string"
+    },
+    "pools": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": [
+          "name",
+          "initial",
+          "current"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "unit": {
+            "type": "string"
+          },
+          "initial": {
+            "type": "integer"
+          },
+          "current": {
+            "type": "integer"
+          }
+        }
+      }
+    },
+    "transactions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "chapter",
+          "pool",
+          "delta",
+          "subject",
+          "balance_after"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "chapter": {
+            "type": "string",
+            "pattern": "^ch_\\d{3,}$"
+          },
+          "pool": {
+            "type": "string"
+          },
+          "delta": {
+            "type": "integer"
+          },
+          "type": {
+            "enum": [
+              "income",
+              "expense",
+              "opening_balance",
+              "manual"
+            ]
+          },
+          "subject": {
+            "type": "string"
+          },
+          "counterparty": {
+            "type": "string"
+          },
+          "note": {
+            "type": "string"
+          },
+          "balance_after": {
+            "type": "integer"
+          }
+        }
+      }
+    }
+  }
+}

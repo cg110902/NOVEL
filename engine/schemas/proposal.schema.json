@@ -1,0 +1,47 @@
+{
+  "type": "object",
+  "required": [
+    "schema",
+    "chapter"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {
+      "enum": [
+        "novel-studio.state-mutation/v2"
+      ],
+      "description": "提案契约版本（固定 novel-studio.state-mutation/v2）"
+    },
+    "chapter": {
+      "type": "string",
+      "pattern": "^ch_\\d{3,}$",
+      "description": "本章号（须与文件名及 sync 目标一致）"
+    },
+    "operation_id": {
+      "type": "string",
+      "pattern": "[A-Za-z0-9_.-]{1,128}",
+      "description": "幂等身份，建议 <ch>.<作者>.<序号>，如 ch_007.syncer.0829a"
+    },
+    "_draft": {
+      "type": "boolean"
+    },
+    "current": {
+      "type": "object"
+    },
+    "entities": {
+      "type": "array"
+    },
+    "lines": {
+      "type": "array"
+    },
+    "timeline": {
+      "type": "object"
+    },
+    "ledger": {
+      "type": "object"
+    },
+    "synopsis": {
+      "type": "object"
+    }
+  }
+}
