@@ -95,20 +95,20 @@ def defaults_for(key: str) -> dict:
     raise KeyError(f"未知状态键: {key}")
 
 
-INBOX_README = """# state/inbox — 提案收件箱（同步官的工位）
+INBOX_README = """# state/inbox — 提案收件箱（主控 Stage 4 的工位）
 
-一切状态修改从这里进：每章一个 `ch_XXX.json`（schema: engine/schemas/proposal.schema.json，
-业务规则见 engine/state.py 分区校验）。processed/ = 已应用的审计记录（永不删改）；
+一切状态修改从这里进：每章一个 `ch_XXX.json`（填提案以本 README 样例为准，
+业务规则见 novel_workflow.md#Stage 4）。processed/ = 已应用的审计记录（永不删改）；
 failed/ = 失败提案，就地处修复后重跑 `sync`，引擎自动捡回。
 
-正式提案必须带 operation_id；`*.draft.json`/`*.template.json`/`*.sample.json` 不参与合并，
+正式提案必须带 operation_id（`ch_XXX.director.<序号>`）；`*.draft.json`/`*.template.json`/`*.sample.json` 不参与合并，
 可放这里当草稿。最小样例（各分区都给了最短合法形状）：
 
 ```json
 {
   "schema": "novel-studio.state-mutation/v2",
   "chapter": "ch_007",
-  "operation_id": "ch_007.syncer.0829a",
+  "operation_id": "ch_007.director.0829a",
   "current": {"location": "青石镇·祠堂", "present_characters": ["沈拓", "村长"],
               "mood": "强压着怒意，面上赔笑", "goal": "查清公册下落，先稳住村长"},
   "entities": [{"action": "upsert", "name": "村长", "type": "person",

@@ -1,7 +1,7 @@
 {
   "type": "object",
   "additionalProperties": false,
-  "description": "主角/场景'此刻'速写；仅供 pack P0 提示上下文。正文才是叙事真值，不一致属事实错。",
+  "description": "主角/场景'此刻'速写；仅供 pack P0 提示上下文。叙事出处是正文，机器真值是 state/；不一致属事实错。",
   "properties": {
     "time": {
       "type": "string",
@@ -52,7 +52,7 @@
       "items": {
         "type": "string"
       },
-      "description": "在场角色名；必须已注册在 state/entities.json（sync 强制闭合）"
+      "description": "章末此刻仍在场的角色名（给下一章 P0 回温，不是本章出现过的全部人）；必须已注册在 state/entities.json（sync 强制闭合）"
     }
   }
 }

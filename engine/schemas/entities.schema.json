@@ -49,7 +49,7 @@
           },
           "location": {
             "type": "string",
-            "description": "（item 用）当前所在地点（自由文本，与 timeline 历法口径一致）"
+            "description": "（item 用）当前所在地点（自由文本）"
           },
           "condition": {
             "type": "string",

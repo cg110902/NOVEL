@@ -76,7 +76,7 @@ def _form_notice(book: Path, ch: str, ch_num: int) -> list[str]:
     return notice
 
 
-def _hard_reminders(book: Path, ch_num: int) -> list[str]:
+def _hard_reminders(book: Path, ch: str, ch_num: int) -> list[str]:
     """纯算术事实：到期/过期线、未澄清误会、style_guards、偏离清单、form 同款提示。
 
     容错说明：这里对 lines 台账损坏显式降级为"空台账"（而非抛错/静默兜底为默认值），
@@ -114,6 +114,7 @@ def _hard_reminders(book: Path, ch_num: int) -> list[str]:
     if guards:
         out.append("style_guards 红线：" + "、".join(guards))
     out.extend(f"本书偏离：{d}" for d in _deviation_lines(book))
+    out.extend(_form_notice(book, ch, ch_num))
     return out
 
 
@@ -176,7 +177,7 @@ def build_pack(book: Path, ch: str, lean: bool = False, full: bool = False) -> d
         "current": {k: v for k, v in cur["current"].items() if v not in ("", [], None)},
         "beats": beats,
         "prev_tail": _prev_final_tail(book, ch_num),
-        "hard_reminders": _hard_reminders(book, ch_num),
+        "hard_reminders": _hard_reminders(book, ch, ch_num),
     }
     payload: dict = {"chapter": ch, "lean": lean, "full": full, "p0": p0, "p1": None, "p2": None}
 
@@ -264,7 +265,7 @@ def render_layer(name: str, obj, full: bool = False) -> str:
     if name == "p1":
         lines = []
         for b in obj["entities"]:
-            lines.append(f"[{b['name']}|{b['type']}|{'在场' if b['on_stage'] else '缺席'}] {b['summary']}")
+            lines.append(f"[{b['name']}|{b['type']}|{'章末在场' if b['on_stage'] else '章末不在'}] {b['summary']}")
             if b.get("lines"):
                 lines.append(f"  挂线: {', '.join(b['lines'])}")
             if b.get("card_text"):
