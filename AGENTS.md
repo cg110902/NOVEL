@@ -6,7 +6,7 @@
 ## 硬禁令（违反=生产事故；多数由 check/sync 机械强制，别试绕行）
 
 1. `state/*.json` 与幂等登记簿禁止手改。一切状态修改 = 写 `state/inbox/` 提案 → `sync`。
-2. 越权写：起草只写 raw（放开算力创作初稿这一件事）；审校只写 final（重铸精修这一件事）；主控写校对注记与提案，
+2. 越权写：drafter只写 raw（放开算力创作初稿这一件事）；guard只写 final（重铸&精修这一件事）；主控写校对注记与提案，
    对 final 只许文字级补丁。唯一事实表见 novel_workflow.md#写权限矩阵。
 3. 禁跳线：`sync` 是进入最终状态的唯一入口；体检有 errors 时不得封存推进。
 4. 禁复述规则：跨文档只准 `文件#锚点` 引用，抄写=双写违规。
@@ -30,8 +30,9 @@
 
 1. 读这份文件（你正在做）。
 2. `python studio.py status` —— 进度、逐章流水线行、下一步指向。
-3. 按 next_action 干活；动作细节查 novel_workflow.md 对应 Stage 节，文学标准查 novel_craft.md，
-   题材词汇查 genre_guide。**先读地图再进房间**，别通读整个 workspace。
+3. 按 next_action 干活；动作细节查 `novel_workflow.md` 对应 Stage 节，文学标准查 `novel_craft.md`，
+   题材词汇查 `genre_guide.md`。
+   **先读地图再进房间**，别通读整个 workspace。
    
 ## 上下文预算（只读规范）
 
@@ -58,7 +59,8 @@
 
 ## 目录速查
 
-`agents/rules/{novel_workflow.md, novel_craft.md}` = SOP 与文学默认值；
+`agents/rules/{novel_workflow.md, novel_craft.md}` = SOP、文学默认值、遇障查阅表（症状→处置）；
+`templates/README.md` = 模板实例化对照与机器解析边界（填什么以各模板内引导注释为准）；
 `agents/skills/<角色>/SKILL.md` = 岗位合同；`agents/genre_guide.md` = 题材词汇（只供选择，非公式）；
 `workspace/<slug>/` = 书本体（结构见 novel_workflow.md#工作区）；`studio.py`=薄壳入口
 （仅转发 `engine.cli.main`，引擎逻辑全部在 `engine/*`，11 命令查 `help`）；

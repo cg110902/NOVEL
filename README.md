@@ -29,6 +29,7 @@ python studio.py export --txt         # 全书编译
 | 层 | 文件 | 一句话 |
 |---|---|---|
 | 文档层 | `AGENTS.md` | 宪法：禁令/不变量/开局地图  |
+| | `templates/README.md` | 模板地图（填什么不在此规定） |
 | | `agents/rules/novel_workflow.md` | 流水线剧本（Stage 0–4 SOP） |
 | | `agents/rules/novel_craft.md` | 文学默认值（可被「本书偏离清单」覆盖） |
 | | `agents/skills/*/SKILL.md` | 5 张岗位合同（director/beats-builder/drafter/guard/syncer） |

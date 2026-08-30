@@ -14,5 +14,5 @@
 | pack.py | P0 任务书整块 / P1 触发（人物块含 lines 触碰与随身道具清单 carries；道具块含 holder/location/condition）/ P2 索引，**超预算按优先级硬裁 P2 冷索引**（P0/P1 尽量保留，如实上报 budget）；导出文件名净化 |  
 | snapshot.py | 快照 create/list/rollback（pre_rollback 保护；模块不碰 manuscript；CLI 的 --clean-drafts 会额外清理超章稿件） |  
 
-输出契约：数据类命令 stdout 单个 JSON；status/check 为人读表（断言在 test_cli 冻结）。
+输出契约：数据类命令 stdout 单个 JSON；status/check 为人读表。
 退出码：0=成功；1=业务拒绝（校验失败/闸门）；2=用法错误。

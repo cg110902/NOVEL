@@ -269,7 +269,7 @@ def cmd_status(args) -> int:
     for a in brief["next_actions"]:
         print(f"      👉 {a}")
     _status_debts(book)
-    print("    规则：先读 AGENTS.md 地图，再按 workflow 对应 Stage 节行动。")
+    print("    规则：先读 AGENTS.md 地图，再按 workflow 对应 Stage 节行动；")
     print("=" * 70)
     return 0
 
