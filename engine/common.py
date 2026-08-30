@@ -163,6 +163,22 @@ def parse_front_matter(text: str) -> dict[str, str]:
     return out
 
 
+def md_section(text: str, title_pat: str) -> list[str]:
+    """取 markdown "## <标题>" 小节的正文行（到下一个 ## 或文件尾；标题匹配 title_pat）。
+    checks 的注记/验收提取与 evidence 的对照卡共用（零语义，纯行切分）。"""
+    lines: list[str] = []
+    inside = False
+    for ln in (text or "").splitlines():
+        if re.match(r"^##\s", ln):
+            if inside:
+                break
+            inside = bool(re.match(title_pat, ln))
+            continue
+        if inside:
+            lines.append(ln)
+    return lines
+
+
 # ---------------------------------------------------------------------------
 # IO 安全
 # ---------------------------------------------------------------------------

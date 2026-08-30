@@ -32,6 +32,12 @@ workspace/<slug>/
 - `power_level` / `abilities`：能力/修为阶梯摘要（阶梯里程碑在 `timeline.arcs`）。
 - `injury` / `equipment` / `assets`：当前伤势、随身装备、非资金类资源。
 - `situation`：一句话处境（便于下一章 pack 快速回温）。
+- `mood`：POV 此刻心境/情绪基调（软状态，引擎不校验；如"疑惧交加，对义庄戒备"）。
+  情绪线没动可不写——它是下一章情绪衔接的锚，漂了读者能感到但说不清。
+- `goal`：POV 角色当下想要什么（软状态，引擎不校验；区别于 beats 任务书面向读者的目标）。
+  角色动机没变可不写——它是防 OOC/跑偏的锚。
+- `key_relationships`：当前主要关系速写（软状态，引擎不校验；如"沈拓↔赵四：敌对未明"）。
+  关系没动可不写；动了就更新——它只进 pack 的 P0 回温，不是真值。
 - `present_characters`：本章/当前在场角色名（必须已注册在 `state/entities.json`，sync 强制闭合）。
 
 `synopsis.json`：`book_logline`（全书一句话）+ `chapters`（每章 `num/title/synopsis/source=manual`）。
@@ -49,7 +55,12 @@ workspace/<slug>/
 - **事实（两义）**：① **提案事实** = 提案里提交给状态机的每一条增量，能在本章 final 正文找到出处
   （AGENTS 禁令 7）；② **情节事实** = 场序、动机、事件因果、数字与专名，修改它们属内容级改动，
   只能回 raw 重走 Stage 3（见本文件#文字级边界）。上下文出现"事实"时按上述分义读取。
-- **lines 台账** = `state/lines.json` 的伏笔/误会登记簿，条目 ID 为 `GUN-*`（伏笔）与 `MIS-*`（误会）。
+- **lines 台账** = `state/lines.json` 的三线登记簿：伏笔 `GUN-*`、误会 `MIS-*`、知识线 `KNO-*`
+  （秘密/信息账：secret 一句话 + 计划揭示章 target_ch，状态 Concealed/Revealed）。
+  三类都有 target_ch（章号或 longline），逾期由 check 报数；**揭没揭由你判断**，引擎只记账。
+  揭示时机与计划不符时，`proposal check` 三方对照出数（提前/逾期）、sync 报告标章——改不改归你。
+  每条线带**权重**（`weight`，语义分级建议 1-3；误会用 `level`）——多条线齐逾期时，
+  gaps/candidates/status/pack 的清单按权重高→低排，"先还哪条"有据。
 - **ledger 账本** = `state/ledger.json` 的资金/资源池流水，余额由引擎重算，"账本 current 值"指这里。
 - **越界知情** = 角色的言行使他表现出尚未通过剧情获得的信息；判定标准见 `novel_craft.md#知识是资产`。
 
@@ -76,8 +87,9 @@ workspace/<slug>/
 
 ## Stage 1 细纲+任务书（由主控亲自完成）
 
-- 输入合同：`status` 流水线行 + `evidence gaps`（哪些线快到期/已逾期）+ `state/current.json`
-  + main_plot 与卷纲。
+- 输入合同：`status` 流水线行 + `evidence gaps`（哪些线快到期/已逾期）+ `evidence prev`
+  （上章 form/旋钮/words 带/必须保留对照卡；pack 的旧章指针只覆盖近 10 章，更早的章节
+  指针用 `evidence mentions <名字>` 查全章出现处）+ `state/current.json` + main_plot 与卷纲。
 - 动作：
   1. 选章 = 流水线第一个缺口章号（禁止跳章写，除非用户明说，见下文#模式与控制）；
   2. 掷 form 骰（`novel_craft.md#反公式化与拟人化`）：同卷统计与连章重复约束由 check 机械兜底；
@@ -93,6 +105,8 @@ workspace/<slug>/
 - 自交检通过标准（同时满足，缺一即回退）：①「验收」每条都能对着正文给出"动词+可指认名词"判据，
   出现形容词判据 = 未过；② words 带与相邻章区间下限错开 ≥600 字；③ 人物卡上的承诺（称谓/记号/
   知识边界）已回写进"线动作"栏；④ front-matter 六键齐全且与上一章的 form/旋钮不整组重复。
+  其中机械部分由 check 报数（`acceptance_empty_criterion` / `words_band_crowded` /
+  `style_notes_copy` / `line_action_orphan` / `line_action_missing`），主控看数裁决，不必自己记着查。
 
 ## 任务书合同
 
@@ -163,12 +177,17 @@ style_notes: 短句急雨 | 章首中间开始 | 章尾弱收   # 三旋钮
      entities 写法一致／数字与 ledger current 相符／「必须保留」在位／格式残留），
      evidence style/dup/file 按需自跑；注记正文写入 `log/review/ch_XXX.md`（init 已自动创建
      该目录），其中必须含 `## 验收` 节，逐条回答 beats 任务书「验收」并带证据；无注记会被
-     sync 的 review_gate 拒绝；
+     sync 的 review_gate 拒绝。骨架可用 `python studio.py review new ch_XXX --write` 生成
+     （验收条目自 beats 预填，引号配对/余额/专名表/必须保留清单等机器数据逐项就位，
+     只填「结果」与证据）；
   2. `python studio.py proposal new ch_XXX` 打印骨架（schema/chapter/operation_id 已预填，
      不落盘；加 `--write` 可直接存 `state/inbox/ch_XXX.json`），按 `state/inbox/README.md`
      的样例纪律填实六区 → 存 `state/inbox/ch_XXX.json`
-     （schema: `engine/schemas/proposal.schema.json`；operation_id = `<ch>.<作者>.<序号>`）；
-  3. `python studio.py sync ch_XXX --dry-run` 预演（校验结构+列出合并计划）；
+     （schema: `engine/schemas/proposal.schema.json`；operation_id = `<ch>.<作者>.<序号>`）。
+     组装前跑 `python studio.py evidence candidates ch_XXX`：线名命中/金额串/新实体标记行/
+     在场提及计数/状态摘要的机器对照——只出数，是否上账归主控；
+  3. `python studio.py proposal check ch_XXX`（结构预检+三方事实对照，不落盘、不要求注记在场）
+     → `python studio.py sync ch_XXX --dry-run` 预演（校验结构+列出合并计划）；
   4. 去 dry-run 正式 `sync`：审校合同闸门 → 引擎合并 → 体检 → 快照 `<ch>_done` 一气呵成
      （注记未答完验收会被闸门拒绝且不落半成品状态，改完注记重跑即可）；
   5. sync 失败 → 提案自动进 failed/：读报错改文件，再 sync（引擎自动捡回）。

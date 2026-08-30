@@ -27,9 +27,30 @@ STATE_KEYS = ("current", "entities", "lines", "timeline", "ledger", "synopsis")
 CH_RE = re.compile(r"ch_(\d{3,})$")
 GUN_ID_RE = re.compile(r"GUN-\d{3,}")
 MIS_ID_RE = re.compile(r"MIS-\d{3,}")
+KNO_ID_RE = re.compile(r"KNO-\d{3,}")
 NO_MERGE_SUFFIXES = (".draft.json", ".template.json", ".sample.json")
 
 _SCHEMA_CACHE: dict[str, dict] = {}
+
+# lines 台账三类的机械口径（ID 前缀/状态枚举/可更新字段）——合并与校验共用，零语义
+_LINE_KIND_SPEC = {
+    "foreshadow": {"id_re": GUN_ID_RE, "prefix": "GUN",
+                   "statuses": ("Planted", "Reminded", "Resolved"), "resolved": "Resolved",
+                   "plant_fields": {"name", "target_ch", "plant_ch", "plan", "weight"},
+                   "plant_need": ("name",), "update_str": ("name", "plan"),
+                   "update_fields": {"status", "target_ch", "plan", "name", "weight"}},
+    "misunderstanding": {"id_re": MIS_ID_RE, "prefix": "MIS",
+                         "statuses": ("Active", "Resolved"), "resolved": "Resolved",
+                         "plant_fields": {"parties", "content", "truth", "level", "target_ch"},
+                         "plant_need": ("parties", "content"),
+                         "update_str": ("content", "truth", "parties"),
+                         "update_fields": {"status", "target_ch", "content", "truth", "level", "parties"}},
+    "knowledge": {"id_re": KNO_ID_RE, "prefix": "KNO",
+                  "statuses": ("Concealed", "Revealed"), "resolved": "Revealed",
+                  "plant_fields": {"secret", "target_ch", "plant_ch", "note", "weight"},
+                  "plant_need": ("secret",), "update_str": ("secret", "note"),
+                  "update_fields": {"status", "target_ch", "secret", "note", "weight"}},
+}
 
 
 def _schema(name: str) -> dict:
@@ -57,12 +78,12 @@ def inbox_dir(book: Path) -> Path:
 def defaults_for(key: str) -> dict:
     if key == "current":
         return {"time": "", "location": "", "power_level": "", "abilities": "",
-                "injury": "", "equipment": "", "assets": "", "situation": "",
-                "present_characters": []}
+                "injury": "", "equipment": "", "assets": "", "situation": "", "mood": "",
+                "goal": "", "key_relationships": "", "present_characters": []}
     if key == "entities":
         return {"entries": []}
     if key == "lines":
-        return {"foreshadows": [], "misunderstandings": []}
+        return {"foreshadows": [], "misunderstandings": [], "knowledge": []}
     if key == "timeline":
         return {"events": [], "arcs": []}
     if key == "ledger":
@@ -88,14 +109,21 @@ failed/ = 失败提案，就地处修复后重跑 `sync`，引擎自动捡回。
   "schema": "novel-studio.state-mutation/v2",
   "chapter": "ch_007",
   "operation_id": "ch_007.syncer.0829a",
-  "current": {"location": "青石镇·祠堂", "present_characters": ["沈拓", "村长"]},
+  "current": {"location": "青石镇·祠堂", "present_characters": ["沈拓", "村长"],
+              "mood": "强压着怒意，面上赔笑", "goal": "查清公册下落，先稳住村长"},
   "entities": [{"action": "upsert", "name": "村长", "type": "person",
                "summary": "青石镇村长，玉佩旧案的知情人", "aliases": ["老丈"]},
               {"action": "upsert", "name": "祠堂", "type": "place",
-               "summary": "册墙藏十年公册。现状：钥匙轮值周——'现状'写进 summary；status 是枚举"}],
+               "summary": "册墙藏十年公册。现状：钥匙轮值周——'现状'写进 summary；status 是枚举"},
+              {"action": "upsert", "name": "玉佩", "type": "item",
+               "summary": "沈家遗物，认主", "holder": "沈拓", "location": "怀中", "condition": "完整"}],
   "lines": [
-    {"kind": "foreshadow", "action": "plant", "name": "祠堂牌位下的匣子", "target_ch": 12},
-    {"kind": "foreshadow", "action": "resolve", "id": "GUN-003"}
+    {"kind": "foreshadow", "action": "plant", "name": "祠堂牌位下的匣子", "target_ch": 12,
+     "weight": 3},
+    {"kind": "foreshadow", "action": "resolve", "id": "GUN-003"},
+    {"kind": "knowledge", "action": "plant", "secret": "村长认得沈家旧印", "target_ch": 9,
+     "note": "沈拓 ch_9 前不得知道", "weight": 2},
+    {"kind": "knowledge", "action": "resolve", "id": "KNO-001"}
   ],
   "timeline": {"events": [{"time": "次日清晨", "event": "开祠堂"}]},
   "ledger": {"transactions": [{"pool": "standard_currency", "delta": -30,
@@ -107,6 +135,8 @@ failed/ = 失败提案，就地处修复后重跑 `sync`，引擎自动捡回。
 写提案的纪律：只写增量；事实必须能在本章 final 正文找到出处；不确定就不上账。
 current 只写要刷新的字段：缺省/空值＝不修改（引擎跳过空串与空数组，不当作清档）。
 status 只许 active/retired（越界整案回滚进 failed/）；"现状/近况"一律并入 summary——upsert 即覆盖，逐章刷新。
+填完六区先 `python studio.py proposal check ch_XXX`（结构预检+三方事实对照，不落盘），
+再 `sync ch_XXX --dry-run` 预演。
 """
 
 
@@ -132,11 +162,22 @@ def init_state(book: Path) -> int:
 # ---------------------------------------------------------------------------
 # 读写（双双过 schema）
 # ---------------------------------------------------------------------------
+def _fill_missing_required(key: str, data: dict) -> dict:
+    """读时补全：旧版状态文件缺新增 required 键时按结构默认值补齐（纯结构，零语义）。
+    补齐只在内存生效，下一次 save 自然落盘；不改写文件内容以外的任何东西。"""
+    if key == "lines":
+        for arr_key in ("foreshadows", "misunderstandings", "knowledge"):
+            if arr_key not in data:
+                data[arr_key] = []
+    return data
+
+
 def load_state(book: Path, key: str) -> dict:
     p = state_dir(book) / f"{key}.json"
     if not p.exists():
         raise ValueError(f"状态文件缺失: {p.name}（先运行 studio init）")
     data = common.load_json(p)  # 损坏 → 直接抛，不静默兜底
+    data = _fill_missing_required(key, data)
     errors = validator.validate(data, _schema(key))
     if errors:
         raise ValueError(f"{p.name} schema 校验失败: " + "; ".join(errors[:5]))
@@ -237,7 +278,8 @@ def validate_proposal(proposal, expected_chapter: str | None = None) -> tuple[li
     ents = proposal.get("entities")
     if isinstance(ents, list):
         _plan("entities", len(ents))
-        allowed_entity_keys = {"action", "name", "type", "card", "summary", "status", "aliases"}
+        allowed_entity_keys = {"action", "name", "type", "card", "summary", "status", "aliases",
+                               "holder", "location", "condition"}
         for i, e in enumerate(ents):
             if not isinstance(e, dict):
                 errors.append(f"entities[{i}] 必须为对象")
@@ -253,7 +295,7 @@ def validate_proposal(proposal, expected_chapter: str | None = None) -> tuple[li
                 errors.append(f"entities[{i}].status 必须 ∈ ['active', 'retired']，收到 {e['status']!r}")
             if "type" in e and e["type"] not in _ENTITY_TYPES:
                 errors.append(f"entities[{i}].type 非法: {e['type']!r}（合法：{'/'.join(sorted(_ENTITY_TYPES))}）")
-            for f in ("card", "summary"):
+            for f in ("card", "summary", "holder", "location", "condition"):
                 if f in e and not isinstance(e[f], str):
                     errors.append(f"entities[{i}].{f} 必须为字符串")
             if "aliases" in e:
@@ -271,22 +313,26 @@ def validate_proposal(proposal, expected_chapter: str | None = None) -> tuple[li
                 errors.append(f"lines[{i}] 必须为对象")
                 continue
             kind = g.get("kind")
-            if kind not in ("foreshadow", "misunderstanding"):
-                errors.append(f"lines[{i}].kind 必须为 foreshadow/misunderstanding")
+            spec = _LINE_KIND_SPEC.get(kind)
+            if spec is None:
+                errors.append(f"lines[{i}].kind 必须为 foreshadow/misunderstanding/knowledge")
                 continue
             action = g.get("action", "plant")
-            if action not in ("plant", "update", "remind", "resolve"):
+            if kind == "knowledge":
+                if action not in ("plant", "update", "resolve"):
+                    errors.append(f"lines[{i}].action 非法: {action}（knowledge 支持 plant/update/resolve，"
+                                  f"揭不揭由你判断——引擎只记账）")
+                    continue
+            elif action not in ("plant", "update", "remind", "resolve"):
                 errors.append(f"lines[{i}].action 非法: {action}")
                 continue
             base_keys = {"kind", "action", "id"}
             if action == "plant":
-                allowed = base_keys | ({"name", "target_ch", "plant_ch", "plan"} if kind == "foreshadow"
-                                       else {"parties", "content", "truth", "level", "target_ch"})
+                allowed = base_keys | spec["plant_fields"]
                 for k in g:
                     if k not in allowed:
                         errors.append(f"lines[{i}] 含未知字段: {k}")
-                need = ["name"] if kind == "foreshadow" else ["parties", "content"]
-                for f in need:
+                for f in spec["plant_need"]:
                     if not str(g.get(f, "")).strip():
                         errors.append(f"lines[{i}]（plant {kind}）必须提供 {f}")
                     elif not isinstance(g[f], str):
@@ -294,9 +340,11 @@ def validate_proposal(proposal, expected_chapter: str | None = None) -> tuple[li
                 if kind == "misunderstanding" and "level" in g and (
                         not isinstance(g["level"], int) or isinstance(g["level"], bool) or g["level"] < 1):
                     errors.append(f"lines[{i}].level 必须为 ≥1 的整数")
-                id_re = GUN_ID_RE if kind == "foreshadow" else MIS_ID_RE
-                if g.get("id") and not id_re.fullmatch(str(g["id"])):
-                    errors.append(f"lines[{i}].id 必须匹配 {id_re.pattern}")
+                if kind in ("foreshadow", "knowledge") and "weight" in g and (
+                        not isinstance(g["weight"], int) or isinstance(g["weight"], bool) or g["weight"] < 1):
+                    errors.append(f"lines[{i}].weight 必须为 ≥1 的整数")
+                if g.get("id") and not spec["id_re"].fullmatch(str(g["id"])):
+                    errors.append(f"lines[{i}].id 必须匹配 {spec['id_re'].pattern}")
                 _, terr = _norm_target(g.get("target_ch"))
                 if terr:
                     errors.append(f"lines[{i}]: {terr}")
@@ -313,13 +361,15 @@ def validate_proposal(proposal, expected_chapter: str | None = None) -> tuple[li
                 if action == "remind" and kind != "foreshadow":
                     errors.append(f"lines[{i}]: remind 只适用于 foreshadow")
                 if action == "update":
-                    str_fields = {"name", "plan"} if kind == "foreshadow" else {"content", "truth", "parties"}
-                    for f in str_fields:
+                    for f in spec["update_str"]:
                         if f in g and not isinstance(g[f], str):
                             errors.append(f"lines[{i}].{f} 必须为字符串")
                     if kind == "misunderstanding" and "level" in g and (
                             not isinstance(g["level"], int) or isinstance(g["level"], bool) or g["level"] < 1):
                         errors.append(f"lines[{i}].level 必须为 ≥1 的整数")
+                    if kind in ("foreshadow", "knowledge") and "weight" in g and (
+                            not isinstance(g["weight"], int) or isinstance(g["weight"], bool) or g["weight"] < 1):
+                        errors.append(f"lines[{i}].weight 必须为 ≥1 的整数")
 
     # --- timeline ---
     tl = proposal.get("timeline")
@@ -475,7 +525,7 @@ def _merge_entities(state: dict, items: list[dict], rep: dict) -> None:
             ent = {"name": name, "type": etype, "aliases": [], "card": "", "summary": "", "status": "active"}
             state["entries"].append(ent)
             idx[name] = ent
-        for f in ("type", "card", "summary"):
+        for f in ("type", "card", "summary", "holder", "location", "condition"):
             if f in e:
                 ent[f] = e[f]
         if "status" in e:
@@ -486,14 +536,15 @@ def _merge_entities(state: dict, items: list[dict], rep: dict) -> None:
 
 
 def _merge_lines(state: dict, items: list[dict], ch_num: int, rep: dict) -> None:
-    buckets = {"foreshadow": state["foreshadows"], "misunderstanding": state["misunderstandings"]}
+    buckets = {"foreshadow": state["foreshadows"], "misunderstanding": state["misunderstandings"],
+               "knowledge": state["knowledge"]}
     for g in items:
         kind, action = g["kind"], g.get("action", "plant")
+        spec = _LINE_KIND_SPEC[kind]
         arr = buckets[kind]
-        prefix = "GUN" if kind == "foreshadow" else "MIS"
         idx = _index_by(arr, "id")
         if action == "plant":
-            gid = g.get("id") or _next_id(arr, "id", prefix)
+            gid = g.get("id") or _next_id(arr, "id", spec["prefix"])
             if gid in idx:
                 rep["errors"].append(f"{gid} 已存在，重复 plant 拒绝（改状态请用 update/resolve）")
                 continue
@@ -503,13 +554,21 @@ def _merge_lines(state: dict, items: list[dict], ch_num: int, rep: dict) -> None
                 continue
             if kind == "foreshadow":
                 arr.append({"id": gid, "name": g["name"], "plant_ch": g.get("plant_ch") or ch_num,
-                            "status": "Planted", "target_ch": target, "plan": g.get("plan", "")})
-                rep["updated"].append(f"🕸️ 埋设伏笔 {gid}《{g['name']}》→ target {target}")
-            else:
+                            "status": "Planted", "target_ch": target, "weight": g.get("weight", 1),
+                            "plan": g.get("plan", "")})
+                rep["updated"].append(f"🕸️ 埋设伏笔 {gid}《{g['name']}》→ target {target}"
+                                      f"（权重 {g.get('weight', 1)}）")
+            elif kind == "misunderstanding":
                 arr.append({"id": gid, "parties": g["parties"], "content": g["content"],
                             "truth": g.get("truth", ""), "level": g.get("level", 1),
                             "target_ch": target, "status": "Active"})
                 rep["updated"].append(f"🎭 新误会 {gid}：{g['content'][:30]}")
+            else:  # knowledge
+                arr.append({"id": gid, "secret": g["secret"], "plant_ch": g.get("plant_ch") or ch_num,
+                            "status": "Concealed", "target_ch": target,
+                            "weight": g.get("weight", 1), "note": g.get("note", "")})
+                rep["updated"].append(f"🔒 知识线登记 {gid}《{g['secret'][:24]}》→ 计划揭示 {target}"
+                                      f"（权重 {g.get('weight', 1)}）")
             idx[gid] = arr[-1]
             continue
         gid = g.get("id")
@@ -518,18 +577,24 @@ def _merge_lines(state: dict, items: list[dict], ch_num: int, rep: dict) -> None
             rep["errors"].append(f"{action} 目标 {gid} 不存在——台账里没有这条，拒绝猜测")
             continue
         if action == "resolve":
-            ent["status"] = "Resolved"
-            rep["updated"].append(f"✅ {gid} 已回收/澄清")
+            ent["status"] = spec["resolved"]
+            if kind == "knowledge":
+                t = ent.get("target_ch")
+                if ch_num and isinstance(t, int) and t != ch_num:
+                    tag = "提前" if ch_num < t else "逾期"
+                    rep["updated"].append(f"🔓 {gid} 已揭示（{tag}：计划 ch_{t:03d}，本章 ch_{ch_num:03d}）")
+                else:
+                    rep["updated"].append(f"🔓 {gid} 已揭示")
+            else:
+                rep["updated"].append(f"✅ {gid} 已回收/澄清")
         elif action == "remind":
             ent["status"] = "Reminded"
             rep["updated"].append(f"🔔 {gid} 已回唤")
         else:  # update
-            allowed = ({"status", "target_ch", "plan", "name"} if kind == "foreshadow"
-                       else {"status", "target_ch", "content", "truth", "level", "parties"})
             for k, v in g.items():
                 if k in ("kind", "action", "id"):
                     continue
-                if k not in allowed:
+                if k not in spec["update_fields"]:
                     rep["errors"].append(f"update {gid}: 不允许修改字段 {k}")
                     continue
                 if k == "target_ch":
@@ -538,10 +603,8 @@ def _merge_lines(state: dict, items: list[dict], ch_num: int, rep: dict) -> None
                         rep["errors"].append(f"update {gid}: {terr}")
                         continue
                 if k == "status":
-                    enum = ({"Planted", "Reminded", "Resolved"} if kind == "foreshadow"
-                            else {"Active", "Resolved"})
-                    if v not in enum:
-                        rep["errors"].append(f"update {gid}: status 必须 ∈ {sorted(enum)}")
+                    if v not in spec["statuses"]:
+                        rep["errors"].append(f"update {gid}: status 必须 ∈ {sorted(spec['statuses'])}")
                         continue
                 ent[k] = v
             rep["updated"].append(f"🔁 {gid} 已更新")
@@ -872,7 +935,8 @@ def verify_data(data: dict[str, dict]) -> list[str]:
         if int(v.get("current", 0)) != running.get(k, 0):
             errors.append(f"资源池 {k} 声明余额 {v.get('current')} ≠ 流水累计 {running.get(k, 0)}")
 
-    for arr_key, id_re, label in (("foreshadows", GUN_ID_RE, "伏笔"), ("misunderstandings", MIS_ID_RE, "误会")):
+    for arr_key, id_re, label in (("foreshadows", GUN_ID_RE, "伏笔"), ("misunderstandings", MIS_ID_RE, "误会"),
+                                  ("knowledge", KNO_ID_RE, "知识线")):
         ids = [str(g.get("id", "")) for g in data["lines"].get(arr_key, [])]
         dup = sorted({x for x in ids if ids.count(x) > 1})
         if dup:
@@ -894,6 +958,13 @@ def verify_data(data: dict[str, dict]) -> list[str]:
         if str(name).strip() and str(name) not in known:
             errors.append(f"current.present_characters 引用未登记实体「{name}」"
                           "（先在 entities 提案注册，名字须与卡一致）")
+
+    # 闭合性：item 实体的 holder 必须已注册（人名/别名）——持有关系不许悬空
+    for e in data["entities"].get("entries", []):
+        holder = str(e.get("holder", "")).strip()
+        if holder and holder not in known:
+            errors.append(f"实体「{e.get('name','')}」的 holder「{holder}」未登记"
+                          "（先注册持有者；holder 必须是已注册实体名）")
     return errors
 
 

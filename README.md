@@ -9,11 +9,15 @@
 ```bash
 python studio.py init -w workspace/我的书 -t 书名 -g 题材 -p 主角名   # Stage 0
 python studio.py status                                             # 开局必读：进度+下一步
+python studio.py evidence prev ch_002     # Stage 1：上章约束对照卡（form/旋钮/words 带/必须保留）
 python studio.py pack ch_001          # 装配子代理上下文（P0/P1/P2 三层）
-python studio.py evidence words       # 机械证据：字数/提及/线状态/查重/风格指纹（纯 JSON）
+python studio.py evidence words       # 机械证据：字数统计（纯 JSON；all 聚合全部证据）
+python studio.py review new ch_001 --write   # Stage 4：审校注记骨架（验收条目+机器数据预填）
+python studio.py evidence candidates ch_001  # Stage 4：工作单（线命中/金额串/新实体标记/在场提及）
 python studio.py check                # 事实级体检：errors 阻断，warnings 只报数
-python studio.py sync ch_001          # 提案合并 → 状态体检 → 快照（Stage 4）
 python studio.py proposal new ch_002 --write   # 生成并写入下一章提案骨架（state/inbox/ch_002.json）
+python studio.py proposal check ch_001  # 提案结构预检 + 三方事实对照（不落盘）
+python studio.py sync ch_001          # 提案合并 → 状态体检 → 快照（Stage 4）
 python studio.py snapshot rollback ch_001_done --clean-drafts      # 回滚
 python studio.py export --txt         # 全书编译
 
@@ -29,6 +33,6 @@ python studio.py export --txt         # 全书编译
 | | `agents/rules/novel_craft.md` | 文学默认值（可被「本书偏离清单」覆盖） |
 | | `agents/skills/*/SKILL.md` | 5 张岗位合同（director/beats-builder/drafter/guard/syncer） |
 | | `agents/genre_guide.md` | 8 题材选择题素材（非公式） |
-| 引擎层 | `studio.py` + `engine/` | 10 命令薄壳；纯 stdlib；模块依赖 cli → 各领域 → common |
+| 引擎层 | `studio.py` + `engine/` | 11 命令薄壳；纯 stdlib；模块依赖 cli → 各领域 → common |
 | 数据层 | `workspace/<书名>/` | 圣经/大纲/稿件自由文本；`state/` 6 JSON = 机器真值（提案制写入） |
  

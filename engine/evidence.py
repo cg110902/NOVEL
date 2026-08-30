@@ -146,13 +146,14 @@ def mentions(book: Path, target: str | None = None) -> dict:
 def gaps(book: Path) -> dict:
     lines = state.load_state(book, "lines")
     cur = common.latest_chapter_number(book, "final")
-    out = {"kind": "gaps", "max_final_chapter": cur, "foreshadows": [], "misunderstandings": []}
+    out = {"kind": "gaps", "max_final_chapter": cur, "foreshadows": [], "misunderstandings": [], "knowledge": []}
     for g in lines.get("foreshadows", []):
         t = g.get("target_ch")
         overdue = isinstance(t, int) and g.get("status") != "Resolved" and t < cur
         out["foreshadows"].append({
             "id": g["id"], "name": g.get("name", ""), "status": g.get("status"),
-            "plant_ch": g.get("plant_ch"), "target_ch": t, "overdue": overdue,
+            "plant_ch": g.get("plant_ch"), "target_ch": t, "weight": g.get("weight", 1),
+            "overdue": overdue,
             "idle_chapters": (cur - int(g.get("plant_ch") or 0)) if g.get("status") != "Resolved" else 0})
     for m in lines.get("misunderstandings", []):
         t = m.get("target_ch")
@@ -160,10 +161,234 @@ def gaps(book: Path) -> dict:
         out["misunderstandings"].append({
             "id": m["id"], "parties": m.get("parties", ""), "status": m.get("status"),
             "level": m.get("level"), "target_ch": t, "overdue": overdue})
+    for k in lines.get("knowledge", []):
+        t = k.get("target_ch")
+        overdue = isinstance(t, int) and k.get("status") != "Revealed" and t < cur
+        out["knowledge"].append({
+            "id": k["id"], "secret": k.get("secret", ""), "status": k.get("status"),
+            "plant_ch": k.get("plant_ch"), "target_ch": t, "weight": k.get("weight", 1),
+            "overdue": overdue})
+    # 逾期/到期清单排序（机械）：权重高者优先——多条线齐逾期时"先还哪条"有据
+    out["foreshadows"].sort(key=lambda x: line_sort_key(x, "foreshadow"))
+    out["misunderstandings"].sort(key=lambda x: line_sort_key(x, "misunderstanding"))
+    out["knowledge"].sort(key=lambda x: line_sort_key(x, "knowledge"))
     out["summary"] = {"open_foreshadows": sum(1 for g in out["foreshadows"] if g["status"] != "Resolved"),
                       "overdue_foreshadows": sum(1 for g in out["foreshadows"] if g["overdue"]),
                       "open_misunderstandings": sum(1 for m in out["misunderstandings"] if m["status"] != "Resolved"),
-                      "overdue_misunderstandings": sum(1 for m in out["misunderstandings"] if m["overdue"])}
+                      "overdue_misunderstandings": sum(1 for m in out["misunderstandings"] if m["overdue"]),
+                      "open_knowledge": sum(1 for k in out["knowledge"] if k["status"] != "Revealed"),
+                      "overdue_knowledge": sum(1 for k in out["knowledge"] if k["overdue"])}
+    return out
+
+
+# --------------------------------------------------------------------------- 工作单小件（Stage 4 候选对照 / Stage 1 上章对照）
+_CN_DIGITS = {"零": 0, "一": 1, "二": 2, "两": 2, "両": 2, "三": 3, "四": 4,
+              "五": 5, "六": 6, "七": 7, "八": 8, "九": 9}
+_CN_UNITS = {"十": 10, "百": 100, "千": 1000}
+_NUM_RE = r"[0-9][0-9,，]*|[零一二两両三四五六七八九十百千]{1,6}"
+
+
+def _cn_num_to_int(s: str) -> int | None:
+    """中文数词→整数（千位内常见形：三十/一百二/千五百；解不出返回 None，零语义）。"""
+    if not s:
+        return None
+    total, num = 0, 0
+    for ch in s:
+        if ch in _CN_DIGITS:
+            num = _CN_DIGITS[ch]
+        elif ch in _CN_UNITS:
+            total += (num or 1) * _CN_UNITS[ch]
+            num = 0
+        else:
+            return None
+    return total + num
+
+
+def _amount_scan(text: str, pools: dict) -> list[dict]:
+    """金额候选：阿拉伯/常见中文数词（千位内）× ledger 已声明池单位。只计数与换算，零裁决。"""
+    out = []
+    for pid, p in (pools or {}).items():
+        unit = str(p.get("unit") or "").strip()
+        if not unit:
+            continue
+        ms = re.findall(rf"({_NUM_RE})\s*{re.escape(unit)}", text)
+        recs = []
+        for m in ms:
+            v = int(m.replace(",", "").replace("，", "")) if m[0].isdigit() else _cn_num_to_int(m)
+            if v is not None:
+                recs.append((v, m))
+        if recs:
+            samples = []
+            for _, m in recs:
+                sample = f"{m}{unit}"
+                if sample not in samples:
+                    samples.append(sample)
+            out.append({"pool": pid, "unit": unit, "count": len(recs),
+                        "values": sorted({v for v, _ in recs})[:8], "samples": samples[:3]})
+    return out
+
+
+def _line_terms_for(g: dict, kind: str, reg_terms: list[str]) -> list[str]:
+    """从线台账条目提取计数词：整句 name/parties + 其中包含的注册名/别名 +
+    （误会）parties 的分词。全部来自台账结构化字段，零正文 NLP。"""
+    terms: list[str] = []
+    if kind == "foreshadow":
+        name = str(g.get("name", "")).strip()
+        if name:
+            terms.append(name)
+        # plan 也是主控写的结构化线元数据：其中提到的注册名同样是本线的关键实体
+        blob = name + " " + str(g.get("plan", ""))
+    elif kind == "knowledge":
+        # secret 是一整句事实，整句计数无意义——只数其中的注册名（与 foreshadow.plan 同口径）
+        blob = str(g.get("secret", "")) + " " + str(g.get("note", ""))
+    else:
+        parties = str(g.get("parties", "")).strip()
+        if parties:
+            terms.append(parties)
+        blob = parties + " " + str(g.get("content", ""))
+    for a in reg_terms:
+        if len(a) >= 2 and a in blob and a not in terms:
+            terms.append(a)
+    if kind == "misunderstanding":
+        for tok in re.split(r"[、，,·×/\s]+", str(g.get("parties", ""))):
+            if len(tok) >= 2 and tok not in terms:
+                terms.append(tok)
+    return terms
+
+
+def line_sort_key(g: dict, kind: str) -> tuple:
+    """台账线排序键（纯机械）：整数到期章在前（longline 殿后）→ 权重/级别高→低 → 章号 → ID。
+    weight/level 是主控写的语义分级，引擎只用于排清单出数，不做判断。"""
+    prio_field = "level" if kind == "misunderstanding" else "weight"
+    prio = g.get(prio_field)
+    prio = int(prio) if isinstance(prio, int) and not isinstance(prio, bool) and prio >= 1 else 1
+    t = g.get("target_ch")
+    return (0 if isinstance(t, int) else 1, -prio, t if isinstance(t, int) else 0, str(g.get("id", "")))
+
+
+def candidates(book: Path, ch: str) -> dict:
+    """Stage 4 工作单数据：以本章 final 为源做机器对照，只出数、零裁决。
+
+    是否上账、是否动线的判断全归主控（AGENTS 宪法：语义边界）。
+    """
+    n = common.chapter_token_to_num(ch)
+    tok = f"ch_{n:03d}" if n else ch
+    if not n:
+        return {"kind": "candidates", "chapter": ch, "error": f"非法章号: {ch!r}"}
+    chs = [(t, num, text) for t, num, text in final_chapters(book) if num == n]
+    if not chs:
+        return {"kind": "candidates", "chapter": tok,
+                "error": f"无 {tok} 的 final（工作单以 final 为源；数 raw 用 evidence file）"}
+    _, _, text = chs[0]
+    out: dict = {"kind": "candidates", "chapter": tok, "source": "final"}
+
+    lines = state.load_state(book, "lines")
+    lookup = entity_lookup(book)
+    reg_terms = [a for names in lookup.values() for a in names]
+    line_hits: list[dict] = []
+    due: list[dict] = []
+    upcoming: list[dict] = []
+    for kind, arr_key in (("foreshadow", "foreshadows"), ("misunderstanding", "misunderstandings"),
+                          ("knowledge", "knowledge")):
+        for g in lines.get(arr_key, []):
+            if g.get("status") == ("Resolved" if kind != "knowledge" else "Revealed"):
+                continue
+            t = g.get("target_ch")
+            if isinstance(t, int):
+                item = {"id": g["id"], "kind": kind, "target_ch": t}
+                sk = line_sort_key(g, kind)  # 排序键在剥离权重前取，输出条目不携带权重
+                if t <= n:
+                    due.append((t, sk[1], sk[3], item))
+                elif t <= n + 2:
+                    upcoming.append((t, sk[1], sk[3], item))
+            hits = {tm: text.count(tm) for tm in _line_terms_for(g, kind, reg_terms) if tm in text}
+            if hits:
+                line_hits.append({"id": g["id"], "kind": kind,
+                                  "label": str(g.get("name", g.get("parties", g.get("secret", "")))),
+                                  "target_ch": t, "hits": hits})
+    # 统一口径：权重高→低，同级按到期章、再按 ID（与 gaps/pack/status 同一条排序）
+    due = [p[3] for p in sorted(due, key=lambda p: (p[1], p[0], p[2]))]
+    upcoming = [p[3] for p in sorted(upcoming, key=lambda p: (p[1], p[0], p[2]))]
+    out["line_hits"] = line_hits
+    out["due_lines"] = due
+    out["upcoming_lines"] = upcoming
+
+    # 金额候选：数字（阿拉伯/中文数词）× ledger 已声明池单位（币种不硬编码）
+    led = state.load_state(book, "ledger")
+    out["amounts"] = _amount_scan(text, led.get("pools"))
+    out["ledger_now"] = {pid: p.get("current") for pid, p in (led.get("pools") or {}).items()}
+
+    # beats 的 [新实体→注册] 标记（Stage 1 已做的语义活，Stage 4 只做登记对照）
+    markers = []
+    for f in common.find_chapter_files(book, "beats", n):
+        for i, ln in enumerate(f.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
+            if re.search(r"新实体\s*[→>]\s*注册", ln):
+                markers.append({"line": i, "text": ln.strip()[:80]})
+    out["new_entity_markers"] = markers
+
+    # 本章注册实体提及计数（填 present_characters 的对照数据）
+    per = {}
+    for name, aliases in lookup.items():
+        c = sum(count_aliases(text, aliases).values())
+        if c:
+            per[name] = c
+    out["present_candidates"] = per
+
+    # current.json 非空字段（状态摘要；字段随 schema 扩展自动带上）
+    cur = state.load_state(book, "current")
+    out["state_digest"] = {k: v for k, v in cur.items() if v not in ("", [], None)}
+
+    out["quote_balance"] = {q: text.count(q) for q in "「」“”『』"}
+    out["residue"] = {"slot": len(re.findall(r"\{\{\s*slot:", text)),
+                      "candidate": len(re.findall(r"candidate_", text))}
+    return out
+
+
+def prev_contrast(book: Path, ch: str) -> dict:
+    """Stage 1 上章约束对照卡：上一章 form/旋钮/words/必须保留 + 本章（beats 若已写）+
+    开放线概况。纯提取/算术，选不选、改不改归主控。"""
+    n = common.chapter_token_to_num(ch)
+    tok = f"ch_{n:03d}" if n else ch
+    if not n:
+        return {"kind": "prev", "chapter": ch, "error": f"非法章号: {ch!r}"}
+
+    def _fields(path: Path) -> dict:
+        text = path.read_text(encoding="utf-8", errors="replace")
+        fm = common.parse_front_matter(text)
+        must = [ln.strip().lstrip("-*· ").strip() for ln in common.md_section(text, r"^##\s*必须保留")]
+        return {"form": fm.get("form", ""), "form_reason": fm.get("form_reason", ""),
+                "style_notes": fm.get("style_notes", ""), "pov": fm.get("pov", ""),
+                "words": fm.get("words", ""), "guard_extra": fm.get("guard_extra", ""),
+                "must_keep": [s for s in must if s and not s.startswith(("<", "#"))]}
+
+    out: dict = {"kind": "prev", "chapter": tok}
+    prev_files = common.find_chapter_files(book, "beats", n - 1) if n > 1 else []
+    out["prev"] = _fields(prev_files[-1]) if prev_files else None
+    out["prev_tail"] = ""
+    if n > 1:
+        pf = common.find_chapter_files(book, "final", n - 1)
+        if pf:
+            out["prev_tail"] = pf[-1].read_text(encoding="utf-8", errors="replace")[-300:]
+    cur_files = common.find_chapter_files(book, "beats", n)
+    out["cur"] = _fields(cur_files[-1]) if cur_files else None
+
+    lines = state.load_state(book, "lines")
+    open_f = [g for g in lines.get("foreshadows", []) if g.get("status") != "Resolved"]
+    open_m = [g for g in lines.get("misunderstandings", []) if g.get("status") != "Resolved"]
+    open_k = [g for g in lines.get("knowledge", []) if g.get("status") != "Revealed"]
+    out["open_lines"] = {"foreshadows": len(open_f), "misunderstandings": len(open_m), "knowledge": len(open_k)}
+    due: list[dict] = []
+    upcoming: list[dict] = []
+    for g in open_f + open_m + open_k:
+        t = g.get("target_ch")
+        if isinstance(t, int):
+            item = {"id": g["id"], "target_ch": t}
+            if t <= n:
+                due.append(item)
+            elif t <= n + 2:
+                upcoming.append(item)
+    out["due_lines"] = due
+    out["upcoming_lines"] = upcoming
     return out
 
 

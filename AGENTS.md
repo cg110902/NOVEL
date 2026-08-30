@@ -19,7 +19,8 @@
 ## 创作不变量（5 条：事实侧引擎对账；正文声称的核对是 Stage 3 校对清单的活）
 
 1. 事实只认 `state/` JSON：叙事与状态不一致，必居其一为假——修，不许"我记得是对的"。
-2. 埋了就要还：伏笔/误会必须进 lines 台账且有 target_ch（章号或 longline）；逾期由 check 报数。
+2. 埋了就要还：伏笔/误会/秘密信息必须进 lines 台账（`GUN-*`/`MIS-*`/`KNO-*`）且有 target_ch
+   （章号或 longline）；逾期由 check 报数。
 3. 数字必须平账：余额类字段一律引擎由流水重算；正文声称的钱数与账本 current 值不符即事实错误。
 4. 出场即注册：present_characters 的每个人必须已在 entities；新人先注册再出场。
 5. 偏离必须留名：推翻 craft/genre 默认 = 在 bible/project_bible.md「本书偏离清单」写一行
@@ -49,10 +50,10 @@
 | Stage | 读什么 | 写什么 | 跑什么 |
 |---|---|---|---|
 | 0 初始化 | genre_guide 选材 + templates 引导 | 填 bible/、characters/、main_plot、project.json | `init` → `check` |
-| 1 细纲+任务书 | main_plot、卷纲、status、evidence gaps | `outlines/vol_XX/beats/ch_XXX.md`（front-matter+拍点+任务书） | `evidence words/gaps` |
+| 1 细纲+任务书 | main_plot、卷纲、status、evidence gaps/prev | `outlines/vol_XX/beats/ch_XXX.md`（front-matter+拍点+任务书） | `evidence words/gaps/prev` |
 | 2 起草 | （子代理）任务书+pack | `manuscript/vol_XX/raw/ch_XXX_vN.md` | spawn drafter；pack |
 | 3 重铸精修 | （子代理）任务书 +raw+pack | `final/ch_XXX.md` | spawn guard；验收/校对/evidence/注记全归主控 |
-| 4 同步 | 本章全部产物 |`state/inbox/ch_XXX.json` | `sync ch_XXX --dry-run` → `sync ch_XXX` |
+| 4 同步 | 本章全部产物 |`state/inbox/ch_XXX.json` | `review new` → `evidence candidates` → 填提案 → `proposal check` → `sync ch_XXX --dry-run` → `sync ch_XXX` |
 | 任意时刻 | — | — | `check` / `snapshot list` / `status` |
 
 ## 目录速查
@@ -60,7 +61,7 @@
 `agents/rules/{novel_workflow.md, novel_craft.md}` = SOP 与文学默认值；
 `agents/skills/<角色>/SKILL.md` = 岗位合同；`agents/genre_guide.md` = 题材词汇（只供选择，非公式）；
 `workspace/<slug>/` = 书本体（结构见 novel_workflow.md#工作区）；`studio.py`=薄壳入口
-（仅转发 `engine.cli.main`，引擎逻辑全部在 `engine/*`，10 命令查 `help`）；
+（仅转发 `engine.cli.main`，引擎逻辑全部在 `engine/*`，11 命令查 `help`）；
 
 
 ## 交接语气（对子代理）

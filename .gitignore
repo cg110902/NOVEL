@@ -1,0 +1,7 @@
+# 书工作区（本地创作现场，不入库；common.workspace_root 的既定口径）
+workspace/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/

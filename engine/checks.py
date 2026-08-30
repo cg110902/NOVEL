@@ -26,6 +26,24 @@ def _err(code: str, msg: str) -> dict:
 _BEATS_FM_KEYS = {"chapter", "vol", "form", "pov", "words", "style_notes", "form_reason",
                   "guard_extra"}
 
+# 空判据词表（形容词类判据的机械近似；与 evidence.AI_CONSTRUCTIONS 同一精神——
+# 只数固定清单。通用形容词识别属语义，引擎不做；书级可用 project.json.empty_criteria_words 追加）。
+EMPTY_CRITERIA_WORDS = ["读者", "感到", "觉得", "紧张", "揪心", "感动", "震撼",
+                        "代入感", "沉浸", "氛围感", "真实感", "节奏感", "余味", "回味"]
+
+_WORDS_BAND_RE = re.compile(r"(\d+)\s*[-–—~～]\s*(\d+)")
+
+
+def _words_band(s: str) -> tuple[int | None, int | None]:
+    """'2200-4500' → (2200, 4500)；解析不出 → (None, None)。"""
+    m = _WORDS_BAND_RE.search(s or "")
+    return (int(m.group(1)), int(m.group(2))) if m else (None, None)
+
+
+def _style_knobs(s: str) -> tuple[str, ...]:
+    """style_notes 竖线分旋钮（全同=复印机的比较键）。"""
+    return tuple(p.strip() for p in re.split(r"[|｜]", s or "") if p.strip())
+
 
 def _numbered_items(lines: list[str]) -> dict[int, str]:
     """`N.`/`N、`起头的行 → {序号: 整行}（跳空行，只认节内）。"""
@@ -35,20 +53,6 @@ def _numbered_items(lines: list[str]) -> dict[int, str]:
         if m:
             out[int(m.group(1))] = ln.strip()
     return out
-
-
-def _section(md_text: str, title_pat: str) -> list[str]:
-    """取 "## <title>" 小节正文（到下一个 ## 或文件尾）。"""
-    lines, inside = [], False
-    for ln in md_text.splitlines():
-        if re.match(r"^##\s", ln):
-            if inside:
-                break
-            inside = bool(re.match(title_pat, ln))
-            continue
-        if inside:
-            lines.append(ln)
-    return lines
 
 
 def review_gate(book: Path, ch: str) -> list[str]:
@@ -62,15 +66,15 @@ def review_gate(book: Path, ch: str) -> list[str]:
              if common.chapter_number_from_name(f.name) == common.chapter_token_to_num(ch)]
     k = 0
     if beats:
-        acc = _section(beats[0].read_text(encoding="utf-8", errors="replace"), r"^##\s*验收")
+        acc = common.md_section(beats[0].read_text(encoding="utf-8", errors="replace"), r"^##\s*验收")
         k = max(_numbered_items(acc), default=0)
     if k == 0:
         return []
     rev = book / "log" / "review" / f"{ch}.md"
     if not rev.is_file():
         return [f"beats「验收」共 {k} 条，但审校注记 {ch}.md 不存在（Stage 3 未留审计；拒封存）"]
-    items = _numbered_items(_section(rev.read_text(encoding="utf-8", errors="replace"),
-                                     r"^##\s*验收"))
+    items = _numbered_items(common.md_section(rev.read_text(encoding="utf-8", errors="replace"),
+                                              r"^##\s*验收"))
     issues: list[str] = []
     missing = [n for n in range(1, k + 1) if n not in items]
     if missing:
@@ -109,6 +113,99 @@ def word_band_gate(book: Path, ch: str) -> list[str]:
             return []
     return []
     
+def review_skeleton(book: Path, ch: str) -> dict:
+    """审校注记骨架数据（Stage 4）：验收条目/必须保留自 beats 提取，机器数据逐项预填。
+    纯提取/计数——每项的「结果」与证据仍由主控填写；零裁决。"""
+    n = common.chapter_token_to_num(ch)
+    if not n:
+        raise ValueError(f"非法章号: {ch!r}")
+    tok = f"ch_{n:03d}"
+    beats_files = [f for f in common.find_chapter_files(book, "beats")
+                   if common.chapter_number_from_name(f.name) == n]
+    if not beats_files:
+        raise ValueError(f"未找到 {tok} 的 beats（Stage 1 未完成，无任务书可对照）")
+    final_files = common.find_chapter_files(book, "final", n)
+    if not final_files:
+        raise ValueError(f"未找到 {tok} 的 final（注记对象缺失）")
+    text = beats_files[-1].read_text(encoding="utf-8", errors="replace")
+    ftext = final_files[-1].read_text(encoding="utf-8", errors="replace")
+    fm = common.parse_front_matter(text)
+    acc: list[str] = []
+    for ln in common.md_section(text, r"^##\s*验收"):
+        m = re.match(r"^\s*(\d+)[.、]\s*(.+)$", ln.strip())
+        if m:
+            acc.append(m.group(2).strip())
+    must = [ln.strip().lstrip("-*· ").strip() for ln in common.md_section(text, r"^##\s*必须保留")]
+    must = [s for s in must if s and not s.startswith(("<", "#"))]
+    led = state.load_state(book, "ledger")
+    cur = state.load_state(book, "current")
+    ents = state.load_state(book, "entities").get("entries", [])
+    return {
+        "chapter": tok,
+        "form": fm.get("form", ""),
+        "words": fm.get("words", ""),
+        "acceptance": acc,
+        "must_keep": must,
+        "present": cur.get("present_characters", []),
+        "proper_names": [{"name": e["name"],
+                          "aliases": [a for a in e.get("aliases", []) if a]}
+                         for e in ents if e.get("status", "active") == "active"],
+        "ledger_now": {pid: p for pid, p in (led.get("pools") or {}).items()},
+        "quote_balance": {q: ftext.count(q) for q in "「」“”『』"},
+        "residue": {"slot": len(re.findall(r"\{\{\s*slot:", ftext)),
+                    "candidate": len(re.findall(r"candidate_", ftext))},
+    }
+
+
+def proposal_cross_facts(book: Path, ch: str, proposal: dict) -> dict:
+    """提案×final×状态 三方对照：只出机械事实，零裁决措辞（是否上账归主控）。"""
+    n = common.chapter_token_to_num(ch)
+    facts: dict = {}
+    if not isinstance(proposal, dict) or not n:
+        return facts
+    chs = [text for _, num, text in evidence.final_chapters(book) if num == n]
+    if chs:
+        text = chs[0]
+        led = state.load_state(book, "ledger")
+        facts["amounts_in_final"] = evidence._amount_scan(text, led.get("pools"))
+        facts["ledger_tx_in_proposal"] = len((proposal.get("ledger") or {}).get("transactions") or [])
+        lookup = evidence.entity_lookup(book)
+        per = {}
+        for name, aliases in lookup.items():
+            c = sum(evidence.count_aliases(text, aliases).values())
+            if c:
+                per[name] = c
+        facts["present_mentions"] = per
+    lines = state.load_state(book, "lines")
+    due = []
+    for arr, resolved in (("foreshadows", "Resolved"), ("misunderstandings", "Resolved"),
+                          ("knowledge", "Revealed")):
+        for g in lines.get(arr, []):
+            t = g.get("target_ch")
+            if g.get("status") != resolved and isinstance(t, int) and t <= n:
+                due.append({"id": g["id"], "target_ch": t})
+    facts["due_lines"] = due
+    ops = sorted({str(g.get("id")) for g in (proposal.get("lines") or [])
+                  if isinstance(g, dict) and g.get("id") and g.get("action", "plant") != "plant"})
+    facts["lines_ops_in_proposal"] = ops
+    # 知识线揭示时机对照：提案标记 KNO 揭示 × 台账计划揭示章（纯算术比数，提前/逾期归主控）
+    ledger_kno = {str(k.get("id")): k for k in lines.get("knowledge", [])}
+    timing = []
+    for g in (proposal.get("lines") or []):
+        if not isinstance(g, dict) or g.get("kind") != "knowledge" or g.get("action") != "resolve":
+            continue
+        k = ledger_kno.get(str(g.get("id")))
+        if not k:
+            continue
+        t = k.get("target_ch")
+        if isinstance(t, int) and t != n:
+            timing.append({"id": str(g.get("id")), "planned_ch": t, "chapter": n, "early": n < t})
+    if timing:
+        facts["kno_reveal_timing"] = timing
+    facts["present_in_proposal"] = list(((proposal.get("current") or {}).get("present_characters") or []))
+    return facts
+
+
 def run_checks(book: Path) -> dict:
     errors: list[dict] = []
     warnings: list[dict] = []
@@ -149,6 +246,17 @@ def run_checks(book: Path) -> dict:
                 errors.append(_err("unregistered_character",
                                    f"current.present_characters 引用未登记实体「{name}」"
                                    "（先在 entities 提案注册，名字须与卡一致）"))
+        # retired 实体上台：retired=退场/死亡，仍在 present = 事实矛盾（闪回章由主控判读）
+        retired = set()
+        for e in ents:
+            if e.get("status") == "retired":
+                retired.add(str(e.get("name", "")))
+                retired.update(str(a) for a in e.get("aliases", []) if a)
+        for name in cur.get("present_characters", []):
+            if str(name) in retired:
+                warnings.append(_err("retired_entity_on_stage",
+                                     f"current.present_characters 含已退休实体「{name}」"
+                                     "（retired=退场/死亡——闪回/补叙章可忽略，否则移出 present 或改回 active）"))
     except (ValueError, FileNotFoundError) as exc:
         errors.append(_err("state_unreadable", str(exc)))
 
@@ -208,13 +316,32 @@ def run_checks(book: Path) -> dict:
             except OSError:
                 continue
 
-    # ---- beats 协议（机械部分）：同 form 连章必须给理由；form 缺失；超键拦截 ----
+    # ---- beats 协议（机械部分）：同 form 连章必须给理由；form 缺失；超键拦截；
+    #      上章对照与自交检报数（style_notes 全同 / words 带贴近 / 目标未分场 / 空判据词 / 线动作对照）----
     beats = sorted(common.find_chapter_files(book, "beats"),
                    key=lambda p: (p.parts[-3] if len(p.parts) > 2 else "",
                                   common.chapter_number_from_name(p.name) or 0))
-    prev_form_by_vol: dict[str, tuple[int, str]] = {}
+    ledger_line_ids: set[str] = set()
+    open_due: list[tuple[int, str]] = []  # (target_ch, id)：未结且有整数到期章的线
+    try:
+        _lines_state = state.load_state(book, "lines")
+        for _arr, _resolved in (("foreshadows", "Resolved"), ("misunderstandings", "Resolved"),
+                                ("knowledge", "Revealed")):
+            for _g in _lines_state.get(_arr, []):
+                _gid = str(_g.get("id", ""))
+                if _gid:
+                    ledger_line_ids.add(_gid)
+                if _g.get("status") != _resolved and isinstance(_g.get("target_ch"), int):
+                    open_due.append((_g["target_ch"], _gid))
+    except (ValueError, FileNotFoundError):
+        pass  # lines 不可读已在 state_inconsistent 报 error；线对照降级为不跑
+    empty_words = list(EMPTY_CRITERIA_WORDS)
+    empty_words += [w for w in (proj.get("empty_criteria_words") or [])
+                    if isinstance(w, str) and w.strip() and w not in empty_words]
+    prev_by_vol: dict[str, dict] = {}
     for f in beats:
-        fm = common.parse_front_matter(f.read_text(encoding="utf-8", errors="replace"))
+        text = f.read_text(encoding="utf-8", errors="replace")
+        fm = common.parse_front_matter(text)
         vol = f.relative_to(book / "outlines").parts[0]
         extra = set(fm) - _BEATS_FM_KEYS
         if extra:
@@ -225,12 +352,54 @@ def run_checks(book: Path) -> dict:
         form = fm.get("form", "")
         if not form:
             errors.append(_err("beats_missing_form", f"{f.name}: front-matter 缺 form 字段（Stage 1 未选章型）"))
-        else:
-            last = prev_form_by_vol.get(vol)
-            if last and last[1] == form and num == last[0] + 1 and not fm.get("form_reason"):
+        cur_notes = _style_knobs(fm.get("style_notes"))
+        cur_lo, cur_hi = _words_band(fm.get("words"))
+        last = prev_by_vol.get(vol)
+        if last and last["num"] == num - 1:
+            if form and last.get("form") == form and not fm.get("form_reason"):
                 errors.append(_err("beats_form_repeat_without_reason",
                                    f"{f.name}: 与上一章同 form「{form}」但 front-matter 未写 form_reason"))
-            prev_form_by_vol[vol] = (num, form)
+            if cur_notes and cur_notes == _style_knobs(last.get("notes")):
+                warnings.append(_err("style_notes_copy",
+                                     f"{f.name}: style_notes 三旋钮与上一章全同「{fm.get('style_notes','')}」"
+                                     "（novel_craft.md#反公式化与拟人化：三个全同=复印机）"))
+            prev_lo = _words_band(last.get("words"))[0]
+            if prev_lo is not None and cur_lo is not None and abs(cur_lo - prev_lo) < 600:
+                warnings.append(_err("words_band_crowded",
+                                     f"{f.name}: words 带下限 {cur_lo} 与上一章 {prev_lo} 仅差 "
+                                     f"{abs(cur_lo - prev_lo)}（<600，自交检标准②）"))
+        prev_by_vol[vol] = {"num": num, "form": form,
+                            "notes": fm.get("style_notes", ""), "words": fm.get("words", "")}
+        if cur_hi is not None and cur_hi > 2000:
+            goal = "\n".join(common.md_section(text, r"^##\s*目标"))
+            if not re.search(r"S\d", goal):
+                warnings.append(_err("goal_no_split",
+                                     f"{f.name}: words 上沿 {cur_hi} >2000 但「目标」节未按场分条"
+                                     "（S1/S2…，novel_workflow.md#任务书合同）"))
+        crit_hits: list[str] = []
+        for sec_pat in (r"^##\s*目标", r"^##\s*验收"):
+            for ln in common.md_section(text, sec_pat):
+                s = ln.strip()
+                if not s or s.startswith(("#", "<")):
+                    continue
+                for w in empty_words:
+                    if w in s and w not in crit_hits:
+                        crit_hits.append(w)
+        if crit_hits:
+            warnings.append(_err("acceptance_empty_criterion",
+                                 f"{f.name}: 目标/验收含空判据词 {'、'.join(crit_hits[:5])}"
+                                 "（判据用动词+可指认名词，novel_craft.md#句式与语域词汇）"))
+        action_sec = "\n".join(common.md_section(text, r"^##\s*线动作"))
+        orphans = sorted(set(re.findall(r"(?:GUN|MIS|KNO)-\d{3,}", action_sec)) - ledger_line_ids)
+        if orphans:
+            warnings.append(_err("line_action_orphan",
+                                 f"{f.name}: 线动作栏引用台账不存在的线 {', '.join(orphans[:5])}"
+                                 "（先 plant 或核对 ID）"))
+        missing = sorted({gid for t, gid in open_due if t <= num and gid not in action_sec})
+        if missing:
+            warnings.append(_err("line_action_missing",
+                                 f"{f.name}: 到期/逾期线 {', '.join(missing[:5])} 未出现在「线动作」栏"
+                                 "（不还须写顺延理由，novel_workflow.md#Stage 1）"))
 
     # ---- 流程事实（warn 级）：final 无 raw / 无 beats ----
     # 与 final 的 per_ch 同口径，按 (卷, 章号) 键控：跨卷同章号互不覆盖，
@@ -270,7 +439,7 @@ def run_checks(book: Path) -> dict:
     # ---- 线逾期（算术事实） ----
     try:
         g = evidence.gaps(book)
-        for item in g["foreshadows"] + g["misunderstandings"]:
+        for item in g["foreshadows"] + g["misunderstandings"] + g.get("knowledge", []):
             if item["overdue"]:
                 warnings.append(_err(
                     "line_overdue",
