@@ -11,7 +11,7 @@ python studio.py init -w workspace/我的书 -t 书名 -g 题材 -p 主角名   
 python studio.py status                                             # 开局必读：进度+下一步
 python studio.py evidence prev ch_002     # Stage 1：上章约束对照卡（form/旋钮/words 带/必须保留）
 python studio.py pack ch_001          # 装配子代理上下文（P0/P1/P2 三层）
-python studio.py evidence words       # 机械证据：字数/提及/线状态/查重/风格指纹（纯 JSON）
+python studio.py evidence words       # 机械证据：字数统计（纯 JSON；all 聚合全部证据）
 python studio.py review new ch_001 --write   # Stage 4：审校注记骨架（验收条目+机器数据预填）
 python studio.py evidence candidates ch_001  # Stage 4：工作单（线命中/金额串/新实体标记/在场提及）
 python studio.py check                # 事实级体检：errors 阻断，warnings 只报数
