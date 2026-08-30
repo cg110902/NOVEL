@@ -176,6 +176,8 @@ _NUM_RE = r"[0-9][0-9,，]*|[零一二两両三四五六七八九十百千]{1,6}
 
 def _cn_num_to_int(s: str) -> int | None:
     """中文数词→整数（千位内常见形：三十/一百二/千五百；解不出返回 None，零语义）。"""
+    if not s:
+        return None
     total, num = 0, 0
     for ch in s:
         if ch in _CN_DIGITS:
@@ -220,7 +222,8 @@ def _line_terms_for(g: dict, kind: str, reg_terms: list[str]) -> list[str]:
         name = str(g.get("name", "")).strip()
         if name:
             terms.append(name)
-        blob = name
+        # plan 也是主控写的结构化线元数据：其中提到的注册名同样是本线的关键实体
+        blob = name + " " + str(g.get("plan", ""))
     else:
         parties = str(g.get("parties", "")).strip()
         if parties:
