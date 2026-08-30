@@ -10,10 +10,10 @@ from pathlib import Path
 
 from . import common, evidence, state
 
-PREV_TAIL_CHARS = 600
-SPINE_CAP = 40
+PREV_TAIL_CHARS = 800
+SPINE_CAP = 30
 POINTER_WINDOW = 10
-PACK_TOKEN_CAP = 12000
+PACK_TOKEN_CAP = 20000
 
 FILE_INDEX_AREAS = [
     ("project.json", "书配置：模式/字数带/style_guards"),

@@ -74,7 +74,7 @@ workspace/<slug>/
   4. 跑 `check`，确认无 unfilled_slot / project 字段错误。
 - 输出合同：`check` 零 errors。退回边：check 红 → 继续填，不进 Stage 1。
 
-## Stage 1 细纲+任务书（主控；重活，也可派 beats-builder）
+## Stage 1 细纲+任务书（由主控亲自完成）
 
 - 输入合同：`status` 流水线行 + `evidence gaps`（哪些线快到期/已逾期）+ `state/current.json`
   + main_plot 与卷纲。
@@ -89,7 +89,7 @@ workspace/<slug>/
      按 `novel_craft.md#反公式化与拟人化` 的方差条错开；人物卡上的承诺（称谓/记号/知识边界）是否已回写进
      "线动作"栏——没写的承诺=不存在。
 - 输出合同：beats 文件含合法 front-matter 六键（`novel_craft.md#front-matter 键`）+ 任务书五节齐全。
-- 退回边：主控自写 beats 不过自交检 → 重写；派 beats-builder 时其交付由主控验收后代改。
+- 退回边：主控自写 beats（含细纲与任务书）若不过自交检 → 重写。
 - 自交检通过标准（同时满足，缺一即回退）：①「验收」每条都能对着正文给出"动词+可指认名词"判据，
   出现形容词判据 = 未过；② words 带与相邻章区间下限错开 ≥600 字；③ 人物卡上的承诺（称谓/记号/
   知识边界）已回写进"线动作"栏；④ front-matter 六键齐全且与上一章的 form/旋钮不整组重复。
