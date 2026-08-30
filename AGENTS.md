@@ -19,7 +19,8 @@
 ## 创作不变量（5 条：事实侧引擎对账；正文声称的核对是 Stage 3 校对清单的活）
 
 1. 事实只认 `state/` JSON：叙事与状态不一致，必居其一为假——修，不许"我记得是对的"。
-2. 埋了就要还：伏笔/误会必须进 lines 台账且有 target_ch（章号或 longline）；逾期由 check 报数。
+2. 埋了就要还：伏笔/误会/秘密信息必须进 lines 台账（`GUN-*`/`MIS-*`/`KNO-*`）且有 target_ch
+   （章号或 longline）；逾期由 check 报数。
 3. 数字必须平账：余额类字段一律引擎由流水重算；正文声称的钱数与账本 current 值不符即事实错误。
 4. 出场即注册：present_characters 的每个人必须已在 entities；新人先注册再出场。
 5. 偏离必须留名：推翻 craft/genre 默认 = 在 bible/project_bible.md「本书偏离清单」写一行

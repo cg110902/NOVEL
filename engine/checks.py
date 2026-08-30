@@ -178,10 +178,11 @@ def proposal_cross_facts(book: Path, ch: str, proposal: dict) -> dict:
         facts["present_mentions"] = per
     lines = state.load_state(book, "lines")
     due = []
-    for arr in ("foreshadows", "misunderstandings"):
+    for arr, resolved in (("foreshadows", "Resolved"), ("misunderstandings", "Resolved"),
+                          ("knowledge", "Revealed")):
         for g in lines.get(arr, []):
             t = g.get("target_ch")
-            if g.get("status") != "Resolved" and isinstance(t, int) and t <= n:
+            if g.get("status") != resolved and isinstance(t, int) and t <= n:
                 due.append({"id": g["id"], "target_ch": t})
     facts["due_lines"] = due
     ops = sorted({str(g.get("id")) for g in (proposal.get("lines") or [])
@@ -299,12 +300,13 @@ def run_checks(book: Path) -> dict:
     open_due: list[tuple[int, str]] = []  # (target_ch, id)：未结且有整数到期章的线
     try:
         _lines_state = state.load_state(book, "lines")
-        for _arr in ("foreshadows", "misunderstandings"):
+        for _arr, _resolved in (("foreshadows", "Resolved"), ("misunderstandings", "Resolved"),
+                                ("knowledge", "Revealed")):
             for _g in _lines_state.get(_arr, []):
                 _gid = str(_g.get("id", ""))
                 if _gid:
                     ledger_line_ids.add(_gid)
-                if _g.get("status") != "Resolved" and isinstance(_g.get("target_ch"), int):
+                if _g.get("status") != _resolved and isinstance(_g.get("target_ch"), int):
                     open_due.append((_g["target_ch"], _gid))
     except (ValueError, FileNotFoundError):
         pass  # lines 不可读已在 state_inconsistent 报 error；线对照降级为不跑
@@ -363,7 +365,7 @@ def run_checks(book: Path) -> dict:
                                  f"{f.name}: 目标/验收含空判据词 {'、'.join(crit_hits[:5])}"
                                  "（判据用动词+可指认名词，novel_craft.md#句式与语域词汇）"))
         action_sec = "\n".join(common.md_section(text, r"^##\s*线动作"))
-        orphans = sorted(set(re.findall(r"(?:GUN|MIS)-\d{3,}", action_sec)) - ledger_line_ids)
+        orphans = sorted(set(re.findall(r"(?:GUN|MIS|KNO)-\d{3,}", action_sec)) - ledger_line_ids)
         if orphans:
             warnings.append(_err("line_action_orphan",
                                  f"{f.name}: 线动作栏引用台账不存在的线 {', '.join(orphans[:5])}"
@@ -412,7 +414,7 @@ def run_checks(book: Path) -> dict:
     # ---- 线逾期（算术事实） ----
     try:
         g = evidence.gaps(book)
-        for item in g["foreshadows"] + g["misunderstandings"]:
+        for item in g["foreshadows"] + g["misunderstandings"] + g.get("knowledge", []):
             if item["overdue"]:
                 warnings.append(_err(
                     "line_overdue",

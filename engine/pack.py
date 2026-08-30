@@ -86,15 +86,21 @@ def _hard_reminders(book: Path, ch_num: int) -> list[str]:
     try:
         lines = state.load_state(book, "lines")
     except ValueError:
-        lines = {"foreshadows": [], "misunderstandings": []}
+        lines = {"foreshadows": [], "misunderstandings": [], "knowledge": []}
     for g in lines.get("foreshadows", []):
         t = g.get("target_ch")
         if isinstance(t, int) and g.get("status") != "Resolved" and t <= ch_num:
             tag = "本章引爆" if t == ch_num else f"已逾期 {ch_num - t} 章"
-            out.append(f"线 {g['id']}《{g.get('name','')}》target_ch={t} → {tag}（状态 {g.get('status')}）")
+            out.append(f"线 {g['id']}《{g['name']}》target_ch={t} → {tag}（状态 {g.get('status')}）")
     for m in lines.get("misunderstandings", []):
         if m.get("status") != "Resolved":
             out.append(f"误会 {m['id']} 未澄清：{m.get('parties','')}（{m.get('content','')[:30]}）")
+    for k in lines.get("knowledge", []):
+        t = k.get("target_ch")
+        if isinstance(t, int) and k.get("status") != "Revealed" and t <= ch_num:
+            tag = "本章揭示" if t == ch_num else f"已逾期 {ch_num - t} 章"
+            out.append(f"知识线 {k['id']}《{str(k.get('secret',''))[:24]}》target_ch={t} → {tag}"
+                       f"（状态 {k.get('status')}）")
     proj = common.load_json(book / "project.json", default={}) or {}
     guards = [x for x in (proj.get("style_guards") or []) if isinstance(x, str) and x]
     if guards:
@@ -114,14 +120,19 @@ def _entity_block(book: Path, name: str, cur: dict, lines: dict, full: bool) -> 
              "on_stage": name in cur["current"].get("present_characters", [])}
     touched = []
     alias = [name] + list(e.get("aliases", []))
-    for g in lines.get("foreshadows", []) + lines.get("misunderstandings", []):
-        if g.get("status") == "Resolved":
+    for g in (lines.get("foreshadows", []) + lines.get("misunderstandings", [])
+              + lines.get("knowledge", [])):
+        if g.get("status") in ("Resolved", "Revealed"):
             continue
-        blob = " ".join(str(g.get(k, "")) for k in ("name", "content", "plan", "parties", "truth"))
+        blob = " ".join(str(g.get(k, "")) for k in
+                        ("name", "content", "plan", "parties", "truth", "secret", "note"))
         if any(a and a in blob for a in alias):
             touched.append(f"{g['id']}({g.get('status')})")
     if touched:
         block["lines"] = touched
+    for f in ("holder", "location", "condition"):
+        if e.get(f):
+            block[f] = e[f]
     if full:
         card = str(e.get("card", "")).strip()
         if card:
@@ -332,6 +343,8 @@ def export_views(book: Path) -> Path:
         L.append(f"| {g['id']} | {g.get('name','')} | {g.get('status','')} | {g.get('target_ch','')} |")
     for m in data["lines"].get("misunderstandings", []):
         L.append(f"| {m['id']} | {m.get('content','')[:30]} | {m.get('status','')} | {m.get('target_ch','')} |")
+    for k in data["lines"].get("knowledge", []):
+        L.append(f"| {k['id']} | {str(k.get('secret',''))[:30]} | {k.get('status','')} | {k.get('target_ch','')} |")
     L += ["", "## timeline", ""]
     for ev in data["timeline"].get("events", []):
         L.append(f"- {ev.get('time','')}｜{ev.get('event','')}（{ev.get('chapter','')}）")

@@ -2,7 +2,8 @@
   "type": "object",
   "required": [
     "foreshadows",
-    "misunderstandings"
+    "misunderstandings",
+    "knowledge"
   ],
   "properties": {
     "foreshadows": {
@@ -103,6 +104,57 @@
               "Active",
               "Resolved"
             ]
+          }
+        }
+      }
+    },
+    "knowledge": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "secret",
+          "plant_ch",
+          "status"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^KNO-\\d{3,}$"
+          },
+          "secret": {
+            "type": "string",
+            "description": "这条信息/秘密是什么（一句话事实，不写感受）"
+          },
+          "plant_ch": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "信息确立/被隐瞒的章节号（缺省由引擎用提案章节补全）"
+          },
+          "status": {
+            "enum": [
+              "Concealed",
+              "Revealed"
+            ]
+          },
+          "target_ch": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1
+              },
+              {
+                "type": "string",
+                "const": "longline"
+              }
+            ],
+            "description": "计划揭示章号（≥1）或 'longline'（长线）"
+          },
+          "note": {
+            "type": "string",
+            "description": "可选：谁不得知道 / 揭示约束（一句话）"
           }
         }
       }

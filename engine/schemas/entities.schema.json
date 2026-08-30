@@ -42,6 +42,18 @@
               "active",
               "retired"
             ]
+          },
+          "holder": {
+            "type": "string",
+            "description": "（item 用）当前持有者名；必须已在 entities 注册（sync 闭合校验）"
+          },
+          "location": {
+            "type": "string",
+            "description": "（item 用）当前所在地点（自由文本，与 timeline 历法口径一致）"
+          },
+          "condition": {
+            "type": "string",
+            "description": "（item 用）当前完损/状态（如'完整''毁于火'）"
           }
         }
       }

@@ -284,8 +284,8 @@ def _status_debts(book) -> None:
     try:
         g = evidence.gaps(book)
         cur = g.get("max_final_chapter") or 0
-        soon = [x for x in g["foreshadows"] + g["misunderstandings"]
-                if isinstance(x.get("target_ch"), int) and x.get("status") not in ("Resolved",)
+        soon = [x for x in g["foreshadows"] + g["misunderstandings"] + g.get("knowledge", [])
+                if isinstance(x.get("target_ch"), int) and x.get("status") not in ("Resolved", "Revealed")
                 and 0 <= x["target_ch"] - cur <= 2]
         for x in soon[:2]:
             nid = x.get("id", "?")

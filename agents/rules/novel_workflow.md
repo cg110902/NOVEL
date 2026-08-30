@@ -32,6 +32,8 @@ workspace/<slug>/
 - `power_level` / `abilities`：能力/修为阶梯摘要（阶梯里程碑在 `timeline.arcs`）。
 - `injury` / `equipment` / `assets`：当前伤势、随身装备、非资金类资源。
 - `situation`：一句话处境（便于下一章 pack 快速回温）。
+- `key_relationships`：当前主要关系速写（软状态，引擎不校验；如"沈拓↔赵四：敌对未明"）。
+  关系没动可不写；动了就更新——它只进 pack 的 P0 回温，不是真值。
 - `present_characters`：本章/当前在场角色名（必须已注册在 `state/entities.json`，sync 强制闭合）。
 
 `synopsis.json`：`book_logline`（全书一句话）+ `chapters`（每章 `num/title/synopsis/source=manual`）。
@@ -49,7 +51,9 @@ workspace/<slug>/
 - **事实（两义）**：① **提案事实** = 提案里提交给状态机的每一条增量，能在本章 final 正文找到出处
   （AGENTS 禁令 7）；② **情节事实** = 场序、动机、事件因果、数字与专名，修改它们属内容级改动，
   只能回 raw 重走 Stage 3（见本文件#文字级边界）。上下文出现"事实"时按上述分义读取。
-- **lines 台账** = `state/lines.json` 的伏笔/误会登记簿，条目 ID 为 `GUN-*`（伏笔）与 `MIS-*`（误会）。
+- **lines 台账** = `state/lines.json` 的三线登记簿：伏笔 `GUN-*`、误会 `MIS-*`、知识线 `KNO-*`
+  （秘密/信息账：secret 一句话 + 计划揭示章 target_ch，状态 Concealed/Revealed）。
+  三类都有 target_ch（章号或 longline），逾期由 check 报数；**揭没揭由你判断**，引擎只记账。
 - **ledger 账本** = `state/ledger.json` 的资金/资源池流水，余额由引擎重算，"账本 current 值"指这里。
 - **越界知情** = 角色的言行使他表现出尚未通过剧情获得的信息；判定标准见 `novel_craft.md#知识是资产`。
 

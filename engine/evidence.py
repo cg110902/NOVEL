@@ -146,7 +146,7 @@ def mentions(book: Path, target: str | None = None) -> dict:
 def gaps(book: Path) -> dict:
     lines = state.load_state(book, "lines")
     cur = common.latest_chapter_number(book, "final")
-    out = {"kind": "gaps", "max_final_chapter": cur, "foreshadows": [], "misunderstandings": []}
+    out = {"kind": "gaps", "max_final_chapter": cur, "foreshadows": [], "misunderstandings": [], "knowledge": []}
     for g in lines.get("foreshadows", []):
         t = g.get("target_ch")
         overdue = isinstance(t, int) and g.get("status") != "Resolved" and t < cur
@@ -160,10 +160,18 @@ def gaps(book: Path) -> dict:
         out["misunderstandings"].append({
             "id": m["id"], "parties": m.get("parties", ""), "status": m.get("status"),
             "level": m.get("level"), "target_ch": t, "overdue": overdue})
+    for k in lines.get("knowledge", []):
+        t = k.get("target_ch")
+        overdue = isinstance(t, int) and k.get("status") != "Revealed" and t < cur
+        out["knowledge"].append({
+            "id": k["id"], "secret": k.get("secret", ""), "status": k.get("status"),
+            "plant_ch": k.get("plant_ch"), "target_ch": t, "overdue": overdue})
     out["summary"] = {"open_foreshadows": sum(1 for g in out["foreshadows"] if g["status"] != "Resolved"),
                       "overdue_foreshadows": sum(1 for g in out["foreshadows"] if g["overdue"]),
                       "open_misunderstandings": sum(1 for m in out["misunderstandings"] if m["status"] != "Resolved"),
-                      "overdue_misunderstandings": sum(1 for m in out["misunderstandings"] if m["overdue"])}
+                      "overdue_misunderstandings": sum(1 for m in out["misunderstandings"] if m["overdue"]),
+                      "open_knowledge": sum(1 for k in out["knowledge"] if k["status"] != "Revealed"),
+                      "overdue_knowledge": sum(1 for k in out["knowledge"] if k["overdue"])}
     return out
 
 
@@ -224,6 +232,9 @@ def _line_terms_for(g: dict, kind: str, reg_terms: list[str]) -> list[str]:
             terms.append(name)
         # plan 也是主控写的结构化线元数据：其中提到的注册名同样是本线的关键实体
         blob = name + " " + str(g.get("plan", ""))
+    elif kind == "knowledge":
+        # secret 是一整句事实，整句计数无意义——只数其中的注册名（与 foreshadow.plan 同口径）
+        blob = str(g.get("secret", "")) + " " + str(g.get("note", ""))
     else:
         parties = str(g.get("parties", "")).strip()
         if parties:
@@ -261,9 +272,10 @@ def candidates(book: Path, ch: str) -> dict:
     line_hits: list[dict] = []
     due: list[dict] = []
     upcoming: list[dict] = []
-    for kind, arr_key in (("foreshadow", "foreshadows"), ("misunderstanding", "misunderstandings")):
+    for kind, arr_key in (("foreshadow", "foreshadows"), ("misunderstanding", "misunderstandings"),
+                          ("knowledge", "knowledge")):
         for g in lines.get(arr_key, []):
-            if g.get("status") == "Resolved":
+            if g.get("status") == ("Resolved" if kind != "knowledge" else "Revealed"):
                 continue
             t = g.get("target_ch")
             if isinstance(t, int):
@@ -275,7 +287,7 @@ def candidates(book: Path, ch: str) -> dict:
             hits = {tm: text.count(tm) for tm in _line_terms_for(g, kind, reg_terms) if tm in text}
             if hits:
                 line_hits.append({"id": g["id"], "kind": kind,
-                                  "label": str(g.get("name", g.get("parties", ""))),
+                                  "label": str(g.get("name", g.get("parties", g.get("secret", "")))),
                                   "target_ch": t, "hits": hits})
     out["line_hits"] = line_hits
     out["due_lines"] = due
@@ -343,10 +355,11 @@ def prev_contrast(book: Path, ch: str) -> dict:
     lines = state.load_state(book, "lines")
     open_f = [g for g in lines.get("foreshadows", []) if g.get("status") != "Resolved"]
     open_m = [g for g in lines.get("misunderstandings", []) if g.get("status") != "Resolved"]
-    out["open_lines"] = {"foreshadows": len(open_f), "misunderstandings": len(open_m)}
+    open_k = [g for g in lines.get("knowledge", []) if g.get("status") != "Revealed"]
+    out["open_lines"] = {"foreshadows": len(open_f), "misunderstandings": len(open_m), "knowledge": len(open_k)}
     due: list[dict] = []
     upcoming: list[dict] = []
-    for g in open_f + open_m:
+    for g in open_f + open_m + open_k:
         t = g.get("target_ch")
         if isinstance(t, int):
             item = {"id": g["id"], "target_ch": t}

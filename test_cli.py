@@ -3,7 +3,8 @@
 运行：python -m unittest test_cli -v   （或 python test_cli.py）
 纯 stdlib、零第三方依赖；书工作区建在临时目录，测试结束自动清理。
 覆盖：批 1+2 四张工作单（review new / evidence candidates / proposal check /
-evidence prev）+ 五个自交检 warning + 既有闸门（review_gate / 字数带 / sync 闭环）不回归。
+evidence prev）+ 五个自交检 warning + 批 4 三台账扩展（KNO 知识线 / item holder /
+current.key_relationships）+ 既有闸门（review_gate / 字数带 / sync 闭环）不回归。
 """
 from __future__ import annotations
 
@@ -18,7 +19,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 
-from engine import checks, common, evidence  # noqa: E402
+from engine import checks, common, evidence, state  # noqa: E402
 
 
 # --------------------------------------------------------------------------- 夹具
@@ -414,6 +415,130 @@ class TestStage4Flow(unittest.TestCase):
                 rp2.write_text(existed, encoding="utf-8")
             elif rp2.is_file():
                 rp2.unlink()
+
+
+# --------------------------------------------------------------------------- 批 4：知识线 / item 持有 / 当前关系
+FINAL3 = ("义庄主事不见秦野。秦野问白七主事去向，白七只说「早就走了」，说完便低下头去拨算盘。"
+          "秦野收好当票，把账册推回去，出门时没有回头。回家路上他忽然明白："
+          "白七从头到尾不是主事，只是看守。他想起柜台下那只比脸先动的手，后颈又一次发凉，"
+          "把袖子拢了拢。")
+
+
+class TestKnowledgeAndItems(unittest.TestCase):
+    """批 4 扩展：KNO 知识线生命周期 + item holder 闭合 + current.key_relationships。
+    自包含（自带 build_book），不依赖其他用例的落盘。"""
+
+    @classmethod
+    def setUpClass(cls):
+        cls._tmp = tempfile.TemporaryDirectory(prefix="noveltest_kno_")
+        cls.book = build_book(Path(cls._tmp.name), with_beats3=True)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls._tmp.cleanup()
+
+    def test_holder_closure_in_memory(self):
+        data = {key: state.defaults_for(key) for key in state.STATE_KEYS}
+        data["entities"]["entries"] = [
+            {"name": "秦野", "type": "person", "aliases": [], "card": "", "summary": "", "status": "active"},
+            {"name": "玉佩", "type": "item", "aliases": [], "card": "", "summary": "", "status": "active",
+             "holder": "秦野", "location": "怀中", "condition": "完整"},
+        ]
+        self.assertEqual(state.verify_data(data), [])
+        data["entities"]["entries"][1]["holder"] = "不存在的人"
+        errs = state.verify_data(data)
+        self.assertTrue(any("holder" in e for e in errs), errs)
+
+    def test_kno_lifecycle_in_memory(self):
+        lines = state.defaults_for("lines")
+        rep = {"updated": [], "warnings": [], "errors": []}
+        state._merge_lines(lines, [{"kind": "knowledge", "action": "plant",
+                                    "secret": "白七不是义庄主事，他是看守的", "target_ch": 2,
+                                    "note": "秦野 ch_2 前不得知道"}], 3, rep)
+        self.assertEqual(rep["errors"], [])
+        k = lines["knowledge"][0]
+        self.assertEqual((k["id"], k["status"], k["plant_ch"], k["target_ch"]),
+                         ("KNO-001", "Concealed", 3, 2))
+        rep2 = {"updated": [], "warnings": [], "errors": []}
+        state._merge_lines(lines, [{"kind": "knowledge", "action": "update", "id": "KNO-001",
+                                    "target_ch": 5}], 3, rep2)
+        state._merge_lines(lines, [{"kind": "knowledge", "action": "resolve",
+                                    "id": "KNO-001"}], 3, rep2)
+        self.assertEqual(rep2["errors"], [])
+        self.assertEqual((lines["knowledge"][0]["target_ch"], lines["knowledge"][0]["status"]),
+                         (5, "Revealed"))
+
+        # remind 只适用于 foreshadow：knowledge remind 拒绝
+        errs, _ = state.validate_proposal({"chapter": "ch_003", "operation_id": "t.kno.a1",
+                                           "lines": [{"kind": "knowledge", "action": "remind",
+                                                      "id": "KNO-001"}]})
+        self.assertTrue(any("remind" in e for e in errs), errs)
+        # ID 前缀必须是 KNO
+        errs, _ = state.validate_proposal({"chapter": "ch_003", "operation_id": "t.kno.a2",
+                                           "lines": [{"kind": "knowledge", "action": "plant", "secret": "x",
+                                                      "id": "GUN-001", "target_ch": 2}]})
+        self.assertTrue(any("KNO" in e for e in errs), errs)
+        # resolve 不允许携带额外字段
+        errs, _ = state.validate_proposal({"chapter": "ch_003", "operation_id": "t.kno.a3",
+                                           "lines": [{"kind": "knowledge", "action": "resolve",
+                                                      "id": "KNO-001", "note": "x"}]})
+        self.assertTrue(any("note" in e for e in errs), errs)
+
+    def test_kno_sync_and_overdue(self):
+        b = self.book
+        (b / "manuscript/vol_01/final/ch_003.md").write_text(FINAL3, encoding="utf-8")
+        (b / "log/review/ch_003.md").write_text(
+            "# ch_003\n\n## 验收\n\n1. 秦野问出主事去向。 ✓ 证据：「早就走了」\n", encoding="utf-8")
+        _run(["proposal", "new", "ch_003", "--write"], b)
+        pp = b / "state/inbox/ch_003.json"
+        d = json.loads(pp.read_text(encoding="utf-8"))
+        d["current"] = {"time": "第三日·晨", "location": "义庄", "present_characters": ["秦野", "白七"],
+                        "key_relationships": "秦野↔白七：试探未明"}
+        d["entities"] = [{"action": "upsert", "name": "玉佩", "type": "item", "summary": "遗物",
+                          "holder": "秦野", "location": "怀中", "condition": "完整"}]
+        d["lines"] = [{"kind": "knowledge", "action": "plant",
+                       "secret": "白七不是义庄主事，他是看守的", "target_ch": 1,
+                       "note": "秦野 ch_3 前不得知道"}]
+        d["synopsis"] = {"title": "主事", "text": "秦野问出主事去向，确认白七只是看守。"}
+        pp.write_text(json.dumps(d, ensure_ascii=False, indent=2), encoding="utf-8")
+
+        d = _run_json(["proposal", "check", "ch_003"], b)
+        self.assertEqual(d["check"]["errors"], [])
+        _run(["sync", "ch_003"], b)
+
+        lines = json.loads((b / "state/lines.json").read_text(encoding="utf-8"))
+        self.assertEqual((lines["knowledge"][0]["id"], lines["knowledge"][0]["status"]),
+                         ("KNO-001", "Concealed"))
+        cur = json.loads((b / "state/current.json").read_text(encoding="utf-8"))
+        self.assertEqual(cur["key_relationships"], "秦野↔白七：试探未明")
+        ents = json.loads((b / "state/entities.json").read_text(encoding="utf-8"))["entries"]
+        item = [e for e in ents if e["name"] == "玉佩"][0]
+        self.assertEqual((item["holder"], item["location"], item["condition"]),
+                         ("秦野", "怀中", "完整"))
+
+        g = _run_json(["evidence", "gaps", "--json"], b)
+        self.assertEqual(g["summary"]["open_knowledge"], 1)
+        self.assertEqual(g["summary"]["overdue_knowledge"], 1)
+        d = _run_json(["check", "--json"], b)
+        self.assertTrue(any(w["code"] == "line_overdue" and "KNO-001" in w["msg"]
+                            for w in d["warnings"]))
+        p = _run_json(["pack", "ch_003", "--json"], b)
+        self.assertTrue(any("KNO-001" in m for m in p["p0"]["hard_reminders"]))
+        self.assertEqual(p["p0"]["current"]["key_relationships"], "秦野↔白七：试探未明")
+
+    def test_old_lines_file_fills_knowledge(self):
+        """旧版 lines.json 缺 knowledge 键：读时按结构补齐（不报错、不改语义）。"""
+        b = self.book
+        p = b / "state/lines.json"
+        raw = p.read_text(encoding="utf-8")
+        try:
+            d = json.loads(raw)
+            d.pop("knowledge", None)
+            p.write_text(json.dumps(d, ensure_ascii=False, indent=2), encoding="utf-8")
+            lines = state.load_state(b, "lines")
+            self.assertEqual(lines["knowledge"], [])
+        finally:
+            p.write_text(raw, encoding="utf-8")
 
 
 if __name__ == "__main__":
