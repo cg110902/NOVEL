@@ -17,7 +17,7 @@ guard_extra:               # 可省：本章禁忌词（竖线分隔；留空=�
 ## 线动作
 
 <!-- 本章 plant / remind / resolve 的 GUN/MIS/KNO（对照 evidence gaps 输出）；
-     KNO 无「remind」态——途中动作提案里用 update（见 agents/rules/）；
+     KNO 无「remind」态——途中动作提案里用 update（见 novel_workflow.md#术语约定）；
      逾期不还的线，写一行顺延理由。 -->
 
 <!-- 以下四个 ## 节是任务书合同（novel_workflow.md#任务书合同）。

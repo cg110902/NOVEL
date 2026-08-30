@@ -40,5 +40,5 @@
 
 ## 退回
 
-自交检不过 → 你自己重写（novel_workflow.md Stage 1 退回边）。材料不够就先补 evidence/卷纲再写，
+自交检不过 → 你自己重写（novel_workflow.md#Stage 1 退回边）。材料不够就先补 evidence/卷纲再写，
 没有「缺语境早退再派」——这里没有第二个你可派。

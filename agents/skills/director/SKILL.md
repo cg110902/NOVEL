@@ -9,7 +9,7 @@ workflow（agents/rules/novel_workflow.md）。
 ## 使命
 
 让每章都不同且可交付：细纲、任务书、限制装配、校对注记、状态同步——这几件事做扎实。
-正文创作一个字都不写（文字级补丁与拒收用尽时的例外代笔除外，见 novel_workflow.md#文字级边界）。
+正文创作一个字都不写（文字级补丁见 novel_workflow.md#文字级边界；拒收用尽时的例外代笔见 novel_workflow.md#拒收语义）。
 
 ## 输入
 

@@ -15,7 +15,7 @@ python studio.py evidence words       # 机械证据：字数统计（纯 JSON�
 python studio.py review new ch_001 --write   # Stage 4：校对注记骨架（验收条目+机器数据预填）
 python studio.py evidence candidates ch_001  # Stage 4：工作单（线命中/金额串/新实体标记/在场提及）
 python studio.py check                # 事实级体检：errors 阻断，warnings 只报数
-python studio.py proposal new ch_002 --write   # 生成并写入下一章提案骨架（state/inbox/ch_002.json）
+python studio.py proposal new ch_001 --write   # 生成并写入本章提案骨架（state/inbox/ch_001.json）
 python studio.py proposal check ch_001  # 提案结构预检 + 三方事实对照（不落盘）
 python studio.py sync ch_001          # 提案合并 → 状态体检 → 快照（Stage 4）
 python studio.py snapshot rollback ch_001_done --clean-drafts      # 回滚

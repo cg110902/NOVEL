@@ -11,7 +11,7 @@
 | validator.py + schemas/ | 提案/schema 机械校验（结构级，不判事实真伪） |  
 | checks.py | check：结构/schema/算术/逾期/form 占比 + 上章对照与自交检报数（style_notes_copy/words_band_crowded/acceptance_empty_criterion/line_action_*/retired_entity_on_stage）；sync 前置 `review_gate`（Stage 4 校对注记验收覆盖）；review 注记骨架数据（`review_skeleton`）、提案三方事实对照（`proposal_cross_facts`，含知识线揭示时机对照） |  
 | evidence.py | words/style(含 form 占比)/dup/mentions/gaps/file + candidates（Stage 4 工作单）/prev（Stage 1 上章对照）+ all 聚合——只输出数 |  
-| pack.py | P0 任务书整块 / P1 触发（人物块含 lines 触碰与随身道具清单 carries；道具块含 holder/location/condition）/ P2 索引，**超预算按优先级硬裁 P2 冷索引**（P0/P1 尽量保留，如实上报 budget）；导出文件名净化 |  
+| pack.py | P0 热层（含完整 beats）/ P1 触发（人物块含 lines 触碰与随身道具清单 carries；道具块含 holder/location/condition）/ P2 索引，**超预算按优先级硬裁 P2 冷索引**（P0/P1 尽量保留，如实上报 budget）；导出文件名净化 |  
 | snapshot.py | 快照 create/list/rollback（pre_rollback 保护；模块不碰 manuscript；CLI 的 --clean-drafts 会额外清理超章稿件） |  
 
 输出契约：数据类命令 stdout 单个 JSON；status/check 为人读表。

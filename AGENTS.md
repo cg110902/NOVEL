@@ -19,13 +19,12 @@
 1. `state/*.json` 与幂等登记簿禁止手改。一切状态修改 = 写 `state/inbox/` 提案 → `sync`。
 2. 越权写：drafter只写 raw（放开算力创作初稿这一件事）；guard只写 final（重铸&精修这一件事）；主控写校对注记与提案，
    对 final 只许文字级补丁。唯一事实表见 novel_workflow.md#写权限矩阵。
-3. 禁跳线：`sync` 是进入最终状态的唯一入口；体检有 errors 时不得封存推进。
+3. 禁跳线：`sync` 是写入 `state/` 的唯一入口；状态体检失败不得落盘封存。check 出 errors 时主控须停推进。
 4. 禁复述规则：跨文档只准 `文件#锚点` 引用，抄写=双写违规。
 5. 正文禁工程痕迹：未填槽位、candidate_*、front-matter 超键——check 计数拦截。
-6. 审计记录永不删除：inbox 的 processed/ 与 failed/ 是合同附件，拒收上限见 novel_workflow.md#拒收语义。
+6. 审计记录永不删除：inbox 的 processed/ 与 failed/ 是合同附件，禁止删改。整本重开 `init --force` 是唯一例外。
 7. 提案里的"事实"必须能在正文找到出处；引擎只校验结构，真伪由 Stage 3/4 流程负责
-   （Stage 3 的情节事实零改动见 `novel_workflow.md`，Stage 4 的六项校对/注记/同步见
-   `novel_workflow.md` 的 Stage 4 校对注记+同步封存 节）。
+   （情节事实零改动见 `novel_workflow.md#Stage 3`，六项校对/注记/同步见 `novel_workflow.md#Stage 4`）。
 
 ## 创作不变量（5 条：事实侧引擎对账；正文声称的核对是 Stage 4 校对的活）
 
@@ -34,7 +33,7 @@
 2. 埋了就要还：伏笔/误会/秘密信息必须进 lines 台账（`GUN-*`/`MIS-*`/`KNO-*`）且有 target_ch
    （章号或 longline）；逾期由 check 报数。
 3. 数字必须平账：余额类字段一律引擎由流水重算；正文声称的钱数与账本 current 值不符即事实错误。
-4. 出场即注册：present_characters 的每个人必须已在 entities；新人先注册再出场。
+4. 出场即注册：人名进正文前须在 entities；`present_characters` 只记章末仍在场的人，且必须已在 entities。
 5. 偏离必须留名：推翻 craft/genre 默认 = 在 bible/project_bible.md「本书偏离清单」写一行
    （一句话+理由）；没写=推翻未发生。权威层级四层：本文件禁令 > `novel_workflow.md` 流程合同
    > 偏离清单 > craft/genre 默认值。偏离清单只能覆盖默认值，不能覆盖禁令与流程。

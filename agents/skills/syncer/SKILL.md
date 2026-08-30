@@ -10,7 +10,7 @@
 
 ## 输入
 
-- 本章 final + 你写的 `log/review/ch_XXX.md` + beats。
+- 本章 beats / raw / final + 你写的 `log/review/ch_XXX.md`。
 - 当前状态用命令取（`status` / `evidence` / `pack`），不要通读 `state/*.json`。
 - 提案样例照抄 `state/inbox/README.md`（不要为填提案去读 engine 源码）。
 
@@ -38,7 +38,7 @@
 
 - `state/inbox/ch_XXX.json`（一份，只写增量）。
 - `sync` 成功会把提案归档到 `state/inbox/processed/`、生成 `state/snapshots/<ts>_<ch>_done`；
-  `status` 该章五格全绿即完成。`failed/` 里有提案 = 未完成，读报错后改提案再 sync。
+  `status` 该章 beats/raw/final 齐、已合并、已快照即完成。`failed/` 里有提案 = 未完成，读报错后改提案再 sync。
 
 ## 禁区
 
