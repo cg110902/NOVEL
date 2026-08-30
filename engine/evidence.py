@@ -1,7 +1,7 @@
 """evidence：机械证据五 kind（mentions|gaps|dup|style|words）。
 
 原则 ：只数事实、零裁决——本模块输出里不允许出现「可疑/建议/达标」类语义词；
-判断属于审校 Agent 与主控。空结果 = 合法事实（退出码 0）。全部纯 regex/算术，禁一切 NLP 依赖。
+判断属于主控。空结果 = 合法事实（退出码 0）。全部纯 regex/算术，禁一切 NLP 依赖。
 """
 from __future__ import annotations
 

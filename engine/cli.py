@@ -222,7 +222,7 @@ def _next_actions(brief: dict | None) -> list[str]:
     if brief["pending_proposals"]:
         acts.append(f"state/inbox 有 {len(brief['pending_proposals'])} 份待合并提案：python studio.py sync ch_XXX")
     nxt = brief["latest_finalized"] + 1
-    acts.append(f"下一章 ch_{nxt:03d}：Stage 1 主控推 beats（含任务书）→ Stage 2/3 子 Agent → Stage 4 sync")
+    acts.append(f"下一章 ch_{nxt:03d}：Stage 1 主控写 beats → Stage 2 drafter → Stage 3 guard → Stage 4 校对注记+sync")
     return acts
 
 
@@ -470,24 +470,20 @@ def cmd_sync(args) -> int:
         print(f"❌ 提案内容与同步目标不一致: {proposal_path.name} 的 chapter={got} ≠ {ch}，拒绝空同步")
         return 1
 
-    # 前置闸门：Stage 4 输入合同 beats/raw/final 齐（novel_workflow.md#Stage 4 同步封存）。
+    # 前置闸门：Stage 4 输入合同 beats/raw/final 齐（novel_workflow.md#Stage 4）。
     # 无 beats 细纲不得封存——防止"无细纲、零更新"的章被空提案推进（配合空提案 no-op 识别）。
     if not common.find_chapter_files(book, "beats", ch):
         print(f"❌ 未找到 {ch} 的 beats 细纲，拒绝封存（Stage 4 输入合同：beats/raw/final 齐）")
+        return 1
+    if not common.find_chapter_files(book, "raw", ch):
+        print(f"❌ 未找到 {ch} 的 raw 草稿，拒绝封存（Stage 4 输入合同：beats/raw/final 齐）")
         return 1
 
     gate = checks.review_gate(book, ch)
     if gate:
         for g in gate:
-            print(f"❌ 审校合同未达：{g}")
-        print("   （Stage 3 注记「## 验收」节须逐条 N. ✓/✗+证据；拒合并拒封存，改完注记再 sync）")
-        return 1
-        
-    # 字数带硬门槛（封存前拦截：未达 words_target 之章的 final 不得封存）
-    wb = checks.word_band_gate(book, ch)
-    if wb:
-        for g in wb:
-            print(f"❌ 字数带未达：{g}")
+            print(f"❌ 校对注记未达：{g}")
+        print("   （Stage 4 注记「## 验收」节须逐条 N. ✓/✗+证据；拒合并拒封存，改完注记再 sync）")
         return 1
 
     overall = state.apply_inbox(book, expect_chapter=ch, dry_run=args.dry_run)
@@ -637,7 +633,7 @@ def cmd_proposal(args) -> int:
     mmdd = datetime.now().strftime("%m%d_%H%M")
     skeleton = {
         "schema": "novel-studio.state-mutation/v2", "chapter": ch,
-        "operation_id": f"{ch}.syncer.{mmdd}",
+        "operation_id": f"{ch}.director.{mmdd}",
         # current 只写增量（键清单见 engine/schemas/current.schema.json）；不预填空值——
         # 空串曾把上一章的现场速写整体清掉，未填骨架应当保持 no-op 而不是清档
         "current": {},
@@ -661,7 +657,7 @@ def cmd_proposal(args) -> int:
 
 
 # ---------------------------------------------------------------------------
-# review：审校注记骨架（预填验收条目与机器数据；结果与证据仍由主控填写）
+# review：校对注记骨架（预填验收条目与机器数据；结果与证据仍由主控填写）
 # ---------------------------------------------------------------------------
 def _render_review_md(d: dict) -> str:
     qb = d["quote_balance"]
@@ -669,7 +665,7 @@ def _render_review_md(d: dict) -> str:
                      for e in d["proper_names"]) or "（注册表为空）"
     bal = "、".join(f"{p.get('name', pid)}（{pid}）: {p.get('current', 0)} {p.get('unit', '')}".rstrip()
                    for pid, p in sorted(d["ledger_now"].items())) or "（无池）"
-    L = [f"# {d['chapter']} 审校注记", ""]
+    L = [f"# {d['chapter']} 校对注记", ""]
     L += ["<!-- 骨架由 `studio review new` 生成：机器数据已预填，结果与证据由主控填写。",
           "     每条结论要证据：正文引文片段，或 evidence 输出（字段名+数值）——无证据的打钩=未审",
           "     （novel_craft.md#打磨与校对）。 -->", ""]
@@ -682,7 +678,7 @@ def _render_review_md(d: dict) -> str:
           "- 结果：", ""]
     L += ["### 3. 专名与 entities 写法一致",
           f"- 专名表：{names}",
-          f"- 本章在场（current）：{'、'.join(d['present']) if d['present'] else '（未声明）'}",
+          f"- 章末仍在场（current）：{'、'.join(d['present']) if d['present'] else '（未声明）'}",
           "- 结果：", ""]
     L += ["### 4. 数字与 ledger current 相符",
           f"- 当前余额：{bal}",
@@ -737,7 +733,7 @@ def cmd_review(args) -> int:
         if getattr(args, "json", False):
             print(json.dumps({"chapter": ch, "written": str(dest.relative_to(book))}, ensure_ascii=False))
         else:
-            print(f"🧾 审校注记骨架已写入: {dest}")
+            print(f"🧾 校对注记骨架已写入: {dest}")
             print("   填写「六项核对」结果与「## 验收」逐条 ✓/✗+证据后，再组装提案并 sync。", file=sys.stderr)
         return 0
     if getattr(args, "json", False):
@@ -843,7 +839,7 @@ COMMAND_HELP = {
     "snapshot": "快照 list / create NAME / rollback NAME [--clean-drafts]",
     "export": "全书编译：--txt 拼接正文，--views 渲染状态视图",
     "proposal": "提案：new <章节>（骨架）｜ check <章节>（结构预检+三方事实对照）",
-    "review": "审校注记：new <章节>（骨架预填验收条目+机器数据，--write 写 log/review/）",
+    "review": "校对注记：new <章节>（骨架预填验收条目+机器数据，--write 写 log/review/）",
     "help": "本命令目录（--json 供宿主解析）",
 }
 
@@ -956,7 +952,7 @@ def _build_parser() -> argparse.ArgumentParser:
     r.set_defaults(func=cmd_proposal)
     q.set_defaults(func=cmd_proposal)
 
-    q = sub.add_parser("review", help="审校注记骨架：new <章节>（预填验收条目+机器数据）")
+    q = sub.add_parser("review", help="校对注记骨架：new <章节>（预填验收条目+机器数据）")
     _add_common_opts(q)
     rv = q.add_subparsers(dest="rev_action")
     r = rv.add_parser("new", help="生成注记骨架（默认打印；--write 写 log/review/ch_XXX.md）")

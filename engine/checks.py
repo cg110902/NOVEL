@@ -4,7 +4,7 @@
 - errors：可机械判定必须修复的事实——schema 违规、引用未登记实体、章号断档、占位符未填、
   同 form 无理由、账本重算不符（state.verify_state）。
 - warnings：算术数出来的偏离事实（字数出带、线逾期、tics 命中、form 占比超 40%）——只报数，
-  是否修、怎么修由主控/审校决定。
+  是否修、怎么修由主控决定。
 - 两个桶里都不许出现「建议/疑似/不宜」等判断词；本模块零写入。
 """
 from __future__ import annotations
@@ -56,11 +56,11 @@ def _numbered_items(lines: list[str]) -> dict[int, str]:
 
 
 def review_gate(book: Path, ch: str) -> list[str]:
-    """Stage 3/4 合同（机械层）：审校注记「验收打钩」节必须逐条答完任务书「验收」。
+    """Stage 4 合同（机械层）：必须有校对注记；「验收」节须逐条答完任务书「验收」。
 
-    只数行与符号：beats 无「验收」节 → 不拦（无清单可对照）；beats 有「验收」而注记缺失 →
-    拦（Stage 3 校对/注记/回话是封存前提，不允许主控代笔静默放行）；注记存在 → 缺答/缺✓✗/
-    ✓而短于证据线 = 拒绝封存。
+    只数行与符号：无注记 → 拦（Stage 4 封存前提，见 novel_workflow.md#Stage 4）；
+    注记缺「## 验收」→ 拦；beats 有验收条目 → 缺答/缺✓✗/无证据 = 拒绝封存。
+    guard 不写注记、不答验收。
     """
     beats = [f for f in common.find_chapter_files(book, "beats")
              if common.chapter_number_from_name(f.name) == common.chapter_token_to_num(ch)]
@@ -68,17 +68,18 @@ def review_gate(book: Path, ch: str) -> list[str]:
     if beats:
         acc = common.md_section(beats[0].read_text(encoding="utf-8", errors="replace"), r"^##\s*验收")
         k = max(_numbered_items(acc), default=0)
-    if k == 0:
-        return []
     rev = book / "log" / "review" / f"{ch}.md"
     if not rev.is_file():
-        return [f"beats「验收」共 {k} 条，但审校注记 {ch}.md 不存在（Stage 3 未留审计；拒封存）"]
-    items = _numbered_items(common.md_section(rev.read_text(encoding="utf-8", errors="replace"),
-                                              r"^##\s*验收"))
+        extra = f"；beats「验收」共 {k} 条" if k else ""
+        return [f"校对注记 {ch}.md 不存在（Stage 4 未留注记；拒封存{extra}）"]
+    rtext = rev.read_text(encoding="utf-8", errors="replace")
     issues: list[str] = []
+    if not re.search(r"^##\s*验收", rtext, re.M):
+        issues.append("校对注记缺「## 验收」节")
+    items = _numbered_items(common.md_section(rtext, r"^##\s*验收"))
     missing = [n for n in range(1, k + 1) if n not in items]
     if missing:
-        issues.append(f"验收 {missing} 未被审校注记回答（共 {k} 条，须逐条 N. ✓/✗+证据）")
+        issues.append(f"验收 {missing} 未被校对注记回答（共 {k} 条，须逐条 N. ✓/✗+证据）")
     # 证据判定（novel_craft.md#打磨与校对）：每条结论必须带证据——正文引文，或 evidence 字段名+数值。
     # 不再用"整行 ≥24 字符"的任意长阈值（会误伤语句精炼但已给引文/数值的证据）。
     EVIDENCE_QUOTE_RE = re.compile(r"[「“\"'『]")          # 引号 = 正文引文
@@ -90,31 +91,9 @@ def review_gate(book: Path, ch: str) -> list[str]:
             issues.append(f"验收 {n} 打了判定符但无证据（须含正文引文或 evidence 字段名+数值）")
     return issues
 
-def word_band_gate(book: Path, ch: str) -> list[str]:
-    """Stage 4 闸门：目标章 final 字数必须在 project.json.words_target 带内。
 
-    把 '达字数带' 从 warning 升级为封存前硬门槛：超带 → 拒绝 sync 封存。
-    口径与 evidence.final_chapters 一致（同章多版本取版本号最大者、字数剔除标题行）。
-    """
-    proj = common.load_json(book / "project.json", default={}) or {}
-    band = proj.get("words_target")
-    if not (isinstance(band, list) and len(band) == 2
-            and all(isinstance(x, int) for x in band)):
-        return []  # 未配置字数带，不拦
-    lo, hi = band
-    want = common.chapter_token_to_num(ch)
-    if want is None:
-        return []
-    for tok, num, text in evidence.final_chapters(book):
-        if num == want:
-            c = common.cjk_count(text)
-            if c < lo or c > hi:
-                return [f"{tok}: final 字数 {c} 不在目标带 [{lo}, {hi}] 内，拒绝封存（Stage 4 硬门槛）"]
-            return []
-    return []
-    
 def review_skeleton(book: Path, ch: str) -> dict:
-    """审校注记骨架数据（Stage 4）：验收条目/必须保留自 beats 提取，机器数据逐项预填。
+    """校对注记骨架数据（Stage 4）：验收条目/必须保留自 beats 提取，机器数据逐项预填。
     纯提取/计数——每项的「结果」与证据仍由主控填写；零裁决。"""
     n = common.chapter_token_to_num(ch)
     if not n:
@@ -305,19 +284,19 @@ def run_checks(book: Path) -> dict:
     for rel in slot_hits:
         errors.append(_err("unfilled_slot", f"{rel} 存在未填充槽位 {{{{slot:...}}}}（Stage 0 未完成）"))
 
-    # ---- 禁令6：稿件禁工程痕迹（candidate_* 泄漏进 manuscript）----
+    # ---- 禁令5：稿件禁工程痕迹（candidate_* 泄漏进 manuscript）----
     ms = book / "manuscript"
     if ms.is_dir():
         for md in sorted(ms.rglob("*.md")):
             try:
                 if CANDIDATE_RE.search(md.read_text(encoding="utf-8", errors="ignore")):
                     errors.append(_err("candidate_leak",
-                        f"{md.relative_to(book)} 含 candidate_* 工程痕迹（AGENTS 禁令6：禁入稿件）"))
+                        f"{md.relative_to(book)} 含 candidate_* 工程痕迹（AGENTS 禁令5：禁入稿件）"))
             except OSError:
                 continue
 
     # ---- beats 协议（机械部分）：同 form 连章必须给理由；form 缺失；超键拦截；
-    #      上章对照与自交检报数（style_notes 全同 / words 带贴近 / 目标未分场 / 空判据词 / 线动作对照）----
+    #      上章对照与自交检报数（style_notes 全同 / words 带贴近 / 空判据词 / 线动作对照）----
     beats = sorted(common.find_chapter_files(book, "beats"),
                    key=lambda p: (p.parts[-3] if len(p.parts) > 2 else "",
                                   common.chapter_number_from_name(p.name) or 0))
@@ -347,13 +326,13 @@ def run_checks(book: Path) -> dict:
         if extra:
             errors.append(_err("beats_fm_extra_keys",
                                f"{f.name}: front-matter 含未定义键 {sorted(extra)}"
-                               f"（合法键 {sorted(_BEATS_FM_KEYS)}；工程痕迹禁入稿——AGENTS 禁令6）"))
+                               f"（合法键 {sorted(_BEATS_FM_KEYS)}；工程痕迹禁入稿——AGENTS 禁令5）"))
         num = common.chapter_number_from_name(f.name) or 0
         form = fm.get("form", "")
         if not form:
             errors.append(_err("beats_missing_form", f"{f.name}: front-matter 缺 form 字段（Stage 1 未选章型）"))
         cur_notes = _style_knobs(fm.get("style_notes"))
-        cur_lo, cur_hi = _words_band(fm.get("words"))
+        cur_lo, _ = _words_band(fm.get("words"))
         last = prev_by_vol.get(vol)
         if last and last["num"] == num - 1:
             if form and last.get("form") == form and not fm.get("form_reason"):
@@ -370,12 +349,6 @@ def run_checks(book: Path) -> dict:
                                      f"{abs(cur_lo - prev_lo)}（<600，自交检标准②）"))
         prev_by_vol[vol] = {"num": num, "form": form,
                             "notes": fm.get("style_notes", ""), "words": fm.get("words", "")}
-        if cur_hi is not None and cur_hi > 2000:
-            goal = "\n".join(common.md_section(text, r"^##\s*目标"))
-            if not re.search(r"S\d", goal):
-                warnings.append(_err("goal_no_split",
-                                     f"{f.name}: words 上沿 {cur_hi} >2000 但「目标」节未按场分条"
-                                     "（S1/S2…，novel_workflow.md#任务书合同）"))
         crit_hits: list[str] = []
         for sec_pat in (r"^##\s*目标", r"^##\s*验收"):
             for ln in common.md_section(text, sec_pat):
@@ -427,7 +400,7 @@ def run_checks(book: Path) -> dict:
         if (vol, n) not in beats_nums:
             warnings.append(_err("final_without_beats", f"{tok}: 有定稿但无 beats 细纲（流程事实，供核对）"))
 
-    # ---- 字数带偏离（只报数：封存拦截归 sync 的 word_band_gate，这里不阻断） ----
+    # ---- 字数带偏离（只报数：beats words / project.words_target 都是手感带，不阻断封存） ----
     if band_ok:
         lo, hi = band
         for tok, _, text in evidence.final_chapters(book):

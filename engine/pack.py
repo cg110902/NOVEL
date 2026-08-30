@@ -264,7 +264,7 @@ def render_layer(name: str, obj, full: bool = False) -> str:
     if name == "p1":
         lines = []
         for b in obj["entities"]:
-            lines.append(f"[{b['name']}|{b['type']}|{'在场' if b['on_stage'] else '缺席'}] {b['summary']}")
+            lines.append(f"[{b['name']}|{b['type']}|{'章末在场' if b['on_stage'] else '章末不在'}] {b['summary']}")
             if b.get("lines"):
                 lines.append(f"  挂线: {', '.join(b['lines'])}")
             if b.get("card_text"):
