@@ -77,7 +77,8 @@ workspace/<slug>/
 ## Stage 1 细纲+任务书（由主控亲自完成）
 
 - 输入合同：`status` 流水线行 + `evidence gaps`（哪些线快到期/已逾期）+ `evidence prev`
-  （上章 form/旋钮/words 带/必须保留对照卡）+ `state/current.json` + main_plot 与卷纲。
+  （上章 form/旋钮/words 带/必须保留对照卡；pack 的旧章指针只覆盖近 10 章，更早的章节
+  指针用 `evidence mentions <名字>` 查全章出现处）+ `state/current.json` + main_plot 与卷纲。
 - 动作：
   1. 选章 = 流水线第一个缺口章号（禁止跳章写，除非用户明说，见下文#模式与控制）；
   2. 掷 form 骰（`novel_craft.md#反公式化与拟人化`）：同卷统计与连章重复约束由 check 机械兜底；
