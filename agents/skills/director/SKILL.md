@@ -29,7 +29,8 @@ workflow（agents/rules/novel_workflow.md）。
 4. 验收子代理交付（核查权独属主控，drafter/guard 都不自检；步骤口径与
    novel_workflow.md 的 Stage 2/Stage 3 一致）：
    - drafter 交付 → 查「缺语境」标记 + `evidence file`（字数带/红线词命中）+ 对照「目标/必须保留」逐条核 raw
-     ——不过 → 按 novel_workflow.md #拒收语义  拒收回 Stage 2；（有标记 → 答案写回任务书/pack，再派（计入 #拒收语义 ），不要在对话里口头补。）
+     ——不过 → 按 novel_workflow.md #拒收语义  拒收回 Stage 2； 	
+	 有标记 → 答案写回任务书/pack，再派（计入 #拒收语义 ），不要在对话里口头补。
    - guard 交付 → **验收**（进 Stage 4 的闸门）：红线词、旋钮、「必须保留」、是否引入情节事实错。
      表达层问题重派 guard；情节问题回 Stage 2。六项校对不在这一步，在 Stage 4。
 5. Stage 4：`review new ch_XXX --write` 生成注记骨架 → 你做六项校对并填注记 →
