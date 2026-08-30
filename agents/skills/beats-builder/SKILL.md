@@ -19,7 +19,8 @@ words 带/必须保留对照）、上一章 final 尾段、指定章号与卷号
 1. 定 form：对照 novel_craft.md#反公式化与拟人化 章型库与主控给的"上一章 form"；同卷分布数据在
    `evidence style` 的 form_distribution——接近饱和的 form 别选；选与上章相同必须写理由。
 2. 拆场景（一到三场）：每场两问——POV 进场知道什么、退场知道什么。
-3. 标注线动作：本章 plant/remind/resolve 哪些 GUN/MIS；**逾期线**若本章不还，写一行
+3. 标注线动作：本章 plant/remind/resolve 哪些 GUN/MIS/KNO（remind 只适用伏笔；
+   秘密被揭穿=KNO resolve，新确立的秘密/信息差=KNO plant）；**逾期线**若本章不还，写一行
    "顺延理由"（会被主控抄进提案或下章 beats）。
 4. 写 front-matter：只放合法键（见 `novel_craft.md#front-matter 键`），form/pov/words/style_notes 齐全。
 5. 章尾方式在 style_notes 里写明（四选一见 `novel_craft.md#钩子与爽感节奏`）。

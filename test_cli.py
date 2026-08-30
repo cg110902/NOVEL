@@ -496,19 +496,31 @@ class TestKnowledgeAndItems(unittest.TestCase):
                         "key_relationships": "秦野↔白七：试探未明"}
         d["entities"] = [{"action": "upsert", "name": "玉佩", "type": "item", "summary": "遗物",
                           "holder": "秦野", "location": "怀中", "condition": "完整"}]
-        d["lines"] = [{"kind": "knowledge", "action": "plant",
-                       "secret": "白七不是义庄主事，他是看守的", "target_ch": 1,
-                       "note": "秦野 ch_3 前不得知道"}]
+        d["lines"] = [
+            # target 1：封存时已逾期（cur=3）
+            {"kind": "knowledge", "action": "plant",
+             "secret": "白七不是义庄主事，他是看守的", "target_ch": 1,
+             "note": "秦野 ch_3 前不得知道"},
+            # longline：不进 due/upcoming，只挂账
+            {"kind": "knowledge", "action": "plant",
+             "secret": "墙皮后的公册是十年前埋的", "target_ch": "longline"},
+            # target 4 = cur+1：status「账上提醒」的 soon 区间
+            {"kind": "knowledge", "action": "plant", "id": "KNO-003",
+             "secret": "账册末页的刻痕是谁留的", "target_ch": 4},
+        ]
         d["synopsis"] = {"title": "主事", "text": "秦野问出主事去向，确认白七只是看守。"}
         pp.write_text(json.dumps(d, ensure_ascii=False, indent=2), encoding="utf-8")
 
         d = _run_json(["proposal", "check", "ch_003"], b)
         self.assertEqual(d["check"]["errors"], [])
+        _run(["sync", "ch_003", "--dry-run"], b)  # 预演路径同样吃 KNO
         _run(["sync", "ch_003"], b)
 
         lines = json.loads((b / "state/lines.json").read_text(encoding="utf-8"))
-        self.assertEqual((lines["knowledge"][0]["id"], lines["knowledge"][0]["status"]),
-                         ("KNO-001", "Concealed"))
+        self.assertEqual([(k["id"], k["status"], k["target_ch"]) for k in lines["knowledge"]],
+                         [("KNO-001", "Concealed", 1),
+                          ("KNO-002", "Concealed", "longline"),
+                          ("KNO-003", "Concealed", 4)])
         cur = json.loads((b / "state/current.json").read_text(encoding="utf-8"))
         self.assertEqual(cur["key_relationships"], "秦野↔白七：试探未明")
         ents = json.loads((b / "state/entities.json").read_text(encoding="utf-8"))["entries"]
@@ -517,14 +529,43 @@ class TestKnowledgeAndItems(unittest.TestCase):
                          ("秦野", "怀中", "完整"))
 
         g = _run_json(["evidence", "gaps", "--json"], b)
-        self.assertEqual(g["summary"]["open_knowledge"], 1)
+        self.assertEqual(g["summary"]["open_knowledge"], 3)
         self.assertEqual(g["summary"]["overdue_knowledge"], 1)
+        self.assertTrue([k for k in g["knowledge"] if k["id"] == "KNO-001"][0]["overdue"])
+        self.assertFalse([k for k in g["knowledge"] if k["id"] == "KNO-002"][0]["overdue"])
         d = _run_json(["check", "--json"], b)
         self.assertTrue(any(w["code"] == "line_overdue" and "KNO-001" in w["msg"]
                             for w in d["warnings"]))
+        self.assertTrue(any(w["code"] == "line_action_missing" and "KNO-001" in w["msg"]
+                            for w in d["warnings"]))
         p = _run_json(["pack", "ch_003", "--json"], b)
         self.assertTrue(any("KNO-001" in m for m in p["p0"]["hard_reminders"]))
+        self.assertFalse(any("KNO-002" in m for m in p["p0"]["hard_reminders"]))  # longline 不催
         self.assertEqual(p["p0"]["current"]["key_relationships"], "秦野↔白七：试探未明")
+
+        # candidates：secret/note 中的注册名被计数；due/upcoming 含 knowledge；longline 不催
+        d = _run_json(["evidence", "candidates", "ch_003"], b)
+        kno_hits = [h for h in d["line_hits"] if h["id"] == "KNO-001"]
+        self.assertTrue(kno_hits, "secret/note 中的注册名应被计数")
+        self.assertEqual(kno_hits[0]["kind"], "knowledge")
+        self.assertGreaterEqual(kno_hits[0]["hits"].get("白七", 0), 2)
+        self.assertIn({"id": "KNO-001", "kind": "knowledge", "target_ch": 1}, d["due_lines"])
+        self.assertIn({"id": "KNO-003", "kind": "knowledge", "target_ch": 4}, d["upcoming_lines"])
+        self.assertFalse(any(x["id"] == "KNO-002" for x in d["due_lines"] + d["upcoming_lines"]))
+
+        # P1：beats 出现过的实体被知识线触碰；item 实体块带 holder 三字段
+        qy = [x for x in p["p1"]["entities"] if x["name"] == "秦野"][0]
+        self.assertIn("KNO-001(Concealed)", qy["lines"])
+        from engine import pack as pack_mod
+        cur = {key: state.load_state(b, key) for key in ("current", "entities", "lines")}
+        block = pack_mod._entity_block(b, "玉佩", cur, cur["lines"], full=False)
+        self.assertEqual((block["holder"], block["location"], block["condition"]),
+                         ("秦野", "怀中", "完整"))
+
+        # status 账上提醒：soon 区间（target 4 = cur+1）报 KNO-003；longline 不报
+        st = _run(["status"], b)
+        self.assertIn("KNO-003", st.stdout)
+        self.assertNotIn("KNO-002", st.stdout)
 
     def test_old_lines_file_fills_knowledge(self):
         """旧版 lines.json 缺 knowledge 键：读时按结构补齐（不报错、不改语义）。"""

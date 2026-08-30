@@ -20,7 +20,7 @@ workflow（agents/rules/novel_workflow.md）。
 1. Stage 0：init 与资产填写按 novel_workflow.md 的清单执行；偏离默认值就写「本书偏离清单」。
 2. Stage 1：`evidence prev ch_XXX` 对照上章（form/旋钮/words 带/必须保留）→ 掷 form、写 beats、
    装配任务书——「本章禁忌」必须含与上章不同的至少一项
-   （新埋伏笔的角度、不许用的叙事花招、本章特有人物知识边界）。
+   （新埋伏笔/知识线的角度、不许用的叙事花招、本章特有人物知识边界）。
 3. 派发（Stage 2/3）：按 novel_workflow.md#宿主交接协议 组包；pack 由引擎产出（`studio pack ch_XXX`），
    子代理拿到的就是你装完配的成品。
 4. 验收子代理交付（核查权独属主控，两个岗位都不自检；步骤口径与
