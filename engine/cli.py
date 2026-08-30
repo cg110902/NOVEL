@@ -1,6 +1,6 @@
-"""CLI 薄壳：10 命令、参数解析与编排。业务逻辑一律在 engine/*。
+"""CLI 薄壳：11 命令、参数解析与编排。业务逻辑一律在 engine/*。
 
-status / init / pack / evidence / check / sync / snapshot / export / proposal / help —— M0–M4 全部交付。
+status / init / pack / evidence / check / sync / snapshot / export / proposal / review / help。
 退出码：0=ok / 1=阻断（含 check errors、sync 失败）/ 2=用法错。
 """
 from __future__ import annotations
@@ -366,6 +366,16 @@ def cmd_evidence(args) -> int:
             print(f"❌ evidence {kind} 不接受参数，收到: {rest}")
             return 2
         payload = evidence.gaps(book) if kind == "gaps" else evidence.words(book)
+    elif kind in ("candidates", "prev"):
+        if len(rest) != 1 or _norm_ch(rest[0]) is None:
+            print(f"❌ evidence {kind} 需要章节号（如: evidence {kind} ch_007）")
+            return 2
+        ch = _norm_ch(rest[0])
+        payload = evidence.candidates(book, ch) if kind == "candidates" \
+            else evidence.prev_contrast(book, ch)
+        if payload.get("error"):
+            print(json.dumps(payload, ensure_ascii=False, indent=2))
+            return 1
     elif kind == "mentions":
         if len(rest) > 1:
             print("❌ evidence mentions 至多一个实体名（省略=注册表总览）")
@@ -531,20 +541,88 @@ def cmd_sync(args) -> int:
 # ---------------------------------------------------------------------------
 # proposal：new——骨架生成（结构预填，内容留白；引擎不判断该不该上账）
 # ---------------------------------------------------------------------------
+def _cmd_proposal_check(book: Path, ch: str, args) -> int:
+    """在途提案结构预检 + 三方事实对照（不落盘；不要求 final/注记在场——那是 sync 的闸门）。"""
+    def _fail(msg: str) -> int:
+        if getattr(args, "json", False):
+            print(json.dumps({"chapter": ch, "error": msg}, ensure_ascii=False))
+        else:
+            print(f"❌ {msg}")
+        return 1
+
+    inbox = book / "state" / "inbox"
+    proposal_path = None
+    for cand in (inbox / f"{ch}.json", inbox / "failed" / f"{ch}.json"):
+        if cand.is_file():
+            proposal_path = cand
+            break
+    if proposal_path is None:
+        return _fail(f"未找到 {ch} 的在途提案（state/inbox 与 failed/ 均无）")
+    try:
+        proposal = common.load_json(proposal_path)
+    except ValueError as exc:
+        return _fail(f"提案 JSON 解析失败: {exc}")
+    if not isinstance(proposal, dict) or proposal.get("chapter") != ch:
+        got = proposal.get("chapter") if isinstance(proposal, dict) else "非对象"
+        return _fail(f"提案内容与目标不一致: {proposal_path.name} 的 chapter={got} ≠ {ch}")
+    rep = state.apply_proposal(book, proposal, expected_chapter=ch, dry_run=True)
+    facts = checks.proposal_cross_facts(book, ch, proposal)
+    payload = {"chapter": ch, "proposal": proposal_path.name, "check": rep, "cross_facts": facts}
+    if args.json:
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+    else:
+        print("=" * 70)
+        print(f" 🧾 [提案结构预检] {ch}（{proposal_path.name}；不落盘）")
+        print("=" * 70)
+        for e in rep["errors"]:
+            print(f" ❌ {e}")
+        for w in rep.get("warnings", []):
+            print(f" ⚠️ {w}")
+        if not rep["errors"]:
+            for u in rep.get("updated", []):
+                print(f"   {u}")
+        if rep["errors"]:
+            print(" 汇总：结构未过（正式 sync 同样会被整体拒绝）")
+        elif rep.get("duplicate"):
+            print(" 汇总：幂等重复（operation_id 已应用过，sync 会跳过）")
+        else:
+            print(" 汇总：结构通过（正式预演仍走 sync ch_XXX --dry-run）")
+        print(" 三方对照（事实，是否上账归主控）：")
+        if facts.get("amounts_in_final") is not None:
+            amt = "、".join(f"{a['samples'][0]}×{a['count']}（{a['pool']}）" for a in facts["amounts_in_final"]) or "无"
+            print(f"   final 金额表达: {amt} ｜ 提案 ledger 交易: {facts.get('ledger_tx_in_proposal', 0)} 笔")
+        if facts.get("due_lines"):
+            dl = "、".join(f"{d['id']}(target ch_{d['target_ch']:03d})" for d in facts["due_lines"])
+            print(f"   到期未结线: {dl}")
+            ops = facts.get("lines_ops_in_proposal") or []
+            print(f"   提案 lines 区操作: {'、'.join(ops) if ops else '（无）'}")
+        else:
+            print("   到期未结线: 无")
+        if facts.get("present_mentions") is not None:
+            pm = facts["present_mentions"]
+            pm_str = "、".join(f"{k}×{v}" for k, v in sorted(pm.items(), key=lambda x: -x[1])[:8]) or "无"
+            pr = facts.get("present_in_proposal") or []
+            print(f"   提案 present: {'、'.join(map(str, pr)) if pr else '（未声明）'} ｜ 本章提及: {pm_str}")
+    return 1 if rep["errors"] else 0
+
+
 def cmd_proposal(args) -> int:
     book = common.resolve_workspace(args.workspace)
     if book is None or not (book / "project.json").exists():
         print("❌ 未找到书工作区或其 project.json（先运行 init）")
         return 1
-    if getattr(args, "pp_action", None) != "new":
+    action = getattr(args, "pp_action", None)
+    if action not in ("new", "check"):
         # 无子命令时 Namespace 上没有 chapter 参数——不拦会在已解析到书的工作区里 AttributeError 崩溃
-        print("❌ proposal 需要 new 子命令，如: python studio.py proposal new ch_007")
+        print("❌ proposal 需要 new/check 子命令，如: python studio.py proposal new ch_007 / proposal check ch_007")
         return 2
     n = common.chapter_token_to_num(args.chapter)
     if n is None:
         print(f"❌ 无法解析章节号: {args.chapter}")
         return 2
     ch = f"ch_{n:03d}"
+    if action == "check":
+        return _cmd_proposal_check(book, ch, args)
     inbox = book / "state" / "inbox"
     if (inbox / f"{ch}.json").exists():
         print(f"❌ {ch} 已有在途提案（state/inbox/{ch}.json）——先处理再建新骨架")
@@ -573,6 +651,93 @@ def cmd_proposal(args) -> int:
     print(f"🧩 骨架已打印（不落盘）：填六区后存为 state/inbox/{ch}.json；"
           f"纪律与键形状见 {inbox / 'README.md'}；只写增量、事实须能在 {ch} final 找到出处",
           file=sys.stderr)
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# review：审校注记骨架（预填验收条目与机器数据；结果与证据仍由主控填写）
+# ---------------------------------------------------------------------------
+def _render_review_md(d: dict) -> str:
+    qb = d["quote_balance"]
+    names = "；".join(f"{e['name']}（别名：{'、'.join(e['aliases'])}）" if e["aliases"] else e["name"]
+                     for e in d["proper_names"]) or "（注册表为空）"
+    bal = "、".join(f"{p.get('name', pid)}（{pid}）: {p.get('current', 0)} {p.get('unit', '')}".rstrip()
+                   for pid, p in sorted(d["ledger_now"].items())) or "（无池）"
+    L = [f"# {d['chapter']} 审校注记", ""]
+    L += ["<!-- 骨架由 `studio review new` 生成：机器数据已预填，结果与证据由主控填写。",
+          "     每条结论要证据：正文引文片段，或 evidence 输出（字段名+数值）——无证据的打钩=未审",
+          "     （novel_craft.md#打磨与校对）。 -->", ""]
+    L += ["## guard 回话", "", "<!-- 粘贴 guard 交付回话（重铸了什么/为什么，三到五行） -->", ""]
+    L += ["## 六项机械核对", ""]
+    L += ["### 1. 错别字", "- 结果：", ""]
+    L += ["### 2. 标点配对",
+          f"- 机器计数：「={qb['「']} 」={qb['」']} “={qb['“']} ”={qb['”']} 『={qb['『']} 』={qb['』']}"
+          "（全章计数；是否配对由人判）",
+          "- 结果：", ""]
+    L += ["### 3. 专名与 entities 写法一致",
+          f"- 专名表：{names}",
+          f"- 本章在场（current）：{'、'.join(d['present']) if d['present'] else '（未声明）'}",
+          "- 结果：", ""]
+    L += ["### 4. 数字与 ledger current 相符",
+          f"- 当前余额：{bal}",
+          "- 结果：", ""]
+    L += ["### 5.「必须保留」在位"]
+    if d["must_keep"]:
+        L += ["- 本章清单（自 beats 提取）："]
+        L += [f"  - {s}" for s in d["must_keep"]]
+    else:
+        L += ["- 本章清单（自 beats 提取）：（beats 无「必须保留」节内容）"]
+    L += ["- 结果：", ""]
+    L += ["### 6. 格式残留",
+          f"- 机器扫描：{{{{slot}}}}={d['residue']['slot']} ｜ candidate_*={d['residue']['candidate']}",
+          "- 结果：", ""]
+    L += ["## 验收", ""]
+    if d["acceptance"]:
+        L += ["<!-- 逐条回答，格式：N. ✓/✗ + 证据（正文引文「…」或 evidence 字段=数值，如 total=2、cjk=3120） -->"]
+        for i, item in enumerate(d["acceptance"], 1):
+            L.append(f"{i}. {item} ")
+        L.append("")
+    else:
+        L += ["（beats 无「验收」节——review_gate 不拦，但建议补验收条目）", ""]
+    return "\n".join(L) + "\n"
+
+
+def cmd_review(args) -> int:
+    book = common.resolve_workspace(args.workspace)
+    if book is None or not (book / "project.json").exists():
+        print("❌ 未找到书工作区或其 project.json（先运行 init）")
+        return 1
+    if getattr(args, "rev_action", None) != "new":
+        print("❌ review 需要 new 子命令，如: python studio.py review new ch_007")
+        return 2
+    n = common.chapter_token_to_num(args.chapter)
+    if n is None:
+        print(f"❌ 无法解析章节号: {args.chapter}")
+        return 2
+    ch = f"ch_{n:03d}"
+    try:
+        data = checks.review_skeleton(book, ch)
+    except ValueError as exc:
+        print(f"❌ {exc}")
+        return 1
+    md = _render_review_md(data)
+    if getattr(args, "write", False):
+        dest = book / "log" / "review" / f"{ch}.md"
+        if dest.exists():
+            print(f"❌ {dest} 已存在——注记是主控工件，拒绝覆盖（请手工编辑）")
+            return 1
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_text(md, encoding="utf-8")
+        if getattr(args, "json", False):
+            print(json.dumps({"chapter": ch, "written": str(dest.relative_to(book))}, ensure_ascii=False))
+        else:
+            print(f"🧾 审校注记骨架已写入: {dest}")
+            print("   填写「六项核对」结果与「## 验收」逐条 ✓/✗+证据后，再组装提案并 sync。", file=sys.stderr)
+        return 0
+    if getattr(args, "json", False):
+        print(json.dumps(data, ensure_ascii=False, indent=2))
+    else:
+        print(md)
     return 0
 
 
@@ -666,12 +831,13 @@ COMMAND_HELP = {
     "status": "进度总览 + 逐章流水线 + 下一步指向",
     "init": "创建/清理书工作区（脚手架+状态播种+模板槽位实例化）",
     "pack": "单章上下文三层装配（P0 热 / P1 别名触发 / P2 冷索引）",
-    "evidence": "机械证据：all|mentions|gaps|dup|style|words|file（纯 JSON，零裁决）",
+    "evidence": "机械证据：all|mentions|gaps|dup|style|words|file|candidates|prev（纯 JSON，零裁决）",
     "check": "结构/schema/算术体检（errors 只允许事实级；有 errors 退出码 1）",
     "sync": "提案合并 → 状态体检 → 快照（Stage 4 闭环，可 --dry-run）",
     "snapshot": "快照 list / create NAME / rollback NAME [--clean-drafts]",
     "export": "全书编译：--txt 拼接正文，--views 渲染状态视图",
-    "proposal": "提案骨架生成：new <章节>（默认打印，--write 写入 state/inbox/ch_XXX.json）",
+    "proposal": "提案：new <章节>（骨架）｜ check <章节>（结构预检+三方事实对照）",
+    "review": "审校注记：new <章节>（骨架预填验收条目+机器数据，--write 写 log/review/）",
     "help": "本命令目录（--json 供宿主解析）",
 }
 
@@ -724,9 +890,10 @@ def _build_parser() -> argparse.ArgumentParser:
     q.add_argument("--open", dest="open_path", help="取工作区内任一文件原文（相对路径）")
     q.set_defaults(func=cmd_pack)
 
-    q = sub.add_parser("evidence", help="机械证据：all|mentions|gaps|dup|style|words|file")
+    q = sub.add_parser("evidence", help="机械证据：all|mentions|gaps|dup|style|words|file|candidates|prev")
     _add_common_opts(q)
-    q.add_argument("kind", choices=["all", "mentions", "gaps", "dup", "style", "words", "file"])
+    q.add_argument("kind", choices=["all", "mentions", "gaps", "dup", "style", "words", "file",
+                                    "candidates", "prev"])
     q.set_defaults(func=cmd_evidence)  # file 接受第二参（章节号）
     q.add_argument("args", nargs="*", help="kind 参数（名字/章节等）")
     q.set_defaults(func=cmd_evidence)
@@ -767,7 +934,7 @@ def _build_parser() -> argparse.ArgumentParser:
     q.add_argument("--views", action="store_true", help="导出 export/views/state_view.md")
     q.set_defaults(func=cmd_export)
 
-    q = sub.add_parser("proposal", help="提案骨架：new <章节>（打印/写入预填 JSON）")
+    q = sub.add_parser("proposal", help="提案：new 骨架 ｜ check 结构预检+三方对照")
     _add_common_opts(q)
     pp = q.add_subparsers(dest="pp_action")
     r = pp.add_parser("new", help="生成最小合法骨架（schema/chapter/operation_id 预填）")
@@ -776,7 +943,23 @@ def _build_parser() -> argparse.ArgumentParser:
     r.add_argument("--json", action="store_true")
     r.add_argument("--write", action="store_true", help="直接写入 state/inbox/ch_XXX.json（默认只打印）")
     r.set_defaults(func=cmd_proposal)
+    r = pp.add_parser("check", help="在途提案结构预检 + 三方事实对照（不落盘）")
+    r.add_argument("chapter")
+    r.add_argument("-w", "--workspace")
+    r.add_argument("--json", action="store_true")
+    r.set_defaults(func=cmd_proposal)
     q.set_defaults(func=cmd_proposal)
+
+    q = sub.add_parser("review", help="审校注记骨架：new <章节>（预填验收条目+机器数据）")
+    _add_common_opts(q)
+    rv = q.add_subparsers(dest="rev_action")
+    r = rv.add_parser("new", help="生成注记骨架（默认打印；--write 写 log/review/ch_XXX.md）")
+    r.add_argument("chapter")
+    r.add_argument("-w", "--workspace")
+    r.add_argument("--json", action="store_true")
+    r.add_argument("--write", action="store_true", help="写入 log/review/ch_XXX.md（已存在则拒绝）")
+    r.set_defaults(func=cmd_review)
+    q.set_defaults(func=cmd_review)
 
     q = sub.add_parser("help", help="命令目录")
     q.add_argument("--json", action="store_true")

@@ -167,6 +167,195 @@ def gaps(book: Path) -> dict:
     return out
 
 
+# --------------------------------------------------------------------------- 工作单小件（Stage 4 候选对照 / Stage 1 上章对照）
+_CN_DIGITS = {"零": 0, "一": 1, "二": 2, "两": 2, "両": 2, "三": 3, "四": 4,
+              "五": 5, "六": 6, "七": 7, "八": 8, "九": 9}
+_CN_UNITS = {"十": 10, "百": 100, "千": 1000}
+_NUM_RE = r"[0-9][0-9,，]*|[零一二两両三四五六七八九十百千]{1,6}"
+
+
+def _cn_num_to_int(s: str) -> int | None:
+    """中文数词→整数（千位内常见形：三十/一百二/千五百；解不出返回 None，零语义）。"""
+    total, num = 0, 0
+    for ch in s:
+        if ch in _CN_DIGITS:
+            num = _CN_DIGITS[ch]
+        elif ch in _CN_UNITS:
+            total += (num or 1) * _CN_UNITS[ch]
+            num = 0
+        else:
+            return None
+    return total + num
+
+
+def _amount_scan(text: str, pools: dict) -> list[dict]:
+    """金额候选：阿拉伯/常见中文数词（千位内）× ledger 已声明池单位。只计数与换算，零裁决。"""
+    out = []
+    for pid, p in (pools or {}).items():
+        unit = str(p.get("unit") or "").strip()
+        if not unit:
+            continue
+        ms = re.findall(rf"({_NUM_RE})\s*{re.escape(unit)}", text)
+        recs = []
+        for m in ms:
+            v = int(m.replace(",", "").replace("，", "")) if m[0].isdigit() else _cn_num_to_int(m)
+            if v is not None:
+                recs.append((v, m))
+        if recs:
+            samples = []
+            for _, m in recs:
+                sample = f"{m}{unit}"
+                if sample not in samples:
+                    samples.append(sample)
+            out.append({"pool": pid, "unit": unit, "count": len(recs),
+                        "values": sorted({v for v, _ in recs})[:8], "samples": samples[:3]})
+    return out
+
+
+def _line_terms_for(g: dict, kind: str, reg_terms: list[str]) -> list[str]:
+    """从线台账条目提取计数词：整句 name/parties + 其中包含的注册名/别名 +
+    （误会）parties 的分词。全部来自台账结构化字段，零正文 NLP。"""
+    terms: list[str] = []
+    if kind == "foreshadow":
+        name = str(g.get("name", "")).strip()
+        if name:
+            terms.append(name)
+        blob = name
+    else:
+        parties = str(g.get("parties", "")).strip()
+        if parties:
+            terms.append(parties)
+        blob = parties + " " + str(g.get("content", ""))
+    for a in reg_terms:
+        if len(a) >= 2 and a in blob and a not in terms:
+            terms.append(a)
+    if kind == "misunderstanding":
+        for tok in re.split(r"[、，,·×/\s]+", str(g.get("parties", ""))):
+            if len(tok) >= 2 and tok not in terms:
+                terms.append(tok)
+    return terms
+
+
+def candidates(book: Path, ch: str) -> dict:
+    """Stage 4 工作单数据：以本章 final 为源做机器对照，只出数、零裁决。
+
+    是否上账、是否动线的判断全归主控（AGENTS 宪法：语义边界）。
+    """
+    n = common.chapter_token_to_num(ch)
+    tok = f"ch_{n:03d}" if n else ch
+    if not n:
+        return {"kind": "candidates", "chapter": ch, "error": f"非法章号: {ch!r}"}
+    chs = [(t, num, text) for t, num, text in final_chapters(book) if num == n]
+    if not chs:
+        return {"kind": "candidates", "chapter": tok,
+                "error": f"无 {tok} 的 final（工作单以 final 为源；数 raw 用 evidence file）"}
+    _, _, text = chs[0]
+    out: dict = {"kind": "candidates", "chapter": tok, "source": "final"}
+
+    lines = state.load_state(book, "lines")
+    lookup = entity_lookup(book)
+    reg_terms = [a for names in lookup.values() for a in names]
+    line_hits: list[dict] = []
+    due: list[dict] = []
+    upcoming: list[dict] = []
+    for kind, arr_key in (("foreshadow", "foreshadows"), ("misunderstanding", "misunderstandings")):
+        for g in lines.get(arr_key, []):
+            if g.get("status") == "Resolved":
+                continue
+            t = g.get("target_ch")
+            if isinstance(t, int):
+                item = {"id": g["id"], "kind": kind, "target_ch": t}
+                if t <= n:
+                    due.append(item)
+                elif t <= n + 2:
+                    upcoming.append(item)
+            hits = {tm: text.count(tm) for tm in _line_terms_for(g, kind, reg_terms) if tm in text}
+            if hits:
+                line_hits.append({"id": g["id"], "kind": kind,
+                                  "label": str(g.get("name", g.get("parties", ""))),
+                                  "target_ch": t, "hits": hits})
+    out["line_hits"] = line_hits
+    out["due_lines"] = due
+    out["upcoming_lines"] = upcoming
+
+    # 金额候选：数字（阿拉伯/中文数词）× ledger 已声明池单位（币种不硬编码）
+    led = state.load_state(book, "ledger")
+    out["amounts"] = _amount_scan(text, led.get("pools"))
+    out["ledger_now"] = {pid: p.get("current") for pid, p in (led.get("pools") or {}).items()}
+
+    # beats 的 [新实体→注册] 标记（Stage 1 已做的语义活，Stage 4 只做登记对照）
+    markers = []
+    for f in common.find_chapter_files(book, "beats", n):
+        for i, ln in enumerate(f.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
+            if re.search(r"新实体\s*[→>]\s*注册", ln):
+                markers.append({"line": i, "text": ln.strip()[:80]})
+    out["new_entity_markers"] = markers
+
+    # 本章注册实体提及计数（填 present_characters 的对照数据）
+    per = {}
+    for name, aliases in lookup.items():
+        c = sum(count_aliases(text, aliases).values())
+        if c:
+            per[name] = c
+    out["present_candidates"] = per
+
+    # current.json 非空字段（状态摘要；字段随 schema 扩展自动带上）
+    cur = state.load_state(book, "current")
+    out["state_digest"] = {k: v for k, v in cur.items() if v not in ("", [], None)}
+
+    out["quote_balance"] = {q: text.count(q) for q in "「」“”『』"}
+    out["residue"] = {"slot": len(re.findall(r"\{\{\s*slot:", text)),
+                      "candidate": len(re.findall(r"candidate_", text))}
+    return out
+
+
+def prev_contrast(book: Path, ch: str) -> dict:
+    """Stage 1 上章约束对照卡：上一章 form/旋钮/words/必须保留 + 本章（beats 若已写）+
+    开放线概况。纯提取/算术，选不选、改不改归主控。"""
+    n = common.chapter_token_to_num(ch)
+    tok = f"ch_{n:03d}" if n else ch
+    if not n:
+        return {"kind": "prev", "chapter": ch, "error": f"非法章号: {ch!r}"}
+
+    def _fields(path: Path) -> dict:
+        text = path.read_text(encoding="utf-8", errors="replace")
+        fm = common.parse_front_matter(text)
+        must = [ln.strip().lstrip("-*· ").strip() for ln in common.md_section(text, r"^##\s*必须保留")]
+        return {"form": fm.get("form", ""), "form_reason": fm.get("form_reason", ""),
+                "style_notes": fm.get("style_notes", ""), "pov": fm.get("pov", ""),
+                "words": fm.get("words", ""), "guard_extra": fm.get("guard_extra", ""),
+                "must_keep": [s for s in must if s and not s.startswith(("<", "#"))]}
+
+    out: dict = {"kind": "prev", "chapter": tok}
+    prev_files = common.find_chapter_files(book, "beats", n - 1) if n > 1 else []
+    out["prev"] = _fields(prev_files[-1]) if prev_files else None
+    out["prev_tail"] = ""
+    if n > 1:
+        pf = common.find_chapter_files(book, "final", n - 1)
+        if pf:
+            out["prev_tail"] = pf[-1].read_text(encoding="utf-8", errors="replace")[-300:]
+    cur_files = common.find_chapter_files(book, "beats", n)
+    out["cur"] = _fields(cur_files[-1]) if cur_files else None
+
+    lines = state.load_state(book, "lines")
+    open_f = [g for g in lines.get("foreshadows", []) if g.get("status") != "Resolved"]
+    open_m = [g for g in lines.get("misunderstandings", []) if g.get("status") != "Resolved"]
+    out["open_lines"] = {"foreshadows": len(open_f), "misunderstandings": len(open_m)}
+    due: list[dict] = []
+    upcoming: list[dict] = []
+    for g in open_f + open_m:
+        t = g.get("target_ch")
+        if isinstance(t, int):
+            item = {"id": g["id"], "target_ch": t}
+            if t <= n:
+                due.append(item)
+            elif t <= n + 2:
+                upcoming.append(item)
+    out["due_lines"] = due
+    out["upcoming_lines"] = upcoming
+    return out
+
+
 def dup(book: Path, ch: str | None = None) -> dict:
     full = final_chapters(book)  # 只读一遍磁盘：单章模式与全书邻接对比共用同一份
     full_sh = [(t, _shingles(_sentences(x))) for t, _, x in full]

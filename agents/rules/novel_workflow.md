@@ -76,8 +76,8 @@ workspace/<slug>/
 
 ## Stage 1 细纲+任务书（由主控亲自完成）
 
-- 输入合同：`status` 流水线行 + `evidence gaps`（哪些线快到期/已逾期）+ `state/current.json`
-  + main_plot 与卷纲。
+- 输入合同：`status` 流水线行 + `evidence gaps`（哪些线快到期/已逾期）+ `evidence prev`
+  （上章 form/旋钮/words 带/必须保留对照卡）+ `state/current.json` + main_plot 与卷纲。
 - 动作：
   1. 选章 = 流水线第一个缺口章号（禁止跳章写，除非用户明说，见下文#模式与控制）；
   2. 掷 form 骰（`novel_craft.md#反公式化与拟人化`）：同卷统计与连章重复约束由 check 机械兜底；
@@ -93,6 +93,8 @@ workspace/<slug>/
 - 自交检通过标准（同时满足，缺一即回退）：①「验收」每条都能对着正文给出"动词+可指认名词"判据，
   出现形容词判据 = 未过；② words 带与相邻章区间下限错开 ≥600 字；③ 人物卡上的承诺（称谓/记号/
   知识边界）已回写进"线动作"栏；④ front-matter 六键齐全且与上一章的 form/旋钮不整组重复。
+  其中机械部分由 check 报数（`acceptance_empty_criterion` / `words_band_crowded` /
+  `style_notes_copy` / `line_action_orphan` / `line_action_missing`），主控看数裁决，不必自己记着查。
 
 ## 任务书合同
 
@@ -163,12 +165,17 @@ style_notes: 短句急雨 | 章首中间开始 | 章尾弱收   # 三旋钮
      entities 写法一致／数字与 ledger current 相符／「必须保留」在位／格式残留），
      evidence style/dup/file 按需自跑；注记正文写入 `log/review/ch_XXX.md`（init 已自动创建
      该目录），其中必须含 `## 验收` 节，逐条回答 beats 任务书「验收」并带证据；无注记会被
-     sync 的 review_gate 拒绝；
+     sync 的 review_gate 拒绝。骨架可用 `python studio.py review new ch_XXX --write` 生成
+     （验收条目自 beats 预填，引号配对/余额/专名表/必须保留清单等机器数据逐项就位，
+     只填「结果」与证据）；
   2. `python studio.py proposal new ch_XXX` 打印骨架（schema/chapter/operation_id 已预填，
      不落盘；加 `--write` 可直接存 `state/inbox/ch_XXX.json`），按 `state/inbox/README.md`
      的样例纪律填实六区 → 存 `state/inbox/ch_XXX.json`
-     （schema: `engine/schemas/proposal.schema.json`；operation_id = `<ch>.<作者>.<序号>`）；
-  3. `python studio.py sync ch_XXX --dry-run` 预演（校验结构+列出合并计划）；
+     （schema: `engine/schemas/proposal.schema.json`；operation_id = `<ch>.<作者>.<序号>`）。
+     组装前跑 `python studio.py evidence candidates ch_XXX`：线名命中/金额串/新实体标记行/
+     在场提及计数/状态摘要的机器对照——只出数，是否上账归主控；
+  3. `python studio.py proposal check ch_XXX`（结构预检+三方事实对照，不落盘、不要求注记在场）
+     → `python studio.py sync ch_XXX --dry-run` 预演（校验结构+列出合并计划）；
   4. 去 dry-run 正式 `sync`：审校合同闸门 → 引擎合并 → 体检 → 快照 `<ch>_done` 一气呵成
      （注记未答完验收会被闸门拒绝且不落半成品状态，改完注记重跑即可）；
   5. sync 失败 → 提案自动进 failed/：读报错改文件，再 sync（引擎自动捡回）。

@@ -18,7 +18,8 @@ workflow（agents/rules/novel_workflow.md）。
 ## 动作
 
 1. Stage 0：init 与资产填写按 novel_workflow.md 的清单执行；偏离默认值就写「本书偏离清单」。
-2. Stage 1：掷 form、写 beats、装配任务书——「本章禁忌」必须含与上章不同的至少一项
+2. Stage 1：`evidence prev ch_XXX` 对照上章（form/旋钮/words 带/必须保留）→ 掷 form、写 beats、
+   装配任务书——「本章禁忌」必须含与上章不同的至少一项
    （新埋伏笔的角度、不许用的叙事花招、本章特有人物知识边界）。
 3. 派发（Stage 2/3）：按 novel_workflow.md#宿主交接协议 组包；pack 由引擎产出（`studio pack ch_XXX`），
    子代理拿到的就是你装完配的成品。
@@ -26,7 +27,9 @@ workflow（agents/rules/novel_workflow.md）。
    novel_workflow.md 的 Stage 2/Stage 3 一致）：drafter 交付 → 查「缺语境」标记 +
    `evidence file`（字数带/guard 命中）+ 对照「目标/必须保留」逐条核 raw——不过 → 按
    novel_workflow.md#拒收语义 拒收回 Stage 2；guard 交付 → 六项校对清单 + evidence 逐项过 final。
-5. Stage 4：组装提案（样例 `state/inbox/README.md`）→ dry-run → sync；failed 按流程捡回。
+5. Stage 4：`review new ch_XXX --write` 生成注记骨架（验收条目+机器数据预填）→ 填注记 →
+   `evidence candidates ch_XXX` 出机器对照 → 组装提案（样例 `state/inbox/README.md`）→
+   `proposal check ch_XXX` → dry-run → sync；failed 按流程捡回。
 6. 卷终：style_guards 回流（见 novel_workflow.md#模式与控制）。
 
 ## 输出

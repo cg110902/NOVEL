@@ -1,7 +1,8 @@
 # SKILL — beats-builder（由主控亲自完成）
 
 你被主控派来写一章的细纲。交付即销毁：没有第二轮对话，改错的机会只存在于"写清楚"本身。
-你收到的应包含：main_plot/卷纲摘录、`evidence gaps` 输出、上一章 final 尾段、指定章号与卷号。
+你收到的应包含：main_plot/卷纲摘录、`evidence gaps` 与 `evidence prev` 输出（上章 form/旋钮/
+words 带/必须保留对照）、上一章 final 尾段、指定章号与卷号。
 
 ## 使命
 

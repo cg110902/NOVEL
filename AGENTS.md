@@ -49,10 +49,10 @@
 | Stage | 读什么 | 写什么 | 跑什么 |
 |---|---|---|---|
 | 0 初始化 | genre_guide 选材 + templates 引导 | 填 bible/、characters/、main_plot、project.json | `init` → `check` |
-| 1 细纲+任务书 | main_plot、卷纲、status、evidence gaps | `outlines/vol_XX/beats/ch_XXX.md`（front-matter+拍点+任务书） | `evidence words/gaps` |
+| 1 细纲+任务书 | main_plot、卷纲、status、evidence gaps/prev | `outlines/vol_XX/beats/ch_XXX.md`（front-matter+拍点+任务书） | `evidence words/gaps/prev` |
 | 2 起草 | （子代理）任务书+pack | `manuscript/vol_XX/raw/ch_XXX_vN.md` | spawn drafter；pack |
 | 3 重铸精修 | （子代理）任务书 +raw+pack | `final/ch_XXX.md` | spawn guard；验收/校对/evidence/注记全归主控 |
-| 4 同步 | 本章全部产物 |`state/inbox/ch_XXX.json` | `sync ch_XXX --dry-run` → `sync ch_XXX` |
+| 4 同步 | 本章全部产物 |`state/inbox/ch_XXX.json` | `review new` → `evidence candidates` → 填提案 → `proposal check` → `sync ch_XXX --dry-run` → `sync ch_XXX` |
 | 任意时刻 | — | — | `check` / `snapshot list` / `status` |
 
 ## 目录速查
@@ -60,7 +60,7 @@
 `agents/rules/{novel_workflow.md, novel_craft.md}` = SOP 与文学默认值；
 `agents/skills/<角色>/SKILL.md` = 岗位合同；`agents/genre_guide.md` = 题材词汇（只供选择，非公式）；
 `workspace/<slug>/` = 书本体（结构见 novel_workflow.md#工作区）；`studio.py`=薄壳入口
-（仅转发 `engine.cli.main`，引擎逻辑全部在 `engine/*`，10 命令查 `help`）；
+（仅转发 `engine.cli.main`，引擎逻辑全部在 `engine/*`，11 命令查 `help`）；
 
 
 ## 交接语气（对子代理）

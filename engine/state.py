@@ -107,6 +107,8 @@ failed/ = 失败提案，就地处修复后重跑 `sync`，引擎自动捡回。
 写提案的纪律：只写增量；事实必须能在本章 final 正文找到出处；不确定就不上账。
 current 只写要刷新的字段：缺省/空值＝不修改（引擎跳过空串与空数组，不当作清档）。
 status 只许 active/retired（越界整案回滚进 failed/）；"现状/近况"一律并入 summary——upsert 即覆盖，逐章刷新。
+填完六区先 `python studio.py proposal check ch_XXX`（结构预检+三方事实对照，不落盘），
+再 `sync ch_XXX --dry-run` 预演。
 """
 
 
