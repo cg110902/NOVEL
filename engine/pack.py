@@ -87,20 +87,28 @@ def _hard_reminders(book: Path, ch_num: int) -> list[str]:
         lines = state.load_state(book, "lines")
     except ValueError:
         lines = {"foreshadows": [], "misunderstandings": [], "knowledge": []}
+    # 线提醒按（权重高→低, 到期章）排——越重越靠前，同级越急越靠前（排序是机械的，取舍归读包的人）
+    line_msgs: list[tuple] = []
     for g in lines.get("foreshadows", []):
         t = g.get("target_ch")
         if isinstance(t, int) and g.get("status") != "Resolved" and t <= ch_num:
             tag = "本章引爆" if t == ch_num else f"已逾期 {ch_num - t} 章"
-            out.append(f"线 {g['id']}《{g['name']}》target_ch={t} → {tag}（状态 {g.get('status')}）")
+            line_msgs.append((t, evidence.line_sort_key(g, "foreshadow")[1],
+                              f"线 {g['id']}《{g['name']}》target_ch={t} → {tag}（状态 {g.get('status')}）"))
     for m in lines.get("misunderstandings", []):
         if m.get("status") != "Resolved":
-            out.append(f"误会 {m['id']} 未澄清：{m.get('parties','')}（{m.get('content','')[:30]}）")
+            t = m.get("target_ch")
+            line_msgs.append((t if isinstance(t, int) else 10**6, evidence.line_sort_key(m, "misunderstanding")[1],
+                              f"误会 {m['id']} 未澄清：{m.get('parties','')}（{m.get('content','')[:30]}）"))
     for k in lines.get("knowledge", []):
         t = k.get("target_ch")
         if isinstance(t, int) and k.get("status") != "Revealed" and t <= ch_num:
             tag = "本章揭示" if t == ch_num else f"已逾期 {ch_num - t} 章"
-            out.append(f"知识线 {k['id']}《{str(k.get('secret',''))[:24]}》target_ch={t} → {tag}"
-                       f"（状态 {k.get('status')}）")
+            line_msgs.append((t, evidence.line_sort_key(k, "knowledge")[1],
+                              f"知识线 {k['id']}《{str(k.get('secret',''))[:24]}》target_ch={t} → {tag}"
+                              f"（状态 {k.get('status')}）"))
+    line_msgs.sort(key=lambda x: (x[1], x[0]))
+    out.extend(msg for _, _, msg in line_msgs)
     proj = common.load_json(book / "project.json", default={}) or {}
     guards = [x for x in (proj.get("style_guards") or []) if isinstance(x, str) and x]
     if guards:
@@ -348,13 +356,13 @@ def export_views(book: Path) -> Path:
     L += ["", "## entities", "", "| name | type | status | summary |", "|---|---|---|---|"]
     for e in data["entities"].get("entries", []):
         L.append(f"| {e.get('name','')} | {e.get('type','')} | {e.get('status','')} | {e.get('summary','')} |")
-    L += ["", "## lines 台账", "", "| id | name/content | status | target_ch |", "|---|---|---|---|"]
+    L += ["", "## lines 台账", "", "| id | name/content | status | target_ch | 权重 |", "|---|---|---|---|---|"]
     for g in data["lines"].get("foreshadows", []):
-        L.append(f"| {g['id']} | {g.get('name','')} | {g.get('status','')} | {g.get('target_ch','')} |")
+        L.append(f"| {g['id']} | {g.get('name','')} | {g.get('status','')} | {g.get('target_ch','')} | {g.get('weight','-')} |")
     for m in data["lines"].get("misunderstandings", []):
-        L.append(f"| {m['id']} | {m.get('content','')[:30]} | {m.get('status','')} | {m.get('target_ch','')} |")
+        L.append(f"| {m['id']} | {m.get('content','')[:30]} | {m.get('status','')} | {m.get('target_ch','')} | {m.get('level','-')} |")
     for k in data["lines"].get("knowledge", []):
-        L.append(f"| {k['id']} | {str(k.get('secret',''))[:30]} | {k.get('status','')} | {k.get('target_ch','')} |")
+        L.append(f"| {k['id']} | {str(k.get('secret',''))[:30]} | {k.get('status','')} | {k.get('target_ch','')} | {k.get('weight','-')} |")
     L += ["", "## timeline", ""]
     for ev in data["timeline"].get("events", []):
         L.append(f"- {ev.get('time','')}｜{ev.get('event','')}（{ev.get('chapter','')}）")

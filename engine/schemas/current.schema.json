@@ -35,6 +35,14 @@
       "type": "string",
       "description": "一句话处境，供下一章 pack 快速回温"
     },
+    "mood": {
+      "type": "string",
+      "description": "POV 此刻心境/情绪基调（软状态，引擎不校验；如'疑惧交加，对义庄戒备'）。情绪线没动可不写。"
+    },
+    "goal": {
+      "type": "string",
+      "description": "POV 角色当下想要什么（软状态，引擎不校验；区别于 beats 任务书面向读者的目标，如'查清主事去向，同时防被当成贼'）。没变可不写。"
+    },
     "key_relationships": {
       "type": "string",
       "description": "当前主要关系速写（软状态，引擎不校验；如'沈拓↔赵四：敌对未明；沈拓↔村长：客套'）。关系未动可不写。"

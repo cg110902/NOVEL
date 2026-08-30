@@ -36,9 +36,9 @@ _SCHEMA_CACHE: dict[str, dict] = {}
 _LINE_KIND_SPEC = {
     "foreshadow": {"id_re": GUN_ID_RE, "prefix": "GUN",
                    "statuses": ("Planted", "Reminded", "Resolved"), "resolved": "Resolved",
-                   "plant_fields": {"name", "target_ch", "plant_ch", "plan"},
+                   "plant_fields": {"name", "target_ch", "plant_ch", "plan", "weight"},
                    "plant_need": ("name",), "update_str": ("name", "plan"),
-                   "update_fields": {"status", "target_ch", "plan", "name"}},
+                   "update_fields": {"status", "target_ch", "plan", "name", "weight"}},
     "misunderstanding": {"id_re": MIS_ID_RE, "prefix": "MIS",
                          "statuses": ("Active", "Resolved"), "resolved": "Resolved",
                          "plant_fields": {"parties", "content", "truth", "level", "target_ch"},
@@ -47,9 +47,9 @@ _LINE_KIND_SPEC = {
                          "update_fields": {"status", "target_ch", "content", "truth", "level", "parties"}},
     "knowledge": {"id_re": KNO_ID_RE, "prefix": "KNO",
                   "statuses": ("Concealed", "Revealed"), "resolved": "Revealed",
-                  "plant_fields": {"secret", "target_ch", "plant_ch", "note"},
+                  "plant_fields": {"secret", "target_ch", "plant_ch", "note", "weight"},
                   "plant_need": ("secret",), "update_str": ("secret", "note"),
-                  "update_fields": {"status", "target_ch", "secret", "note"}},
+                  "update_fields": {"status", "target_ch", "secret", "note", "weight"}},
 }
 
 
@@ -78,8 +78,8 @@ def inbox_dir(book: Path) -> Path:
 def defaults_for(key: str) -> dict:
     if key == "current":
         return {"time": "", "location": "", "power_level": "", "abilities": "",
-                "injury": "", "equipment": "", "assets": "", "situation": "",
-                "present_characters": []}
+                "injury": "", "equipment": "", "assets": "", "situation": "", "mood": "",
+                "goal": "", "key_relationships": "", "present_characters": []}
     if key == "entities":
         return {"entries": []}
     if key == "lines":
@@ -109,7 +109,8 @@ failed/ = 失败提案，就地处修复后重跑 `sync`，引擎自动捡回。
   "schema": "novel-studio.state-mutation/v2",
   "chapter": "ch_007",
   "operation_id": "ch_007.syncer.0829a",
-  "current": {"location": "青石镇·祠堂", "present_characters": ["沈拓", "村长"]},
+  "current": {"location": "青石镇·祠堂", "present_characters": ["沈拓", "村长"],
+              "mood": "强压着怒意，面上赔笑", "goal": "查清公册下落，先稳住村长"},
   "entities": [{"action": "upsert", "name": "村长", "type": "person",
                "summary": "青石镇村长，玉佩旧案的知情人", "aliases": ["老丈"]},
               {"action": "upsert", "name": "祠堂", "type": "place",
@@ -117,10 +118,11 @@ failed/ = 失败提案，就地处修复后重跑 `sync`，引擎自动捡回。
               {"action": "upsert", "name": "玉佩", "type": "item",
                "summary": "沈家遗物，认主", "holder": "沈拓", "location": "怀中", "condition": "完整"}],
   "lines": [
-    {"kind": "foreshadow", "action": "plant", "name": "祠堂牌位下的匣子", "target_ch": 12},
+    {"kind": "foreshadow", "action": "plant", "name": "祠堂牌位下的匣子", "target_ch": 12,
+     "weight": 3},
     {"kind": "foreshadow", "action": "resolve", "id": "GUN-003"},
     {"kind": "knowledge", "action": "plant", "secret": "村长认得沈家旧印", "target_ch": 9,
-     "note": "沈拓 ch_9 前不得知道"},
+     "note": "沈拓 ch_9 前不得知道", "weight": 2},
     {"kind": "knowledge", "action": "resolve", "id": "KNO-001"}
   ],
   "timeline": {"events": [{"time": "次日清晨", "event": "开祠堂"}]},
@@ -338,6 +340,9 @@ def validate_proposal(proposal, expected_chapter: str | None = None) -> tuple[li
                 if kind == "misunderstanding" and "level" in g and (
                         not isinstance(g["level"], int) or isinstance(g["level"], bool) or g["level"] < 1):
                     errors.append(f"lines[{i}].level 必须为 ≥1 的整数")
+                if kind in ("foreshadow", "knowledge") and "weight" in g and (
+                        not isinstance(g["weight"], int) or isinstance(g["weight"], bool) or g["weight"] < 1):
+                    errors.append(f"lines[{i}].weight 必须为 ≥1 的整数")
                 if g.get("id") and not spec["id_re"].fullmatch(str(g["id"])):
                     errors.append(f"lines[{i}].id 必须匹配 {spec['id_re'].pattern}")
                 _, terr = _norm_target(g.get("target_ch"))
@@ -362,6 +367,9 @@ def validate_proposal(proposal, expected_chapter: str | None = None) -> tuple[li
                     if kind == "misunderstanding" and "level" in g and (
                             not isinstance(g["level"], int) or isinstance(g["level"], bool) or g["level"] < 1):
                         errors.append(f"lines[{i}].level 必须为 ≥1 的整数")
+                    if kind in ("foreshadow", "knowledge") and "weight" in g and (
+                            not isinstance(g["weight"], int) or isinstance(g["weight"], bool) or g["weight"] < 1):
+                        errors.append(f"lines[{i}].weight 必须为 ≥1 的整数")
 
     # --- timeline ---
     tl = proposal.get("timeline")
@@ -546,8 +554,10 @@ def _merge_lines(state: dict, items: list[dict], ch_num: int, rep: dict) -> None
                 continue
             if kind == "foreshadow":
                 arr.append({"id": gid, "name": g["name"], "plant_ch": g.get("plant_ch") or ch_num,
-                            "status": "Planted", "target_ch": target, "plan": g.get("plan", "")})
-                rep["updated"].append(f"🕸️ 埋设伏笔 {gid}《{g['name']}》→ target {target}")
+                            "status": "Planted", "target_ch": target, "weight": g.get("weight", 1),
+                            "plan": g.get("plan", "")})
+                rep["updated"].append(f"🕸️ 埋设伏笔 {gid}《{g['name']}》→ target {target}"
+                                      f"（权重 {g.get('weight', 1)}）")
             elif kind == "misunderstanding":
                 arr.append({"id": gid, "parties": g["parties"], "content": g["content"],
                             "truth": g.get("truth", ""), "level": g.get("level", 1),
@@ -555,8 +565,10 @@ def _merge_lines(state: dict, items: list[dict], ch_num: int, rep: dict) -> None
                 rep["updated"].append(f"🎭 新误会 {gid}：{g['content'][:30]}")
             else:  # knowledge
                 arr.append({"id": gid, "secret": g["secret"], "plant_ch": g.get("plant_ch") or ch_num,
-                            "status": "Concealed", "target_ch": target, "note": g.get("note", "")})
-                rep["updated"].append(f"🔒 知识线登记 {gid}《{g['secret'][:24]}》→ 计划揭示 {target}")
+                            "status": "Concealed", "target_ch": target,
+                            "weight": g.get("weight", 1), "note": g.get("note", "")})
+                rep["updated"].append(f"🔒 知识线登记 {gid}《{g['secret'][:24]}》→ 计划揭示 {target}"
+                                      f"（权重 {g.get('weight', 1)}）")
             idx[gid] = arr[-1]
             continue
         gid = g.get("id")

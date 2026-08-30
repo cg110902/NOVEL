@@ -4,7 +4,8 @@
 纯 stdlib、零第三方依赖；书工作区建在临时目录，测试结束自动清理。
 覆盖：批 1+2 四张工作单（review new / evidence candidates / proposal check /
 evidence prev）+ 五个自交检 warning + 批 4 三台账扩展（KNO 知识线 / item holder /
-current.key_relationships）+ 既有闸门（review_gate / 字数带 / sync 闭环）不回归。
+current.key_relationships）+ 批 5 揭示时机对照/随身清单/retired 上台 +
+批 6 软槽位（current.mood/goal）与线权重 weight 排序 + 既有闸门不回归。
 """
 from __future__ import annotations
 
@@ -524,6 +525,29 @@ class TestKnowledgeAndItems(unittest.TestCase):
                                                       "id": "KNO-001", "note": "x"}]})
         self.assertTrue(any("note" in e for e in errs), errs)
 
+        # 批6 S-B：weight 生命周期（plant 缺省 1 / 显式 3 / update 改 2）
+        lines1 = state.defaults_for("lines")
+        rep1 = {"updated": [], "warnings": [], "errors": []}
+        state._merge_lines(lines1, [
+            {"kind": "foreshadow", "action": "plant", "name": "无权重伏笔", "target_ch": 9},
+            {"kind": "knowledge", "action": "plant", "secret": "带权重秘密", "target_ch": 5,
+             "weight": 3},
+        ], 3, rep1)
+        self.assertEqual(rep1["errors"], [])
+        self.assertEqual(lines1["foreshadows"][0]["weight"], 1)  # 缺省 1
+        self.assertEqual(lines1["knowledge"][0]["weight"], 3)
+        rep1b = {"updated": [], "warnings": [], "errors": []}
+        state._merge_lines(lines1, [{"kind": "knowledge", "action": "update", "id": "KNO-001",
+                                     "weight": 2}], 3, rep1b)
+        self.assertEqual(lines1["knowledge"][0]["weight"], 2)
+        # 非法权重（非整数 / <1）拒绝
+        for bad in ("high", 0, True):
+            errs, _ = state.validate_proposal({"chapter": "ch_003", "operation_id": "t.kno.w",
+                                               "lines": [{"kind": "knowledge", "action": "plant",
+                                                          "secret": "x", "target_ch": 5,
+                                                          "weight": bad}]})
+            self.assertTrue(any("weight" in e for e in errs), (bad, errs))
+
         # 批5 A1：揭示时机在 sync 报告里标章（提前/逾期），准点不标
         lines2 = state.defaults_for("lines")
         rep3 = {"updated": [], "warnings": [], "errors": []}
@@ -550,20 +574,21 @@ class TestKnowledgeAndItems(unittest.TestCase):
         pp = b / "state/inbox/ch_003.json"
         d = json.loads(pp.read_text(encoding="utf-8"))
         d["current"] = {"time": "第三日·晨", "location": "义庄", "present_characters": ["秦野", "白七"],
-                        "key_relationships": "秦野↔白七：试探未明"}
+                        "key_relationships": "秦野↔白七：试探未明",
+                        "mood": "疑惧交加，对白七戒备", "goal": "查清主事去向，防被当成贼"}
         d["entities"] = [{"action": "upsert", "name": "玉佩", "type": "item", "summary": "遗物",
                           "holder": "秦野", "location": "怀中", "condition": "完整"}]
         d["lines"] = [
-            # target 1：封存时已逾期（cur=3）
+            # target 1：封存时已逾期（cur=3），权重 1
             {"kind": "knowledge", "action": "plant",
-             "secret": "白七不是义庄主事，他是看守的", "target_ch": 1,
+             "secret": "白七不是义庄主事，他是看守的", "target_ch": 1, "weight": 1,
              "note": "秦野 ch_3 前不得知道"},
-            # longline：不进 due/upcoming，只挂账
+            # longline 权重 2：不进 due/upcoming，只挂账（排序殿后）
             {"kind": "knowledge", "action": "plant",
-             "secret": "墙皮后的公册是十年前埋的", "target_ch": "longline"},
-            # target 4 = cur+1：status「账上提醒」的 soon 区间
+             "secret": "墙皮后的公册是十年前埋的", "target_ch": "longline", "weight": 2},
+            # target 4 = cur+1：status「账上提醒」的 soon 区间，权重 3
             {"kind": "knowledge", "action": "plant", "id": "KNO-003",
-             "secret": "账册末页的刻痕是谁留的", "target_ch": 4},
+             "secret": "账册末页的刻痕是谁留的", "target_ch": 4, "weight": 3},
         ]
         d["synopsis"] = {"title": "主事", "text": "秦野问出主事去向，确认白七只是看守。"}
         pp.write_text(json.dumps(d, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -574,12 +599,15 @@ class TestKnowledgeAndItems(unittest.TestCase):
         _run(["sync", "ch_003"], b)
 
         lines = json.loads((b / "state/lines.json").read_text(encoding="utf-8"))
-        self.assertEqual([(k["id"], k["status"], k["target_ch"]) for k in lines["knowledge"]],
-                         [("KNO-001", "Concealed", 1),
-                          ("KNO-002", "Concealed", "longline"),
-                          ("KNO-003", "Concealed", 4)])
+        self.assertEqual([(k["id"], k["status"], k["target_ch"], k["weight"])
+                          for k in lines["knowledge"]],
+                         [("KNO-001", "Concealed", 1, 1),
+                          ("KNO-002", "Concealed", "longline", 2),
+                          ("KNO-003", "Concealed", 4, 3)])
         cur = json.loads((b / "state/current.json").read_text(encoding="utf-8"))
         self.assertEqual(cur["key_relationships"], "秦野↔白七：试探未明")
+        self.assertEqual(cur["mood"], "疑惧交加，对白七戒备")
+        self.assertEqual(cur["goal"], "查清主事去向，防被当成贼")
         ents = json.loads((b / "state/entities.json").read_text(encoding="utf-8"))["entries"]
         item = [e for e in ents if e["name"] == "玉佩"][0]
         self.assertEqual((item["holder"], item["location"], item["condition"]),
@@ -590,6 +618,9 @@ class TestKnowledgeAndItems(unittest.TestCase):
         self.assertEqual(g["summary"]["overdue_knowledge"], 1)
         self.assertTrue([k for k in g["knowledge"] if k["id"] == "KNO-001"][0]["overdue"])
         self.assertFalse([k for k in g["knowledge"] if k["id"] == "KNO-002"][0]["overdue"])
+        # 批6 S-B：清单排序——权重高→低（3→1），longline 殿后；条目带 weight
+        self.assertEqual([k["id"] for k in g["knowledge"]], ["KNO-003", "KNO-001", "KNO-002"])
+        self.assertEqual([k["weight"] for k in g["knowledge"]], [3, 1, 2])
         d = _run_json(["check", "--json"], b)
         self.assertTrue(any(w["code"] == "line_overdue" and "KNO-001" in w["msg"]
                             for w in d["warnings"]))
@@ -599,6 +630,15 @@ class TestKnowledgeAndItems(unittest.TestCase):
         self.assertTrue(any("KNO-001" in m for m in p["p0"]["hard_reminders"]))
         self.assertFalse(any("KNO-002" in m for m in p["p0"]["hard_reminders"]))  # longline 不催
         self.assertEqual(p["p0"]["current"]["key_relationships"], "秦野↔白七：试探未明")
+        # 批6 S-A/S-C：软槽位原样进 P0 回温
+        self.assertEqual(p["p0"]["current"]["mood"], "疑惧交加，对白七戒备")
+        self.assertEqual(p["p0"]["current"]["goal"], "查清主事去向，防被当成贼")
+
+        # export 台账表：权重列
+        _run(["export", "--views"], b)
+        view = (b / "export/views/state_view.md").read_text(encoding="utf-8")
+        self.assertTrue(any(ln.startswith("| KNO-003 |") and "| 3 |" in ln
+                            for ln in view.splitlines()), view)
 
         # candidates：secret/note 中的注册名被计数；due/upcoming 含 knowledge；longline 不催
         d = _run_json(["evidence", "candidates", "ch_003"], b)

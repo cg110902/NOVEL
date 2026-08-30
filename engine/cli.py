@@ -287,6 +287,8 @@ def _status_debts(book) -> None:
         soon = [x for x in g["foreshadows"] + g["misunderstandings"] + g.get("knowledge", [])
                 if isinstance(x.get("target_ch"), int) and x.get("status") not in ("Resolved", "Revealed")
                 and 0 <= x["target_ch"] - cur <= 2]
+        soon.sort(key=lambda x: (-int(x.get("weight") or x.get("level") or 1),
+                                 x["target_ch"] - cur, str(x.get("id", ""))))
         for x in soon[:2]:
             nid = x.get("id", "?")
             left = x["target_ch"] - cur

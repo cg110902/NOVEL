@@ -152,7 +152,8 @@ def gaps(book: Path) -> dict:
         overdue = isinstance(t, int) and g.get("status") != "Resolved" and t < cur
         out["foreshadows"].append({
             "id": g["id"], "name": g.get("name", ""), "status": g.get("status"),
-            "plant_ch": g.get("plant_ch"), "target_ch": t, "overdue": overdue,
+            "plant_ch": g.get("plant_ch"), "target_ch": t, "weight": g.get("weight", 1),
+            "overdue": overdue,
             "idle_chapters": (cur - int(g.get("plant_ch") or 0)) if g.get("status") != "Resolved" else 0})
     for m in lines.get("misunderstandings", []):
         t = m.get("target_ch")
@@ -165,7 +166,12 @@ def gaps(book: Path) -> dict:
         overdue = isinstance(t, int) and k.get("status") != "Revealed" and t < cur
         out["knowledge"].append({
             "id": k["id"], "secret": k.get("secret", ""), "status": k.get("status"),
-            "plant_ch": k.get("plant_ch"), "target_ch": t, "overdue": overdue})
+            "plant_ch": k.get("plant_ch"), "target_ch": t, "weight": k.get("weight", 1),
+            "overdue": overdue})
+    # 逾期/到期清单排序（机械）：权重高者优先——多条线齐逾期时"先还哪条"有据
+    out["foreshadows"].sort(key=lambda x: line_sort_key(x, "foreshadow"))
+    out["misunderstandings"].sort(key=lambda x: line_sort_key(x, "misunderstanding"))
+    out["knowledge"].sort(key=lambda x: line_sort_key(x, "knowledge"))
     out["summary"] = {"open_foreshadows": sum(1 for g in out["foreshadows"] if g["status"] != "Resolved"),
                       "overdue_foreshadows": sum(1 for g in out["foreshadows"] if g["overdue"]),
                       "open_misunderstandings": sum(1 for m in out["misunderstandings"] if m["status"] != "Resolved"),
@@ -250,6 +256,16 @@ def _line_terms_for(g: dict, kind: str, reg_terms: list[str]) -> list[str]:
     return terms
 
 
+def line_sort_key(g: dict, kind: str) -> tuple:
+    """台账线排序键（纯机械）：整数到期章在前（longline 殿后）→ 权重/级别高→低 → 章号 → ID。
+    weight/level 是主控写的语义分级，引擎只用于排清单出数，不做判断。"""
+    prio_field = "level" if kind == "misunderstanding" else "weight"
+    prio = g.get(prio_field)
+    prio = int(prio) if isinstance(prio, int) and not isinstance(prio, bool) and prio >= 1 else 1
+    t = g.get("target_ch")
+    return (0 if isinstance(t, int) else 1, -prio, t if isinstance(t, int) else 0, str(g.get("id", "")))
+
+
 def candidates(book: Path, ch: str) -> dict:
     """Stage 4 工作单数据：以本章 final 为源做机器对照，只出数、零裁决。
 
@@ -280,15 +296,19 @@ def candidates(book: Path, ch: str) -> dict:
             t = g.get("target_ch")
             if isinstance(t, int):
                 item = {"id": g["id"], "kind": kind, "target_ch": t}
+                sk = line_sort_key(g, kind)  # 排序键在剥离权重前取，输出条目不携带权重
                 if t <= n:
-                    due.append(item)
+                    due.append((t, sk[1], sk[3], item))
                 elif t <= n + 2:
-                    upcoming.append(item)
+                    upcoming.append((t, sk[1], sk[3], item))
             hits = {tm: text.count(tm) for tm in _line_terms_for(g, kind, reg_terms) if tm in text}
             if hits:
                 line_hits.append({"id": g["id"], "kind": kind,
                                   "label": str(g.get("name", g.get("parties", g.get("secret", "")))),
                                   "target_ch": t, "hits": hits})
+    # 统一口径：权重高→低，同级按到期章、再按 ID（与 gaps/pack/status 同一条排序）
+    due = [p[3] for p in sorted(due, key=lambda p: (p[1], p[0], p[2]))]
+    upcoming = [p[3] for p in sorted(upcoming, key=lambda p: (p[1], p[0], p[2]))]
     out["line_hits"] = line_hits
     out["due_lines"] = due
     out["upcoming_lines"] = upcoming
