@@ -567,7 +567,12 @@ def _merge_lines(state: dict, items: list[dict], ch_num: int, rep: dict) -> None
         if action == "resolve":
             ent["status"] = spec["resolved"]
             if kind == "knowledge":
-                rep["updated"].append(f"🔓 {gid} 已揭示")
+                t = ent.get("target_ch")
+                if ch_num and isinstance(t, int) and t != ch_num:
+                    tag = "提前" if ch_num < t else "逾期"
+                    rep["updated"].append(f"🔓 {gid} 已揭示（{tag}：计划 ch_{t:03d}，本章 ch_{ch_num:03d}）")
+                else:
+                    rep["updated"].append(f"🔓 {gid} 已揭示")
             else:
                 rep["updated"].append(f"✅ {gid} 已回收/澄清")
         elif action == "remind":

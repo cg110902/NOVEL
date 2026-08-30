@@ -54,6 +54,7 @@ workspace/<slug>/
 - **lines 台账** = `state/lines.json` 的三线登记簿：伏笔 `GUN-*`、误会 `MIS-*`、知识线 `KNO-*`
   （秘密/信息账：secret 一句话 + 计划揭示章 target_ch，状态 Concealed/Revealed）。
   三类都有 target_ch（章号或 longline），逾期由 check 报数；**揭没揭由你判断**，引擎只记账。
+  揭示时机与计划不符时，`proposal check` 三方对照出数（提前/逾期）、sync 报告标章——改不改归你。
 - **ledger 账本** = `state/ledger.json` 的资金/资源池流水，余额由引擎重算，"账本 current 值"指这里。
 - **越界知情** = 角色的言行使他表现出尚未通过剧情获得的信息；判定标准见 `novel_craft.md#知识是资产`。
 

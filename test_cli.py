@@ -423,6 +423,46 @@ FINAL3 = ("义庄主事不见秦野。秦野问白七主事去向，白七只说
           "白七从头到尾不是主事，只是看守。他想起柜台下那只比脸先动的手，后颈又一次发凉，"
           "把袖子拢了拢。")
 
+BEATS4 = """---
+chapter: ch_004
+vol: vol_01
+form: 单场景章
+pov: 秦野·贴身第三人称
+words: 3000-4800
+style_notes: 短促 | 章首中间开始 | 章尾强钩
+---
+## 拍点
+
+S1 秦野与白七摊牌。
+
+## 线动作
+
+- 揭示：KNO-001
+
+## 任务书
+
+## 目标
+
+1. 白七承认自己只是看守。
+
+## 必须保留
+
+- （无）
+
+## 本章禁忌
+
+- 不用「忽然」
+
+## 验收
+
+1. 白七承认自己只是看守。
+"""
+
+FINAL4 = ("秦野把当票拍在柜台上，问白七主事到底是谁。白七拨算盘的手停了，半晌，"
+          "承认自己只是看守，主事从来就没来过。秦野盯着他，后颈那股凉意总算散了大半。"
+          "柜台的影子落在两人中间，谁也没有再说话。秦野把玉佩收进怀里，拢了拢袖子，"
+          "最后才转身出门。门外的天黑透了，更漏声从远处传过来，一下，又一下。")
+
 
 class TestKnowledgeAndItems(unittest.TestCase):
     """批 4 扩展：KNO 知识线生命周期 + item holder 闭合 + current.key_relationships。
@@ -483,6 +523,23 @@ class TestKnowledgeAndItems(unittest.TestCase):
                                            "lines": [{"kind": "knowledge", "action": "resolve",
                                                       "id": "KNO-001", "note": "x"}]})
         self.assertTrue(any("note" in e for e in errs), errs)
+
+        # 批5 A1：揭示时机在 sync 报告里标章（提前/逾期），准点不标
+        lines2 = state.defaults_for("lines")
+        rep3 = {"updated": [], "warnings": [], "errors": []}
+        state._merge_lines(lines2, [{"kind": "knowledge", "action": "plant", "secret": "x",
+                                     "target_ch": 5}], 3, rep3)
+        rep4 = {"updated": [], "warnings": [], "errors": []}
+        state._merge_lines(lines2, [{"kind": "knowledge", "action": "resolve", "id": "KNO-001"}], 3, rep4)
+        msg = rep4["updated"][-1]
+        self.assertIn("提前", msg)
+        self.assertIn("ch_005", msg)
+        self.assertIn("ch_003", msg)
+        rep5 = {"updated": [], "warnings": [], "errors": []}
+        state._merge_lines(lines2, [{"kind": "knowledge", "action": "plant", "secret": "y",
+                                     "target_ch": 4}], 4, rep5)
+        state._merge_lines(lines2, [{"kind": "knowledge", "action": "resolve", "id": "KNO-002"}], 4, rep5)
+        self.assertEqual(rep5["updated"][-1], "🔓 KNO-002 已揭示")
 
     def test_kno_sync_and_overdue(self):
         b = self.book
@@ -566,6 +623,37 @@ class TestKnowledgeAndItems(unittest.TestCase):
         st = _run(["status"], b)
         self.assertIn("KNO-003", st.stdout)
         self.assertNotIn("KNO-002", st.stdout)
+
+        # ---- 批5 A2：P1 人物块随身清单（holder 反查：秦野 → 玉佩） ----
+        self.assertEqual(qy["carries"], ["玉佩（怀中·完整）"])
+
+        # ---- 批5 A1+A3：ch_004 提案（KNO-001 逾期揭示 + 白七 retired 仍上台） ----
+        (b / "outlines/vol_01/beats/ch_004.md").write_text(BEATS4, encoding="utf-8")
+        (b / "manuscript/vol_01/final/ch_004.md").write_text(FINAL4, encoding="utf-8")
+        (b / "log/review/ch_004.md").write_text(
+            "# ch_004\n\n## 验收\n\n1. 白七承认自己只是看守。 ✓ 证据：「承认自己只是看守」\n",
+            encoding="utf-8")
+        _run(["proposal", "new", "ch_004", "--write"], b)
+        pp4 = b / "state/inbox/ch_004.json"
+        d4 = json.loads(pp4.read_text(encoding="utf-8"))
+        d4["current"] = {"time": "第三日·暮", "location": "义庄",
+                         "present_characters": ["秦野", "白七"]}
+        d4["entities"] = [{"action": "upsert", "name": "白七", "status": "retired"}]
+        d4["lines"] = [{"kind": "knowledge", "action": "resolve", "id": "KNO-001"}]
+        d4["synopsis"] = {"title": "摊牌", "text": "秦野摊牌，白七承认只是看守。"}
+        pp4.write_text(json.dumps(d4, ensure_ascii=False, indent=2), encoding="utf-8")
+
+        d4 = _run_json(["proposal", "check", "ch_004"], b)
+        self.assertEqual(d4["cross_facts"].get("kno_reveal_timing"),
+                         [{"id": "KNO-001", "planned_ch": 1, "chapter": 4, "early": False}])
+        sp = _run(["sync", "ch_004"], b)
+        self.assertIn("逾期", sp.stdout)
+        self.assertIn("KNO-001", sp.stdout)
+
+        d4 = _run_json(["check", "--json"], b)
+        self.assertEqual(d4["errors"], [])
+        self.assertTrue(any(w["code"] == "retired_entity_on_stage" and "白七" in w["msg"]
+                            for w in d4["warnings"]))
 
     def test_old_lines_file_fills_knowledge(self):
         """旧版 lines.json 缺 knowledge 键：读时按结构补齐（不报错、不改语义）。"""

@@ -133,6 +133,16 @@ def _entity_block(book: Path, name: str, cur: dict, lines: dict, full: bool) -> 
     for f in ("holder", "location", "condition"):
         if e.get(f):
             block[f] = e[f]
+    # 随身清单：holder 指向本实体的在役道具（纯分组，物→人反查）
+    carried = []
+    for it in cur["entities"].get("entries", []):
+        if it.get("type") != "item" or it.get("status") == "retired":
+            continue
+        if str(it.get("holder", "")) in alias:
+            meta = [x for x in (it.get("location"), it.get("condition")) if x]
+            carried.append(f"{it['name']}（{'·'.join(meta)}）" if meta else str(it["name"]))
+    if carried:
+        block["carries"] = carried
     if full:
         card = str(e.get("card", "")).strip()
         if card:

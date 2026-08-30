@@ -188,6 +188,20 @@ def proposal_cross_facts(book: Path, ch: str, proposal: dict) -> dict:
     ops = sorted({str(g.get("id")) for g in (proposal.get("lines") or [])
                   if isinstance(g, dict) and g.get("id") and g.get("action", "plant") != "plant"})
     facts["lines_ops_in_proposal"] = ops
+    # 知识线揭示时机对照：提案标记 KNO 揭示 × 台账计划揭示章（纯算术比数，提前/逾期归主控）
+    ledger_kno = {str(k.get("id")): k for k in lines.get("knowledge", [])}
+    timing = []
+    for g in (proposal.get("lines") or []):
+        if not isinstance(g, dict) or g.get("kind") != "knowledge" or g.get("action") != "resolve":
+            continue
+        k = ledger_kno.get(str(g.get("id")))
+        if not k:
+            continue
+        t = k.get("target_ch")
+        if isinstance(t, int) and t != n:
+            timing.append({"id": str(g.get("id")), "planned_ch": t, "chapter": n, "early": n < t})
+    if timing:
+        facts["kno_reveal_timing"] = timing
     facts["present_in_proposal"] = list(((proposal.get("current") or {}).get("present_characters") or []))
     return facts
 
@@ -232,6 +246,17 @@ def run_checks(book: Path) -> dict:
                 errors.append(_err("unregistered_character",
                                    f"current.present_characters 引用未登记实体「{name}」"
                                    "（先在 entities 提案注册，名字须与卡一致）"))
+        # retired 实体上台：retired=退场/死亡，仍在 present = 事实矛盾（闪回章由主控判读）
+        retired = set()
+        for e in ents:
+            if e.get("status") == "retired":
+                retired.add(str(e.get("name", "")))
+                retired.update(str(a) for a in e.get("aliases", []) if a)
+        for name in cur.get("present_characters", []):
+            if str(name) in retired:
+                warnings.append(_err("retired_entity_on_stage",
+                                     f"current.present_characters 含已退休实体「{name}」"
+                                     "（retired=退场/死亡——闪回/补叙章可忽略，否则移出 present 或改回 active）"))
     except (ValueError, FileNotFoundError) as exc:
         errors.append(_err("state_unreadable", str(exc)))
 

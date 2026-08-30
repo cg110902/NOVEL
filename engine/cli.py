@@ -598,6 +598,10 @@ def _cmd_proposal_check(book: Path, ch: str, args) -> int:
             print(f"   提案 lines 区操作: {'、'.join(ops) if ops else '（无）'}")
         else:
             print("   到期未结线: 无")
+        if facts.get("kno_reveal_timing"):
+            tm = "、".join(f"{x['id']}(计划 ch_{x['planned_ch']:03d}，本章 ch_{x['chapter']:03d}，"
+                           f"{'提前' if x['early'] else '逾期'})" for x in facts["kno_reveal_timing"])
+            print(f"   知识线揭示时机与计划不符: {tm}（改不改归主控）")
         if facts.get("present_mentions") is not None:
             pm = facts["present_mentions"]
             pm_str = "、".join(f"{k}×{v}" for k, v in sorted(pm.items(), key=lambda x: -x[1])[:8]) or "无"
