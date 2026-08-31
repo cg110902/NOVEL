@@ -35,7 +35,7 @@ _WORDS_BAND_RE = re.compile(r"(\d+)\s*[-–—~～]\s*(\d+)")
 
 
 def _words_band(s: str) -> tuple[int | None, int | None]:
-    """'2200-4500' → (2200, 4500)；解析不出 → (None, None)。"""
+    """'2200-3500' → (2200, 3500)；解析不出 → (None, None)。"""
     m = _WORDS_BAND_RE.search(s or "")
     return (int(m.group(1)), int(m.group(2))) if m else (None, None)
 

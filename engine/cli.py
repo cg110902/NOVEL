@@ -146,7 +146,7 @@ def cmd_init(args) -> int:
         "genre": args.genre or "",
         "protagonist": args.protagonist or "",
         "mode": "automatic",
-        "words_target": [2200, 4500],
+        "words_target": [2200, 3500],
         "style_guards": [],
         "created_at": datetime.date.today().isoformat(),
     }
