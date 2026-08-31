@@ -19,5 +19,6 @@
 ## 填写规范
 
 1. **槽位填充**：模板中的 `{{slot:xxx}}` 为初始化占位符，完成 Stage 0 设定后填实。`python studio.py check` 会自动检查未填槽位。
-2. **细纲任务书格式**：单章 beats 文件头部为 YAML Front-matter，正文包含 `## 拍点`、`## 线动作` 以及任务书四节（`## 目标`、`## 必须保留`、`## 本章禁忌`、`## 验收`）。
+2. **人物卡规范**：`studio.py init` 初始化时会自动生成主角卡 `characters/protagonist.md`（标题已填入主角名，亦可重命名为 `characters/<主角名>.md`）。新增配角时从 `templates/character_card.md` 另存为 `characters/<角色名>.md`，并同步在 `state/entities.json` 登记实体。
+3. **细纲任务书格式**：单章 beats 文件头部为 YAML Front-matter，正文包含 `## 拍点`、`## 线动作` 以及任务书四节（`## 目标`、`## 必须保留`、`## 本章禁忌`、`## 验收`）。
 

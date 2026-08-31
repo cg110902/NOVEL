@@ -2,7 +2,7 @@
 chapter: {{slot:chapter_id}}
 vol: {{slot:vol_id}}
 form: 对抗破局 / 获取养成 / 人际推拉 / 探索转场 / 高潮兑现
-pov: {{slot:protagonist_name}}·贴身受限第三人称
+pov: {{slot:protagonist|主角名}}·贴身受限第三人称
 words: 2000-3600
 style_notes: 节奏鲜明 | 拒绝结构雷同 | 读感自然丝滑
 guard_extra: 

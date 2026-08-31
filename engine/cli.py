@@ -155,7 +155,7 @@ def cmd_init(args) -> int:
     done = _instantiate_templates(book, {"title": args.title or "", "genre": args.genre or "",
                                          "protagonist": args.protagonist or ""})
     print(f"✅ 书工作区已创建: {book}（状态机播种 {seeded} 个 JSON；模板实例化 {len(done)} 份：{', '.join(done)}）")
-    print("   下一步（Stage 0）：主控读 AGENTS.md 开局地图，按 templates/ 与 agents/genre_guide.md")
+    print("   下一步（Stage 0）：主控读 AGENTS.md 开局地图，按 templates/ 与 .agents/genre_guide.md")
     print("   填实 bible/ characters/ outlines/ 资产（未填的 {{slot:}} 会被 check 拦下）。")
     return 0
 
@@ -646,27 +646,71 @@ def _cmd_proposal_auto(book: Path, ch: str, args) -> int:
         if "埋设" in ln:
             m = re.search(r"(GUN|MIS|KNO)-\d+", ln)
             name_m = re.search(r"[(（](.+?)[)）]", ln)
-            name = name_m.group(1) if name_m else (m.group(0) if m else "新伏笔")
-            lines_ops.append({
-                "action": "plant",
-                "kind": "foreshadow" if "GUN" in ln else "misunderstanding" if "MIS" in ln else "knowledge",
-                "name": name,
-                "target_ch": n + 3,
-                "weight": 2,
-                "plan": ln
-            })
-        elif "推进" in ln or "更新" in ln or "揭示" in ln or "兑现" in ln:
+            name = name_m.group(1) if name_m else (m.group(0) if m else "新线索")
+            lid = m.group(0) if m else None
+            kind = "foreshadow" if (lid and "GUN" in lid) or ("GUN" in ln) or ("伏笔" in ln) else \
+                   "misunderstanding" if (lid and "MIS" in lid) or ("MIS" in ln) or ("误会" in ln) else \
+                   "knowledge" if (lid and "KNO" in lid) or ("KNO" in ln) or ("知识" in ln) or ("秘密" in ln) else "foreshadow"
+            
+            if kind == "foreshadow":
+                item = {
+                    "action": "plant",
+                    "kind": "foreshadow",
+                    "name": name,
+                    "target_ch": n + 3,
+                    "weight": 2,
+                    "plan": ln
+                }
+            elif kind == "misunderstanding":
+                parties = name if any(x in name for x in ("↔", "与", "和", "对")) else f"主角与{name}"
+                item = {
+                    "action": "plant",
+                    "kind": "misunderstanding",
+                    "parties": parties,
+                    "content": ln,
+                    "truth": "",
+                    "level": 1,
+                    "target_ch": n + 3
+                }
+            else:  # knowledge
+                item = {
+                    "action": "plant",
+                    "kind": "knowledge",
+                    "secret": name if len(name) > 3 else ln,
+                    "target_ch": n + 3,
+                    "weight": 2,
+                    "note": ln
+                }
+            if lid:
+                item["id"] = lid
+            lines_ops.append(item)
+        elif "推进" in ln or "更新" in ln or "揭示" in ln or "兑现" in ln or "澄清" in ln or "回唤" in ln:
             m = re.search(r"(GUN|MIS|KNO)-\d+", ln)
             if m:
                 lid = m.group(0)
                 kind = "foreshadow" if "GUN" in lid else "misunderstanding" if "MIS" in lid else "knowledge"
-                act = "resolve" if ("揭示" in ln or "兑现" in ln) else "update"
-                lines_ops.append({
-                    "action": act,
-                    "kind": kind,
-                    "id": lid,
-                    "note": ln
-                })
+                is_resolve = ("揭示" in ln or "兑现" in ln or "澄清" in ln)
+                is_remind = ("回唤" in ln and kind == "foreshadow")
+                act = "resolve" if is_resolve else "remind" if is_remind else "update"
+                if act in ("resolve", "remind"):
+                    lines_ops.append({
+                        "action": act,
+                        "kind": kind,
+                        "id": lid
+                    })
+                else:
+                    up_item = {
+                        "action": "update",
+                        "kind": kind,
+                        "id": lid
+                    }
+                    if kind == "knowledge":
+                        up_item["note"] = ln
+                    elif kind == "foreshadow":
+                        up_item["plan"] = ln
+                    elif kind == "misunderstanding":
+                        up_item["content"] = ln
+                    lines_ops.append(up_item)
 
     # 提取在场人物
     lookup = evidence.entity_lookup(book)

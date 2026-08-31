@@ -1,4 +1,4 @@
-﻿import json
+import json
 import re
 from pathlib import Path
 from engine import common, evidence, state
@@ -12,9 +12,7 @@ def generate_dashboard_html(book: Path) -> str:
     # 1. 状态与实体
     cur = state.load_state(book, "current")
     ents = state.load_state(book, "entities").get("entries", [])
-    lines_state = state.load_state(book, "lines")
     gaps_data = evidence.gaps(book)
-    snaps = common.find_chapter_files(book, "final")
     
     # 2. 章节与钩子分析
     chapters_info = []
@@ -29,6 +27,22 @@ def generate_dashboard_html(book: Path) -> str:
             "hook_desc": hook_info.get("detail", ""),
         })
     
+    # 3. 伏笔与暗线状态清洗
+    active_guns = [g for g in gaps_data.get("foreshadows", []) if g.get("status") != "Resolved" and not g.get("overdue")]
+    active_mis = [m for m in gaps_data.get("misunderstandings", []) if m.get("status") != "Resolved" and not m.get("overdue")]
+    active_kno = [k for k in gaps_data.get("knowledge", []) if k.get("status") != "Revealed" and not k.get("overdue")]
+    
+    overdue_items = []
+    for g in gaps_data.get("foreshadows", []):
+        if g.get("overdue"):
+            overdue_items.append({"id": g["id"], "title": g.get("name", ""), "desc": f"逾期 {g.get('idle_chapters', 0)} 章 ｜ 目标 ch_{g.get('target_ch')}"})
+    for m in gaps_data.get("misunderstandings", []):
+        if m.get("overdue"):
+            overdue_items.append({"id": m["id"], "title": m.get("parties", ""), "desc": f"逾期未澄清 ｜ 目标 ch_{m.get('target_ch')}"})
+    for k in gaps_data.get("knowledge", []):
+        if k.get("overdue"):
+            overdue_items.append({"id": k["id"], "title": str(k.get("secret", ""))[:18], "desc": f"逾期未揭示 ｜ 目标 ch_{k.get('target_ch')}"})
+
     # HTML 模版构建
     html = f"""<!DOCTYPE html>
 <html lang="zh-CN">
@@ -76,8 +90,10 @@ def generate_dashboard_html(book: Path) -> str:
         /* 实体网格 */
         .entity-grid {{ display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }}
         .entity-card {{ background: var(--bg-sub); border-radius: 8px; padding: 12px; border-left: 4px solid var(--accent-cyan); }}
-        .entity-card.enemy {{ border-left-color: var(--accent-pink); }}
+        .entity-card.place {{ border-left-color: var(--accent-emerald); }}
         .entity-card.item {{ border-left-color: var(--accent-amber); }}
+        .entity-card.faction, .entity-card.force, .entity-card.org {{ border-left-color: var(--accent-purple); }}
+        .entity-card.retired {{ border-left-color: var(--accent-pink); opacity: 0.65; }}
         .entity-name {{ font-weight: 600; font-size: 14px; margin-bottom: 4px; display: flex; justify-content: space-between; }}
         .entity-summary {{ font-size: 12px; color: var(--text-muted); line-height: 1.4; }}
         
@@ -135,32 +151,32 @@ def generate_dashboard_html(book: Path) -> str:
             </div>
             <div class="kanban">
                 <div class="kanban-col">
-                    <div class="kanban-col-header" style="color: var(--accent-emerald);">🟢 埋设推进中 <span>{len([g for g in gaps_data.get('foreshadows',[]) if not g['overdue']])}</span></div>
+                    <div class="kanban-col-header" style="color: var(--accent-emerald);">🟢 埋设推进中 <span>{len(active_guns)}</span></div>
                     {"".join(f'''<div class="kanban-card">
                         <div class="kanban-card-title">[{g['id']}] {g['name']}</div>
-                        <div class="kanban-card-meta"><span>权重 {g['weight']}</span><span>目标 ch_{g['target_ch']}</span></div>
-                    </div>''' for g in gaps_data.get('foreshadows',[]) if not g['overdue'])}
+                        <div class="kanban-card-meta"><span>权重 {g.get('weight', 1)}</span><span>目标 ch_{g.get('target_ch')}</span></div>
+                    </div>''' for g in active_guns) or '<div style="color: var(--text-muted); font-size: 11px; text-align: center; padding: 12px 0;">暂无埋设伏笔</div>'}
                 </div>
                 <div class="kanban-col">
-                    <div class="kanban-col-header" style="color: var(--accent-amber);">🟡 误会与认知差 <span>{len(gaps_data.get('misunderstandings',[]))}</span></div>
+                    <div class="kanban-col-header" style="color: var(--accent-amber);">🟡 误会与认知差 <span>{len(active_mis)}</span></div>
                     {"".join(f'''<div class="kanban-card">
                         <div class="kanban-card-title">[{m['id']}] {m['parties']}</div>
-                        <div class="kanban-card-meta"><span>等级 {m.get('level', 1)}</span><span>{m['status']}</span></div>
-                    </div>''' for m in gaps_data.get('misunderstandings',[]))}
+                        <div class="kanban-card-meta"><span>等级 {m.get('level', 1)}</span><span>目标 ch_{m.get('target_ch')}</span></div>
+                    </div>''' for m in active_mis) or '<div style="color: var(--text-muted); font-size: 11px; text-align: center; padding: 12px 0;">暂无误会线索</div>'}
                 </div>
                 <div class="kanban-col">
-                    <div class="kanban-col-header" style="color: var(--accent-purple);">🔒 秘密信息差 <span>{len(gaps_data.get('knowledge',[]))}</span></div>
+                    <div class="kanban-col-header" style="color: var(--accent-purple);">🔒 秘密信息差 <span>{len(active_kno)}</span></div>
                     {"".join(f'''<div class="kanban-card">
-                        <div class="kanban-card-title">[{k['id']}] {k['secret'][:20]}...</div>
-                        <div class="kanban-card-meta"><span>权重 {k.get('weight', 1)}</span><span>{k['status']}</span></div>
-                    </div>''' for k in gaps_data.get('knowledge',[]))}
+                        <div class="kanban-card-title">[{k['id']}] {str(k.get('secret', ''))[:18]}...</div>
+                        <div class="kanban-card-meta"><span>权重 {k.get('weight', 1)}</span><span>目标 ch_{k.get('target_ch')}</span></div>
+                    </div>''' for k in active_kno) or '<div style="color: var(--text-muted); font-size: 11px; text-align: center; padding: 12px 0;">暂无未揭秘密</div>'}
                 </div>
                 <div class="kanban-col">
-                    <div class="kanban-col-header" style="color: var(--accent-pink);">🔴 逾期预警 <span>{len([g for g in gaps_data.get('foreshadows',[]) if g['overdue']])}</span></div>
+                    <div class="kanban-col-header" style="color: var(--accent-pink);">🔴 逾期预警 <span>{len(overdue_items)}</span></div>
                     {"".join(f'''<div class="kanban-card" style="border-color: var(--accent-pink);">
-                        <div class="kanban-card-title">[{g['id']}] {g['name']}</div>
-                        <div class="kanban-card-meta"><span style="color: var(--accent-pink);">逾期 {g.get('idle_chapters', 0)} 章</span><span>target {g['target_ch']}</span></div>
-                    </div>''' for g in gaps_data.get('foreshadows',[]) if g['overdue']) or '<div style="color: var(--text-muted); font-size: 11px; text-align: center; padding: 12px 0;">暂无逾期线索</div>'}
+                        <div class="kanban-card-title">[{item['id']}] {item['title']}</div>
+                        <div class="kanban-card-meta"><span style="color: var(--accent-pink);">{item['desc']}</span></div>
+                    </div>''' for item in overdue_items) or '<div style="color: var(--text-muted); font-size: 11px; text-align: center; padding: 12px 0;">暂无逾期线索</div>'}
                 </div>
             </div>
         </div>
@@ -196,13 +212,13 @@ def generate_dashboard_html(book: Path) -> str:
                 <div class="card-title">👥 出场人物与关键实体网络</div>
             </div>
             <div class="entity-grid">
-                {"".join(f'''<div class="entity-card {'enemy' if '楚凌霄' in e['name'] or '苏红袖' in e['name'] else 'item' if e.get('type')=='item' else ''}">
+                {"".join(f'''<div class="entity-card {e.get('type', 'person')} {'retired' if e.get('status') == 'retired' else ''}">
                     <div class="entity-name">
                         <span>{e['name']}</span>
-                        <span style="font-size: 11px; color: var(--text-muted); font-weight: normal;">{e.get('type', 'person')}</span>
+                        <span style="font-size: 11px; color: var(--text-muted); font-weight: normal;">{e.get('type', 'person')}{' · 已退役' if e.get('status') == 'retired' else ''}</span>
                     </div>
-                    <div class="entity-summary">{e.get('summary', '暂无描述')[:60]}...</div>
-                </div>''' for e in ents[:8])}
+                    <div class="entity-summary">{e.get('summary', '暂无描述')[:60]}</div>
+                </div>''' for e in ents[:12]) or '<div style="color: var(--text-muted); font-size: 12px; grid-column: 1/-1;">暂未登记实体</div>'}
             </div>
         </div>
     </div>

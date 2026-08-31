@@ -121,6 +121,8 @@ failed/ = 失败提案，就地处修复后重跑 `sync`，引擎自动捡回。
     {"kind": "foreshadow", "action": "plant", "name": "祠堂牌位下的匣子", "target_ch": 12,
      "weight": 3},
     {"kind": "foreshadow", "action": "resolve", "id": "GUN-003"},
+    {"kind": "misunderstanding", "action": "plant", "parties": "沈拓与村长", "content": "村长误以为沈拓来夺公册",
+     "level": 1, "target_ch": 10},
     {"kind": "knowledge", "action": "plant", "secret": "村长认得沈家旧印", "target_ch": 9,
      "note": "沈拓 ch_9 前不得知道", "weight": 2},
     {"kind": "knowledge", "action": "resolve", "id": "KNO-001"}

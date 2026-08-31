@@ -3,8 +3,8 @@
 专为 **Google Antigravity** 深度定制的现代化网络小说多智能体创作框架。
 
 > 📖 **核心宪法指引**：`AGENTS.md`  
-> 🛠️ **创作技巧指南**：`agents/rules/novel_craft.md`  
-> 🔄 **流水线执行标准**：`agents/rules/novel_workflow.md`
+> 🛠️ **创作技巧指南**：`.agents/rules/novel_craft.md`  
+> 🔄 **流水线执行标准**：`.agents/rules/novel_workflow.md`
 
 ---
 
@@ -58,10 +58,12 @@ NOVEL/
 ├── studio.py                  # CLI 薄壳入口
 ├── engine/                    # 状态机与确定性校验引擎（纯 Python 标准库）
 ├── templates/                 # 设定、大纲、细纲模板库
-├── agents/
+├── .agents/                   # Antigravity 工作区级智能体定制目录
 │   ├── rules/
 │   │   ├── novel_workflow.md  # 5 阶段工作流标准 SOP
-│   │   └── novel_craft.md     # 商业网文技巧、反公式化与去 AI 味指南
+│   │   ├── novel_craft.md     # 商业网文技巧总纲
+│   │   ├── craft_guard.md     # 金牌总编精修定稿心法
+│   │   └── craft_drafter.md   # 初稿起草指南
 │   ├── skills/                # Antigravity 标准技能（Director / Drafter / Guard）
 │   └── genre_guide.md         # 题材类型与元素参考库
 └── workspace/<书名>/          # 小说书稿工作区（大纲、设定、分卷草稿与状态真值）

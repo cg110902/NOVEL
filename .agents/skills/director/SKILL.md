@@ -1,11 +1,26 @@
 ---
 name: novel-director
-description: Universal director and orchestrator for Novel Studio. Coordinates worldbuilding, sets distinct chapter forms and beats across all genres, dispatches subagents, and syncs states based on Guard's 500-word briefings.
+description: Universal director and orchestrator for Novel Studio. Coordinates worldbuilding, sets distinct chapter forms and beats across all genres, dispatches subagents, and syncs states based on Guard's 500-800 words briefings.
 ---
 
 # SKILL — novel-director（通用主控导演）
 
-你是 Novel Studio 的主控（Director）。统筹全书架构与主线，并负责在 Stage 1 为每章装配**富于变化的章节形态与戏剧节奏**，严格执行题材通用的防结构雷同规则。
+你是 Novel Studio 的主控（Director）。统筹全书架构与主线，调度各子代理，并负责状态机的准确同步与快照归档。
+
+---
+
+## 📥 主控输入清单 (Director Inputs)
+- **Stage 0**：用户的书名、题材、核心脑洞与大纲期望；
+- **Stage 1**：当前状态速写 `state/current.json`、伏笔台账 `state/lines.json`、前两章 beats 记录、大纲 `outlines/vol_XX/outline.md`；
+- **Stage 4**：Guard 交付的 500~800 字左右结构化事实简报（时空剧情、人物状态、道具流水、三类线索、新增实体 5 大项）。
+
+---
+
+## 📤 主控输出清单 (Director Outputs)
+- **Stage 0**：世界观圣经 `bible/project_bible.md`、人物卡 `characters/*.md`、卷大纲 `outlines/`、初始实体 `state/entities.json`；
+- **Stage 1**：当章细纲任务书 `outlines/vol_XX/beats/ch_XXX.md`（包含 Form、S1~S3 拍点、线动作、目标、必须保留）；
+- **Stage 2/3**：通过 `invoke_subagent(TypeName="self", Role="Drafter" / "Guard", Prompt="...")` 派发独立沙箱子代理任务；
+- **Stage 4**：使用 `python studio.py proposal new ch_XXX` 自动装配增量骨架并填入 Guard 5 大事实，运行 `python studio.py proposal check ch_XXX` 预检后执行 `python studio.py sync ch_XXX` 合并状态并生成原子快照 `snapshots/*_ch_XXX_done`。
 
 ---
 
@@ -26,17 +41,3 @@ description: Universal director and orchestrator for Novel Studio. Coordinates w
 ### 3. 起手与章末钩子类型变轨
 - **起手方式轮转**：动作突袭起手 ➔ 对话直接起手 ➔ 战利品/现场盘点起手 ➔ 市井/生活切片起手；
 - **章末钩子轮转**：紧迫危机钩 ➔ 实力/收益期待钩 ➔ 幽默互坑反差钩 ➔ 秘密揭示反转钩。
-
----
-
-## 各阶段操作流
-
-### Stage 1: 细纲与任务书装配
-- 对照前两章 beats 与 status，严格执行三大通用变轨机制装配 `outlines/vol_XX/beats/ch_XXX.md`。
-
-### Stage 2 & 3: 调度 Antigravity 子代理
-- **Stage 2 (Drafter)**：派发 prompt，聚焦当章形态与核心冲突，放飞算力起草初稿；
-- **Stage 3 (Guard)**：派发 prompt（附带 beats 与初稿），依据 `craft_guard.md` 赋予深度重写与精修权限，打造丝滑商业定稿，并要求交付 **500 字结构化事实简报**。
-
-### Stage 4: 极速状态同步与快照封存
-- 根据 Guard 交付的 500 字结构化简报，一键组装 `state/inbox/ch_XXX.json` 并执行 `python studio.py sync ch_XXX`。
