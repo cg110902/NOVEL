@@ -1,39 +1,70 @@
-# Novel Studio
+# Novel Studio (Antigravity Edition)
 
-> 五阶段流水线：Stage 0 初始化（主控）→ 1 细纲+任务书（主控）→ 2 起草（一次性子代理 drafter）→ 3 重铸精修（一次性子代理 guard）→ 4 校对注记+同步（主控）。LLM 干一切灵活的活，Python 只做白名单死板事。guard 不是审校；审校/校对是主控 Stage 4 的工序。
+专为 **Google Antigravity** 深度定制的现代化网络小说多智能体创作框架。
 
-> 创作规则入口指引： `AGENTS.md`。
+> 📖 **核心宪法指引**：`AGENTS.md`  
+> 🛠️ **创作技巧指南**：`agents/rules/novel_craft.md`  
+> 🔄 **流水线执行标准**：`agents/rules/novel_workflow.md`
 
-## 快速上手（宿主 Agent / 人类通用）
+---
+
+## 🌟 核心特色
+
+1. **Antigravity 原生多智能体协同**：
+   - **Director（主控）**：把控全局大纲、单章细纲与状态封存。
+   - **Drafter（起草子代理）**：通过 `invoke_subagent` 独立沙箱起草情节自洽的初稿。
+   - **Guard（重铸子代理）**：专业网文级全文精修重铸，消解 AI 味，拉满剧情张力。
+2. **确定性状态机与防吃书机制**：
+   - 人物图谱（`entities.json`）、伏笔/线索追踪（`lines.json`）、时间线（`timeline.json`）保障长篇连载不崩坏、不吃书。
+3. **极速顺滑的创作流**：
+   - 分层上下文打包（`pack`）、机械证据校验（`evidence`）、一键状态封存（`sync`）。
+
+---
+
+## 🚀 快速上手指令
 
 ```bash
-python studio.py init -w workspace/我的书 -t 书名 -g 题材 -p 主角名   # Stage 0
-python studio.py status                                             # 开局必读：进度+下一步
-python studio.py evidence prev ch_002     # Stage 1：上章约束对照卡（form/旋钮/words 带/必须保留）
-python studio.py pack ch_001          # 装配子代理上下文（P0/P1/P2 三层）
-python studio.py evidence words       # 机械证据：字数统计（纯 JSON；all 聚合全部证据）
-python studio.py review new ch_001 --write   # Stage 4：校对注记骨架（验收条目+机器数据预填）
-python studio.py evidence candidates ch_001  # Stage 4：工作单（线命中/金额串/新实体标记/在场提及）
-python studio.py check                # 事实级体检：errors 阻断，warnings 只报数
-python studio.py proposal new ch_001 --write   # 生成并写入本章提案骨架（state/inbox/ch_001.json）
-python studio.py proposal check ch_001  # 提案结构预检 + 三方事实对照（不落盘）
-python studio.py sync ch_001          # 提案合并 → 状态体检 → 快照（Stage 4）
-python studio.py snapshot rollback ch_001_done --clean-drafts      # 回滚
-python studio.py export --txt --views # 全书编译（卷末加 --views）
+# 1. 初始化新书（Stage 0）
+python studio.py init -w workspace/我的小说 -t "书名" -g "题材" -p "主角名"
 
+# 2. 查看当前进度与待办任务
+python studio.py status
 
+# 3. 准备当章上下文（自动聚合核心状态、实体与历史线索）
+python studio.py pack ch_001
+
+# 4. 辅助证据查询（线索缺口、字数统计、上一章约束对照）
+python studio.py evidence gaps
+python studio.py evidence words
+python studio.py evidence prev ch_002
+
+# 5. 全书与状态健康体检
+python studio.py check
+
+# 6. 一键状态同步与封存（Stage 4）
+python studio.py sync ch_001
+
+# 7. 全书导出与编译
+python studio.py export --txt --views
 ```
 
-## 文档地图
+---
 
-| 层 | 文件 | 一句话 |
-|---|---|---|
-| 文档层 | `AGENTS.md` | 宪法：禁令/不变量/开局地图  |
-| | `templates/README.md` | 模板地图（填什么不在此规定） |
-| | `agents/rules/novel_workflow.md` | 流水线剧本（Stage 0–4 SOP） |
-| | `agents/rules/novel_craft.md` | 文学默认值（可被「本书偏离清单」覆盖） |
-| | `agents/skills/*/SKILL.md` | 主控总合同 director；主控作业清单 beats-builder/syncer（不 spawn）；子代理合同 drafter/guard |
-| | `agents/genre_guide.md` | 8 题材选择题素材（非公式） |
-| 引擎层 | `studio.py` + `engine/` | 11 命令薄壳；纯 stdlib；模块依赖 cli → 各领域 → common |
-| 数据层 | `workspace/<书名>/` | 圣经/大纲/稿件自由文本；`state/` 6 JSON = 机器真值（提案制写入） |
+## 📂 项目结构概览
+
+```
+NOVEL/
+├── AGENTS.md                  # 核心宪法与智能体协同约定
+├── studio.py                  # CLI 薄壳入口
+├── engine/                    # 状态机与确定性校验引擎（纯 Python 标准库）
+├── templates/                 # 设定、大纲、细纲模板库
+├── agents/
+│   ├── rules/
+│   │   ├── novel_workflow.md  # 5 阶段工作流标准 SOP
+│   │   └── novel_craft.md     # 商业网文技巧、反公式化与去 AI 味指南
+│   ├── skills/                # Antigravity 标准技能（Director / Drafter / Guard）
+│   └── genre_guide.md         # 题材类型与元素参考库
+└── workspace/<书名>/          # 小说书稿工作区（大纲、设定、分卷草稿与状态真值）
+```
+
  

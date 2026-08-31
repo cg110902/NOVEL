@@ -1,264 +1,175 @@
-# novel_workflow.md — 流水线剧本（Stage 0–4 唯一 SOP）
+# novel_workflow.md — 小说创作流水线标准 SOP
 
-本文件是"什么时候、谁、做什么、产物交到哪"的唯一权威；文学标准在 `novel_craft.md`
-（引用写法示例：`novel_craft.md#视角与信息差`），禁令与权威层级在 `AGENTS.md`。每阶段四件事：
-输入合同 → 动作 → 输出合同 → 退回边。**上一阶段输出合同不齐，不得开始本阶段**——这句话本身也只在这里说。
+本文档定义 Novel Studio 的 5 阶段（Stage 0–4）创作标准流程与各岗位交付规范。
 
-## 阶段总览
+---
 
-Stage 0 初始化（主控）→ Stage 1 细纲+任务书（主控）→ Stage 2 起草（一次性子代理 drafter）→
-Stage 3 重铸精修（一次性子代理 guard）→ Stage 4 校对注记+同步封存（主控）。同一章走 1→2→3→4；
-退回边总是"回上一站"，没有跳站捷径（Stage 3 情节问题拒收回 Stage 2，例外由主控亲自代笔时才算例外）。
-
-**称呼**：guard 是重铸岗位，禁止叫「审校」。审校/校对 = 主控在 Stage 4 的工序，见 `AGENTS.md#角色与阶段`。
-`beats-builder` / `syncer` 是主控作业清单，不 spawn。
-
-## 工作区
+## 一、 工作区目录规范
 
 ```
 workspace/<slug>/
-  project.json        # 书配置：title/genre/protagonist/mode/words_target/style_guards
-  bible/              # 圣经+世界+势力；必有「本书偏离清单」一节（覆盖唯一合法通道）
-  characters/         # 人物卡（自由文本；机器字段在 state/entities.json，卡上无格式义务）
-  outlines/main_plot.md + vol_XX/outline.md + vol_XX/beats/ch_XXX.md
-  manuscript/vol_XX/raw/ch_XXX_vN.md | final/ch_XXX.md
-  state/              # 6 个 JSON + inbox/{processed,failed,README.md} + snapshots（schema 见 engine/schemas/）
-  log/review/         # 主控校对注记：ch_XXX.md（init 自动创建；sync 的 review_gate 依此核对）
+├── project.json        # 项目配置（书名、题材、主角、目标字数、全局禁忌等）
+├── bible/              # 世界观设定、势力、力量体系、偏离清单
+├── characters/         # 人物卡设定（自由文本，供构思与生成参考）
+├── outlines/           # 大纲体系
+│   ├── main_plot.md    # 全书主线脊柱
+│   └── vol_XX/         # 分卷大纲与细纲
+│       ├── outline.md  # 本卷战役与剧情发展
+│       └── beats/      # 逐章细纲与任务书（ch_XXX.md）
+├── manuscript/         # 稿件仓库
+│   └── vol_XX/
+│       ├── raw/        # Drafter 初稿（ch_XXX_v1.md, ch_XXX_v2.md...）
+│       └── final/      # Guard 重铸定稿（ch_XXX.md）
+├── state/              # 状态机真值数据
+│   ├── current.json    # 当前主角处境、状态与在场人物
+│   ├── entities.json   # 人物/势力登记簿
+│   ├── lines.json      # 伏笔、误会、秘密三线台账
+│   ├── timeline.json   # 时间线与事件历法
+│   ├── synopsis.json   # 分章梗概
+│   ├── ledger.json     # 资产/资源流水
+│   └── inbox/          # 提案收件箱（待合并与归档）
+└── log/review/         # （可选/历史兼容）主控审校注记（ch_XXX.md）
 ```
 
-## 状态字段口径（state/current.json + synopsis）
-
-`current.json` 是"主角/场景此刻"的速写，供 pack 的 P0 回温。叙事出处是正文；机器真值是 `state/`；
-两者不一致属事实错误，需修（改文或改提案，禁止口头宣布「以我记得的为准」）。字段含义：
-
-- `time` / `location`：此刻时间（用 timeline 历法口径）与地点。
-- `power_level` / `abilities`：能力/修为阶梯摘要（阶梯里程碑在 `timeline.arcs`）。
-- `injury` / `equipment` / `assets`：当前伤势、随身装备、非资金类资源。
-- `situation`：一句话处境（便于下一章 pack 快速回温）。
-- `mood`：POV 此刻心境/情绪基调（软状态，引擎不校验；如"疑惧交加，对义庄戒备"）。
-  情绪线没动可不写——它是下一章情绪衔接的锚，漂了读者能感到但说不清。
-- `goal`：POV 角色当下想要什么（软状态，引擎不校验；区别于 beats 任务书面向读者的目标）。
-  角色动机没变可不写——它是防 OOC/跑偏的锚。
-- `key_relationships`：当前主要关系速写（软状态，引擎不校验；如"沈拓↔赵四：敌对未明"）。
-  关系没动可不写；动了就更新——它只进 pack 的 P0 回温，不是真值。
-- `present_characters`：章末此刻仍在场的角色名（给下一章 P0 回温用，不是本章出现过的全部人）。
-  必须已注册在 `state/entities.json`，sync 强制闭合。
-
-`synopsis.json`：`book_logline`（全书一句话）+ `chapters`（每章 `num/title/synopsis/source=manual`）。
-梗概只记录"发生了什么"，不记录"写得怎么样"。`source=manual` 表示由提案写入，不是引擎自动摘要。
-
-## 术语约定（全仓库唯一口径）
-
-> **章节号口径（重要）**：`ch_NNN` 是**全书连续**的全局章号身份（lines 的 `target_ch`、sync 的目标、
-> 状态流水线行一律用它）。卷 `vol_XX` **只是文件系统分组目录**——某一章只出现在一个卷里，
-> 且**跨卷不允许同号**（同一个 `ch_NNN` 不应既在 vol_01 又在 vol_02）。引擎为防文件误移，
-> 在 `check`/`export`/`evidence.final_chapters` 内部用 `(卷, 章号)` 作文件叠代键（跨卷同号互不覆盖），
-> 这是**容错实现**，不是"允许跨卷同号"的语义约定。凡真值数据（lines、ledger、synopsis、current）
-> 一律只认全局 `ch_NNN`。没有单独的「卷内章号」字段。
-
-- **事实（两义）**：① **提案事实** = 提案里提交给状态机的每一条增量，能在本章 final 正文找到出处
-  （AGENTS 禁令 7）；② **情节事实** = 场序、动机、事件因果、数字与专名，修改它们属内容级改动，
-  只能回 Stage 2 写新 raw，再走 Stage 3（见本文件#文字级边界）。上下文出现"事实"时按上述分义读取。
-- **lines 台账** = `state/lines.json` 的三线登记簿：伏笔 `GUN-*`、误会 `MIS-*`、知识线 `KNO-*`
-  （秘密/信息账：secret 一句话 + 计划揭示章 target_ch，状态 Concealed/Revealed）。
-  三类都有 target_ch（章号或 longline），逾期由 check 报数；**揭没揭由你判断**，引擎只记账。
-  揭示时机与计划不符时，`proposal check` 三方对照出数（提前/逾期）、sync 报告标章——改不改归你。
-  每条线带**权重**（`weight`，语义分级建议 1-3；误会线字段名是 `level`，语义同权重）——多条线齐逾期时，
-  gaps/candidates/status/pack 的清单按权重高→低排，"先还哪条"有据。
-- **ledger 账本** = `state/ledger.json` 的资金/资源池流水，余额由引擎重算，"账本 current 值"指这里。
-- **越界知情** = 角色的言行使他表现出尚未通过剧情获得的信息；判定标准见 `novel_craft.md#知识是资产`。
-
-## 写权限矩阵
-
-| 角色 | 读 | 写 |
-|---|---|---|
-| 主控（director） | 一切 | `project.json`、`bible/`、`characters/`、`outlines/`、`log/review/` 注记、`state/inbox/` 提案、final 的文字级终检补丁 |
-| drafter（Stage 2 子代理） | 一切 | 仅 `manuscript/vol_XX/raw/`（放飞算力，自由创作） |
-| guard（Stage 3 子代理） | 一切 | 仅 `manuscript/vol_XX/final/`（重铸精修，仅此一件） |
-| 引擎 | 一切 | `state/*.json`、快照、processed/failed、evidence 输出 |
-
-没有「审校 Agent」。校对是主控 Stage 4 的工序，不另开写权限。
-
-## Stage 0 初始化（主控）
-
-- 输入合同：题材与书名（用户没说就问一次，拿到后写进 project.json，不再问）。
-- 动作：
-  1. `python studio.py init -w workspace/<slug> -t <书名> -g <题材> -p <主角名>`；
-  2. 读 `agents/genre_guide.md` 对应题材节，**做选择题**：字数带、钩子习性、可玩词汇，
-     选中的抄进 bible 与 project.json，没选中的不解释；
-  3. 按 templates/ 引导注释填 `bible/project_bible.md`（含「本书偏离清单」，开局可为空节）、
-     `characters/` 主要角色卡、`outlines/main_plot.md`（全书脊柱：开局状态→终局→中继点）、
-     `outlines/vol_01/outline.md`（本卷战役图；之后每开新卷再填一份）；
-  4. 跑 `check`，确认无 unfilled_slot / project 字段错误。
-- 输出合同：`check` 零 errors。退回边：check 红 → 继续填，不进 Stage 1。
-
-## Stage 1 细纲+任务书（主控亲自完成，不 spawn）
-
-细纲作业清单见 `agents/skills/beats-builder/SKILL.md`；任务书装配见下文#任务书合同。两段都是你写。
-
-- 输入合同：`status` 流水线行 + `evidence gaps`（哪些线快到期/已逾期）+ `evidence prev`
-  （上章 form/旋钮/words 带/必须保留对照卡；pack 的旧章指针只覆盖近 10 章，更早的章节
-  指针用 `evidence mentions <名字>` 查全章出现处）+ `state/current.json` + main_plot 与卷纲。
-  本书第一章无「上一章」：form_reason、旋钮对照、words 带错开从 ch_002 起生效。
-- 动作：
-  1. 选章 = 流水线第一个缺口章号（禁止跳章写，除非用户明说，见下文#模式与控制）；
-  2. 掷 form 骰（`novel_craft.md#反公式化与拟人化`）：同卷统计与连章重复约束由 check 机械兜底；
-  3. 写 beats 正文：场景切分、信息差动作（`novel_craft.md#视角与信息差`）、本章要埋/唤/还的线；
-  4. 在 beats 尾部写任务书四节（见#任务书合同）——限制装配是你的核心工作。
-     禁忌须至少一项与上章不同；验收不得整组逐字复制；必须保留按情节需要可以延续。
-     禁忌节里可机械计数的词同步写进 front-matter `guard_extra`；
-  5. 自交检：「验收」每条能否在未来正文里用「动词+可指认名词」核查？出现形容词判据 = 重写该条；
-     words 带是否与上一章按 `novel_craft.md#反公式化与拟人化` 的方差条错开（对子代理，words 只是参照，
-     不要为凑带灌水）；人物卡上的承诺（称谓/记号/知识边界）是否已回写进"线动作"栏——没写的承诺=不存在。
-- 输出合同：beats 文件含合法 front-matter 六键（`novel_craft.md#front-matter 键`）+ 拍点 + 线动作 + 任务书四节齐全。
-- 退回边：自写 beats 若不过自交检 → 重写。
-- 自交检通过标准（同时满足，缺一即回退）：①「验收」每条都能对着正文给出"动词+可指认名词"判据，
-  出现形容词判据 = 未过；② 从 ch_002 起，words 带与上一章区间下限错开 ≥600 字；③ 人物卡上的承诺（称谓/记号/
-  知识边界）已回写进"线动作"栏；④ front-matter 六键齐全；style_notes 三旋钮不得与上章三个全同；
-  与上章同 form 必须有 `form_reason`（同 form 本身允许）。
-  其中机械部分由 check 报数（`acceptance_empty_criterion` / `words_band_crowded` /
-  `style_notes_copy` / `line_action_orphan` / `line_action_missing`），主控看数裁决，不必自己记着查。
-
-## 任务书合同
-
-beats 文件 = front-matter + 拍点 + 线动作 + **任务书四节**（目标 / 必须保留 / 本章禁忌 / 验收）。
-不要另起一个空的 `## 任务书` 标题（与四节同级会变成空节）。pack 的 P0 含完整 beats（拍点 + 线动作 + 任务书四节）。
-
-```
 ---
-chapter: ch_007
+
+## 二、 五阶段流程标准 (Stage 0–4)
+
+```mermaid
+graph TD
+    S0["Stage 0: 设定构想<br/>(主控)"] --> S1["Stage 1: 细纲+任务书<br/>(主控)"]
+    S1 --> S2["Stage 2: 初稿起草<br/>(Drafter Subagent)"]
+    S2 --> S3["Stage 3: 商业重铸<br/>(Guard Subagent)"]
+    S3 --> S4["Stage 4: 校对与同步<br/>(主控)"]
+    
+    S3 -.->|"表达润色不达标"| S3
+    S3 -.->|"情节硬伤/大纲偏离"| S2
+    S4 -->|"下一章"| S1
+```
+
+### Stage 0: 设定构想与初始化（主控）
+
+1. **执行初始化**：
+   ```bash
+   python studio.py init -w workspace/<slug> -t "书名" -g "题材" -p "主角名"
+   ```
+2. **完善核心资产**：
+   - 参照 `templates/` 和 `agents/genre_guide.md` 填充 `bible/project_bible.md`、`characters/`、`outlines/main_plot.md`、`outlines/vol_01/outline.md`。
+   - 如需自定义特殊设定或打破通用写作习惯，在 `project_bible.md` 的「本书偏离清单」中简要注明。
+3. **完成验收**：
+   - 运行 `python studio.py check`，确保核心槽位填充完毕，无阻断错误。
+
+---
+
+### Stage 1: 细纲与任务书装配（主控）
+
+1. **输入准备**：
+   - 检查进度与待填缺口：`python studio.py status`
+   - 查看伏笔到期与线索缺口：`python studio.py evidence gaps`
+   - 对照上章节奏与约束：`python studio.py evidence prev ch_XXX`
+2. **编写单章细纲与任务书** (`outlines/vol_XX/beats/ch_XXX.md`)：
+   - 结构包括：YAML Front-matter + 拍点 (Beats) + 线动作 (Line Actions) + 任务书四节。
+
+```markdown
+---
+chapter: ch_001
 vol: vol_01
-form: 双线剪辑            # 章型（novel_craft.md#反公式化与拟人化 章型库）
-pov: 林逐夜·贴身第三人称    # 本章主视角（一场一视角；换场换 POV 在拍点标明）
-words: 2200-4500          # 主控选带用；对子代理仅参照（反均匀见 craft）
-style_notes: 短句急雨 | 章首中间开始 | 章尾弱收   # 三旋钮
+form: 单场景章              # 章型（单场景/双线剪辑/日常/插叙/长镜头等）
+pov: 林逐夜·贴身第三人称      # 本章视角
+words: 2200-3500          # 参考字数区间
+style_notes: 短句急促 | 闲笔入题 | 悬置收尾  # 风格旋钮
 ---
 ## 拍点
+- 场景 1：...
+- 场景 2：...
+
 ## 线动作
-## 目标        # 本章必须达成什么，可核查条目（推进了什么、兑现了什么线）；
-               # 多于一场时按场分条：`S1 入册 | 字数建议（非强制）| 立规矩与禁手`
-## 必须保留     # 事实不变量（drafter 与 guard 都不得违反），如：主角至章末仍不知 B 的身份
-## 本章禁忌     # 本书 style_guards 相关条目 + 主控针对本章追加的特定禁忌
-## 验收        # 主控写给 Stage 4 自己核对的逐条判据：不超过 6 条，每条可在正文中核查，禁形容词
-               # guard 不答本节；drafter/guard 的硬约束是 目标/必须保留/禁忌
+- 推进：GUN-001 (断刀线索)
+- 埋设：KNO-002 (密信真伪)
+
+## 目标
+- 达成事件 A，推动主角做出选择 B。
+
+## 必须保留
+- 关键事实不变量（如：主角在此阶段仍不知晓黑衣人身份）。
+
+## 本章禁忌
+- 避免直接说明背景设定；避免连续感叹号与内心独白过长。
+
+## 验收
+- 1. 动词+名词明确判据（例：林逐夜在当铺完成断刀质押）。
 ```
 
-「限制复印」自检：禁忌整节逐字相同、或 style_notes 三旋钮全同、或验收整组逐字相同 = Stage 1 未完成。
-禁忌须至少一项与上章不同。
+---
 
-## Stage 2 起草（spawn drafter，一次性）
+### Stage 2: 初稿起草（Drafter 子代理）
 
-- 输入合同（主控组装派发包）：任务书全文 + pack 输出（P0/P1 必读，P2 索引按需）+
-  `agents/skills/drafter/SKILL.md` 路径 + 输出路径。宿主负责 spawn/隔离/回收。
-- 动作：起草独立成稿写 `raw/ch_XXX_vN.md`（N=现有最大版本+1，永不覆盖旧版——审计留痕）。
-  「目标」多于一场时按场分块写作、合成单文件 raw（防单次输出截断；合稿=删场名，
-  每场收束动作直接接上场开手，接缝不许留"话说两头"式过渡套话）。
-- 输出合同：raw 存在且无「缺语境」标记。写不动 → 不编，raw 头部只写
-  `缺语境：<缺哪条限制/哪个专名或数字/哪条知情边界>`（可多行），退出码 2。
-- 退回边：缺语境 → 答案写回任务书或 pack，再重派（新 v，不改旧文件）。
-  问询与拒收共用上限，见 #拒收语义 。
-- 主控中间验收（进 Stage 3 的闸门，主控亲跑）：`evidence file`（字数带、红线词命中）+
-  对照任务书「目标/必须保留」逐条核 raw；过 → 派 Stage 3 的 guard，不过 → 按 #拒收语义  处理。
-  核查权全在主控——drafter 不自检、不跑 evidence，交付即退出。
+1. **主控派发**：
+   - 运行 `python studio.py pack ch_XXX` 获取分层上下文。
+   - 使用 Antigravity 原生工具 `invoke_subagent` 派发 `drafter`。
+2. **Drafter 职责（放飞算力，情节跑通）**：
+   - 贯彻任务书「目标」与「拍点」，推进矛盾碰撞与事件因果。
+   - **彻底松绑免责**：不受任何“AI禁词表”或修辞束缚，无需耗费算力雕琢文字；只要冲突饱满、逻辑自洽即可交卷。
+   - 将完整稿件写入 `manuscript/vol_XX/raw/ch_XXX_v1.md`（严禁传入 ArtifactMetadata）。
+   - 若遇到严重设定缺失导致无法动笔，在 raw 头部标明 `缺语境：<具体缺失内容>` 并退出。
+3. **零盲读快速交接**：
+   - Drafter 交付后，主控**严禁调用 `view_file` 全文读取 `raw/`**（避免万级正文污染主会话上下文）；
+   - 主控确认文件存在后，直接进入 Stage 3 调度 Guard。
 
-## Stage 3 重铸精修（spawn guard，一次性）
+---
 
-guard 只干一件事：把 raw 重铸&精修成定稿——**表达层全权重写，情节事实零权**。
-质量标准见 `novel_craft.md#打磨与校对` 的打磨条。guard **不是**审校，不答「验收」，不写注记。
+### Stage 3: 商业网文重铸（Guard 子代理）
 
-- 输入合同：任务书（目标/必须保留/禁忌 + front-matter）+ raw 最新版 + pack P0。
-- 动作：
-  1. 重铸：按商业网文标准把 raw 写成人类读者肯追的文字——AI 味少、丝滑连贯、读起来爽。
-     风格旋钮按 front-matter 执行；AI 高频句式与红线词逐处消解。
-     表达层（句、段、节奏、对话切分、开头结尾）全权重写；「与 raw 散文同构 = 没干活」。
-     这不是改情节的许可证：场序/动机/因果/数字/专名不动，任务书「目标/必须保留/禁忌」不改写。
-  2. 情节纪律：场序、动机、事件因果不动，数字与专名不改值不改名；发现**确定的**情节级
-     硬伤（越界知情/数字异值/「必须保留」已破）→ 停机报告不写 final（重铸破布是浪费）；
-     越界知情判定：对照该 POV 当前已知清单，只有在他"尚未获得信息渠道"就说出/表现出来时才算；
-     作者旁白单独向读者揭示 ≠ 角色越界（见 `novel_craft.md#知识是资产`）；
-  3. 交付即退：不写注记、不跑 evidence、不答「验收」（都是主控 Stage 4 的工位）；回话带「重铸了什么/为什么」
-     三到五行，供主控注记录用。
-- 输出合同：`final/ch_XXX.md`（纯净正文，零工程注记）。仅此一件。
-- 退回边（主控验收，进 Stage 4 的闸门）：
-  - 表达层问题（红线词未消 / 旋钮未执行 / AI 味未清）→ 重派 guard（同一份 raw，final 覆盖重写）；
-  - 情节事实错、或「必须保留」在 raw 里就已破 → 按 #拒收语义 回 Stage 2，**不要**派 guard 救情节；
-  - guard 退出码 2（停机报告情节硬伤）→ 视同拒收，回 Stage 2。
-  重派与拒收共用上限，见 #拒收语义 。
+1. **主控派发**：
+   - 使用 Antigravity 原生工具 `invoke_subagent` 派发 `guard`（金牌网文责编与定稿总笔）。
+   - **指令显式锁定**：主控下发的 Prompt **必须显式包含前置指令**：“第一步必须调用 `view_file` 完整阅读 `agents/rules/novel_craft.md` 全文，深刻领会《四大维度靶向手术法》、去AI味技法与降频准则；第二步再阅读当章任务书与 `raw/` 初稿开展商业重铸”。
+2. **Guard 职责（四大维度靶向重铸）**：
+   - **高光保护与三大基线**：保留生动传神细节与金句；情节事实、人设声纹、状态机数据绝对零篡改。
+   - **四大维度手术**：
+     - ① **剪辑降噪与程度副词降频**：切除次要流水账；杜绝车轱辘水字数；彻底拔除作者上帝视角旁白；程度副词（极/骤然）降频。
+     - ② **人物质感与去面瘫**：打破男主永远“神色沉静”、女主永远“咬唇发抖”的面瘫标签；反派不弱智；对白机锋化。
+     - ③ **节奏与语言调性**：平滑突兀转折（补足先兆推力）；破除正剧冷峻腔，注入松弛烟火气；优化长短句方差。
+     - ④ **顺手纠错**：通读时顺手修正错别字、标点误用、前后称谓与物理穿帮。
+   - 将定稿写入 `manuscript/vol_XX/final/ch_XXX.md`（严禁传入 ArtifactMetadata）。
+3. **Guard 交付规范（轻量结构化简报）**：
+   - Guard 完成后向主控汇报 **200 字结构化简报**（包含：字数、一句话核心梗概、重要实体/技能获取变动），不倾倒大段正文。
 
-### 拒收语义
+---
 
-拒收判定权全在主控。触发：缺语境停机（问询）；Stage 2 中间验收判 raw 不可救（不派 guard）；或 Stage 3 验收判情节硬伤
-（含 guard 停机）。同章拒收 ≤2 次；第 3 次主控亲自改写 raw（例外代笔，在 `log/review/ch_XXX.md`
-记一行），或"升级问人"——向用户/宿主报告本卡点并暂停该章流水线，等用户指令后再继续。
-两者都由主控在同一章内处理，**禁止无界循环改稿**。它与本文件#模式与控制中的
-"暂停/继续"自然语言控制同义，主控不自行编造指令。
+### Stage 4: 极速状态同步与快照封存（主控）
 
-## Stage 4 校对注记+同步封存（主控亲自完成，不 spawn）
+1. **单步组装提案**：
+   - 彻底废除 `log/review/` 人工摘抄引文仪式（大幅削减 80% Token 消耗）；
+   - 主控根据 Guard 交付简报，直接写入 `state/inbox/ch_XXX.json`（更新当前处境、人物状态、伏笔线推进与章节梗概）。
+2. **单次统一校验与同步**：
+   - 运行 `python studio.py sync ch_XXX`。
+   - 引擎自动完成：提案数据校验 → 状态机原子合入 → 数据一致性体检 → 自动创建快照 `ch_XXX_done`。
+3. **进入下一章**：立即推进下一章。
 
-同步作业清单见 `agents/skills/syncer/SKILL.md`。校对、注记、提案、sync 都是你干，不要派 syncer。
+---
 
-- 输入合同：本章 beats / raw / final 齐 + guard 回话。状态 diff 是本阶段要做的整理，不是进本阶段的前置产物。
-- 动作：
-  1. 校对与注记（主控亲笔，进提案前完成）：六项机械核对逐项过（错别字／标点配对／专名与
-     entities 写法一致／数字与 ledger current 相符／「必须保留」在位／格式残留），
-     evidence style/dup/file 按需自跑；注记正文写入 `log/review/ch_XXX.md`（init 已自动创建
-     该目录），其中必须含 `## 验收` 节，逐条回答 beats 任务书「验收」并带证据；无注记会被
-     sync 的 review_gate 拒绝。骨架可用 `python studio.py review new ch_XXX --write` 生成
-     （验收条目自 beats 预填，引号配对/余额/专名表/必须保留清单等机器数据逐项就位，
-     只填「结果」与证据）；
-  2. `python studio.py proposal new ch_XXX` 打印骨架（schema/chapter/operation_id 已预填，
-     不落盘；加 `--write` 可直接存 `state/inbox/ch_XXX.json`），按 `state/inbox/README.md`
-     的样例纪律填实六区 → 存 `state/inbox/ch_XXX.json`
-     （填提案以 inbox 样例为准；operation_id = `ch_XXX.director.<序号>`）。
-     组装前跑 `python studio.py evidence candidates ch_XXX`：线名命中/金额串/新实体标记行/
-     在场提及计数/状态摘要的机器对照——只出数，是否上账归主控；
-  3. `python studio.py proposal check ch_XXX`（结构预检+三方事实对照，不落盘、不要求注记在场）
-     → `python studio.py sync ch_XXX --dry-run` 预演（校验结构+列出合并计划）；
-  4. 去 dry-run 正式 `sync`：注记闸门（review_gate）→ 引擎合并 → 体检 → 快照 `<ch>_done` 一气呵成
-     （注记未答完验收会被闸门拒绝且不落半成品状态，改完注记重跑即可）；
-  5. sync 失败 → 提案自动进 failed/：读报错改文件，再 sync（引擎自动捡回）。
-     反复失败 = 事实冲突，回到"修正文还是修状态"二选一，**禁止编造提案迎合体检**。
-     修正文且属情节层 → 回 Stage 2，不要只重派 guard。
-- 输出合同：`status` 该章 beats/raw/final 齐、提案已合并、快照已打（无待合并提案）。下一章从 Stage 1 开始。
-- 退回边：注记未过闸门 → 改注记重跑 sync；提案结构/事实冲突 → 改提案或按#文字级边界回流水线。
+## 三、 省 Token 与上下文隔离五大铁律
 
-## 文字级边界（主控对 final 的终检尺度）
+为确保长篇长效创作过程中系统始终高速、低成本、零卡顿、零污染运行，严格执行以下五大刚性准则：
 
-- 允许直接改：错别字、标点配对、markdown 残留、占位符残留、工程标记泄漏进正文。
-- 表达层大改（风格性重写、节奏重切，但不改读者能知道什么）→ 同 raw 重派 guard（重走 Stage 3）。
-- 内容级：情节、事实、人物、关系、数字的任何改动 → 回 Stage 2 写新 raw（v+1），再走 Stage 3。
-- 速判口诀：**改动影响"读者能知道什么" → 内容级，回 Stage 2**；只影响怎么说 → 文字级补丁或重派 guard。
+1. 🚫 **引擎黑盒铁律（严禁读取 engine/ 源码）**：
+   - 日常创作期间，**严禁主控或任何子代理调用 `view_file` 读取 `engine/*.py` 底层源码**；
+   - 引擎是纯粹的确定性黑盒工具，一律通过运行 `python studio.py <命令>` 获取结构化标准数据，源码 Token 消耗恒定为 0。
 
-## 卷末（最后一章 sync 之后）
+2. 🚫 **主控“零盲读”铁律（严禁在主会话通读正文）**：
+   - 主控代理**严禁在主会话中对 `raw/` 和 `final/` 执行全文 `view_file`**，杜绝数万字正文永久滞留主会话历史造成上下文膨胀与注意力衰减；
+   - 主控仅需阅读 Guard 交付的 **200 字轻量结构化简报**，即可完成 Stage 4 状态提案与同步。
+3. 🚫 **工作区精准投喂（严禁大面积盲读 workspace/ 历史章节）**：
+   - 严禁任何智能体对 `workspace/` 进行全局遍历，或调用 `view_file` 通读历史章节（如试图把 ch_001~ch_050 全读一遍）；
+   - 历史事实与人际连贯性完全依赖 `python studio.py pack ch_XXX` 提供的精准分层上下文（P0 现场 + P1 实体 + P2 梗概 + 上章末尾 1000 字衔接）。
+4. 🔄 **子代理沙箱闭环与会话定期轮转机制**：
+   - Drafter 与 Guard 在独立沙箱中各自闭环读取材料并写入稿件，跨阶段只传递轻量级元数据；
+   - 由于 Novel Studio 以 `state/` 状态机与 `outlines/` 为绝对真值，推荐每 5 章或按卷开启新会话。新会话只需执行 `studio pack ch_XXX` 即可在 2 秒内无缝复活最新全书状态，彻底抛弃累积的历史 Token 包袱！
 
-- 主控四件套：`style_guards` 回流（写作中已暴露的口癖/禁用句式写回 `project.json`）→
-  `check` 收卷 → `export --txt --views`。
-- 动旧章前先分清硬伤类型：表达层 → `snapshot rollback` 后从 Stage 3 重走；情节/事实硬伤 →
-  rollback 后从 Stage 2 重走（见#回退与恢复）。
+---
 
-## 模式与控制
+## 四、 卷末与导出
 
-- `project.json.mode`：以文件现值为准。`automatic`：主控循环 Stage 1–4 不停；唯二暂停点 = check 出现
-  errors、同章拒收用尽（见 #拒收语义 ）。`manual`：每 Stage 输出先回报，等"继续"。
-- 自然语言控制（宿主转述用户指令，主控不猜）：暂停；继续；重写本章（回 Stage 2，v+1）；
-  跳到 ch_N（仅限用户明说——状态机不阻止超前，但 status 流水线会标缺口；
-  sync 前置闸门要求 beats/raw/final 齐 + 对应提案 + 校对注记过 review_gate，错章/缺件不封存，故不会产生半合并）。
+- 每卷写作完成后，运行 `python studio.py check` 进行全卷体检。
+- 运行 `python studio.py export --txt --views` 导出全书正文与阅读视图。
 
-### 回退与恢复
-
-`snapshot list` 选点 → `snapshot rollback <名>` 回滚 **state**（回滚前引擎自动
-留 pre_rollback_ 存档；`--clean-drafts` 会额外清掉晚于该点的稿件，用前确认）。
-final / raw **不在快照内**；`workspace/` 默认不入库（见仓库 `.gitignore`）。本协议不把书稿
-当成 git 真值——宿主若需备份，自行纳入版本管理。回滚默认只动状态，不动稿件。
-回退已封存章：禁止直接编辑已封存 final 再 sync。表达层问题从 Stage 3 重走（同 raw 重派 guard）；
-情节/事实问题从 Stage 2 重走（新 raw）。
-
-## 宿主交接协议
-
-仅 Stage 2 / 3 spawn 子代理。主控传递恰好五样：该岗位 SKILL.md 路径、任务书全文、pack 输出
-（Stage 2：P0/P1 必读，P2 按需；Stage 3：只给 P0）、可写路径清单、退出码约定（0=交付；2=缺语境或情节硬伤停机——这是
-**子代理**的退出码，与 `studio.py` 的 CLI 退出码不是同一套）。多传一个字都算违反
-"一次性、限制随任务书"的原则；隔离与回收由宿主实现，本仓库不定义机制。
-
-宿主无 spawn 能力时的降级模式：停止该章 Stage 2/3，向用户报告并等待指令。主控不得顶替
-drafter/guard 写 raw/final（ #拒收语义 里的例外代笔除外）。

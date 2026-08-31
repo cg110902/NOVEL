@@ -431,8 +431,10 @@ def run_checks(book: Path) -> dict:
                     warnings.append(_err("style_guard_hit",
                                          f"{tok}: 「{gtxt}」出现 {c} 次"))
 
-    # ---- form 占比（>40% 卷内，数出来供主控调整） ----
+    # ---- form 占比（>40% 卷内，仅当卷内已达到 5 章以上样本时统计） ----
     for vol, rec in evidence.form_distribution(book).items():
+        if rec.get("count", 0) < 5:
+            continue
         for form, share in rec.get("shares", {}).items():
             if share > FORM_SHARE_LIMIT:
                 warnings.append(_err("form_share_over_limit",

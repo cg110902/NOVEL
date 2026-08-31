@@ -204,26 +204,45 @@ def _cn_num_to_int(s: str) -> int | None:
     return total + num
 
 
+_GENERIC_UNITS = {"块", "枚", "张", "个", "粒", "颗", "只", "道", "本", "卷", "盒", "条", "段"}
+
+
 def _amount_scan(text: str, pools: dict) -> list[dict]:
-    """金额候选：阿拉伯/常见中文数词（千位内）× ledger 已声明池单位。只计数与换算，零裁决。"""
+    """金额候选：阿拉伯/常见中文数词（千位内）× ledger 已声明池单位/名称。精准匹配货币上下文。"""
     out = []
     for pid, p in (pools or {}).items():
         unit = str(p.get("unit") or "").strip()
-        if not unit:
+        name = str(p.get("name") or "").strip()
+        if not unit and not name:
             continue
-        ms = re.findall(rf"({_NUM_RE})\s*{re.escape(unit)}", text)
         recs = []
-        for m in ms:
-            v = int(m.replace(",", "").replace("，", "")) if m[0].isdigit() else _cn_num_to_int(m)
-            if v is not None:
-                recs.append((v, m))
+        # 若量词为常见泛指量词（如"块/枚"），必须紧邻货币名称（如"两块灵石"），杜绝"两块点心/青石板"误判
+        if unit in _GENERIC_UNITS:
+            if name:
+                patterns = [
+                    rf"({_NUM_RE})\s*{re.escape(unit)}\s*(?:{re.escape(name)}|{re.escape(name[-2:])})",
+                    rf"(?:{re.escape(name)}|{re.escape(name[-2:])})\s*({_NUM_RE})\s*{re.escape(unit)}",
+                ]
+            else:
+                patterns = []
+        else:
+            patterns = [rf"({_NUM_RE})\s*{re.escape(unit)}"] if unit else []
+            if name and name != unit:
+                patterns.append(rf"({_NUM_RE})\s*{re.escape(name)}")
+
+        for pat in patterns:
+            ms = re.findall(pat, text)
+            for m in ms:
+                v = int(m.replace(",", "").replace("，", "")) if m[0].isdigit() else _cn_num_to_int(m)
+                if v is not None:
+                    recs.append((v, m))
         if recs:
             samples = []
             for _, m in recs:
-                sample = f"{m}{unit}"
+                sample = f"{m}{unit or name}"
                 if sample not in samples:
                     samples.append(sample)
-            out.append({"pool": pid, "unit": unit, "count": len(recs),
+            out.append({"pool": pid, "unit": unit or name, "count": len(recs),
                         "values": sorted({v for v, _ in recs})[:8], "samples": samples[:3]})
     return out
 
@@ -389,7 +408,35 @@ def prev_contrast(book: Path, ch: str) -> dict:
                 upcoming.append(item)
     out["due_lines"] = due
     out["upcoming_lines"] = upcoming
+
+    # 钩子连章与情绪心电图分析
+    hooks = []
+    for past_n in range(max(1, n - 3), n):
+        pf = common.find_chapter_files(book, "final", past_n)
+        if pf:
+            h = detect_chapter_hook(pf[-1].read_text(encoding="utf-8", errors="replace"))
+            hooks.append((f"ch_{past_n:03d}", h["type"]))
+    out["recent_hooks"] = hooks
+    if len(hooks) >= 2 and all(h[1] == hooks[0][1] for h in hooks):
+        out["hook_diversity_notice"] = f"⚠️ 前 {len(hooks)} 章连续采用「{hooks[0][1]}」，建议本章尝试其他收尾手段（如悬置/弱收/反高潮），调节读者情绪曲线。"
+    else:
+        out["hook_diversity_notice"] = None
     return out
+
+
+def detect_chapter_hook(text: str) -> dict:
+    """分析章末结尾段落，精准判断章尾钩子类型（强钩 / 悬置 / 弱收 / 反高潮）。"""
+    paras = _paragraphs(text)
+    tail = "\n".join(paras[-3:]) if paras else text[-300:]
+    
+    if re.search(r"[？！\?!]{1,}|杀局|大战|强敌|破空|压境|逼近|震天|大阵|战帖|叫阵|轰然|夺眶|撕裂|来不来", tail):
+        return {"type": "强钩", "detail": tail.strip()[:60]}
+    elif re.search(r"倒数|按在剑柄|蓄势|蓄力|深吸一口气|眼神一凝|一步踏出|悄然运转|锁死|阵法亮起", tail):
+        return {"type": "悬置", "detail": tail.strip()[:60]}
+    elif re.search(r"尴尬|噎住|打嗝|干咳|哭笑不得|无语|噗嗤|呆立|面面相觑|嘴角微抽", tail):
+        return {"type": "反高潮", "detail": tail.strip()[:60]}
+    else:
+        return {"type": "弱收", "detail": tail.strip()[:60]}
 
 
 def dup(book: Path, ch: str | None = None) -> dict:
