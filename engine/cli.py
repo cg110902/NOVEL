@@ -155,7 +155,7 @@ def cmd_init(args) -> int:
     done = _instantiate_templates(book, {"title": args.title or "", "genre": args.genre or "",
                                          "protagonist": args.protagonist or ""})
     print(f"✅ 书工作区已创建: {book}（状态机播种 {seeded} 个 JSON；模板实例化 {len(done)} 份：{', '.join(done)}）")
-    print("   下一步（Stage 0）：主控读 AGENTS.md 开局地图，按 templates/ 与 .agents/genre_guide.md")
+    print("   下一步（Stage 0）：主控读 AGENTS.md 开局地图，按 templates/模板实例化")
     print("   填实 bible/ characters/ outlines/ 资产（未填的 {{slot:}} 会被 check 拦下）。")
     return 0
 

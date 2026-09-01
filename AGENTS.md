@@ -63,4 +63,4 @@ graph LR
 - **起草爆发力手册（Drafter）**：`.agents/rules/craft_drafter.md`
 - **精修总笔心法（Guard）**：`.agents/rules/craft_guard.md`
 - **读者评审与事实审计规范（Reader）**：`.agents/rules/craft_reader.md`
-- **题材词库与风格参考**：`.agents/genre_guide.md`
+

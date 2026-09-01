@@ -32,7 +32,7 @@ description: Universal commercial webnovel reviewer and objective factual audito
    - **字数豁免原则**：凡因删削废话、旁白解释而导致的字数微缩，一律给予免检豁免。
 
 2. **分级自愈修裁 (L1 顺手改 vs L2 打回重铸)**：
-   - **🟢 L1 级微瑕（1-3句多余旁白/微量冷硬词/标点）**：Reader **直接使用 `replace_file_content` 顺手修剪 `final/ch_XXX.md`**，直接评为【通过 / 顺手修剪放行】，秒级放行！
+   - **🟢 L1 级微瑕（1-3句多余旁白/微量冷硬词汇/标点）**：Reader **直接使用 `replace_file_content` 顺手修剪 `final/ch_XXX.md`**，直接评为【通过 / 顺手修剪放行】，秒级放行！
    - **🔴 L2 级结构缺陷（遗漏核心拍点/重大剧情毒点）**：出具靶向修改单，裁决为【打回重铸】，流转回 Guard 深度重铸。
 
 3. **交付契约验收判定（对齐 beats 验收标准）**：

@@ -67,6 +67,6 @@ NOVEL/
 │   │   ├── craft_drafter.md   # 初稿起草爆发力手册
 │   │   └── craft_reader.md    # 读者风控评审与事实审计规范
 │   ├── skills/                # Antigravity 标准技能（Director / Drafter / Guard / Reader）
-│   └── genre_guide.md         # 题材类型与元素素材库
+│
 └── workspace/<书名>/          # 小说书稿工作区（大纲、设定、分卷草稿与状态真值）
 ```
