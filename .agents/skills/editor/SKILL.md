@@ -22,7 +22,7 @@ description: Universal commercial webnovel editor and final prose sculptor for N
    - 严禁套路化生理模板（“一股热流在胃里轰然炸开窜向四肢……”反复描写）；
    - 严禁脑内复读机自言自语；
    - 严禁战后上帝视角的哲理总结（坚决执行**物理刀口截断**）。
-
+	
 ---
 
 ## 📥 输入清单 (Inputs)

@@ -28,10 +28,17 @@
 - **状态机与两账分离**：
   - **大纲记规划**：在卷大纲中预先构思全卷伏笔；
   - **状态机记落盘真值**：开局 `state/lines.json` 保持初始空账本，伏笔随章节推进逐章 `plant` 入库；
-  - **Schema 规范**：`current.json` 中 `key_relationships` 与 `time` 为字符串；`entities.json` 实体简介字段为 `summary`；`ledger.json` 通货使用 `initial` 与 `current`。
+  - **法定实体 Schema 契约**：
+    - 法定实体类型：`['faction', 'item', 'other', 'person', 'place']`；
+    - 法定字段：`name`, `type`, `status` (`'active'`|`'retired'`), `summary` (简介，禁止用 description/bio), `aliases`, `realm`, `faction`, `holder`, `location`, `condition`, `charges`, `max_charges`, `attitude`, `life_status`；
+    - **严禁非法字段**：严禁出现 `id`, `category`, `entity_type`, `first_appearance` 等非 Schema 字段；
+  - **Schema 规范**：`current.json` 中 `key_relationships` 与 `time` 为字符串；`ledger.json` 通货使用 `initial` 与 `current`。
 
 ### Stage 1: 细纲构思（主控）
-- 依据前章事实简报与分卷大纲，确立当章核心戏剧目标、场景发展脉络、核心冲突与关键伏笔动作，写入 `outlines/vol_XX/beats/ch_XXX.md`。
+- 依据前章事实简报与分卷大纲，确立当章核心戏剧目标、场景发展脉络、核心冲突与关键伏笔动作，写入 `outlines/vol_XX/beats/ch_XXX.md`；
+- **防复用与连续同 form 规范**：
+  1. **`form_reason`**：若连续章节采用相同 `form`（如连续 `剧情推进`），必须在 front-matter 声明 `form_reason: ...`；
+  2. **`style_notes`**：必须根据当章核心看点与情境焦点量身定制风格旋钮，禁止跨章完全复制相同字符串（避免 `style_notes_copy` 警告）。
 
 ### Stage 2: 初稿起草（Drafter）
 - **调度**：主控调用 `invoke_subagent(TypeName="self", Role="Drafter", Prompt="...")`；

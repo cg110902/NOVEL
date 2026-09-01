@@ -2,9 +2,11 @@
 chapter: {{slot:chapter_id}}
 vol: {{slot:vol_id}}
 form: {{slot:form|剧情推进}}
+# form_reason: <!-- 若连续章节采用相同 form（如连续剧情推进），必须在此声明原因；否则可省略 -->
 pov: {{slot:protagonist|主角名}}·视角
 words: 2400-3500
 tension_curve: {{slot:tension_curve|动态起伏}}
+# style_notes 请根据当章核心看点量身定制，禁止与上章完全相同（避免 style_notes_copy 警告）
 style_notes: 通俗大白话 | 拒绝冷峻逼仄 | 动作化推进 | 物理刀口截断
 editor_extra: 
 ---
