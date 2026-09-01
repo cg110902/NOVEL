@@ -146,7 +146,7 @@ def cmd_init(args) -> int:
         "genre": args.genre or "",
         "protagonist": args.protagonist or "",
         "mode": "automatic",
-        "words_target": [2200, 3500],
+        "words_target": [2400, 3500],
         "style_guards": [],
         "created_at": datetime.date.today().isoformat(),
     }
@@ -638,7 +638,7 @@ def _cmd_proposal_auto(book: Path, ch: str, args) -> int:
 
     # 提取线动作
     lines_ops = []
-    action_sec = "\n".join(common.md_section(beats_text, r"^##\s*线动作"))
+    action_sec = "\n".join(common.md_section(beats_text, r"^##\s*(?:.*线动作|伏笔与线动作)"))
     for ln in action_sec.splitlines():
         ln = ln.strip()
         if not ln or ln.startswith(("#", "<")):
@@ -725,7 +725,7 @@ def _cmd_proposal_auto(book: Path, ch: str, args) -> int:
         present_chars = list(cur_state.get("present_characters", []))
 
     # 生成梗概草稿
-    beats_scenes = [ln.strip().lstrip("-* ").strip() for ln in common.md_section(beats_text, r"^##\s*拍点")]
+    beats_scenes = [ln.strip().lstrip("-* ").strip() for ln in common.md_section(beats_text, r"^##\s*(?:.*拍点|拍点与场景切片)")]
     beats_scenes = [s for s in beats_scenes if s and not s.startswith(("#", "<"))]
     synopsis_text = "；".join(beats_scenes[:3]) if beats_scenes else f"完成第{n}章主线剧情推进。"
 

@@ -1,6 +1,6 @@
 # Novel Studio (Antigravity Edition)
 
-专为 **Google Antigravity** 深度定制的现代化网络小说多智能体创作框架。
+专为 **Google Antigravity** 深度定制的现代化网络小说多智能体创作框架（通用于玄幻、都市、悬疑、科幻、言情、武侠、无限流等全题材）。
 
 > 📖 **核心宪法指引**：`AGENTS.md`  
 > 🛠️ **创作技巧指南**：`.agents/rules/novel_craft.md`  
@@ -11,11 +11,12 @@
 ## 🌟 核心特色
 
 1. **Antigravity 原生多智能体协同**：
-   - **Director（主控）**：把控全局大纲、单章细纲与状态封存。
-   - **Drafter（起草子代理）**：通过 `invoke_subagent` 独立沙箱起草情节自洽的初稿。
-   - **Guard（重铸子代理）**：专业网文级全文精修重铸，消解 AI 味，拉满剧情张力。
+   - **Director（主控）**：把控全局世界观、单卷四阶段节拍、动态单章细纲与状态快照封存。
+   - **Drafter（起草子代理）**：独立沙箱放飞爆发力，按 2~4 个场景切片与多元张力波形起草初稿。
+   - **Guard（重铸子代理）**：金牌总编级商业网文深度重铸，消解 AI 味，贯彻详略得当，拉满剧情张力。
+   - **Reader（评审与审计子代理）**：毒舌盲读 5 维雷达打分、L1 顺手修剪放行，客观提炼 300~600 字事实简报。
 2. **确定性状态机与防吃书机制**：
-   - 人物图谱（`entities.json`）、伏笔/线索追踪（`lines.json`）、时间线（`timeline.json`）保障长篇连载不崩坏、不吃书。
+   - 实体图谱（`entities.json`）、伏笔多态台账（`lines.json`）、现场状态（`current.json`）保障长篇连载不崩坏、不吃书。
 3. **极速顺滑的创作流**：
    - 分层上下文打包（`pack`）、机械证据校验（`evidence`）、一键状态封存（`sync`）。
 
@@ -57,16 +58,15 @@ NOVEL/
 ├── AGENTS.md                  # 核心宪法与智能体协同约定
 ├── studio.py                  # CLI 薄壳入口
 ├── engine/                    # 状态机与确定性校验引擎（纯 Python 标准库）
-├── templates/                 # 设定、大纲、细纲模板库
+├── templates/                 # 设定、大纲、动态细纲模板库
 ├── .agents/                   # Antigravity 工作区级智能体定制目录
 │   ├── rules/
-│   │   ├── novel_workflow.md  # 5 阶段工作流标准 SOP
+│   │   ├── novel_workflow.md  # 六大工序工作流标准 SOP
 │   │   ├── novel_craft.md     # 商业网文技巧总纲
 │   │   ├── craft_guard.md     # 金牌总编精修定稿心法
-│   │   └── craft_drafter.md   # 初稿起草指南
-│   ├── skills/                # Antigravity 标准技能（Director / Drafter / Guard）
-│   └── genre_guide.md         # 题材类型与元素参考库
+│   │   ├── craft_drafter.md   # 初稿起草爆发力手册
+│   │   └── craft_reader.md    # 读者风控评审与事实审计规范
+│   ├── skills/                # Antigravity 标准技能（Director / Drafter / Guard / Reader）
+│   └── genre_guide.md         # 题材类型与元素素材库
 └── workspace/<书名>/          # 小说书稿工作区（大纲、设定、分卷草稿与状态真值）
 ```
-
- 

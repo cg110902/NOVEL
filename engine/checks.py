@@ -24,7 +24,7 @@ def _err(code: str, msg: str) -> dict:
 
 
 _BEATS_FM_KEYS = {"chapter", "vol", "form", "pov", "words", "style_notes", "form_reason",
-                  "guard_extra"}
+                  "guard_extra", "tension_curve"}
 
 # 空判据词表（形容词类判据的机械近似；与 evidence.AI_CONSTRUCTIONS 同一精神——
 # 只数固定清单。通用形容词识别属语义，引擎不做；书级可用 project.json.empty_criteria_words 追加）。
@@ -35,7 +35,7 @@ _WORDS_BAND_RE = re.compile(r"(\d+)\s*[-–—~～]\s*(\d+)")
 
 
 def _words_band(s: str) -> tuple[int | None, int | None]:
-    """'2200-3500' → (2200, 3500)；解析不出 → (None, None)。"""
+    """'2400-3500' → (2400, 3500)；解析不出 → (None, None)。"""
     m = _WORDS_BAND_RE.search(s or "")
     return (int(m.group(1)), int(m.group(2))) if m else (None, None)
 
@@ -46,12 +46,19 @@ def _style_knobs(s: str) -> tuple[str, ...]:
 
 
 def _numbered_items(lines: list[str]) -> dict[int, str]:
-    """`N.`/`N、`起头的行 → {序号: 整行}（跳空行，只认节内）。"""
+    """`N.`/`N、`起头的行 → {序号: 整行及后续缩进/子行内容}（跳空行，只认节内）。"""
     out: dict[int, str] = {}
+    current_num = None
     for ln in lines:
-        m = re.match(r"^(\d+)[.、]\s*(.*)$", ln.strip())
+        s = ln.strip()
+        if not s:
+            continue
+        m = re.match(r"^(\d+)[.、]\s*(.*)$", s)
         if m:
-            out[int(m.group(1))] = ln.strip()
+            current_num = int(m.group(1))
+            out[current_num] = s
+        elif current_num is not None:
+            out[current_num] += " " + s
     return out
 
 
@@ -66,7 +73,7 @@ def review_gate(book: Path, ch: str) -> list[str]:
              if common.chapter_number_from_name(f.name) == common.chapter_token_to_num(ch)]
     k = 0
     if beats:
-        acc = common.md_section(beats[0].read_text(encoding="utf-8", errors="replace"), r"^##\s*验收")
+        acc = common.md_section(beats[0].read_text(encoding="utf-8", errors="replace"), r"^##\s*(?:.*验收|.*契约)")
         k = max(_numbered_items(acc), default=0)
     rev = book / "log" / "review" / f"{ch}.md"
     if not rev.is_file():
@@ -74,9 +81,9 @@ def review_gate(book: Path, ch: str) -> list[str]:
         return [f"校对注记 {ch}.md 不存在（Stage 4 未留注记；拒封存{extra}）"]
     rtext = rev.read_text(encoding="utf-8", errors="replace")
     issues: list[str] = []
-    if not re.search(r"^##\s*验收", rtext, re.M):
-        issues.append("校对注记缺「## 验收」节")
-    items = _numbered_items(common.md_section(rtext, r"^##\s*验收"))
+    if not re.search(r"^##\s*(?:.*验收|.*契约)", rtext, re.M):
+        issues.append("校对注记缺「## 验收」或「## 交付契约」节")
+    items = _numbered_items(common.md_section(rtext, r"^##\s*(?:.*验收|.*契约)"))
     missing = [n for n in range(1, k + 1) if n not in items]
     if missing:
         issues.append(f"验收 {missing} 未被校对注记回答（共 {k} 条，须逐条 N. ✓/✗+证据）")
@@ -110,11 +117,11 @@ def review_skeleton(book: Path, ch: str) -> dict:
     ftext = final_files[-1].read_text(encoding="utf-8", errors="replace")
     fm = common.parse_front_matter(text)
     acc: list[str] = []
-    for ln in common.md_section(text, r"^##\s*验收"):
+    for ln in common.md_section(text, r"^##\s*(?:.*验收|.*契约)"):
         m = re.match(r"^\s*(\d+)[.、]\s*(.+)$", ln.strip())
         if m:
             acc.append(m.group(2).strip())
-    must = [ln.strip().lstrip("-*· ").strip() for ln in common.md_section(text, r"^##\s*必须保留")]
+    must = [ln.strip().lstrip("-*· ").strip() for ln in common.md_section(text, r"^##\s*(?:必须保留|.*契约)")]
     must = [s for s in must if s and not s.startswith(("<", "#"))]
     led = state.load_state(book, "ledger")
     cur = state.load_state(book, "current")
@@ -343,14 +350,14 @@ def run_checks(book: Path) -> dict:
                                      f"{f.name}: style_notes 三旋钮与上一章全同「{fm.get('style_notes','')}」"
                                      "（novel_craft.md#反公式化与拟人化：三个全同=复印机）"))
             prev_lo = _words_band(last.get("words"))[0]
-            if prev_lo is not None and cur_lo is not None and abs(cur_lo - prev_lo) < 600:
+            if prev_lo is not None and cur_lo is not None and 0 < abs(cur_lo - prev_lo) < 400:
                 warnings.append(_err("words_band_crowded",
                                      f"{f.name}: words 带下限 {cur_lo} 与上一章 {prev_lo} 仅差 "
-                                     f"{abs(cur_lo - prev_lo)}（<600，自交检标准②）"))
+                                     f"{abs(cur_lo - prev_lo)}（微调幅度过小，建议维持同级或拉开差距）"))
         prev_by_vol[vol] = {"num": num, "form": form,
                             "notes": fm.get("style_notes", ""), "words": fm.get("words", "")}
         crit_hits: list[str] = []
-        for sec_pat in (r"^##\s*目标", r"^##\s*验收"):
+        for sec_pat in (r"^##\s*(?:.*目标|核心目标)", r"^##\s*(?:.*验收|.*契约)"):
             for ln in common.md_section(text, sec_pat):
                 s = ln.strip()
                 if not s or s.startswith(("#", "<")):
@@ -362,7 +369,7 @@ def run_checks(book: Path) -> dict:
             warnings.append(_err("acceptance_empty_criterion",
                                  f"{f.name}: 目标/验收含空判据词 {'、'.join(crit_hits[:5])}"
                                  "（判据用动词+可指认名词，novel_craft.md#句式与语域词汇）"))
-        action_sec = "\n".join(common.md_section(text, r"^##\s*线动作"))
+        action_sec = "\n".join(common.md_section(text, r"^##\s*(?:.*线动作|伏笔与线动作)"))
         orphans = sorted(set(re.findall(r"(?:GUN|MIS|KNO)-\d{3,}", action_sec)) - ledger_line_ids)
         if orphans:
             warnings.append(_err("line_action_orphan",

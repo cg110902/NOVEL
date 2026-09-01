@@ -374,10 +374,11 @@ def prev_contrast(book: Path, ch: str) -> dict:
     def _fields(path: Path) -> dict:
         text = path.read_text(encoding="utf-8", errors="replace")
         fm = common.parse_front_matter(text)
-        must = [ln.strip().lstrip("-*· ").strip() for ln in common.md_section(text, r"^##\s*必须保留")]
+        must = [ln.strip().lstrip("-*· ").strip() for ln in common.md_section(text, r"^##\s*(?:必须保留|.*契约)")]
         return {"form": fm.get("form", ""), "form_reason": fm.get("form_reason", ""),
                 "style_notes": fm.get("style_notes", ""), "pov": fm.get("pov", ""),
                 "words": fm.get("words", ""), "guard_extra": fm.get("guard_extra", ""),
+                "tension_curve": fm.get("tension_curve", ""),
                 "must_keep": [s for s in must if s and not s.startswith(("<", "#"))]}
 
     out: dict = {"kind": "prev", "chapter": tok}

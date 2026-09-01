@@ -355,13 +355,14 @@ def validate_proposal(proposal, expected_chapter: str | None = None) -> tuple[li
                     errors.append(f"lines[{i}].plant_ch 必须为正整数")
             else:
                 if action in ("remind", "resolve"):
+                    allowed = base_keys | spec["plant_fields"] | spec["update_fields"]
                     for k in g:
-                        if k not in base_keys:
+                        if k not in allowed:
                             errors.append(f"lines[{i}] 含未知字段: {k}")
                 if not g.get("id"):
                     errors.append(f"lines[{i}]（{action}）必须提供 id")
                 if action == "remind" and kind != "foreshadow":
-                    errors.append(f"lines[{i}]: remind 只适用于 foreshadow")
+                    errors.append(f"lines[{i}]: remind 只适用于 foreshadow（knowledge/misunderstanding 保持现状即可，无需多余动作）")
                 if action == "update":
                     for f in spec["update_str"]:
                         if f in g and not isinstance(g[f], str):
