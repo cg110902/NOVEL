@@ -134,10 +134,11 @@ def generate_dashboard_html(book: Path) -> str:
                 <div class="card-title">⚡ 主角现场状态（{cur.get('time', '未知时间')}）</div>
             </div>
             <div class="status-badge-group">
+                {f'<div class="status-badge">🗺️ {cur["region"]}</div>' if cur.get('region') else ''}
                 <div class="status-badge">📍 {cur.get('location', '未知')}</div>
                 <div class="status-badge">❤️ 状态：{cur.get('injury', '完好')}</div>
             </div>
-            <div class="stat-item"><span class="stat-label">境界修为</span><span class="stat-val" style="color: var(--accent-amber); font-weight: 600;">{cur.get('power_level', '未设定')}</span></div>
+            <div class="stat-item"><span class="stat-label">境界修为</span><span class="stat-val" style="color: var(--accent-amber); font-weight: 600;">{cur.get('power_level') or cur.get('realm') or '未设定'}</span></div>
             <div class="stat-item"><span class="stat-label">掌握功法</span><span class="stat-val">{cur.get('abilities', '无')}</span></div>
             <div class="stat-item"><span class="stat-label">持有资产</span><span class="stat-val">{cur.get('assets', '无')}</span></div>
             <div class="stat-item"><span class="stat-label">关键人际</span><span class="stat-val">{cur.get('key_relationships', '无')}</span></div>
@@ -215,7 +216,7 @@ def generate_dashboard_html(book: Path) -> str:
                 {"".join(f'''<div class="entity-card {e.get('type', 'person')} {'retired' if e.get('status') == 'retired' else ''}">
                     <div class="entity-name">
                         <span>{e['name']}</span>
-                        <span style="font-size: 11px; color: var(--text-muted); font-weight: normal;">{e.get('type', 'person')}{' · 已退役' if e.get('status') == 'retired' else ''}</span>
+                        <span style="font-size: 11px; color: var(--text-muted); font-weight: normal;">{e.get('realm') or e.get('attitude') or (f"余{e['charges']}次" if e.get('charges') is not None else e.get('type', 'person'))}{' · 已退役' if e.get('status') == 'retired' else ''}</span>
                     </div>
                     <div class="entity-summary">{e.get('summary', '暂无描述')[:60]}</div>
                 </div>''' for e in ents[:12]) or '<div style="color: var(--text-muted); font-size: 12px; grid-column: 1/-1;">暂未登记实体</div>'}

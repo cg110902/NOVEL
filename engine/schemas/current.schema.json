@@ -7,9 +7,13 @@
       "type": "string",
       "description": "此刻时间（timeline 历法口径，如'第二日·午后'）"
     },
+    "region": {
+      "type": "string",
+      "description": "宏观大地图区域/疆域（如'北荒域·黑风山'、'江城市·城南区'），防止大跨度长途移动瞬移吃书"
+    },
     "location": {
       "type": "string",
-      "description": "此刻地点"
+      "description": "此刻具体地点/场景"
     },
     "power_level": {
       "type": "string",

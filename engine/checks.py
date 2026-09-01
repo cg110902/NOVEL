@@ -24,7 +24,7 @@ def _err(code: str, msg: str) -> dict:
 
 
 _BEATS_FM_KEYS = {"chapter", "vol", "form", "pov", "words", "style_notes", "form_reason",
-                  "guard_extra", "tension_curve"}
+                  "guard_extra", "editor_extra", "tension_curve"}
 
 # 空判据词表（形容词类判据的机械近似；与 evidence.AI_CONSTRUCTIONS 同一精神——
 # 只数固定清单。通用形容词识别属语义，引擎不做；书级可用 project.json.empty_criteria_words 追加）。
@@ -63,11 +63,11 @@ def _numbered_items(lines: list[str]) -> dict[int, str]:
 
 
 def review_gate(book: Path, ch: str) -> list[str]:
-    """Stage 4 合同（机械层）：必须有校对注记；「验收」节须逐条答完任务书「验收」。
+    """Stage 5 合同（机械层）：必须有校对注记；「验收」节须逐条答完任务书「验收」。
 
-    只数行与符号：无注记 → 拦（Stage 4 封存前提，见 novel_workflow.md#Stage 4）；
+    只数行与符号：无注记 → 拦（Stage 5 封存前提，见 novel_workflow.md#Stage 5）；
     注记缺「## 验收」→ 拦；beats 有验收条目 → 缺答/缺✓✗/无证据 = 拒绝封存。
-    guard 不写注记、不答验收。
+    editor 不写注记、不答验收。
     """
     beats = [f for f in common.find_chapter_files(book, "beats")
              if common.chapter_number_from_name(f.name) == common.chapter_token_to_num(ch)]
@@ -78,7 +78,7 @@ def review_gate(book: Path, ch: str) -> list[str]:
     rev = book / "log" / "review" / f"{ch}.md"
     if not rev.is_file():
         extra = f"；beats「验收」共 {k} 条" if k else ""
-        return [f"校对注记 {ch}.md 不存在（Stage 4 未留注记；拒封存{extra}）"]
+        return [f"校对注记 {ch}.md 不存在（Stage 5 未留注记；拒封存{extra}）"]
     rtext = rev.read_text(encoding="utf-8", errors="replace")
     issues: list[str] = []
     if not re.search(r"^##\s*(?:.*验收|.*契约)", rtext, re.M):
@@ -87,7 +87,7 @@ def review_gate(book: Path, ch: str) -> list[str]:
     missing = [n for n in range(1, k + 1) if n not in items]
     if missing:
         issues.append(f"验收 {missing} 未被校对注记回答（共 {k} 条，须逐条 N. ✓/✗+证据）")
-    # 证据判定（novel_craft.md#打磨与校对）：每条结论必须带证据——正文引文，或 evidence 字段名+数值。
+    # 证据判定（Stage 4/5 验收证据规范）：每条结论必须带证据——正文引文，或 evidence 字段名+数值。
     # 不再用"整行 ≥24 字符"的任意长阈值（会误伤语句精炼但已给引文/数值的证据）。
     EVIDENCE_QUOTE_RE = re.compile(r"[「“\"'『]")          # 引号 = 正文引文
     EVIDENCE_FIELD_RE = re.compile(r"[A-Za-z_][\w]*[:：]\s*[\d.]+|[A-Za-z_]+\s*=\s*[\d.]+")  # 字段:值
@@ -100,7 +100,7 @@ def review_gate(book: Path, ch: str) -> list[str]:
 
 
 def review_skeleton(book: Path, ch: str) -> dict:
-    """校对注记骨架数据（Stage 4）：验收条目/必须保留自 beats 提取，机器数据逐项预填。
+    """校对注记骨架数据（Stage 5）：验收条目/必须保留自 beats 提取，机器数据逐项预填。
     纯提取/计数——每项的「结果」与证据仍由主控填写；零裁决。"""
     n = common.chapter_token_to_num(ch)
     if not n:
@@ -274,10 +274,11 @@ def run_checks(book: Path) -> dict:
     for (vol, n) in per_ch:
         vol_nums.setdefault(vol, []).append(n)
     for vol, nums in sorted(vol_nums.items()):
-        missing = sorted(set(range(min(nums), max(nums) + 1)) - set(nums))
+        start = 1 if vol == "vol_01" else min(nums)
+        missing = sorted(set(range(start, max(nums) + 1)) - set(nums))
         if missing:
             errors.append(_err("final_gap_chapters",
-                               f"{vol} final 章号断档: {missing}（第 {min(nums)} 与 {max(nums)} 章之间无定稿）"))
+                               f"{vol} final 章号断档: {missing}（第 {start} 与 {max(nums)} 章之间无定稿）"))
     stats["final_chapters"] = len(per_ch)
 
     # ---- 占位符：槽位未实例化禁止入流水线 ----
@@ -285,20 +286,20 @@ def run_checks(book: Path) -> dict:
     for md in sorted(book.rglob("*.md")):
         try:
             if SLOT_RE.search(md.read_text(encoding="utf-8", errors="ignore")):
-                slot_hits.append(str(md.relative_to(book)))
+                slot_hits.append(md.relative_to(book).as_posix())
         except OSError:
             continue
     for rel in slot_hits:
         errors.append(_err("unfilled_slot", f"{rel} 存在未填充槽位 {{{{slot:...}}}}（Stage 0 未完成）"))
 
-    # ---- 禁令5：稿件禁工程痕迹（candidate_* 泄漏进 manuscript）----
+    # ---- 稿件禁工程痕迹（candidate_* 泄漏进 manuscript）----
     ms = book / "manuscript"
     if ms.is_dir():
         for md in sorted(ms.rglob("*.md")):
             try:
                 if CANDIDATE_RE.search(md.read_text(encoding="utf-8", errors="ignore")):
                     errors.append(_err("candidate_leak",
-                        f"{md.relative_to(book)} 含 candidate_* 工程痕迹（AGENTS 禁令5：禁入稿件）"))
+                        f"{md.relative_to(book).as_posix()} 含 candidate_* 工程痕迹（AGENTS 防污染原则：稿件严禁工程标记）"))
             except OSError:
                 continue
 
@@ -333,7 +334,7 @@ def run_checks(book: Path) -> dict:
         if extra:
             errors.append(_err("beats_fm_extra_keys",
                                f"{f.name}: front-matter 含未定义键 {sorted(extra)}"
-                               f"（合法键 {sorted(_BEATS_FM_KEYS)}；工程痕迹禁入稿——AGENTS 禁令5）"))
+                               f"（合法键 {sorted(_BEATS_FM_KEYS)}；AGENTS 防污染原则：工程痕迹禁入稿）"))
         num = common.chapter_number_from_name(f.name) or 0
         form = fm.get("form", "")
         if not form:
@@ -347,8 +348,8 @@ def run_checks(book: Path) -> dict:
                                    f"{f.name}: 与上一章同 form「{form}」但 front-matter 未写 form_reason"))
             if cur_notes and cur_notes == _style_knobs(last.get("notes")):
                 warnings.append(_err("style_notes_copy",
-                                     f"{f.name}: style_notes 三旋钮与上一章全同「{fm.get('style_notes','')}」"
-                                     "（novel_craft.md#反公式化与拟人化：三个全同=复印机）"))
+                                     f"{f.name}: style_notes 旋钮与上一章全同「{fm.get('style_notes','')}」"
+                                     "（建议根据当章冲突焦点与情境动态配置 style_notes）"))
             prev_lo = _words_band(last.get("words"))[0]
             if prev_lo is not None and cur_lo is not None and 0 < abs(cur_lo - prev_lo) < 400:
                 warnings.append(_err("words_band_crowded",
@@ -368,7 +369,7 @@ def run_checks(book: Path) -> dict:
         if crit_hits:
             warnings.append(_err("acceptance_empty_criterion",
                                  f"{f.name}: 目标/验收含空判据词 {'、'.join(crit_hits[:5])}"
-                                 "（判据用动词+可指认名词，novel_craft.md#句式与语域词汇）"))
+                                 "（判据建议使用具体可验证的动词与实体名词）"))
         action_sec = "\n".join(common.md_section(text, r"^##\s*(?:.*线动作|伏笔与线动作)"))
         orphans = sorted(set(re.findall(r"(?:GUN|MIS|KNO)-\d{3,}", action_sec)) - ledger_line_ids)
         if orphans:

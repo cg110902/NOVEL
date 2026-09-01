@@ -43,6 +43,31 @@
               "retired"
             ]
           },
+          "realm": {
+            "type": "string",
+            "description": "（person 用）境界/阶位/社会职务（如'练气四层'、'刑警队长'）"
+          },
+          "faction": {
+            "type": "string",
+            "description": "（person 用）所属势力/组织名"
+          },
+          "life_status": {
+            "enum": [
+              "alive",
+              "deceased",
+              "missing"
+            ],
+            "description": "（person 用）生命状态：alive(存活) / deceased(战死/离世) / missing(失踪)"
+          },
+          "attitude": {
+            "enum": [
+              "hostile",
+              "neutral",
+              "friendly",
+              "allied"
+            ],
+            "description": "（faction 用）对主角/主角团的政治与阵营立场"
+          },
           "holder": {
             "type": "string",
             "description": "（item 用）当前持有者名；必须已在 entities 注册（sync 闭合校验）"
@@ -54,6 +79,16 @@
           "condition": {
             "type": "string",
             "description": "（item 用）当前完损/状态（如'完整''毁于火'）"
+          },
+          "charges": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "（item 用）剩余使用次数/充能点数"
+          },
+          "max_charges": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "（item 用）最大使用次数/充能上限"
           }
         }
       }

@@ -11,7 +11,7 @@ from pathlib import Path
 from . import common, evidence, state
 
 PREV_TAIL_CHARS = 1000
-SPINE_CAP = 30
+SPINE_CAP = 10
 POINTER_WINDOW = 10
 PACK_TOKEN_CAP = 18000
 
@@ -83,6 +83,26 @@ def _hard_reminders(book: Path, ch: str, ch_num: int) -> list[str]:
     属于 pack 这层"尽可能把上下文交给子代理"的有意例外——pack 的职责是装配提示，
     台账损坏应由 check/状态体检报错，不让它阻断"还能写的章"。"""
     out: list[str] = []
+    # 危机时钟提醒（P0 倒计时压迫感注入）
+    try:
+        tl = state.load_state(book, "timeline")
+        for clk in tl.get("clocks", []):
+            if clk.get("status") in ("Defused", "Triggered", "Expired"):
+                continue
+            tch = clk.get("target_ch")
+            if isinstance(tch, int):
+                diff = tch - ch_num
+                cname = clk.get("name", "未命名时钟")
+                cdesc = f"（{clk.get('desc')}）" if clk.get("desc") else ""
+                if diff < 0:
+                    out.append(f"⏰【时钟逾期】危机「{cname}」已超期 {abs(diff)} 章（目标 ch_{tch:03d}）！{cdesc}")
+                elif diff == 0:
+                    out.append(f"🔥【时钟引爆】危机「{cname}」将在本章爆发！{cdesc}")
+                elif diff <= 5:
+                    out.append(f"⏰【时钟紧迫】危机「{cname}」距今仅剩 {diff} 章（将在 ch_{tch:03d} 结算）！{cdesc}")
+    except ValueError:
+        pass
+
     try:
         lines = state.load_state(book, "lines")
     except ValueError:
@@ -127,6 +147,15 @@ def _entity_block(book: Path, name: str, cur: dict, lines: dict, full: bool) -> 
     block = {"name": name, "type": e.get("type", "other"), "summary": e.get("summary", ""),
              "status": e.get("status", "active"),
              "on_stage": name in cur["current"].get("present_characters", [])}
+    
+    # 挂载高维实体属性
+    for attr in ("realm", "faction", "life_status", "attitude"):
+        if e.get(attr):
+            block[attr] = e[attr]
+    if e.get("charges") is not None:
+        max_c = e.get("max_charges")
+        block["charges"] = f"{e['charges']}/{max_c}" if max_c else str(e["charges"])
+
     touched = []
     alias = [name] + list(e.get("aliases", []))
     for g in (lines.get("foreshadows", []) + lines.get("misunderstandings", [])
@@ -149,6 +178,8 @@ def _entity_block(book: Path, name: str, cur: dict, lines: dict, full: bool) -> 
             continue
         if str(it.get("holder", "")) in alias:
             meta = [x for x in (it.get("location"), it.get("condition")) if x]
+            if it.get("charges") is not None:
+                meta.append(f"余{it['charges']}次")
             carried.append(f"{it['name']}（{'·'.join(meta)}）" if meta else str(it["name"]))
     if carried:
         block["carries"] = carried
@@ -265,7 +296,21 @@ def render_layer(name: str, obj, full: bool = False) -> str:
     if name == "p1":
         lines = []
         for b in obj["entities"]:
-            lines.append(f"[{b['name']}|{b['type']}|{'章末在场' if b['on_stage'] else '章末不在'}] {b['summary']}")
+            extra_tags = []
+            if b.get("realm"):
+                extra_tags.append(b["realm"])
+            if b.get("faction"):
+                extra_tags.append(b["faction"])
+            if b.get("life_status") and b["life_status"] != "alive":
+                extra_tags.append(b["life_status"])
+            if b.get("attitude"):
+                extra_tags.append(f"立场:{b['attitude']}")
+            if b.get("charges"):
+                extra_tags.append(f"余{b['charges']}次")
+            tag_str = f" | {', '.join(extra_tags)}" if extra_tags else ""
+            lines.append(f"[{b['name']}|{b['type']}|{'章末在场' if b['on_stage'] else '章末不在'}{tag_str}] {b['summary']}")
+            if b.get("carries"):
+                lines.append(f"  随身: {', '.join(b['carries'])}")
             if b.get("lines"):
                 lines.append(f"  挂线: {', '.join(b['lines'])}")
             if b.get("card_text"):

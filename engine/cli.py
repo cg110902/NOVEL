@@ -1,6 +1,6 @@
-"""CLI 薄壳：11 命令、参数解析与编排。业务逻辑一律在 engine/*。
+"""CLI 薄壳：12 命令、参数解析与编排。业务逻辑一律在 engine/*。
 
-status / init / pack / evidence / check / sync / snapshot / export / proposal / review / help。
+status / init / pack / evidence / check / sync / snapshot / export / dashboard / proposal / review / help。
 退出码：0=ok / 1=阻断（含 check errors、sync 失败）/ 2=用法错。
 """
 from __future__ import annotations
@@ -104,7 +104,7 @@ def cmd_init(args) -> int:
         if args.clean:
             import shutil
             cleared = 0
-            # 只清 manuscript 与收件箱里的待办提案；processed/failed 是审计记录，永不删除（AGENTS 禁令6）。
+            # 只清 manuscript 与收件箱里的待办提案；processed/failed 是审计记录，永不删除（审计记录只增不删原则）。
             if (book / "manuscript").exists():
                 shutil.rmtree(book / "manuscript")
                 (book / "manuscript" / "vol_01" / "raw").mkdir(parents=True, exist_ok=True)
@@ -127,7 +127,7 @@ def cmd_init(args) -> int:
             return 0
         if args.force:
             import shutil
-            print("⚠️ --force 整本重开：processed/failed 审计记录将随目录一并删除（AGENTS 禁令6 的唯一例外）")
+            print("⚠️ --force 整本重开：processed/failed 审计记录将随目录一并删除（整本重置的唯一例外）")
             shutil.rmtree(book)
         else:
             print(f"⛔ 工作区已存在: {book}")
@@ -222,7 +222,7 @@ def _next_actions(brief: dict | None) -> list[str]:
     if brief["pending_proposals"]:
         acts.append(f"state/inbox 有 {len(brief['pending_proposals'])} 份待合并提案：python studio.py sync ch_XXX")
     nxt = brief["latest_finalized"] + 1
-    acts.append(f"下一章 ch_{nxt:03d}：Stage 1 主控写 beats → Stage 2 drafter → Stage 3 guard → Stage 4 极速同步+快照")
+    acts.append(f"下一章 ch_{nxt:03d}：Stage 1 主控写 beats → Stage 2 drafter → Stage 3 editor → Stage 4 reader → Stage 5 极速同步+快照")
     return acts
 
 
@@ -354,7 +354,7 @@ def cmd_evidence(args) -> int:
                    "gaps": evidence.gaps(book)}
     elif kind == "file":
         if len(rest) not in (1, 2):
-            print("❌ evidence file 需要 <相对路径> [章节号(并入该章 guard_extra)]")
+            print("❌ evidence file 需要 <相对路径> [章节号(并入该章 editor_extra)]")
             return 2
         if len(rest) == 2 and _norm_ch(rest[1]) is None:
             print(f"❌ 无法解析章节编号: {rest[1]!r}（示例: 6 或 ch_006）")
@@ -428,7 +428,7 @@ def cmd_check(args) -> int:
 
 
 # ---------------------------------------------------------------------------
-# sync：提案合并 → 状态体检 → 快照（Stage 4 闭环）
+# sync：提案合并 → 状态体检 → 快照（Stage 5 闭环）
 # ---------------------------------------------------------------------------
 def cmd_sync(args) -> int:
     book = common.resolve_workspace(args.workspace)
@@ -451,7 +451,7 @@ def cmd_sync(args) -> int:
 
     # 前置闸门（dry-run 与正式一致）：定稿必须存在；提案必须存在且内容对应本章。
     if not has_manuscript:
-        print(f"❌ 未找到 {ch} 的定稿（final），拒绝空同步（Stage 4 输入合同：beats/raw/final 齐）")
+        print(f"❌ 未找到 {ch} 的定稿（final），拒绝空同步（Stage 5 输入合同：beats/raw/final 齐）")
         return 1
     if not has_proposal:
         strays = ([p.name for p in inbox.glob(f"{ch}.*") if p.suffix == ".json"
@@ -470,13 +470,13 @@ def cmd_sync(args) -> int:
         print(f"❌ 提案内容与同步目标不一致: {proposal_path.name} 的 chapter={got} ≠ {ch}，拒绝空同步")
         return 1
 
-    # 前置闸门：Stage 4 输入合同 beats/raw/final 齐（novel_workflow.md#Stage 4）。
+    # 前置闸门：Stage 5 输入合同 beats/raw/final 齐（novel_workflow.md#Stage 5）。
     # 无 beats 细纲不得封存——防止"无细纲、零更新"的章被空提案推进（配合空提案 no-op 识别）。
     if not common.find_chapter_files(book, "beats", ch):
-        print(f"❌ 未找到 {ch} 的 beats 细纲，拒绝封存（Stage 4 输入合同：beats/raw/final 齐）")
+        print(f"❌ 未找到 {ch} 的 beats 细纲，拒绝封存（Stage 5 输入合同：beats/raw/final 齐）")
         return 1
     if not common.find_chapter_files(book, "raw", ch):
-        print(f"❌ 未找到 {ch} 的 raw 草稿，拒绝封存（Stage 4 输入合同：beats/raw/final 齐）")
+        print(f"❌ 未找到 {ch} 的 raw 草稿，拒绝封存（Stage 5 输入合同：beats/raw/final 齐）")
         return 1
 
     # 校对注记（可选机制：若存在则做软性提示，未创建则直通跳过以极速节省 Token）
@@ -508,7 +508,7 @@ def cmd_sync(args) -> int:
         print(json.dumps(payload, ensure_ascii=False, indent=2))
     else:
         print("=" * 70)
-        print(f" 🔄 [Stage 4 同步流水线] {ch}" + ("  [DRY-RUN]" if args.dry_run else ""))
+        print(f" 🔄 [Stage 5 同步流水线] {ch}" + ("  [DRY-RUN]" if args.dry_run else ""))
         print("=" * 70)
         for r in overall["results"]:
             print(f" 📄 {r.get('file','?')}")
@@ -629,9 +629,13 @@ def _cmd_proposal_auto(book: Path, ch: str, args) -> int:
     # 提取标题
     title = ""
     if final_text:
-        m = re.search(r"^#\s*(?:第\s*\d+\s*章|[A-Za-z0-9_]+)\s*(.+)$", final_text, re.M)
+        m = re.search(r"^#\s*(?:第\s*[0-9零一二三四五六七八九十百千]+\s*章|ch_\d+)\s*(.+)$", final_text, re.M)
         if m:
             title = m.group(1).strip()
+        else:
+            m = re.search(r"^#\s*(.+)$", final_text, re.M)
+            if m:
+                title = m.group(1).strip()
     if not title:
         m = re.search(r"^#+\s*(.+)$", beats_text, re.M)
         title = m.group(1).strip() if m else f"第{n}章"
@@ -725,8 +729,18 @@ def _cmd_proposal_auto(book: Path, ch: str, args) -> int:
         present_chars = list(cur_state.get("present_characters", []))
 
     # 生成梗概草稿
-    beats_scenes = [ln.strip().lstrip("-* ").strip() for ln in common.md_section(beats_text, r"^##\s*(?:.*拍点|拍点与场景切片)")]
-    beats_scenes = [s for s in beats_scenes if s and not s.startswith(("#", "<"))]
+    raw_scenes = common.md_section(beats_text, r"^##\s*(?:.*冲突与场景脉络|.*场景推进|.*场景脉络|.*拍点|拍点与场景切片)")
+    beats_scenes = []
+    for ln in raw_scenes:
+        s = ln.strip().lstrip("-*· ").strip()
+        if not s or s.startswith(("#", "<")):
+            continue
+        if s.startswith("**本章核心矛盾死结**") or s.startswith("场景一") or s.startswith("场景二") or s.startswith("场景三"):
+            continue
+        # 清理前缀如 核心事件与对抗动作：或 破局行动与结果：
+        cleaned = re.sub(r"^(?:核心事件与对抗动作|角色互动与言语试探|破局行动与结果|📍\s*章末物理刀口卡点)[:：]\s*", "", s).strip()
+        if cleaned and not cleaned.startswith(("<", "<!--")):
+            beats_scenes.append(cleaned)
     synopsis_text = "；".join(beats_scenes[:3]) if beats_scenes else f"完成第{n}章主线剧情推进。"
 
     from datetime import datetime
@@ -824,9 +838,9 @@ def _render_review_md(d: dict) -> str:
                    for pid, p in sorted(d["ledger_now"].items())) or "（无池）"
     L = [f"# {d['chapter']} 校对注记", ""]
     L += ["<!-- 骨架由 `studio review new` 生成：机器数据已预填，结果与证据由主控填写。",
-          "     每条结论要证据：正文引文片段，或 evidence 输出（字段名+数值）——无证据的打钩=未审",
-          "     （novel_craft.md#打磨与校对）。 -->", ""]
-    L += ["## guard 回话", "", "<!-- 粘贴 guard 交付回话（重铸了什么/为什么，三到五行） -->", ""]
+          "     每条结论要证据：正文引文片段，或 evidence 输出（字段名+数值）——无证据的打钩=未审。",
+          "     -->", ""]
+    L += ["## editor 回话", "", "<!-- 粘贴 editor 交付回话（重铸了什么/为什么，三到五行） -->", ""]
     L += ["## 六项机械核对", ""]
     L += ["### 1. 错别字", "- 结果：", ""]
     L += ["### 2. 标点配对",
@@ -1014,7 +1028,7 @@ COMMAND_HELP = {
     "pack": "单章上下文三层装配（P0 热 / P1 别名触发 / P2 冷索引）",
     "evidence": "机械证据：all|mentions|gaps|dup|style|words|file|candidates|prev（纯 JSON，零裁决）",
     "check": "结构/schema/算术体检（errors 只允许事实级；有 errors 退出码 1）",
-    "sync": "提案合并 → 状态体检 → 快照（Stage 4 闭环，可 --dry-run）",
+    "sync": "提案合并 → 状态体检 → 快照（Stage 5 闭环，可 --dry-run）",
     "snapshot": "快照 list / create NAME / rollback NAME [--clean-drafts]",
     "export": "全书编译：--txt 拼接正文，--views 渲染状态视图",
     "proposal": "提案：new 骨架 ｜ auto 自动装配 ｜ check 结构预检+三方事实对照",
@@ -1088,7 +1102,7 @@ def _build_subparsers(sub: argparse._SubParsersAction) -> None:
     _add_common_opts(q)
     q.set_defaults(func=cmd_check)
 
-    q = sub.add_parser("sync", help="提案合并 → 状态体检 → 快照（Stage 4 闭环）")
+    q = sub.add_parser("sync", help="提案合并 → 状态体检 → 快照（Stage 5 闭环）")
     _add_common_opts(q)
     q.add_argument("chapter", help="目标章节（如 7 或 ch_007）")
     q.add_argument("--dry-run", action="store_true", help="只校验预演不写入")

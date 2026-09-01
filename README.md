@@ -14,8 +14,8 @@
 1. **Gemini 深度适配与原生多智能体协同**：
    - **Director（主控）**：全局统筹世界观、分卷主线，装配当章核心利益死结与细纲任务，闭环管理状态机。
    - **Drafter（起草子代理 · Stage 2）**：彻底放飞算力与想象力，无缝承接前章情境，以“动作化推进（Action First）”和“生动对白机锋”起草高能毛坯初稿 `raw/`。
-   - **Guard（重铸子代理 · Stage 3）**：文学重塑与定稿总笔，剪裁冗长脑内反思，实施“物理刀口截断（坚决阻断事后说教升华）”，产出极具阅读爽感的纯净定稿 `final/`。
-   - **Reader（评审与审计子代理 · Stage 3.5）**：真实读者读感反馈与微瑕修剪，利用强大长上下文提取力客观提炼 300~600 字结构化事实简报。
+   - **Editor（重铸子代理 · Stage 3）**：文学重塑与定稿总笔，剪裁冗长脑内反思，实施“物理刀口截断（坚决阻断事后说教升华）”，产出极具阅读爽感的纯净定稿 `final/`。
+   - **Reader（事实审计子代理 · Stage 4）**：严谨提炼 5 大客观事实，直接装配标准增量提案 JSON (`state/inbox/`) 消除手工搬运税。
 2. **确定性状态机与防吃书机制**：
    - 实体图谱（`entities.json`）、伏笔多态台账（`lines.json`）、现场状态（`current.json`）保障长篇连载不崩坏、不吃书。
 3. **极速顺滑的创作流**：
@@ -43,11 +43,14 @@ python studio.py evidence prev ch_002
 # 5. 全书与状态健康体检
 python studio.py check
 
-# 6. 一键状态同步与封存（Stage 4）
+# 6. 一键状态同步与封存（Stage 5）
 python studio.py sync ch_001
 
 # 7. 全书导出与编译
 python studio.py export --txt --views
+
+# 8. 生成全景交互看板（人物图谱/伏笔看板/心电图）
+python studio.py dashboard
 ```
 
 ---
@@ -65,9 +68,9 @@ NOVEL/
 │   │   ├── novel_workflow.md  # 创作流水线标准 SOP
 │   │   ├── novel_craft.md     # Gemini 深度适配创作工艺总纲
 │   │   ├── craft_drafter.md   # 初稿起草指南（Drafter 专版）
-│   │   ├── craft_guard.md     # 文学重塑与定稿指南（Guard 专版）
-│   │   └── craft_reader.md    # 读者反馈与事实审计规范（Reader 专版）
-│   ├── skills/                # Antigravity 标准技能（Director / Drafter / Guard / Reader）
+│   │   ├── craft_editor.md    # 文学重塑与定稿指南（Editor 专版）
+│   │   └── craft_reader.md    # 事实审计与增量提案装配规范（Reader 专版）
+│   ├── skills/                # Antigravity 标准技能（Director / Drafter / Editor / Reader）
 │
 └── workspace/<书名>/          # 小说书稿工作区（大纲、设定、分卷草稿与状态真值）
 ```

@@ -181,7 +181,7 @@ def gaps(book: Path) -> dict:
     return out
 
 
-# --------------------------------------------------------------------------- 工作单小件（Stage 4 候选对照 / Stage 1 上章对照）
+# --------------------------------------------------------------------------- 工作单小件（Stage 5 候选对照 / Stage 1 上章对照）
 _CN_DIGITS = {"零": 0, "一": 1, "二": 2, "两": 2, "両": 2, "三": 3, "四": 4,
               "五": 5, "六": 6, "七": 7, "八": 8, "九": 9}
 _CN_UNITS = {"十": 10, "百": 100, "千": 1000}
@@ -286,7 +286,7 @@ def line_sort_key(g: dict, kind: str) -> tuple:
 
 
 def candidates(book: Path, ch: str) -> dict:
-    """Stage 4 工作单数据：以本章 final 为源做机器对照，只出数、零裁决。
+    """Stage 5 工作单数据：以本章 final 为源做机器对照，只出数、零裁决。
 
     是否上账、是否动线的判断全归主控（AGENTS 宪法：语义边界）。
     """
@@ -337,7 +337,7 @@ def candidates(book: Path, ch: str) -> dict:
     out["amounts"] = _amount_scan(text, led.get("pools"))
     out["ledger_now"] = {pid: p.get("current") for pid, p in (led.get("pools") or {}).items()}
 
-    # beats 的 [新实体→注册] 标记（Stage 1 已做的语义活，Stage 4 只做登记对照）
+    # beats 的 [新实体→注册] 标记（Stage 1 已做的语义活，Stage 5 只做登记对照）
     markers = []
     for f in common.find_chapter_files(book, "beats", n):
         for i, ln in enumerate(f.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
@@ -430,7 +430,7 @@ def detect_chapter_hook(text: str) -> dict:
     paras = _paragraphs(text)
     tail = "\n".join(paras[-3:]) if paras else text[-300:]
     
-    if re.search(r"[？！\?!]{1,}|杀局|大战|强敌|破空|压境|逼近|震天|大阵|战帖|叫阵|轰然|夺眶|撕裂|来不来", tail):
+    if re.search(r"[？！?!]+|杀局|大战|强敌|破空|压境|逼近|震天|大阵|战帖|叫阵|轰然|夺眶|撕裂|来不来", tail):
         return {"type": "强钩", "detail": tail.strip()[:60]}
     elif re.search(r"倒数|按在剑柄|蓄势|蓄力|深吸一口气|眼神一凝|一步踏出|悄然运转|锁死|阵法亮起", tail):
         return {"type": "悬置", "detail": tail.strip()[:60]}

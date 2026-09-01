@@ -108,7 +108,7 @@ def rollback_snapshot(book: Path, target: str) -> tuple[bool, str, str]:
         return False, "没有找到任何快照目录", ""
 
     def strip_ts(n: str) -> str:
-        m = re.match(r"^\d{8}_\d{6}_(.+)$", n)
+        m = re.match(r"^\d{8}_\d{6}(?:_\d+)?_(.+)$", n)
         return m.group(1) if m else n
 
     # pre_rollback_* 备份同样是合法回滚目标（docstring：本身也可再回滚回去）——

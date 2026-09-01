@@ -77,7 +77,7 @@ def inbox_dir(book: Path) -> Path:
 
 def defaults_for(key: str) -> dict:
     if key == "current":
-        return {"time": "", "location": "", "power_level": "", "abilities": "",
+        return {"time": "", "region": "", "location": "", "power_level": "", "abilities": "",
                 "injury": "", "equipment": "", "assets": "", "situation": "", "mood": "",
                 "goal": "", "key_relationships": "", "present_characters": []}
     if key == "entities":
@@ -85,7 +85,7 @@ def defaults_for(key: str) -> dict:
     if key == "lines":
         return {"foreshadows": [], "misunderstandings": [], "knowledge": []}
     if key == "timeline":
-        return {"events": [], "arcs": []}
+        return {"events": [], "arcs": [], "clocks": []}
     if key == "ledger":
         return {"note": "复式多资源池账本：余额一律由流水重算，禁止手改",
                 "pools": {"standard_currency": {"name": "主通货", "unit": "枚", "initial": 0, "current": 0}},
@@ -95,10 +95,10 @@ def defaults_for(key: str) -> dict:
     raise KeyError(f"未知状态键: {key}")
 
 
-INBOX_README = """# state/inbox — 提案收件箱（主控 Stage 4 的工位）
+INBOX_README = """# state/inbox — 提案收件箱（Stage 4 Reader 交付 / Stage 5 主控审定工位）
 
 一切状态修改从这里进：每章一个 `ch_XXX.json`（填提案以本 README 样例为准，
-业务规则见 novel_workflow.md#Stage 4）。processed/ = 已应用的审计记录（永不删改）；
+业务规则见 novel_workflow.md#Stage 5）。processed/ = 已应用的审计记录（永不删改）；
 failed/ = 失败提案，就地处修复后重跑 `sync`，引擎自动捡回。
 
 正式提案必须带 operation_id（`ch_XXX.director.<序号>`）；`*.draft.json`/`*.template.json`/`*.sample.json` 不参与合并，
@@ -281,7 +281,8 @@ def validate_proposal(proposal, expected_chapter: str | None = None) -> tuple[li
     if isinstance(ents, list):
         _plan("entities", len(ents))
         allowed_entity_keys = {"action", "name", "type", "card", "summary", "status", "aliases",
-                               "holder", "location", "condition"}
+                               "holder", "location", "condition",
+                               "realm", "faction", "life_status", "attitude", "charges", "max_charges"}
         for i, e in enumerate(ents):
             if not isinstance(e, dict):
                 errors.append(f"entities[{i}] 必须为对象")
@@ -289,15 +290,23 @@ def validate_proposal(proposal, expected_chapter: str | None = None) -> tuple[li
             for k in e:
                 if k not in allowed_entity_keys:
                     errors.append(f"entities[{i}] 含未知字段: {k}")
-            if e.get("action", "upsert") not in ("upsert", "retire"):
+            if e.get("action", "upsert") not in ("upsert", "register", "retire"):
                 errors.append(f"entities[{i}].action 必须为 upsert/retire")
             if not str(e.get("name", "")).strip():
                 errors.append(f"entities[{i}].name 必填")
             if "status" in e and e["status"] not in ("active", "retired"):
                 errors.append(f"entities[{i}].status 必须 ∈ ['active', 'retired']，收到 {e['status']!r}")
+            if "life_status" in e and e["life_status"] not in ("alive", "deceased", "missing"):
+                errors.append(f"entities[{i}].life_status 必须 ∈ ['alive', 'deceased', 'missing']，收到 {e['life_status']!r}")
+            if "attitude" in e and e["attitude"] not in ("hostile", "neutral", "friendly", "allied"):
+                errors.append(f"entities[{i}].attitude 必须 ∈ ['hostile', 'neutral', 'friendly', 'allied']，收到 {e['attitude']!r}")
+            if "charges" in e and (not isinstance(e["charges"], int) or isinstance(e["charges"], bool) or e["charges"] < 0):
+                errors.append(f"entities[{i}].charges 必须为 ≥0 的整数")
+            if "max_charges" in e and (not isinstance(e["max_charges"], int) or isinstance(e["max_charges"], bool) or e["max_charges"] < 1):
+                errors.append(f"entities[{i}].max_charges 必须为 ≥1 的整数")
             if "type" in e and e["type"] not in _ENTITY_TYPES:
                 errors.append(f"entities[{i}].type 非法: {e['type']!r}（合法：{'/'.join(sorted(_ENTITY_TYPES))}）")
-            for f in ("card", "summary", "holder", "location", "condition"):
+            for f in ("card", "summary", "holder", "location", "condition", "realm", "faction"):
                 if f in e and not isinstance(e[f], str):
                     errors.append(f"entities[{i}].{f} 必须为字符串")
             if "aliases" in e:
@@ -377,10 +386,10 @@ def validate_proposal(proposal, expected_chapter: str | None = None) -> tuple[li
     # --- timeline ---
     tl = proposal.get("timeline")
     if isinstance(tl, dict):
-        n = len(tl.get("events", []) or []) + len(tl.get("arcs", []) or [])
+        n = len(tl.get("events", []) or []) + len(tl.get("arcs", []) or []) + len(tl.get("clocks", []) or [])
         _plan("timeline", n)
         for k in tl:
-            if k not in ("events", "arcs"):
+            if k not in ("events", "arcs", "clocks"):
                 errors.append(f"timeline 含未知字段: {k}")
         for i, ev in enumerate(tl.get("events", []) or []):
             if not isinstance(ev, dict):
@@ -403,6 +412,20 @@ def validate_proposal(proposal, expected_chapter: str | None = None) -> tuple[li
             for f in ("baseline", "stage", "inciting_event", "strategy", "ultimate"):
                 if f in a and not isinstance(a[f], str):
                     errors.append(f"timeline.arcs[{i}].{f} 必须为字符串")
+        for i, c in enumerate(tl.get("clocks", []) or []):
+            if not isinstance(c, dict) or not isinstance(c.get("name"), str) or not c["name"].strip():
+                errors.append(f"timeline.clocks[{i}] 必须含非空字符串 name")
+                continue
+            for k in c:
+                if k not in ("name", "target_ch", "urgency", "desc", "status"):
+                    errors.append(f"timeline.clocks[{i}] 含未知字段: {k}")
+            tch = c.get("target_ch")
+            if not isinstance(tch, int) or isinstance(tch, bool) or tch < 1:
+                errors.append(f"timeline.clocks[{i}].target_ch 必须为 ≥1 的正整数")
+            if "urgency" in c and c["urgency"] not in ("low", "medium", "high", "critical"):
+                errors.append(f"timeline.clocks[{i}].urgency 必须 ∈ ['low', 'medium', 'high', 'critical']")
+            if "status" in c and c["status"] not in ("Active", "Triggered", "Defused", "Expired"):
+                errors.append(f"timeline.clocks[{i}].status 必须 ∈ ['Active', 'Triggered', 'Defused', 'Expired']")
 
     # --- ledger ---
     led = proposal.get("ledger")
@@ -528,7 +551,8 @@ def _merge_entities(state: dict, items: list[dict], rep: dict) -> None:
             ent = {"name": name, "type": etype, "aliases": [], "card": "", "summary": "", "status": "active"}
             state["entries"].append(ent)
             idx[name] = ent
-        for f in ("type", "card", "summary", "holder", "location", "condition"):
+        for f in ("type", "card", "summary", "holder", "location", "condition",
+                  "realm", "faction", "life_status", "attitude", "charges", "max_charges"):
             if f in e:
                 ent[f] = e[f]
         if "status" in e:
@@ -651,6 +675,28 @@ def _merge_timeline(state: dict, patch: dict, ch: str, rep: dict) -> None:
             if not any(h.get("chapter") == ch and h.get("strategy") == a["strategy"] for h in hist):
                 hist.append(entry)
         rep["updated"].append(f"🧠 {name} 阶段 → {ent.get('stage', '')}")
+
+    clocks = state.setdefault("clocks", [])
+    c_idx = _index_by(clocks, "name")
+    for c in patch.get("clocks", []) or []:
+        cname = c["name"]
+        cent = c_idx.get(cname)
+        if cent is None:
+            cent = {
+                "name": cname,
+                "target_ch": c["target_ch"],
+                "urgency": c.get("urgency", "medium"),
+                "desc": c.get("desc", ""),
+                "status": c.get("status", "Active")
+            }
+            clocks.append(cent)
+            c_idx[cname] = cent
+            rep["updated"].append(f"⏰ 新增危机时钟「{cname}」→ 目标 ch_{c['target_ch']:03d}")
+        else:
+            for f in ("target_ch", "urgency", "desc", "status"):
+                if f in c:
+                    cent[f] = c[f]
+            rep["updated"].append(f"⏰ 危机时钟「{cname}」已更新（状态: {cent.get('status')}）")
 
 
 def _merge_ledger(state: dict, patch: dict, ch: str, rep: dict) -> None:
@@ -790,7 +836,7 @@ def apply_proposal(book: Path, proposal: dict, expected_chapter: str | None = No
             rep["dry_run"] = True
         return rep
 
-    # 同步前置闸门（AGENTS 禁令3 / novel_workflow Stage 4）：
+    # 同步前置闸门（Stage 5 状态落盘前体检闸门，novel_workflow.md#Stage 5）：
     # 在内存副本上先跑"状态体检"（账本重算/唯一性/实体闭合），全部通过才允许落盘。
     # 任何体检失败 → 整体拒绝，一个字节都不写、不归档、不封存快照——避免"脏状态已写入、
     # 提案却进了 processed/、无法走 failed/ 捡回"的不可恢复污染。
@@ -952,15 +998,20 @@ def verify_data(data: dict[str, dict]) -> list[str]:
     if dup:
         errors.append(f"实体注册表重名: {dup}")
 
-    # 闭合性：current.present_characters 必须已注册（与 checks#unregistered_character 同口径）
-    # 改状态时先注册实体，避免封存引用未登记人物的状态（check 的事后拦截升级为 sync 闸门）。
+    # 闭合性与生死状态：current.present_characters 必须已注册且非离世
     known = set(names)
+    deceased_names = set()
     for e in data["entities"].get("entries", []):
         known.update(str(a) for a in e.get("aliases", []) if a)
+        if e.get("life_status") == "deceased":
+            deceased_names.add(e["name"])
+            deceased_names.update(str(a) for a in e.get("aliases", []) if a)
     for name in data["current"].get("present_characters", []):
         if str(name).strip() and str(name) not in known:
             errors.append(f"current.present_characters 引用未登记实体「{name}」"
                           "（先在 entities 提案注册，名字须与卡一致）")
+        elif str(name) in deceased_names:
+            errors.append(f"current.present_characters 引用已离世/战死实体「{name}」（life_status=deceased）")
 
     # 闭合性：item 实体的 holder 必须已注册（人名/别名）——持有关系不许悬空
     for e in data["entities"].get("entries", []):
@@ -968,6 +1019,15 @@ def verify_data(data: dict[str, dict]) -> list[str]:
         if holder and holder not in known:
             errors.append(f"实体「{e.get('name','')}」的 holder「{holder}」未登记"
                           "（先注册持有者；holder 必须是已注册实体名）")
+
+    # 危机时钟校验
+    for i, clk in enumerate(data["timeline"].get("clocks", []), 1):
+        cname = clk.get("name")
+        if not cname:
+            errors.append(f"时钟 #{i} 缺少 name 名称")
+        tch = clk.get("target_ch")
+        if not isinstance(tch, int) or tch < 1:
+            errors.append(f"时钟「{cname or i}」target_ch 非法: {tch}（须为 ≥1 的正整数）")
     return errors
 
 

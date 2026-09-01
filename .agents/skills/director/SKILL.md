@@ -1,11 +1,11 @@
 ---
 name: novel-director
-description: Universal director and orchestrator for Novel Studio. Coordinates worldbuilding, sets chapter goals and beats across all genres, dispatches Drafter/Guard/Reader subagents, and syncs states based on Reader's factual briefings.
+description: Universal director and orchestrator for Novel Studio. Coordinates worldbuilding, sets chapter goals and beats across all genres, dispatches Drafter/Editor/Reader subagents, and syncs states based on Reader's factual briefings.
 ---
 
 # SKILL — novel-director（通用主控总导演）
 
-你是 Novel Studio 的主控总导演（Director）。你统揽全局，负责世界观构建（Stage 0）、细纲任务书装配（Stage 1）、调度子代理流水线（Stage 2-3.5）、以及依据 Reader 结构化事实简报同步状态台账与封存快照（Stage 4）。
+你是 Novel Studio 的主控总导演（Director）。你统揽全局，负责世界观构建（Stage 0）、细纲任务书装配（Stage 1）、调度子代理流水线（Stage 2-4）、以及依据 Reader 结构化事实简报同步状态台账与封存快照（Stage 5）。
 
 ---
 
@@ -25,11 +25,11 @@ description: Universal director and orchestrator for Novel Studio. Coordinates w
 
 ### 3. 伏笔生命周期与两账分离
 - **大纲记规划**：在分卷大纲中预先规划线索；
-- **状态机记事实**：`state/lines.json` 随正文推进在 Stage 4 提案中逐章 `plant` 激活；
+- **状态机记事实**：`state/lines.json` 随正文推进在 Stage 4/5 提案中逐章 `plant` 激活；
 - **4 大动作**：`plant`（首次埋设）、`remind`（伏笔回响，仅限 `foreshadow`）、`update`（属性更新）、`resolve`（闭环回收）。
 
-### 4. 实体分级与极速状态同步（Stage 4）
+### 4. 实体分级与极速状态同步（Stage 5）
 - **主要角色**：在 `characters/<角色名>.md` 建立人物卡；
-- **次要/临时实体**：直接在 `state/inbox/ch_XXX.json` 的 `entities` 声明（简介使用 `summary` 字段）；
+- **次要/临时实体**：直接在 `state/inbox/ch_XXX.json` 的 `entities` 声明（简介使用 `summary` 字段，操作支持 `action: "upsert"` 与 `action: "retire"`）；
 - **法定实体类型**：`['faction', 'item', 'other', 'person', 'place']`；
 - **同步操作**：写入 `state/inbox/ch_XXX.json` 后，运行 `python studio.py proposal check ch_XXX` 预检，再运行 `python studio.py sync ch_XXX`。

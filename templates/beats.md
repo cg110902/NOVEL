@@ -6,7 +6,7 @@ pov: {{slot:protagonist|主角名}}·视角
 words: 2400-3500
 tension_curve: {{slot:tension_curve|动态起伏}}
 style_notes: 通俗大白话 | 拒绝冷峻逼仄 | 动作化推进 | 物理刀口截断
-guard_extra: 
+editor_extra: 
 ---
 
 ## 核心冲突与场景脉络
