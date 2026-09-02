@@ -13,7 +13,7 @@
 | **Stage 2<br/>初稿起草** | **起草员<br/>(Drafter)** | • 当章细纲 `beats/ch_XXX.md`<br/>• 上章尾声情境与梗概 (pack)<br/>• 章初状态 `current.json` (pack)<br/>• 核心人物人设与起草指南 `craft_drafter.md` | 充分发挥想象力，承接前章余温，**禁止冷峻阴暗逼仄文风，全篇使用通俗直白大白话**，以动作化推进和对白机锋产出高能初稿毛坯。 | • 初稿正文文件：<br/>`manuscript/vol_XX/raw/ch_XXX_v1.md`<br/>(纯小说 Markdown，约 2400~3500 字)<br/>• 向主控汇报完稿概况 |
 | **Stage 3<br/>文学重塑** | **精修师<br/>(Editor)** | • 当章细纲 `beats/ch_XXX.md`<br/>• 初稿毛坯 `raw/ch_XXX_v1.md`<br/>• 定稿指南 `craft_editor.md` | **专注于文学质感与阅读快感**：彻底清除冷峻压抑调性，全篇以接地气大白话重写润色，剪除冗长内心戏，执行物理刀口截断，打磨顺滑定稿。 | • 纯净定稿正文文件：<br/>`manuscript/vol_XX/final/ch_XXX.md`<br/>(100% 纯正文)<br/>• 向主控汇报定稿情况 |
 | **Stage 4<br/>事实审计<br/>& 提案装配** | **审计员<br/>(Reader)** | • 定稿正文 `final/ch_XXX.md`<br/>• 当章细纲 `beats/ch_XXX.md`<br/>• 审计规范 `craft_reader.md` | **严谨客观事实审计与状态提案装配**：<br/>通读定稿正文，客观提取 5 大事实（时空、在场角色、道具变动、伏笔动线、新增实体），直接装配为标准增量提案 JSON。 | • 标准增量提案文件：<br/>`state/inbox/ch_XXX.json`<br/>(符合 Schema 规范的纯净 JSON) |
-| **Stage 5<br/>状态封存** | **主控<br/>(Director)** | • Reader 交付的标准增量提案 `state/inbox/ch_XXX.json`<br/>• 提案规范 `state/inbox/README.md` | 审定 Reader 交付的增量提案，确认全局伏笔与实体定级无误后，运行 `studio.py sync` 触发校验并生成原子快照。 | • 机器真值更新：`state/*.json`<br/>• 归档快照：`snapshots/*_ch_XXX_done` |
+| **Stage 5<br/>状态封存** | **主控<br/>(Director)** | • 当章四件套：`beats/ch_XXX.md` + `raw/ch_XXX_v1.md` + `final/ch_XXX.md` + `state/inbox/ch_XXX.json`<br/>• 提案规范 `state/inbox/README.md` | 审定 Reader 交付的增量提案，确认全局伏笔与实体定级无误后，运行 `studio.py sync` 触发校验并生成原子快照。 | • 机器真值更新：`state/*.json`<br/>• 归档快照：`state/snapshots/<时间戳>_ch_XXX_done` |
 
 ---
 
@@ -30,7 +30,7 @@
   - **状态机记落盘真值**：开局 `state/lines.json` 保持初始空账本，伏笔随章节推进逐章 `plant` 入库；
   - **法定实体 Schema 契约**：
     - 法定实体类型：`['faction', 'item', 'other', 'person', 'place']`；
-    - 法定字段：`name`, `type`, `status` (`'active'`|`'retired'`), `summary` (简介，禁止用 description/bio), `aliases`, `realm`, `faction`, `holder`, `location`, `condition`, `charges`, `max_charges`, `attitude`, `life_status`；
+    - 法定字段：`name`, `type`, `status` (`'active'`|`'retired'`), `summary` (简介，禁止用 description/bio), `aliases`, `realm`, `faction`, `holder`, `location`, `condition`, `charges`, `max_charges`, `attitude`, `life_status`, `card` (人物卡相对路径，`pack --full` 注入卡全文)；
     - **严禁非法字段**：严禁出现 `id`, `category`, `entity_type`, `first_appearance` 等非 Schema 字段；
   - **Schema 规范**：`current.json` 中 `key_relationships` 与 `time` 为字符串；`ledger.json` 通货使用 `initial` 与 `current`。
 
@@ -52,11 +52,21 @@
 
 ### Stage 4: 事实审计与增量提案装配（Reader）
 - **调度**：主控调用 `invoke_subagent(TypeName="self", Role="Reader", Prompt="...")`；
-- **动作**：通读定稿正文，客观提炼 5 大事实（时空坐标、在场人物、道具流动、三类线索、新增实体），直接装配为标准增量提案 JSON；
+- **动作**：通读定稿正文，客观提炼 5 大事实（① 时空坐标与在场人物 ② 实体与高维状态 ③ 三类线索动线 ④ 道具与资产流水 ⑤ 剧情梗概、事件与危机时钟），直接装配为标准增量提案 JSON；
 - **输出**：`state/inbox/ch_XXX.json`（使用原生 `write_to_file` 工具）。
 
 ### Stage 5: 极速状态同步与快照封存（主控）
+- **输入合同（引擎强制，四项缺一即拒绝同步）**：
+  1. 当章细纲 `outlines/vol_XX/beats/ch_XXX.md`；
+  2. 当章草稿 `manuscript/vol_XX/raw/ch_XXX_v1.md`；
+  3. 当章定稿 `manuscript/vol_XX/final/ch_XXX.md`；
+  4. 在途提案 `state/inbox/ch_XXX.json`（chapter 须与目标章一致）。
 - **审定与闭环**：
   1. 审定 Reader 交付的 `state/inbox/ch_XXX.json`，确认全局伏笔与实体登记无误；
   2. 运行 `python studio.py proposal check ch_XXX` 预检；
-  3. 运行 `python studio.py sync ch_XXX` 合并真值并生成快照。
+  3. 运行 `python studio.py sync ch_XXX` 合并真值并生成快照（快照落在 `state/snapshots/<时间戳>_ch_XXX_done`）；
+  4. （可选机制）若存在校对注记 `log/review/ch_XXX.md`，sync 会以 ℹ️ 提示其验收覆盖情况（软提示，不阻断）。
+- **故障恢复**：
+  - 提案被拒 → 归档在 `state/inbox/failed/ch_XXX.json`，就地修复后重跑 `sync ch_XXX` 引擎自动捡回；
+  - 状态污染 → `python studio.py snapshot list` 查看 `state/snapshots/`，`python studio.py snapshot rollback <名称>` 回滚（回滚前自动备份为 `pre_rollback_*`；`--clean-drafts` 可一并清理超章稿件/细纲）；
+  - 已封存章的事实修订 → 并入下一章提案随 sync 合并（timeline 事件用 `replace` 修订、历史章标题/梗概用 `synopsis.chapters` 修订，见 `state/inbox/README.md`）。

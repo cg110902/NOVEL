@@ -21,11 +21,15 @@ description: Universal factual auditor and state proposal generator for Novel St
 1. 🔍 **事实提取**：
    - 提取章末确凿在场的所有角色名单（`present_characters`）；
    - 提取章末物理地点与时间；
-   - 提取当章确凿发生的道具与资源收支；
+   - **刷新 current 全部变动字段**：境界（`power_level`）、功法（`abilities`）、伤势（`injury`）、装备（`equipment`）、非资金资产（`assets`）、心境/目标/关系/处境——本章发生突破/习得/痊愈/装备进出/资产变动时**绝不漏刷**；
+   - 提取当章确凿发生的道具与资源收支（馈赠/拾获也算，资金一律走 `ledger` 流水）；
    - 对照 beats 提取 `GUN-*` / `KNO-*` / `MIS-*` 的生命周期动作（`plant` / `remind` / `update` / `resolve`）；
    - 提取新出场的实体名称与一句话简介（`summary`）；
    - 提炼本章 1~3 句话主线梗概（`synopsis`）。
-2. 🧩 **装配标准增量提案 JSON**：
+2. 🚨 **源优先级铁律（防吃书）**：
+   - 一切事实性文字**逐字以 final 为源**——beats 只用于对照伏笔动作，**禁止复用其措辞**（Editor 常改写场景结局）；
+   - `synopsis.title` **逐字拷贝 final 首行章题标题行**；final 无标题行则留待主控补题，勿自拟。
+3. 🧩 **装配标准增量提案 JSON**：
    - 组装符合 `novel-studio.state-mutation/v2` 规范的完整增量提案。
 
 ---

@@ -36,7 +36,9 @@ description: Universal commercial webnovel editor and final prose sculptor for N
 
 ## 📤 输出清单与落盘规范 (Outputs)
 1. **纯净定稿正文**：
-   - 使用原生 `write_to_file` 工具覆盖写入 `manuscript/vol_XX/final/ch_XXX.md`（设置 `Overwrite: true`，100% 纯正文，约 2400~3200 字符）；
+   - 使用原生 `write_to_file` 工具覆盖写入 `manuscript/vol_XX/final/ch_XXX.md`（设置 `Overwrite: true`，约 2400~3500 汉字，引擎统计口径为汉字数不含标点）；
+   - **首行必须是章题标题行** `# 第N章 标题`（Reader 逐字拷贝登记 synopsis.title）；
+   - 除首行章题外 100% 纯正文；
    - 严禁传入 `ArtifactMetadata` 参数。
 2. **汇报**：
    - 简要汇报定稿情况与重塑亮点，提示主控流转至 Stage 4 Reader。

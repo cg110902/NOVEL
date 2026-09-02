@@ -15,7 +15,7 @@ description: Universal director and orchestrator for Novel Studio. Coordinates w
 - 确立核心法则、力量体系与文风红线（**坚决禁止冷峻阴暗逼仄，全篇采用直白通俗大白话**）；
 - **实体 Schema 严格契约**：
   - 法定实体类型：`['faction', 'item', 'other', 'person', 'place']`；
-  - 法定字段：`['name', 'type', 'status', 'summary', 'aliases', 'realm', 'faction', 'holder', 'location', 'condition', 'charges', 'max_charges', 'attitude', 'life_status']`；
+  - 法定字段：`['name', 'type', 'status', 'summary', 'aliases', 'realm', 'faction', 'holder', 'location', 'condition', 'charges', 'max_charges', 'attitude', 'life_status', 'card']`（`card` = 人物卡相对路径，供 `pack --full` 注入卡全文）；
   - 严禁使用 `id`, `category`, `entity_type`, `first_appearance` 等非 Schema 字段；简介字段必须为 `summary`。
 
 ### 2. 细纲装配与防复用规范（Stage 1）
