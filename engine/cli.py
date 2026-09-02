@@ -154,6 +154,7 @@ def cmd_init(args) -> int:
         "mode": "automatic",
         "words_target": [2400, 3500],
         "style_guards": [],
+        "state_watch": {},
         "created_at": datetime.date.today().isoformat(),
     }
     common.dump_json(book / "project.json", proj)
@@ -476,6 +477,13 @@ def cmd_sync(args) -> int:
         print(f"❌ 提案内容与同步目标不一致: {proposal_path.name} 的 chapter={got} ≠ {ch}，拒绝空同步")
         return 1
 
+    # 引文接地闸门（0 token）：quote 必须逐字见于当章 final——编造/改写引文物理上无法过闸。
+    quote_errors = checks.validate_quotes(book, ch, proposal_data)
+    if quote_errors:
+        for e in quote_errors:
+            print(f"❌ 引文校验: {e}")
+        return 1
+
     # 前置闸门：Stage 5 输入合同 beats/raw/final 齐（novel_workflow.md#Stage 5）。
     # 无 beats 细纲不得封存——防止"无细纲、零更新"的章被空提案推进（配合空提案 no-op 识别）。
     if not common.find_chapter_files(book, "beats", ch):
@@ -572,7 +580,9 @@ def _cmd_proposal_check(book: Path, ch: str, args) -> int:
         return _fail(f"提案内容与目标不一致: {proposal_path.name} 的 chapter={got} ≠ {ch}")
     rep = state.apply_proposal(book, proposal, expected_chapter=ch, dry_run=True)
     facts = checks.proposal_cross_facts(book, ch, proposal)
-    payload = {"chapter": ch, "proposal": proposal_path.name, "check": rep, "cross_facts": facts}
+    quote_errors = checks.validate_quotes(book, ch, proposal)
+    payload = {"chapter": ch, "proposal": proposal_path.name, "check": rep, "cross_facts": facts,
+               "quote_errors": quote_errors}
     if args.json:
         print(json.dumps(payload, ensure_ascii=False, indent=2))
     else:
@@ -581,6 +591,8 @@ def _cmd_proposal_check(book: Path, ch: str, args) -> int:
         print("=" * 70)
         for e in rep["errors"]:
             print(f" ❌ {e}")
+        for e in quote_errors:
+            print(f" ❌ 引文校验: {e}")
         for w in rep.get("warnings", []):
             print(f" ⚠️ {w}")
         if not rep["errors"]:
@@ -612,7 +624,63 @@ def _cmd_proposal_check(book: Path, ch: str, args) -> int:
             pm_str = "、".join(f"{k}×{v}" for k, v in sorted(pm.items(), key=lambda x: -x[1])[:8]) or "无"
             pr = facts.get("present_in_proposal") or []
             print(f"   提案 present: {'、'.join(map(str, pr)) if pr else '（未声明）'} ｜ 本章提及: {pm_str}")
-    return 1 if rep["errors"] else 0
+    return 1 if (rep["errors"] or quote_errors) else 0
+
+
+def _cmd_proposal_verify(book: Path, ch: str, args) -> int:
+    """算法版 Stage 4.5（0 token）：提案×final×状态 全机械对照电池。
+
+    只数差异、只出候选清单（warn/info），零裁决、不阻断——是否处理归主控。
+    """
+    def _fail(msg: str) -> int:
+        if getattr(args, "json", False):
+            print(json.dumps({"chapter": ch, "error": msg}, ensure_ascii=False))
+        else:
+            print(f"❌ {msg}")
+        return 1
+
+    inbox = book / "state" / "inbox"
+    proposal_path = None
+    for cand in (inbox / f"{ch}.json", inbox / "failed" / f"{ch}.json"):
+        if cand.is_file():
+            proposal_path = cand
+            break
+    if proposal_path is None:
+        return _fail(f"未找到 {ch} 的在途提案（state/inbox 与 failed/ 均无）")
+    try:
+        proposal = common.load_json(proposal_path)
+    except ValueError as exc:
+        return _fail(f"提案 JSON 解析失败: {exc}")
+    if not isinstance(proposal, dict) or proposal.get("chapter") != ch:
+        got = proposal.get("chapter") if isinstance(proposal, dict) else "非对象"
+        return _fail(f"提案内容与目标不一致: {proposal_path.name} 的 chapter={got} ≠ {ch}")
+
+    quote_errors = checks.validate_quotes(book, ch, proposal)
+    battery = checks.verify_candidates(book, ch, proposal)
+    payload = {"chapter": ch, "proposal": proposal_path.name, "quote_errors": quote_errors, "verify": battery}
+    if getattr(args, "json", False):
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+        return 0
+    print("=" * 70)
+    print(f" 🔎 [算法版 Stage 4.5] {ch}（{proposal_path.name}；0 token 机械对照——候选清单，裁决归主控）")
+    print("=" * 70)
+    if common.find_chapter_files(book, "final", ch):
+        print(f" 引文校验：{'✅ 全部逐字命中 final' if not quote_errors else f'❌ {len(quote_errors)} 条未命中'}")
+        for e in quote_errors:
+            print(f"    ❌ {e}")
+    else:
+        print(" ℹ️ 引文校验跳过（final 缺失）")
+    for it in battery.get("items", []):
+        mark = "⚠️" if it["sev"] == "warn" else "ℹ️"
+        print(f" {mark} [{it['code']}] {it['msg']}")
+    if not battery.get("items") and not battery.get("error"):
+        print(" ✅ 八项机械对照均无差异候选")
+    stats = battery.get("stats") or {}
+    if stats:
+        print(f" 汇总：候选 {len(battery.get('items', []))} 条 ｜ {stats}")
+    if battery.get("error"):
+        print(f" ❌ {battery['error']}")
+    return 0
 
 
 def _cmd_proposal_auto(book: Path, ch: str, args) -> int:
@@ -795,8 +863,8 @@ def cmd_proposal(args) -> int:
         print("❌ 未找到书工作区状态目录（先运行 init）")
         return 1
     action = getattr(args, "pp_action", None)
-    if action not in ("new", "check", "auto"):
-        print("❌ proposal 需要 new/auto/check 子命令，如: python studio.py proposal auto ch_003 --write")
+    if action not in ("new", "check", "auto", "verify"):
+        print("❌ proposal 需要 new/auto/check/verify 子命令，如: python studio.py proposal verify ch_003")
         return 2
     n = common.chapter_token_to_num(args.chapter)
     if n is None:
@@ -807,6 +875,8 @@ def cmd_proposal(args) -> int:
         return _cmd_proposal_check(book, ch, args)
     if action == "auto":
         return _cmd_proposal_auto(book, ch, args)
+    if action == "verify":
+        return _cmd_proposal_verify(book, ch, args)
     inbox = book / "state" / "inbox"
     if (inbox / f"{ch}.json").exists():
         print(f"❌ {ch} 已有在途提案（state/inbox/{ch}.json）——先处理再建新骨架")
@@ -1042,7 +1112,7 @@ COMMAND_HELP = {
     "sync": "提案合并 → 状态体检 → 快照（Stage 5 闭环，可 --dry-run）",
     "snapshot": "快照 list / create NAME / rollback NAME [--clean-drafts]",
     "export": "全书编译：--txt 拼接正文，--views 渲染状态视图",
-    "proposal": "提案：new 骨架 ｜ auto 自动装配 ｜ check 结构预检+三方事实对照",
+    "proposal": "提案：new 骨架 ｜ auto 自动装配 ｜ check 结构预检+三方事实对照 ｜ verify 算法版Stage4.5机械对照",
     "dashboard": "生成交互式全景看板 HTML（人物关系网/伏笔看板/情绪心电图）",
     "review": "校对注记：new <章节>（骨架预填验收条目+机器数据，--write 写 log/review/）",
     "help": "本命令目录（--json 供宿主解析）",
@@ -1166,6 +1236,11 @@ def _build_subparsers(sub: argparse._SubParsersAction) -> None:
     r.add_argument("--force", action="store_true", help="已有在途提案时强制覆盖（谨慎）")
     r.set_defaults(func=cmd_proposal)
     r = pp.add_parser("check", help="在途提案结构预检 + 三方事实对照（不落盘）")
+    r.add_argument("chapter")
+    r.add_argument("-w", "--workspace", default=argparse.SUPPRESS)
+    r.add_argument("--json", action="store_true", default=argparse.SUPPRESS)
+    r.set_defaults(func=cmd_proposal)
+    r = pp.add_parser("verify", help="算法版 Stage 4.5：0 token 机械对照电池（候选清单，不阻断）")
     r.add_argument("chapter")
     r.add_argument("-w", "--workspace", default=argparse.SUPPRESS)
     r.add_argument("--json", action="store_true", default=argparse.SUPPRESS)

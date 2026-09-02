@@ -18,6 +18,266 @@ SLOT_RE = re.compile(r"\{\{\s*slot:")
 CANDIDATE_RE = re.compile(r"candidate_[0-9A-Za-z_*]")
 FORM_SHARE_LIMIT = 0.40
 
+# 引文接地（0 token 机械校验）支持 quote 的分区遍历描述表：(列表取值器, 条目名)
+_QUOTE_SLOTS: list[tuple[str, object]] = [
+    ("entities", lambda p: p.get("entities") or []),
+    ("lines", lambda p: p.get("lines") or []),
+    ("ledger.transactions", lambda p: ((p.get("ledger") or {}).get("transactions")) or []),
+    ("timeline.events", lambda p: ((p.get("timeline") or {}).get("events")) or []),
+    ("timeline.clocks", lambda p: ((p.get("timeline") or {}).get("clocks")) or []),
+]
+
+
+def _iter_quote_items(proposal: dict):
+    """产出 (路径名, 条目) ——提案中所有可携带 quote 的条目（synopsis 单列）。"""
+    if not isinstance(proposal, dict):
+        return
+    for name, getter in _QUOTE_SLOTS:
+        try:
+            items = getter(proposal)
+        except Exception:  # noqa: BLE001 —— 结构异常交给 schema 校验报错
+            continue
+        for i, item in enumerate(items):
+            if isinstance(item, dict):
+                yield f"{name}[{i}]", item
+    syn = proposal.get("synopsis")
+    if isinstance(syn, dict):
+        yield "synopsis", syn
+
+
+def validate_quotes(book: Path, ch: str, proposal: dict) -> list[str]:
+    """引文机械校验（0 token）：提案条目可选 quote 必须逐字出现在当章 final 中。
+
+    final 缺失 → 返回空（sync 的输入合同另有闸门）；quote 非串/空白/不在 final → 逐条报错，
+    编造或改写引文在物理上无法过闸。这是"引文先行"纪律的引擎侧牙齿。
+    """
+    finals = common.find_chapter_files(book, "final", ch)
+    if not finals:
+        return []
+    text = finals[-1].read_text(encoding="utf-8", errors="replace")
+    errors: list[str] = []
+    for where, item in _iter_quote_items(proposal):
+        q = item.get("quote")
+        if q is None:
+            continue
+        if not isinstance(q, str) or not q.strip():
+            errors.append(f"{where}.quote 必须为非空字符串（逐字摘自 final 的支撑句）")
+            continue
+        if q not in text:
+            frag = q if len(q) <= 32 else q[:32] + "…"
+            errors.append(f"{where}.quote 未逐字见于当章 final（引文必须原样摘录，含标点）: 「{frag}」")
+    return errors
+
+
+def _char_shingles(text: str, n: int) -> set[str]:
+    z = re.sub(r"[\s，。！？、；：「」『』“”‘’\"'（）()《》〈〉—…·\-~,.;:?!\n]", "", text or "")
+    return {z[i:i + n] for i in range(0, max(0, len(z) - n + 1))}
+
+
+_CAND_STOP = set("他们的自己一个没有什么这个那个已经现在时候知道看着起来出来东西地方一声到底怎么这样那样不是之后就是不过还是这个那般一般".split()) | {
+    "他们", "自己", "一个", "没有", "什么", "这个", "那个", "已经", "现在", "时候", "知道",
+    "看着", "起来", "出来", "东西", "地方", "一声", "怎么", "这样", "那样", "不是", "之后",
+    "就是", "不过", "还是", "一般", "那些", "有些", "一声", "顿时", "随即", "然后", "所以",
+    "但是", "如果", "因为", "可是", "心中", "目光", "声音", "身体", "脸上", "手中", "顿时"}
+
+
+def verify_candidates(book: Path, ch: str, proposal: dict) -> dict:
+    """算法版 Stage 4.5（0 token）：提案 × final × 状态 的全机械对照电池。
+
+    只数差异、只出候选清单（sev=warn/info），零裁决——判断归主控。任何一项都不阻断 sync。
+    覆盖 8 项：引文覆盖、章题对照、beats 重叠（源纯度）、金额对照（双向）、在场差异、
+    state_watch 关键词守望、候选新实体（实验性）、到期线覆盖。
+    """
+    n = common.chapter_token_to_num(ch)
+    out: dict = {"kind": "verify", "chapter": ch, "items": []}
+    if not n:
+        out["error"] = f"非法章号: {ch!r}"
+        return out
+    finals = common.find_chapter_files(book, "final", n)
+    if not finals:
+        out["error"] = f"无 {ch} 的 final（verify 以定稿为源）"
+        return out
+    text = finals[-1].read_text(encoding="utf-8", errors="replace")
+    items = out["items"]
+
+    def add(sev: str, code: str, msg: str) -> None:
+        items.append({"sev": sev, "code": code, "msg": msg})
+
+    # 1. 引文覆盖
+    total = missing = 0
+    for where, item in _iter_quote_items(proposal):
+        if not isinstance(item, dict):
+            continue
+        total += 1
+        if not item.get("quote"):
+            missing += 1
+            if missing <= 8:
+                add("warn", "quote_missing", f"{where} 未携带引文（引文先行：每条变更附 final 原句）")
+    if missing > 8:
+        add("warn", "quote_missing", f"…另有 {missing - 8} 条未携带引文")
+    if total == 0:
+        add("warn", "quote_none", "提案未携带任何引文——整套引文接地机制未启用")
+    out["stats"] = {"quote_slots": total, "quote_missing": missing}
+
+    # 2. 章题对照（final 首行标题行 vs 本次提交/已登记标题）
+    m = re.search(r"^#\s*(.+?)\s*$", text, re.M)
+    if not m:
+        add("info", "title_absent", "final 无章题标题行，章题机械对照跳过（Editor 契约要求首行章题）")
+    else:
+        raw = m.group(1)
+        final_title = re.sub(r"^(?:第\s*[0-9零一二三四五六七八九十百千]+\s*章|ch[_-]?\d+)\s*", "", raw).strip()
+        submitted = (proposal.get("synopsis") or {}).get("title") if isinstance(proposal.get("synopsis"), dict) else None
+        if not submitted:
+            try:
+                submitted = state.load_state(book, "synopsis").get("chapters", {}).get(ch, {}).get("title", "")
+            except (ValueError, FileNotFoundError):
+                submitted = ""
+        if submitted and submitted != final_title:
+            add("warn", "title_mismatch", f"章题与 final 不一致: 提交「{submitted}」≠ final「{final_title}」（契约：逐字拷贝）")
+
+    # 3. beats 重叠（源纯度：事实性文字须来自 final，不得照抄任务书）
+    beats_files = common.find_chapter_files(book, "beats", n)
+    if beats_files:
+        beats_sh = _char_shingles(beats_files[-1].read_text(encoding="utf-8", errors="replace"), 8)
+        free_fields = []
+        syn = proposal.get("synopsis") if isinstance(proposal.get("synopsis"), dict) else {}
+        if syn.get("text"):
+            free_fields.append(("synopsis.text", syn["text"]))
+        if syn.get("title"):
+            free_fields.append(("synopsis.title", syn["title"]))
+        tl = proposal.get("timeline") if isinstance(proposal.get("timeline"), dict) else {}
+        for i, ev in enumerate(tl.get("events") or []):
+            if isinstance(ev, dict):
+                free_fields.append((f"timeline.events[{i}].event", ev.get("event", "")))
+                if ev.get("replace"):
+                    free_fields.append((f"timeline.events[{i}].replace", ev["replace"]))
+        for i, g in enumerate(proposal.get("lines") or []):
+            if isinstance(g, dict):
+                for f in ("name", "plan", "content", "truth"):
+                    if g.get(f):
+                        free_fields.append((f"lines[{i}].{f}", str(g[f])))
+        for where, val in free_fields:
+            shared = _char_shingles(val, 8) & beats_sh
+            if len(shared) >= 2:
+                ex = sorted(shared)[0]
+                add("warn", "beats_overlap",
+                    f"{where} 与任务书 beats 存在 {len(shared)} 处 8 字连续重叠（如「{ex}」）——"
+                    "疑似照抄任务书，事实性文字须逐字以 final 为源")
+
+    # 4. 金额对照（双向：正文金额候选 vs 本章流水；引文可豁免口径差）
+    try:
+        led = state.load_state(book, "ledger")
+    except (ValueError, FileNotFoundError) as exc:
+        add("warn", "ledger_unreadable", f"ledger 不可读，金额对照跳过: {exc}")
+        led = {}
+    amounts = evidence._amount_scan(text, led.get("pools"))
+    cand_vals = {v for a in amounts for v in a.get("values", [])}
+    txs = [t for t in (led.get("transactions") or []) if t.get("chapter") == ch]
+    new_txs = [t for t in ((proposal.get("ledger") or {}).get("transactions") or [])
+               if isinstance(t, dict) and (t.get("chapter") or ch) == ch]
+    tx_vals = {int(t.get("delta", 0)) for t in txs + new_txs if isinstance(t.get("delta"), int)}
+    for a in amounts:
+        miss = [v for v in a["values"] if v not in tx_vals]
+        if miss:
+            add("warn", "amount_unmatched",
+                f"正文金额候选 {a['samples']}（值 {miss}）未对应本章任何流水——确认是修辞还是漏账")
+    for i, t in enumerate(new_txs):
+        if isinstance(t.get("delta"), int) and t["delta"] not in cand_vals:
+            q = t.get("quote")
+            if q:
+                add("info", "amount_by_quote",
+                    f"ledger.transactions[{i}] 金额 {t['delta']} 未被机械扫描命中，但已附引文佐证（口径差属预期）")
+            else:
+                add("warn", "amount_unsupported",
+                    f"ledger.transactions[{i}] 金额 {t['delta']} 既无正文金额候选、也无引文——补 quote 或核对数值")
+    out["stats"]["amount_candidates"] = len(cand_vals)
+
+    # 5. 在场差异（提及计数 vs 声明名单，双向）
+    try:
+        lookup = evidence.entity_lookup(book)
+    except (ValueError, FileNotFoundError) as exc:
+        add("warn", "entities_unreadable", f"实体表不可读，在场对照跳过: {exc}")
+        lookup = {}
+    # 预同步对照口径：提案本次正在注册的实体并入检索表，避免"新实体在场"误报
+    for e in (proposal.get("entities") or []):
+        if isinstance(e, dict) and e.get("action", "upsert") != "retire" and str(e.get("name", "")).strip():
+            name = str(e["name"])
+            if name not in lookup:
+                lookup[name] = [name] + [str(a) for a in (e.get("aliases") or []) if a]
+    per = {name: sum(evidence.count_aliases(text, aliases).values()) for name, aliases in lookup.items()}
+    cur_prop = (proposal.get("current") or {}).get("present_characters") if isinstance(proposal.get("current"), dict) else None
+    if cur_prop is None:
+        try:
+            cur_prop = state.load_state(book, "current").get("present_characters", [])
+        except (ValueError, FileNotFoundError):
+            cur_prop = []
+    if not cur_prop:
+        add("info", "present_undeclared", "present_characters 未声明（空数组按未提供处理）")
+    else:
+        for name in cur_prop:
+            if per.get(str(name), 0) == 0:
+                add("warn", "present_unmentioned", f"在场声明「{name}」在本章 final 零提及——核对是否章末真在场")
+        for name, c in sorted(per.items(), key=lambda x: -x[1]):
+            if c >= 2 and name not in cur_prop:
+                add("warn", "mention_not_present", f"「{name}」本章提及 {c} 次但未列入在场名单（漏报或早退，归主控判）")
+                break
+
+    # 6. state_watch 关键词守望（书级配置 project.json.state_watch: {current字段: [词表]}）
+    proj = common.load_json(book / "project.json", default={}) or {}
+    try:
+        cur_state = state.load_state(book, "current")
+    except (ValueError, FileNotFoundError):
+        cur_state = {}
+    for field, terms in (proj.get("state_watch") or {}).items():
+        if not isinstance(terms, list):
+            continue
+        for term in terms:
+            if isinstance(term, str) and term in text and term not in str(cur_state.get(field, "")):
+                add("warn", "state_watch_hit",
+                    f"正文出现「{term}」但 current.{field} 未提及——疑似状态刷新遗漏（修辞/闪回情形忽略）")
+
+    # 7. 候选新实体（实验性：正文高频 2~4 字串，非注册、非停用词）
+    known = [str(x).lower() for names in lookup.values() for x in names]
+    segs = [s for s in re.split(r"[^\u4e00-\u9fff]+", text) if len(s) >= 2]
+    grams: dict[str, int] = {}
+    for seg in segs:
+        for L in (2, 3, 4):
+            for i in range(len(seg) - L + 1):
+                g = seg[i:i + L]
+                grams[g] = grams.get(g, 0) + 1
+    cands = []
+    for g, c in grams.items():
+        if c < 3 or g in _CAND_STOP or any(s in g for s in _CAND_STOP):
+            continue
+        if any((g in k) or (k in g and len(k) >= 2) for k in known):
+            continue
+        cands.append((g, c))
+    cands = [(g, c) for g, c in cands if not any(g != g2 and g in g2 and c2 >= c for g2, c2 in cands)]
+    for g, c in sorted(cands, key=lambda x: -x[1])[:12]:
+        add("info", "candidate_new_entity", f"「{g}」出现 {c} 次且未注册——若是新实体请补 entities upsert（实验性候选，误报勿理）")
+
+    # 8. 到期线覆盖（final 触及但提案未操作）
+    try:
+        lines = state.load_state(book, "lines")
+        ops_ids = {str(g.get("id")) for g in (proposal.get("lines") or [])
+                   if isinstance(g, dict) and g.get("id") and g.get("action", "plant") != "plant"}
+        reg_terms = [a for names in lookup.values() for a in names]
+        resolved = {"foreshadow": "Resolved", "misunderstanding": "Resolved", "knowledge": "Revealed"}
+        for kind, arr in (("foreshadow", "foreshadows"), ("misunderstanding", "misunderstandings"),
+                          ("knowledge", "knowledge")):
+            for g in lines.get(arr, []):
+                if g.get("status") == resolved[kind] or g.get("id") in ops_ids:
+                    continue
+                t = g.get("target_ch")
+                if isinstance(t, int) and t <= n:
+                    terms = evidence._line_terms_for(g, kind, reg_terms)
+                    if any(term in text for term in terms):
+                        add("warn", "due_line_unhandled",
+                            f"{g['id']}（target ch_{t:03d}）正文有触及、提案未操作——确认本章是否该还线")
+    except (ValueError, FileNotFoundError) as exc:
+        add("warn", "lines_unreadable", f"lines 不可读，线覆盖对照跳过: {exc}")
+    return out
+
 
 def _err(code: str, msg: str) -> dict:
     return {"code": code, "msg": msg}

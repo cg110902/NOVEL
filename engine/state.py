@@ -141,6 +141,9 @@ status 只许 active/retired（越界整案回滚进 failed/）；"现状/近况
   timeline.events 条目支持 {"time": "…", "event": "既有事件原文", "replace": "修订后描述"}——
   按 time+event 逐字命中既有事件后只改写其描述（不新增、chapter 保持原值），未命中整案拒绝；
   synopsis 支持 {"chapters": {"ch_XXX": {"title": "…", "synopsis": "…"}}}——跨章修订历史章的标题/梗概。
+引文接地（强烈建议）：各条目（entities/lines/ledger.transactions/timeline.events/timeline.clocks/synopsis）
+  可携带 "quote": "逐字摘自本章 final 的支撑句"——sync 前引擎机械校验引文必须是当章 final 的子串，
+  编造或改写引文将整案拒绝；未携带引文的条目由 `proposal verify` 提示。
 填完六区先 `python studio.py proposal check ch_XXX`（结构预检+三方事实对照，不落盘），
 再 `sync ch_XXX --dry-run` 预演。
 """
@@ -285,7 +288,7 @@ def validate_proposal(proposal, expected_chapter: str | None = None) -> tuple[li
     if isinstance(ents, list):
         _plan("entities", len(ents))
         allowed_entity_keys = {"action", "name", "type", "card", "summary", "status", "aliases",
-                               "holder", "location", "condition",
+                               "holder", "location", "condition", "quote",
                                "realm", "faction", "life_status", "attitude", "charges", "max_charges"}
         for i, e in enumerate(ents):
             if not isinstance(e, dict):
@@ -310,7 +313,7 @@ def validate_proposal(proposal, expected_chapter: str | None = None) -> tuple[li
                 errors.append(f"entities[{i}].max_charges 必须为 ≥1 的整数")
             if "type" in e and e["type"] not in _ENTITY_TYPES:
                 errors.append(f"entities[{i}].type 非法: {e['type']!r}（合法：{'/'.join(sorted(_ENTITY_TYPES))}）")
-            for f in ("card", "summary", "holder", "location", "condition", "realm", "faction"):
+            for f in ("card", "summary", "holder", "location", "condition", "realm", "faction", "quote"):
                 if f in e and not isinstance(e[f], str):
                     errors.append(f"entities[{i}].{f} 必须为字符串")
             if "aliases" in e:
@@ -341,7 +344,7 @@ def validate_proposal(proposal, expected_chapter: str | None = None) -> tuple[li
             elif action not in ("plant", "update", "remind", "resolve"):
                 errors.append(f"lines[{i}].action 非法: {action}")
                 continue
-            base_keys = {"kind", "action", "id"}
+            base_keys = {"kind", "action", "id", "quote"}
             if action == "plant":
                 allowed = base_keys | spec["plant_fields"]
                 for k in g:
@@ -404,11 +407,13 @@ def validate_proposal(proposal, expected_chapter: str | None = None) -> tuple[li
                     or not isinstance(ev.get("event"), str) or not ev["event"].strip()):
                 errors.append(f"timeline.events[{i}] 必须含非空字符串 time 与 event")
             for k in ev:
-                if k not in ("time", "event", "replace"):
+                if k not in ("time", "event", "replace", "quote"):
                     errors.append(f"timeline.events[{i}] 含未知字段: {k}（chapter 由引擎按提案章写入）")
             if "replace" in ev and (not isinstance(ev["replace"], str) or not ev["replace"].strip()):
                 errors.append(f"timeline.events[{i}].replace 必须为非空字符串"
                               "（修订语义：按 time+event 逐字命中既有事件后改写其描述）")
+            if "quote" in ev and (not isinstance(ev["quote"], str) or not ev["quote"].strip()):
+                errors.append(f"timeline.events[{i}].quote 必须为非空字符串（逐字摘自 final 的支撑句）")
         for i, a in enumerate(tl.get("arcs", []) or []):
             if not isinstance(a, dict) or not isinstance(a.get("name"), str) or not a["name"].strip():
                 errors.append(f"timeline.arcs[{i}] 必须含非空字符串 name")
@@ -424,7 +429,7 @@ def validate_proposal(proposal, expected_chapter: str | None = None) -> tuple[li
                 errors.append(f"timeline.clocks[{i}] 必须含非空字符串 name")
                 continue
             for k in c:
-                if k not in ("name", "target_ch", "urgency", "desc", "status"):
+                if k not in ("name", "target_ch", "urgency", "desc", "status", "quote"):
                     errors.append(f"timeline.clocks[{i}] 含未知字段: {k}")
             tch = c.get("target_ch")
             if not isinstance(tch, int) or isinstance(tch, bool) or tch < 1:
@@ -463,7 +468,7 @@ def validate_proposal(proposal, expected_chapter: str | None = None) -> tuple[li
                 errors.append(f"ledger.transactions[{i}] 必须为对象")
                 continue
             for k in t:
-                if k not in ("chapter", "pool", "delta", "type", "subject", "counterparty", "note"):
+                if k not in ("chapter", "pool", "delta", "type", "subject", "counterparty", "note", "quote"):
                     errors.append(f"ledger.transactions[{i}] 含未知字段: {k}")
             if "pool" in t and not isinstance(t["pool"], str):
                 errors.append(f"ledger.transactions[{i}].pool 必须为字符串")
@@ -487,7 +492,7 @@ def validate_proposal(proposal, expected_chapter: str | None = None) -> tuple[li
                     errors.append(f"ledger.transactions[{i}]: type=expense 但 delta={delta}（支出必须为负数）")
             if t.get("chapter") is not None and not re.fullmatch(r"ch_\d{3,}", str(t["chapter"])):
                 errors.append(f"ledger.transactions[{i}].chapter 须匹配 ch_NNN（缺省用提案章节）")
-            for f in ("counterparty", "note"):
+            for f in ("counterparty", "note", "quote"):
                 if f in t and not isinstance(t[f], str):
                     errors.append(f"ledger.transactions[{i}].{f} 必须为字符串")
 
@@ -496,9 +501,9 @@ def validate_proposal(proposal, expected_chapter: str | None = None) -> tuple[li
     if isinstance(syn, dict):
         _plan("synopsis", 1)
         for k in syn:
-            if k not in ("book_logline", "title", "text", "chapters"):
+            if k not in ("book_logline", "title", "text", "chapters", "quote"):
                 errors.append(f"synopsis 含未知字段: {k}")
-        for f in ("text", "title", "book_logline"):
+        for f in ("text", "title", "book_logline", "quote"):
             if f in syn and not isinstance(syn[f], str):
                 errors.append(f"synopsis.{f} 必须为字符串")
         chapters = syn.get("chapters")
@@ -645,7 +650,7 @@ def _merge_lines(state: dict, items: list[dict], ch_num: int, rep: dict) -> None
             rep["updated"].append(f"🔔 {gid} 已回唤")
         else:  # update
             for k, v in g.items():
-                if k in ("kind", "action", "id"):
+                if k in ("kind", "action", "id", "quote"):
                     continue
                 if k not in spec["update_fields"]:
                     rep["errors"].append(f"update {gid}: 不允许修改字段 {k}")
