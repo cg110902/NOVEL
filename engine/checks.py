@@ -63,11 +63,11 @@ def _numbered_items(lines: list[str]) -> dict[int, str]:
 
 
 def review_gate(book: Path, ch: str) -> list[str]:
-    """Stage 5 合同（机械层）：必须有校对注记；「验收」节须逐条答完任务书「验收」。
+    """校对注记体检（可选机制，软提示）：注记存在时检查「验收」节是否逐条答完 beats「验收」。
 
-    只数行与符号：无注记 → 拦（Stage 5 封存前提，见 novel_workflow.md#Stage 5）；
-    注记缺「## 验收」→ 拦；beats 有验收条目 → 缺答/缺✓✗/无证据 = 拒绝封存。
-    editor 不写注记、不答验收。
+    只数行与符号；结果由调用方决定呈现方式——sync 流程将其作为 ℹ️ 提示打印，
+    不影响退出码、不阻断封存（见 cli.cmd_sync）。注记不存在 = 机制未启用，
+    返回创建提醒（同样不构成错误）。
     """
     beats = [f for f in common.find_chapter_files(book, "beats")
              if common.chapter_number_from_name(f.name) == common.chapter_token_to_num(ch)]
@@ -78,7 +78,8 @@ def review_gate(book: Path, ch: str) -> list[str]:
     rev = book / "log" / "review" / f"{ch}.md"
     if not rev.is_file():
         extra = f"；beats「验收」共 {k} 条" if k else ""
-        return [f"校对注记 {ch}.md 不存在（Stage 5 未留注记；拒封存{extra}）"]
+        return [f"校对注记 {ch}.md 不存在（可选机制未启用，不阻断 sync；"
+                f"如需验收留痕可运行 studio review new {ch} --write{extra}）"]
     rtext = rev.read_text(encoding="utf-8", errors="replace")
     issues: list[str] = []
     if not re.search(r"^##\s*(?:.*验收|.*契约)", rtext, re.M):
