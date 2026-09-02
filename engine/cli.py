@@ -96,6 +96,12 @@ def cmd_init(args) -> int:
     except ValueError as exc:
         print(f"❌ {exc}")
         return 2
+    # 书的家是 workspace/：list_books 只扫描其子目录，workspace 外的书对 status "隐形"；
+    # 尤其禁止 --force/--clean 触及 workspace 之外的任意目录（防误删非书目录）。
+    _wr = common.workspace_root().resolve()
+    if book.resolve() != _wr and _wr not in book.resolve().parents:
+        print(f"❌ 书目录必须在 {_wr} 之下: {book}")
+        return 2
     if book.exists() and any(book.iterdir()) and not (book / "project.json").exists():
         print(f"⛔ 目标目录非空且不是已登记的书，拒绝写入: {book}")
         return 1
@@ -767,8 +773,13 @@ def _cmd_proposal_auto(book: Path, ch: str, args) -> int:
     }
     
     if getattr(args, "write", False):
+        target = inbox / f"{ch}.json"
+        if target.exists() and not getattr(args, "force", False):
+            print(f"❌ {ch} 已有在途提案（state/inbox/{ch}.json）——proposal auto 拒绝覆盖；"
+                  f"确认丢弃手改内容请追加 --force")
+            return 1
         inbox.mkdir(parents=True, exist_ok=True)
-        common.dump_json(inbox / f"{ch}.json", proposal)
+        common.dump_json(target, proposal)
         print(f"🤖 提案草案已自动生成并写入: {inbox / f'{ch}.json'}")
         print(f"   已自动对齐标题「{title}」、在场人物 {present_chars} 与 {len(lines_ops)} 条线动作。")
         print(f"   主控可按需微调 current 字段后直接运行 `python studio.py sync {ch}`！")
@@ -1112,19 +1123,19 @@ def _build_subparsers(sub: argparse._SubParsersAction) -> None:
     _add_common_opts(q)
     snap = q.add_subparsers(dest="snap_action")
     r = snap.add_parser("list", help="快照列表（默认动作）")
-    r.add_argument("-w", "--workspace")
-    r.add_argument("--json", action="store_true")
+    r.add_argument("-w", "--workspace", default=argparse.SUPPRESS)
+    r.add_argument("--json", action="store_true", default=argparse.SUPPRESS)
     r.set_defaults(func=cmd_snapshot)
     r = snap.add_parser("create", help="创建具名快照")
     r.add_argument("name")
-    r.add_argument("-w", "--workspace")
-    r.add_argument("--json", action="store_true")
+    r.add_argument("-w", "--workspace", default=argparse.SUPPRESS)
+    r.add_argument("--json", action="store_true", default=argparse.SUPPRESS)
     r.set_defaults(func=cmd_snapshot)
     r = snap.add_parser("rollback", help="回滚到匹配名称的最新快照")
     r.add_argument("name")
-    r.add_argument("-w", "--workspace")
+    r.add_argument("-w", "--workspace", default=argparse.SUPPRESS)
     r.add_argument("--clean-drafts", action="store_true", help="一并清理该快照之后的孤立章节/细纲")
-    r.add_argument("--json", action="store_true")
+    r.add_argument("--json", action="store_true", default=argparse.SUPPRESS)
     r.set_defaults(func=cmd_snapshot)
     q.set_defaults(func=cmd_snapshot)
 
@@ -1143,20 +1154,21 @@ def _build_subparsers(sub: argparse._SubParsersAction) -> None:
     pp = q.add_subparsers(dest="pp_action")
     r = pp.add_parser("new", help="生成最小合法骨架（schema/chapter/operation_id 预填）")
     r.add_argument("chapter")
-    r.add_argument("-w", "--workspace")
-    r.add_argument("--json", action="store_true")
+    r.add_argument("-w", "--workspace", default=argparse.SUPPRESS)
+    r.add_argument("--json", action="store_true", default=argparse.SUPPRESS)
     r.add_argument("--write", action="store_true", help="直接写入 state/inbox/ch_XXX.json（默认只打印）")
     r.set_defaults(func=cmd_proposal)
     r = pp.add_parser("auto", help="基于 beats 与 final 自动装配高精准度提案草案")
     r.add_argument("chapter")
-    r.add_argument("-w", "--workspace")
-    r.add_argument("--json", action="store_true")
+    r.add_argument("-w", "--workspace", default=argparse.SUPPRESS)
+    r.add_argument("--json", action="store_true", default=argparse.SUPPRESS)
     r.add_argument("--write", action="store_true", help="直接写入 state/inbox/ch_XXX.json（默认只打印）")
+    r.add_argument("--force", action="store_true", help="已有在途提案时强制覆盖（谨慎）")
     r.set_defaults(func=cmd_proposal)
     r = pp.add_parser("check", help="在途提案结构预检 + 三方事实对照（不落盘）")
     r.add_argument("chapter")
-    r.add_argument("-w", "--workspace")
-    r.add_argument("--json", action="store_true")
+    r.add_argument("-w", "--workspace", default=argparse.SUPPRESS)
+    r.add_argument("--json", action="store_true", default=argparse.SUPPRESS)
     r.set_defaults(func=cmd_proposal)
     q.set_defaults(func=cmd_proposal)
 
@@ -1165,8 +1177,8 @@ def _build_subparsers(sub: argparse._SubParsersAction) -> None:
     rv = q.add_subparsers(dest="rev_action")
     r = rv.add_parser("new", help="生成注记骨架（默认打印；--write 写 log/review/ch_XXX.md）")
     r.add_argument("chapter")
-    r.add_argument("-w", "--workspace")
-    r.add_argument("--json", action="store_true")
+    r.add_argument("-w", "--workspace", default=argparse.SUPPRESS)
+    r.add_argument("--json", action="store_true", default=argparse.SUPPRESS)
     r.add_argument("--write", action="store_true", help="写入 log/review/ch_XXX.md（已存在则拒绝）")
     r.set_defaults(func=cmd_review)
     q.set_defaults(func=cmd_review)
