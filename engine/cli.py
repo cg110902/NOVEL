@@ -673,7 +673,7 @@ def _cmd_proposal_check(book: Path, ch: str, args) -> int:
 
 
 def _cmd_proposal_verify(book: Path, ch: str, args) -> int:
-    """算法版 Stage 4.5（0 token）：提案×final×状态 全机械对照电池。
+    """Stage 5 机械对照（0 token）：提案×final×状态 全机械对照电池。
 
     只数差异、只出候选清单（warn/info），零裁决、不阻断——是否处理归主控。
     """
@@ -707,7 +707,7 @@ def _cmd_proposal_verify(book: Path, ch: str, args) -> int:
         print(json.dumps(payload, ensure_ascii=False, indent=2))
         return 0
     print("=" * 70)
-    print(f" 🔎 [算法版 Stage 4.5] {ch}（{proposal_path.name}；0 token 机械对照——候选清单，裁决归主控）")
+    print(f" 🔎 [Stage 5 机械对照] {ch}（{proposal_path.name}；0 token 机械对照——候选清单，裁决归主控）")
     print("=" * 70)
     if common.find_chapter_files(book, "final", ch):
         print(f" 引文校验：{'✅ 全部逐字命中 final' if not quote_errors else f'❌ {len(quote_errors)} 条未命中'}")
@@ -766,7 +766,12 @@ def _cmd_proposal_auto(book: Path, ch: str, args) -> int:
         ln = ln.strip()
         if not ln or ln.startswith(("#", "<")):
             continue
-        if "埋设" in ln:
+        is_plant = ("埋设" in ln) or bool(re.search(r"\bplant\b", ln, re.I))
+        is_resolve = any(x in ln for x in ("揭示", "兑现", "澄清")) or bool(re.search(r"\bresolve\b", ln, re.I))
+        is_remind = ("回唤" in ln) or bool(re.search(r"\bremind\b", ln, re.I))
+        is_update = any(x in ln for x in ("推进", "更新")) or bool(re.search(r"\bupdate\b", ln, re.I))
+
+        if is_plant:
             m = re.search(r"(GUN|MIS|KNO)-\d+", ln)
             name_m = re.search(r"[(（](.+?)[)）]", ln)
             name = name_m.group(1) if name_m else (m.group(0) if m else "新线索")
@@ -807,14 +812,12 @@ def _cmd_proposal_auto(book: Path, ch: str, args) -> int:
             if lid:
                 item["id"] = lid
             lines_ops.append(item)
-        elif "推进" in ln or "更新" in ln or "揭示" in ln or "兑现" in ln or "澄清" in ln or "回唤" in ln:
+        elif is_resolve or is_remind or is_update:
             m = re.search(r"(GUN|MIS|KNO)-\d+", ln)
             if m:
                 lid = m.group(0)
                 kind = "foreshadow" if "GUN" in lid else "misunderstanding" if "MIS" in lid else "knowledge"
-                is_resolve = ("揭示" in ln or "兑现" in ln or "澄清" in ln)
-                is_remind = ("回唤" in ln and kind == "foreshadow")
-                act = "resolve" if is_resolve else "remind" if is_remind else "update"
+                act = "resolve" if is_resolve else "remind" if (is_remind and kind == "foreshadow") else "update"
                 if act in ("resolve", "remind"):
                     lines_ops.append({
                         "action": act,
@@ -1768,7 +1771,7 @@ def _build_subparsers(sub: argparse._SubParsersAction) -> None:
     r.add_argument("-w", "--workspace", default=argparse.SUPPRESS)
     r.add_argument("--json", action="store_true", default=argparse.SUPPRESS)
     r.set_defaults(func=cmd_proposal)
-    r = pp.add_parser("verify", help="算法版 Stage 4.5：0 token 机械对照电池（候选清单，不阻断）")
+    r = pp.add_parser("verify", help="Stage 5 机械对照：0 token 机械对照电池（候选清单，不阻断）")
     r.add_argument("chapter")
     r.add_argument("-w", "--workspace", default=argparse.SUPPRESS)
     r.add_argument("--json", action="store_true", default=argparse.SUPPRESS)

@@ -13,7 +13,7 @@
 | **Stage 2<br/>初稿起草** | **起草员<br/>(Drafter)** | • 当章细纲 `beats/ch_XXX.md`<br/>• 上章尾声情境与梗概 (pack)<br/>• 章初状态 `current.json` (pack)<br/>• 核心人物人设与起草指南 `craft_drafter.md` | 充分发挥想象力，承接前章余温，**禁止冷峻阴暗逼仄文风，全篇使用通俗直白大白话**，以动作化推进和对白机锋产出高能初稿毛坯。 | • 初稿正文文件：<br/>`manuscript/vol_XX/raw/ch_XXX_v1.md`<br/>(纯小说 Markdown，约 2400~3500 字)<br/>• 向主控汇报完稿概况 |
 | **Stage 3<br/>文学重塑** | **精修师<br/>(Editor)** | • 当章细纲 `beats/ch_XXX.md`<br/>• 初稿毛坯 `raw/ch_XXX_v1.md`<br/>• 定稿指南 `craft_editor.md` | **专注于文学质感与阅读快感**：彻底清除冷峻压抑调性，全篇以接地气大白话重写润色，剪除冗长内心戏，执行物理刀口截断，打磨顺滑定稿。 | • 纯净定稿正文文件：<br/>`manuscript/vol_XX/final/ch_XXX.md`<br/>(100% 纯正文)<br/>• 向主控汇报定稿情况 |
 | **Stage 4<br/>事实审计<br/>& 提案装配** | **审计员<br/>(Reader)** | • 定稿正文 `final/ch_XXX.md`<br/>• 当章细纲 `beats/ch_XXX.md`<br/>• 审计规范 `craft_reader.md` | **严谨客观事实审计与状态提案装配**：<br/>通读定稿正文，客观提取 5 大事实（时空、在场角色、道具变动、伏笔动线、新增实体），直接装配为标准增量提案 JSON。 | • 标准增量提案文件：<br/>`state/inbox/ch_XXX.json`<br/>(符合 Schema 规范的纯净 JSON) |
-| **Stage 5<br/>状态封存** | **主控<br/>(Director)** | • 当章四件套：`beats/ch_XXX.md` + `raw/ch_XXX_v1.md` + `final/ch_XXX.md` + `state/inbox/ch_XXX.json`<br/>• 提案规范 `state/inbox/README.md` | 审定 Reader 交付的增量提案，确认全局伏笔与实体定级无误后，运行 `studio.py sync` 触发校验并生成原子快照。 | • 机器真值更新：`state/*.json`<br/>• 归档快照：`state/snapshots/<时间戳>_ch_XXX_done` |
+| **Stage 5<br/>审定与状态封存** | **主控<br/>(Director)** | • 当章四件套：`beats/ch_XXX.md` + `raw/ch_XXX_v1.md` + `final/ch_XXX.md` + `state/inbox/ch_XXX.json`<br/>• 提案规范 `state/inbox/README.md` | 审定 Reader 交付的增量提案，执行 `proposal check` 预检与 `proposal verify` 机械差异对照，确认全局伏笔与实体登记无误后，运行 `studio.py sync` 触发校验并生成原子快照。 | • 机器真值更新：`state/*.json`<br/>• 归档快照：`state/snapshots/<时间戳>_ch_XXX_done` |
 
 ---
 
@@ -70,24 +70,21 @@
 - **源优先级**：一切事实性文字逐字以 final 为源，beats 仅对照、禁止复用措辞；`synopsis.title` 逐字拷贝 final 首行章题；
 - **输出**：`state/inbox/ch_XXX.json`（使用原生 `write_to_file` 工具）+ 事实表 `log/facts/ch_XXX.md`。
 
-### Stage 4.5: 机械对照（0 token，主控运行）
-- 运行 `python studio.py proposal verify ch_XXX`：引擎对提案×final×状态做八项全机械对照（引文覆盖、章题对照、照抄任务书检测、金额双向对照、在场差异、state_watch 关键词守望、候选新实体、到期线覆盖），**只出候选差异清单（不阻断）**，主控逐条裁决"是否处理"；`--json` 净负载结构为 `{"chapter", "proposal", "quote_errors", "verify": {"items": [...]}}`，脚本消费时取 `verify.items`；
-- `state_watch`（书级可选配置，`project.json.state_watch`，推荐用 `config set` 注入）：`{"power_level": ["突破","晋升"], ...}`——词表按本书题材自拟（修仙书可写"结丹"，都市书可写"升职"，科幻书可写"晋升舰长"）；正文出现词表中的词而 current 对应字段未提及时报警，专防"突破章忘刷位阶"类遗漏；
-- （可选 LLM 验证员）高变动章（含交易/境界突破/≥3 新实体的章）可加派一个独立验证子代理：输入=提案+final（不给 Reader 的推理过程），逐条回指引文、反向穷举；常规章由 verify 的机械候选清单覆盖即可。
-
-### Stage 5: 极速状态同步与快照封存（主控）
+### Stage 5: 审定、机械对照与状态封存（主控）
 - **输入合同（引擎强制，四项缺一即拒绝同步）**：
   1. 当章细纲 `outlines/vol_XX/beats/ch_XXX.md`；
   2. 当章草稿 `manuscript/vol_XX/raw/ch_XXX_v1.md`；
   3. 当章定稿 `manuscript/vol_XX/final/ch_XXX.md`；
   4. 在途提案 `state/inbox/ch_XXX.json`（chapter 须与目标章一致）。
-- **审定与闭环**：
-  1. 审定 Reader 交付的 `state/inbox/ch_XXX.json`（对照 `log/facts/ch_XXX.md` 事实表），确认全局伏笔与实体登记无误；
-  2. 运行 `python studio.py proposal check ch_XXX` 预检（结构+引文机械校验）；
-  3. 运行 `python studio.py proposal verify ch_XXX`（Stage 4.5 差异候选清单，逐条裁决）；
-  4. 运行 `python studio.py sync ch_XXX` 合并真值并生成快照（快照落在 `state/snapshots/<时间戳>_ch_XXX_done`）；
-  5. （可选机制）若存在校对注记 `log/review/ch_XXX.md`，sync 会以 ℹ️ 提示其验收覆盖情况（软提示，不阻断）。
-     注记由引擎生成骨架、主控填写：`python studio.py review new ch_XXX --write`（骨架已预填机器数据；每条勾选都必须附正文引文或 evidence 数值佐证——无证据的打钩=未审；不加 `--write` 则仅打印不落盘）。
+- **三步闭环心智（Check → Verify → Sync）**：
+  1. **步骤 1（硬门禁·结构与引文预检）**：运行 `python studio.py proposal check ch_XXX`，对提案 Schema 结构、字段合法性以及引文（quote 是否为 final 子串）进行机械硬校验（校验不通过整案阻断）；
+  2. **步骤 2（软对照·0 Token 机械差异核对）**：运行 `python studio.py proposal verify ch_XXX`，引擎对提案×final×状态做八项全机械对照（引文覆盖、章题对照、照抄任务书检测、金额双向对照、在场差异、state_watch 关键词守望、候选新实体、到期线覆盖），**只出候选差异清单（不阻断）**，主控扫视清单裁决是否需要补录；
+     - `state_watch`（书级可选配置，`project.json.state_watch`，推荐用 `config set` 注入）：`{"power_level": ["突破","晋升"], ...}`——词表按本书题材自拟（修仙书可写"结丹"，都市书可写"升职"，科幻书可写"晋升舰长"）；正文出现词表中的词而 current 对应字段未提及时报警，专防"突破章忘刷位阶"类遗漏；
+     - （可选 LLM 验证员）高变动章（含交易/境界突破/≥3 新实体的章）可加派一个独立验证子代理：输入=提案+final（不给 Reader 的推理过程），逐条回指引文、反向穷举；常规章由 verify 的机械候选清单覆盖即可；
+  3. **步骤 3（一键封存·真值合并与快照归档）**：运行 `python studio.py sync ch_XXX` 合并真值并生成快照（快照落在 `state/snapshots/<时间戳>_ch_XXX_done`）。
+- **可选验收注记（Review Gate）**：
+  - 若存在校对注记 `log/review/ch_XXX.md`，sync 会以 ℹ️ 提示其验收覆盖情况（软提示，不阻断）。
+  - 注记由引擎生成骨架、主控填写：`python studio.py review new ch_XXX --write`（骨架已预填机器数据；每条勾选都必须附正文引文或 evidence 数值佐证——无证据的打钩=未审；不加 `--write` 则仅打印不落盘）。
 - **故障恢复**：
   - 提案被拒 → 归档在 `state/inbox/failed/ch_XXX.json`，就地修复后重跑 `sync ch_XXX` 引擎自动捡回；
   - 状态污染 → `python studio.py snapshot list` 查看 `state/snapshots/`，`python studio.py snapshot rollback <名称>` 回滚（回滚前自动备份为 `pre_rollback_*`；`--clean-drafts` 可一并清理超章稿件/细纲）；

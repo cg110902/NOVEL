@@ -46,16 +46,23 @@ def _iter_quote_items(proposal: dict):
         yield "synopsis", syn
 
 
+def _norm_quote_ws(s: str) -> str:
+    """折叠多余空白与换行，用于引文跨行折叠容错比对。"""
+    return re.sub(r"\s+", " ", s or "").strip()
+
+
 def validate_quotes(book: Path, ch: str, proposal: dict) -> list[str]:
     """引文机械校验（0 token）：提案条目可选 quote 必须逐字出现在当章 final 中。
 
     final 缺失 → 返回空（sync 的输入合同另有闸门）；quote 非串/空白/不在 final → 逐条报错，
     编造或改写引文在物理上无法过闸。这是"引文先行"纪律的引擎侧牙齿。
+    （包含空白/换行折叠容错，防止因 Markdown 自动折行产生假阳性拦截）。
     """
     finals = common.find_chapter_files(book, "final", ch)
     if not finals:
         return []
     text = finals[-1].read_text(encoding="utf-8", errors="replace")
+    norm_text = _norm_quote_ws(text)
     errors: list[str] = []
     for where, item in _iter_quote_items(proposal):
         q = item.get("quote")
@@ -64,9 +71,15 @@ def validate_quotes(book: Path, ch: str, proposal: dict) -> list[str]:
         if not isinstance(q, str) or not q.strip():
             errors.append(f"{where}.quote 必须为非空字符串（逐字摘自 final 的支撑句）")
             continue
-        if q not in text:
-            frag = q if len(q) <= 32 else q[:32] + "…"
-            errors.append(f"{where}.quote 未逐字见于当章 final（引文必须原样摘录，含标点）: 「{frag}」")
+        # 1. 严格字面子串命中
+        if q in text:
+            continue
+        # 2. 空白/折行折叠二次容错命中
+        norm_q = _norm_quote_ws(q)
+        if norm_q and norm_q in norm_text:
+            continue
+        frag = q if len(q) <= 32 else q[:32] + "…"
+        errors.append(f"{where}.quote 未逐字见于当章 final（引文必须原样摘录，含标点）: 「{frag}」")
     return errors
 
 
@@ -83,7 +96,7 @@ _CAND_STOP = set("他们的自己一个没有什么这个那个已经现在时�
 
 
 def verify_candidates(book: Path, ch: str, proposal: dict) -> dict:
-    """算法版 Stage 4.5（0 token）：提案 × final × 状态 的全机械对照电池。
+    """Stage 5 机械对照电池（0 token）：提案 × final × 状态 的全机械对照电池。
 
     只数差异、只出候选清单（sev=warn/info），零裁决——判断归主控。任何一项都不阻断 sync。
     覆盖 8 项：引文覆盖、章题对照、beats 重叠（源纯度）、金额对照（双向）、在场差异、

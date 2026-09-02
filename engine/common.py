@@ -94,12 +94,27 @@ def chapter_number_from_name(name: str) -> int | None:
 
 
 def file_matches_chapter(path: Path | str, target: object) -> bool:
-    """ch_007 / ch_007_v2 / chapter7_* 等命名都能对上目标章号；target=None 全通过。"""
+    """ch_007 / ch_007_v2 / chapter7_* 等命名都能对上目标章号；支持 vol_01/ch_007 跨卷精准过滤；target=None 全通过。"""
     if target is None:
         return True
+    p = Path(path)
     want = chapter_token_to_num(target)
-    got = chapter_number_from_name(Path(path).name)
-    return want is not None and want == got
+    got = chapter_number_from_name(p.name)
+    if want is None or want != got:
+        return False
+    if isinstance(target, str):
+        m_vol = VOL_RE.search(target)
+        if m_vol:
+            want_vol = int(m_vol.group(1))
+            got_vol = 0
+            for part in p.parts:
+                m = VOL_RE.search(part)
+                if m:
+                    got_vol = int(m.group(1))
+                    break
+            if want_vol != got_vol:
+                return False
+    return True
 
 
 def chapter_version_from_name(name: str) -> int:
@@ -139,9 +154,9 @@ def latest_chapter_number(book_dir: Path, area: str = "final") -> int:
 
 
 def parse_front_matter(text: str) -> dict[str, str]:
-    """极简 YAML 子集：`---` 包裹的顶层 `key: value` 行（beats 卡协议够用，零嵌套）。"""
+    """极简 YAML 子集：`---` 包裹的顶层 `key: value` 行（beats 卡协议够用，零嵌套；兼容 UTF-8 BOM）。"""
     out: dict[str, str] = {}
-    lines = (text or "").splitlines()
+    lines = (text or "").lstrip("\ufeff").splitlines()
     i = 0
     while i < len(lines) and not lines[i].strip():
         i += 1
@@ -164,11 +179,10 @@ def parse_front_matter(text: str) -> dict[str, str]:
 
 
 def md_section(text: str, title_pat: str) -> list[str]:
-    """取 markdown "## <标题>" 小节的正文行（到下一个 ## 或文件尾；标题匹配 title_pat）。
-    checks 的注记/验收提取与 evidence 的对照卡共用（零语义，纯行切分）。"""
+    """从 Markdown 提取某级标题下的全部正文行（直到同级或更高级别标题；兼容 UTF-8 BOM）。"""
     lines: list[str] = []
     inside = False
-    for ln in (text or "").splitlines():
+    for ln in (text or "").lstrip("\ufeff").splitlines():
         if re.match(r"^##\s", ln):
             if inside:
                 break

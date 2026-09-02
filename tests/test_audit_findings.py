@@ -627,7 +627,7 @@ def test_quote_grounding_gate(temp_repo):
 
 
 def test_verify_candidates_battery(temp_repo):
-    """New Feature: verify_candidates Stage 4.5 candidate checks."""
+    """New Feature: verify_candidates Stage 5 candidate checks."""
     book = temp_repo["book"]
     final_dir = book / "manuscript" / "vol_01" / "final"
     final_dir.mkdir(parents=True, exist_ok=True)
@@ -1288,3 +1288,89 @@ def test_checkpoint_multi_volume_outline_detection(temp_repo):
     assert payload["current_phase"]["name"] == "新地图开局"
     assert payload["current_phase"]["volume"] == "vol_02"
     assert not any("未在分卷大纲中匹配到" in a for a in payload["assessment"])
+
+
+def test_quote_grounding_whitespace_normalization(temp_repo):
+    """引文校验抗扰加固：Markdown 折行产生的换行与空格在规范化后应被容错命中。"""
+    book = temp_repo["book"]
+    final_dir = book / "manuscript" / "vol_01" / "final"
+    final_dir.mkdir(parents=True, exist_ok=True)
+    # 正文中因为排版有折行
+    (final_dir / "ch_001.md").write_text("# 第1章 测试\n叶辰拔出青云残剑，\n寒光凛冽，威震四方。", encoding="utf-8")
+
+    # Reader 提取的 quote 含有空格或在一行
+    prop = {
+        "schema": "novel-studio.state-mutation/v2",
+        "chapter": "ch_001",
+        "operation_id": "ch_001.quote.ws",
+        "entities": [{
+            "action": "upsert",
+            "name": "青云残剑",
+            "type": "item",
+            "status": "active",
+            "quote": "叶辰拔出青云残剑， 寒光凛冽"
+        }]
+    }
+    errs = checks.validate_quotes(book, "ch_001", prop)
+    assert not errs, f"带空格/换行差异的有效引文不应报错: {errs}"
+
+
+def test_proposal_auto_bilingual_actions(temp_repo):
+    """proposal auto 支持双语 action（plant/resolve/remind/update）。"""
+    from io import StringIO
+    import contextlib
+    book = temp_repo["book"]
+    beats_dir = book / "outlines" / "vol_01" / "beats"
+    beats_dir.mkdir(parents=True, exist_ok=True)
+    (beats_dir / "ch_003.md").write_text(
+        "---\nchapter: ch_003\nvol: vol_01\nform: 冲突升级\n---\n"
+        "# 第3章 秘境\n"
+        "## 伏笔与线索动作\n"
+        "- plant GUN-001 (神秘古玉): 主角在山洞捡到古玉\n"
+        "- resolve MIS-002 (退婚误会): 双方正式澄清误会\n"
+        "- remind GUN-003: 怀中玉佩微微发烫\n"
+        "- update KNO-004: 获悉部分上古隐秘\n"
+        "## 交付契约\n- 契约1\n",
+        encoding="utf-8"
+    )
+    final_dir = book / "manuscript" / "vol_01" / "final"
+    final_dir.mkdir(parents=True, exist_ok=True)
+    (final_dir / "ch_003.md").write_text("# 第3章 秘境\n主角深入秘境之中……", encoding="utf-8")
+
+    buf = StringIO()
+    with contextlib.redirect_stdout(buf):
+        rc = cli.main(["proposal", "auto", "-w", str(book), "ch_003"])
+    assert rc == 0
+    p = json.loads(buf.getvalue())
+    actions = {item.get("id"): item.get("action") for item in p.get("lines", [])}
+    assert actions.get("GUN-001") == "plant"
+    assert actions.get("MIS-002") == "resolve"
+    assert actions.get("GUN-003") == "remind"
+    assert actions.get("KNO-004") == "update"
+
+
+def test_amount_scan_generic_unit_omitted(temp_repo):
+    """金额扫描加固：对于泛量词（如'块'），当正文省略量词直接写'五百灵石'时应能成功召回。"""
+    pools = {"standard_currency": {"name": "灵石", "unit": "块"}}
+    text = "怀里揣着五百灵石，还有灵石三百块，另外又花了1000灵石购买丹药。"
+    scanned = evidence._amount_scan(text, pools)
+    assert len(scanned) == 1
+    assert scanned[0]["pool"] == "standard_currency"
+    assert 500 in scanned[0]["values"]
+    assert 300 in scanned[0]["values"]
+    assert 1000 in scanned[0]["values"]
+
+
+def test_file_matches_chapter_with_volume_prefix():
+    """file_matches_chapter 支持携带 vol_XX 卷前缀精确匹配。"""
+    p1 = Path("workspace/book/manuscript/vol_01/final/ch_001.md")
+    p2 = Path("workspace/book/manuscript/vol_02/final/ch_001.md")
+    
+    assert common.file_matches_chapter(p1, "ch_001")
+    assert common.file_matches_chapter(p2, "ch_001")
+    
+    assert common.file_matches_chapter(p1, "vol_01/ch_001")
+    assert not common.file_matches_chapter(p1, "vol_02/ch_001")
+    assert common.file_matches_chapter(p2, "vol_02/ch_001")
+    assert not common.file_matches_chapter(p2, "vol_01/ch_001")
+

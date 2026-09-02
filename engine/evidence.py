@@ -281,6 +281,8 @@ def _amount_scan(text: str, pools: dict) -> list[dict]:
                     rf"({_NUM_RE})\s*{re.escape(unit)}\s*(?:{re.escape(name)}|{re.escape(name[-2:])})",
                     rf"(?:{re.escape(name)}|{re.escape(name[-2:])})\s*({_NUM_RE})\s*{re.escape(unit)}",
                 ]
+                if len(name) >= 2:
+                    patterns.append(rf"({_NUM_RE})\s*{re.escape(name)}")
             else:
                 patterns = []
         else:

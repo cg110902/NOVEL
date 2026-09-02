@@ -1,6 +1,7 @@
-<!-- 引导：人物卡用于明确角色的核心欲望（Want）、恐惧（Fear）与性格说话风格。
-     防止长篇创作中角色千人一面。
-     别名等机器字段在 state/entities.json。 -->
+<!-- 引导：人物卡用于明确角色的核心欲望（Want）、恐惧（Fear）与性格说话风格，防止长篇创作中角色千人一面。
+     • 主角卡：由 studio.py init 自动实例化为 characters/protagonist.md，并自动填入主角名；
+     • 配角/主要角色卡：由主控手工复制本模板至 characters/<配角名>.md，将下方标题改为实际配角名并填写。
+     别名与高维状态等机器字段登记在 state/entities.json。 -->
 
 # {{slot:protagonist|角色名}}
 
