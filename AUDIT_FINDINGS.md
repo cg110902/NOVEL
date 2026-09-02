@@ -244,3 +244,16 @@
 - 批次⑤：`state/inbox/ch_003.draft.json` 数据清账草稿就绪（P1-5、P2-8~12 全部修正项，`_draft:true` 防误同步；
   沙箱对真实状态结构预检 rc=0，全部命中）。**终结动作：ch_003 创作完成后，Reader 以该草稿为底装配正式提案，
   `proposal check ch_003` → `sync ch_003` 一次清账。**
+
+## 增量增强波次（2026-09-02 下午，数据一致性工程化）
+
+- `ab72315` **引文接地闸门**：提案各分区支持 `quote`（逐字摘自 final），引擎机械校验子串命中，
+  sync 硬闸 + `proposal check` 集成——编造/改写引文物理上无法过闸（"尽力而为"的牙齿）
+- `ab72315` **算法版 Stage 4.5**：`proposal verify ch_XXX` 八项 0 token 机械对照电池
+  （引文覆盖/章题/beats重叠/金额双向/在场差异/state_watch守望/候选新实体/到期线），
+  只出候选差异清单、零裁决、不阻断——Stage 4.5 的 80% 算法化，复杂度 O(n) 毫秒级
+- `fca1878` **Reader 三段式工序**：引文先行事实表（log/facts/）→ 8 项清单反扫 → 照表组装；
+  workflow 接线 Stage 4/4.5/5，state_watch 书级配置，可选 LLM 验证员触发规则（高变动章）
+- 真实书：project.json 写入 state_watch 词表；ch_003.draft.json 的 power_level 措辞对齐
+  （含"引气入体"，避免守望在 sync 后误报）
+- 度量约定：自 ch_003 起主控随手记录每章内容级错误数（log/），5 章后据此决定是否加派独立 LLM 验证员
