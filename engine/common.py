@@ -201,14 +201,18 @@ def atomic_write_text(path: Path | str, text: str, encoding: str = "utf-8") -> N
 def load_json(path: Path | str, default=None):
     """读 JSON。文件缺失：有 default 则返回之，否则抛 ValueError；**内容损坏必抛，绝不静默兜底**。
     注意：default 只对 FileNotFoundError 生效——JSON 损坏/编码错误一律抛 ValueError，
-    调用方若需要降级展示请自行 try/except（P2-1 教训：传 default 不等于安全）。"""
+    调用方若需要降级展示请自行 try/except（P2-1 教训：传 default 不等于安全）。
+    读取兼容 UTF-8 BOM（Windows 记事本常见，P3-3）；GBK 等其他编码 → 包装为带文件名的
+    ValueError（P3-4），不再裸抛 UnicodeDecodeError。"""
     p = Path(path)
     try:
-        return json.loads(p.read_text(encoding="utf-8"))
+        return json.loads(p.read_text(encoding="utf-8-sig"))
     except FileNotFoundError:
         if default is not None:
             return default
         raise ValueError(f"文件不存在: {p}") from None
+    except UnicodeDecodeError as exc:
+        raise ValueError(f"编码错误 {p.name}（须为 UTF-8）: {exc}") from None
     except json.JSONDecodeError as exc:
         raise ValueError(f"JSON 损坏 {p.name}: {exc}") from exc
 
@@ -239,10 +243,14 @@ def file_lock(dir_path: Path | str, name: str = ".engine.lock", timeout: float =
             acquired = True
             break
         except FileExistsError:
-            with contextlib.suppress(OSError):
+            try:
                 if time.time() - lock.stat().st_mtime > 120:
-                    lock.unlink()  # 进程崩溃留下的陈锁
+                    # 陈锁抢占（P3-18）：stat 判定后立即 unlink，竞态窗口缩至微秒级；
+                    # 锁恰被他人释放/重建时 unlink 失败 → 下一轮重试，代价可忽略
+                    lock.unlink()
                     continue
+            except OSError:
+                pass  # 锁消失或被重建 → 走正常重试
             if time.monotonic() >= deadline:
                 raise TimeoutError(f"等待锁超时（{timeout}s）: {lock}") from None
             time.sleep(0.05)

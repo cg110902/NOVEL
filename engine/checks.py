@@ -685,6 +685,17 @@ def run_checks(book: Path) -> dict:
             if c < lo or c > hi:
                 warnings.append(_err("word_band_deviation", f"{tok}: 字数 {c} 在目标带 [{lo}, {hi}] 之外"))
 
+    # ---- 编码卫生（P3-4）：正文出现替换符 \ufffd = 疑似非 UTF-8 保存，字数统计已失真 ----
+    for f in common.find_chapter_files(book, "final"):
+        try:
+            t = f.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        n_bad = t.count("\ufffd")
+        if n_bad:
+            warnings.append(_err("encoding_replacement_chars",
+                                 f"{f.name}: 含 {n_bad} 个替换符（疑似非 UTF-8 编码保存，字数/统计口径已失真）"))
+
 
     # ---- 线逾期（算术事实） ----
     try:

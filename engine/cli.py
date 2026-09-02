@@ -17,7 +17,7 @@ from . import pack as pack_mod
 
  
 
-SLOT_RE = re.compile(r"\{\{slot:(\w+)(?:\|[^}]*)?\}\}")
+SLOT_RE = re.compile(r"\{\{\s*slot:(\w+)(?:\|[^}]*)?\s*\}\}")
 
 
 def _norm_ch(token: str) -> str | None:
@@ -845,14 +845,14 @@ def _cmd_proposal_auto(book: Path, ch: str, args) -> int:
             continue
         if s.startswith("**本章核心矛盾死结**") or s.startswith("场景一") or s.startswith("场景二") or s.startswith("场景三"):
             continue
-        # 清理前缀如 核心事件与对抗动作：或 破局行动与结果：
-        cleaned = re.sub(r"^(?:核心事件与对抗动作|角色互动与言语试探|破局行动与结果|📍\s*章末物理刀口卡点)[:：]\s*", "", s).strip()
+        # 清理前缀如 核心事件与对抗动作：或 📍 **章末物理刀口卡点**：（容忍加粗与列表符，P3-6）
+        cleaned = re.sub(r"^(?:核心事件与对抗动作|角色互动与言语试探|破局行动与结果|[-·*]*\s*📍\s*\**章末物理刀口卡点\**)[:：]\s*", "", s).strip()
         if cleaned and not cleaned.startswith(("<", "<!--")):
             beats_scenes.append(cleaned)
     synopsis_text = "；".join(beats_scenes[:3]) if beats_scenes else f"完成第{n}章主线剧情推进。"
 
     from datetime import datetime
-    mmdd = datetime.now().strftime("%m%d_%H%M")
+    mmdd = datetime.now().strftime("%m%d_%H%M%S")
     proposal = {
         "schema": "novel-studio.state-mutation/v2",
         "chapter": ch,
@@ -916,7 +916,7 @@ def cmd_proposal(args) -> int:
         print(f"❌ {ch} 已有在途提案（state/inbox/{ch}.json）——先处理再建新骨架")
         return 1
     from datetime import datetime
-    mmdd = datetime.now().strftime("%m%d_%H%M")
+    mmdd = datetime.now().strftime("%m%d_%H%M%S")
     skeleton = {
         "schema": "novel-studio.state-mutation/v2", "chapter": ch,
         "operation_id": f"{ch}.director.{mmdd}",

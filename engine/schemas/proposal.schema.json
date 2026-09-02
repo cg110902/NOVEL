@@ -19,8 +19,8 @@
     },
     "operation_id": {
       "type": "string",
-      "pattern": "[A-Za-z0-9_.-]{1,128}",
-      "description": "幂等身份，建议 <ch>.director.<序号>，如 ch_007.director.0829a"
+      "pattern": "^[A-Za-z0-9_.-]{1,128}$",
+      "description": "幂等身份，建议 <ch>.<角色>.<时间戳/序号>，如 ch_007.director.0829a"
     },
     "_draft": {
       "type": "boolean"

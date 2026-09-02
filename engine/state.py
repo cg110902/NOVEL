@@ -98,11 +98,14 @@ def defaults_for(key: str) -> dict:
 INBOX_README = """# state/inbox — 提案收件箱（Stage 4 Reader 交付 / Stage 5 主控审定工位）
 
 一切状态修改从这里进：每章一个 `ch_XXX.json`（填提案以本 README 样例为准，
-业务规则见 novel_workflow.md#Stage 5）。processed/ = 已应用的审计记录（永不删改）；
-failed/ = 失败提案，就地处修复后重跑 `sync`，引擎自动捡回。
+业务规则见 novel_workflow.md#Stage 5）。processed/ = 已应用的审计记录（永不删改；
+唯一例外：`init --force` 整本重开）；failed/ = 失败提案，就地处修复后重跑 `sync`，
+引擎自动捡回（含重名归档的 .2/.3 变体）。
 
-正式提案必须带 operation_id（`ch_XXX.director.<序号>`）；`*.draft.json`/`*.template.json`/`*.sample.json` 不参与合并，
-可放这里当草稿。最小样例（各分区都给了最短合法形状）：
+正式提案必须带 operation_id（建议 `<ch>.<角色>.<时间戳/序号>`，如 ch_007.director.0829a、
+ch_007.reader.0901_2125）；`*.draft.json`/`*.template.json`/`*.sample.json` 不参与合并，
+可放这里当草稿。entities.action 支持 upsert/register/retire（register 为 upsert 别名）。
+最小样例（各分区都给了最短合法形状）：
 
 ```json
 {
@@ -298,7 +301,7 @@ def validate_proposal(proposal, expected_chapter: str | None = None) -> tuple[li
                 if k not in allowed_entity_keys:
                     errors.append(f"entities[{i}] 含未知字段: {k}")
             if e.get("action", "upsert") not in ("upsert", "register", "retire"):
-                errors.append(f"entities[{i}].action 必须为 upsert/retire")
+                errors.append(f"entities[{i}].action 必须为 upsert/register/retire（register 为 upsert 别名）")
             if not str(e.get("name", "")).strip():
                 errors.append(f"entities[{i}].name 必填")
             if "status" in e and e["status"] not in ("active", "retired"):

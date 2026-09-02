@@ -1,30 +1,33 @@
+import html
 import json
 import re
 from pathlib import Path
-from engine import common, evidence, state
+
+from . import common, evidence, state
 
 def generate_dashboard_html(book: Path) -> str:
     """生成包含人物关系、伏笔看板、情绪节奏与实时状态的现代化交互式看板 HTML"""
+    esc = html.escape  # P3-10: 所有插值过 esc，书名/实体名/summary 含 <>& 不再破版
     proj = common.load_json(book / "project.json", default={})
-    title = proj.get("title", "未命名作品")
-    genre = proj.get("genre", "通用网文")
-    
+    title = esc(str(proj.get("title", "未命名作品")))
+    genre = esc(str(proj.get("genre", "通用网文")))
+
     # 1. 状态与实体
     cur = state.load_state(book, "current")
     ents = state.load_state(book, "entities").get("entries", [])
     gaps_data = evidence.gaps(book)
-    
+
     # 2. 章节与钩子分析
     chapters_info = []
     for tok, num, text in evidence.final_chapters(book):
         hook_info = evidence.detect_chapter_hook(text) if hasattr(evidence, "detect_chapter_hook") else {"type": "未知", "detail": ""}
         words = common.cjk_count(text)
         chapters_info.append({
-            "chapter": tok,
+            "chapter": esc(tok),
             "num": num,
             "words": words,
-            "hook_type": hook_info.get("type", "普通收尾"),
-            "hook_desc": hook_info.get("detail", ""),
+            "hook_type": esc(hook_info.get("type", "普通收尾")),
+            "hook_desc": esc(hook_info.get("detail", "")[:30]),
         })
     
     # 3. 伏笔与暗线状态清洗
@@ -131,18 +134,18 @@ def generate_dashboard_html(book: Path) -> str:
         <!-- 主角实时状态面板 -->
         <div class="card col-4">
             <div class="card-header">
-                <div class="card-title">⚡ 主角现场状态（{cur.get('time', '未知时间')}）</div>
+                <div class="card-title">⚡ 主角现场状态（{esc(str(cur.get('time', '未知时间')))}</div>
             </div>
             <div class="status-badge-group">
-                {f'<div class="status-badge">🗺️ {cur["region"]}</div>' if cur.get('region') else ''}
-                <div class="status-badge">📍 {cur.get('location', '未知')}</div>
-                <div class="status-badge">❤️ 状态：{cur.get('injury', '完好')}</div>
+                {f'<div class="status-badge">🗺️ {esc(str(cur["region"]))}</div>' if cur.get('region') else ''}
+                <div class="status-badge">📍 {esc(str(cur.get('location', '未知')))}</div>
+                <div class="status-badge">❤️ 状态：{esc(str(cur.get('injury', '完好')))}</div>
             </div>
-            <div class="stat-item"><span class="stat-label">境界修为</span><span class="stat-val" style="color: var(--accent-amber); font-weight: 600;">{cur.get('power_level') or cur.get('realm') or '未设定'}</span></div>
-            <div class="stat-item"><span class="stat-label">掌握功法</span><span class="stat-val">{cur.get('abilities', '无')}</span></div>
-            <div class="stat-item"><span class="stat-label">持有资产</span><span class="stat-val">{cur.get('assets', '无')}</span></div>
-            <div class="stat-item"><span class="stat-label">关键人际</span><span class="stat-val">{cur.get('key_relationships', '无')}</span></div>
-            <div class="stat-item"><span class="stat-label">当前目标</span><span class="stat-val" style="color: var(--accent-cyan);">{cur.get('goal', '无')}</span></div>
+            <div class="stat-item"><span class="stat-label">境界修为</span><span class="stat-val" style="color: var(--accent-amber); font-weight: 600;">{esc(str(cur.get('power_level') or cur.get('realm') or '未设定'))}</span></div>
+            <div class="stat-item"><span class="stat-label">掌握功法</span><span class="stat-val">{esc(str(cur.get('abilities', '无')))}</span></div>
+            <div class="stat-item"><span class="stat-label">持有资产</span><span class="stat-val">{esc(str(cur.get('assets', '无')))}</span></div>
+            <div class="stat-item"><span class="stat-label">关键人际</span><span class="stat-val">{esc(str(cur.get('key_relationships', '无')))}</span></div>
+            <div class="stat-item"><span class="stat-label">当前目标</span><span class="stat-val" style="color: var(--accent-cyan);">{esc(str(cur.get('goal', '无')))}</span></div>
         </div>
 
         <!-- 伏笔与暗线看板 -->
@@ -154,29 +157,29 @@ def generate_dashboard_html(book: Path) -> str:
                 <div class="kanban-col">
                     <div class="kanban-col-header" style="color: var(--accent-emerald);">🟢 埋设推进中 <span>{len(active_guns)}</span></div>
                     {"".join(f'''<div class="kanban-card">
-                        <div class="kanban-card-title">[{g['id']}] {g['name']}</div>
+                        <div class="kanban-card-title">[{g['id']}] {esc(str(g['name']))}</div>
                         <div class="kanban-card-meta"><span>权重 {g.get('weight', 1)}</span><span>目标 ch_{g.get('target_ch')}</span></div>
                     </div>''' for g in active_guns) or '<div style="color: var(--text-muted); font-size: 11px; text-align: center; padding: 12px 0;">暂无埋设伏笔</div>'}
                 </div>
                 <div class="kanban-col">
                     <div class="kanban-col-header" style="color: var(--accent-amber);">🟡 误会与认知差 <span>{len(active_mis)}</span></div>
                     {"".join(f'''<div class="kanban-card">
-                        <div class="kanban-card-title">[{m['id']}] {m['parties']}</div>
+                        <div class="kanban-card-title">[{m['id']}] {esc(str(m['parties']))}</div>
                         <div class="kanban-card-meta"><span>等级 {m.get('level', 1)}</span><span>目标 ch_{m.get('target_ch')}</span></div>
                     </div>''' for m in active_mis) or '<div style="color: var(--text-muted); font-size: 11px; text-align: center; padding: 12px 0;">暂无误会线索</div>'}
                 </div>
                 <div class="kanban-col">
                     <div class="kanban-col-header" style="color: var(--accent-purple);">🔒 秘密信息差 <span>{len(active_kno)}</span></div>
                     {"".join(f'''<div class="kanban-card">
-                        <div class="kanban-card-title">[{k['id']}] {str(k.get('secret', ''))[:18]}...</div>
+                        <div class="kanban-card-title">[{k['id']}] {esc(str(k.get('secret', ''))[:18])}...</div>
                         <div class="kanban-card-meta"><span>权重 {k.get('weight', 1)}</span><span>目标 ch_{k.get('target_ch')}</span></div>
                     </div>''' for k in active_kno) or '<div style="color: var(--text-muted); font-size: 11px; text-align: center; padding: 12px 0;">暂无未揭秘密</div>'}
                 </div>
                 <div class="kanban-col">
                     <div class="kanban-col-header" style="color: var(--accent-pink);">🔴 逾期预警 <span>{len(overdue_items)}</span></div>
                     {"".join(f'''<div class="kanban-card" style="border-color: var(--accent-pink);">
-                        <div class="kanban-card-title">[{item['id']}] {item['title']}</div>
-                        <div class="kanban-card-meta"><span style="color: var(--accent-pink);">{item['desc']}</span></div>
+                        <div class="kanban-card-title">[{item['id']}] {esc(str(item['title']))}</div>
+                        <div class="kanban-card-meta"><span style="color: var(--accent-pink);">{esc(str(item['desc']))}</span></div>
                     </div>''' for item in overdue_items) or '<div style="color: var(--text-muted); font-size: 11px; text-align: center; padding: 12px 0;">暂无逾期线索</div>'}
                 </div>
             </div>
@@ -215,10 +218,10 @@ def generate_dashboard_html(book: Path) -> str:
             <div class="entity-grid">
                 {"".join(f'''<div class="entity-card {e.get('type', 'person')} {'retired' if e.get('status') == 'retired' else ''}">
                     <div class="entity-name">
-                        <span>{e['name']}</span>
-                        <span style="font-size: 11px; color: var(--text-muted); font-weight: normal;">{e.get('realm') or e.get('attitude') or (f"余{e['charges']}次" if e.get('charges') is not None else e.get('type', 'person'))}{' · 已退役' if e.get('status') == 'retired' else ''}</span>
+                        <span>{esc(str(e['name']))}</span>
+                        <span style="font-size: 11px; color: var(--text-muted); font-weight: normal;">{esc(str(e.get('realm') or e.get('attitude') or (f"余{e['charges']}次" if e.get('charges') is not None else e.get('type', 'person'))))}{' · 已退役' if e.get('status') == 'retired' else ''}</span>
                     </div>
-                    <div class="entity-summary">{e.get('summary', '暂无描述')[:60]}</div>
+                    <div class="entity-summary">{esc(str(e.get('summary', ''))[:60])}</div>
                 </div>''' for e in ents[:12]) or '<div style="color: var(--text-muted); font-size: 12px; grid-column: 1/-1;">暂未登记实体</div>'}
             </div>
         </div>

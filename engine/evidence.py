@@ -43,7 +43,8 @@ def final_chapters(book: Path) -> list[tuple[str, int, str]]:
             key = (vol, n)
             cur = by_ch.get(key)
             if cur is None or common.chapter_version_from_name(f.name) > common.chapter_version_from_name(cur[2].name):
-                by_ch[key] = (f"ch_{n:03d}", n, f)
+                # P3-13: token 带卷前缀，跨卷同章号不再产生重名 ch_XXX
+                by_ch[key] = (f"{vol}/ch_{n:03d}", n, f)
     out = []
     for key in sorted(by_ch):
         tok, _, p = by_ch[key]
@@ -418,19 +419,33 @@ def prev_contrast(book: Path, ch: str) -> dict:
             h = detect_chapter_hook(pf[-1].read_text(encoding="utf-8", errors="replace"))
             hooks.append((f"ch_{past_n:03d}", h["type"]))
     out["recent_hooks"] = hooks
-    if len(hooks) >= 2 and all(h[1] == hooks[0][1] for h in hooks):
-        out["hook_diversity_notice"] = f"⚠️ 前 {len(hooks)} 章连续采用「{hooks[0][1]}」，建议本章尝试其他收尾手段（如悬置/弱收/反高潮），调节读者情绪曲线。"
-    else:
-        out["hook_diversity_notice"] = None
+    # P3-8: 只出机械数据（末尾连续同型钩子长度），裁决性"建议"文案已移除——evidence 零语义承诺
+    hook_run = None
+    if hooks:
+        last_type = hooks[-1][1]
+        run_len = 0
+        for _, h in reversed(hooks):
+            if h == last_type:
+                run_len += 1
+            else:
+                break
+        if run_len >= 2:
+            hook_run = {"type": last_type, "length": run_len}
+    out["hook_run"] = hook_run
     return out
 
 
 def detect_chapter_hook(text: str) -> dict:
-    """分析章末结尾段落，精准判断章尾钩子类型（强钩 / 悬置 / 弱收 / 反高潮）。"""
+    """分析章末结尾段落，判断章尾钩子类型（强钩 / 悬置 / 弱收 / 反高潮）。
+
+    强钩判定（P3-9 收窄）：末段以 ？/！ 收束（剥离引号括号后），或命中强冲突关键词——
+    不再把末 3 段任意位置的问号判为强钩（对话设问误报）。"""
     paras = _paragraphs(text)
     tail = "\n".join(paras[-3:]) if paras else text[-300:]
-    
-    if re.search(r"[？！?!]+|杀局|大战|强敌|破空|压境|逼近|震天|大阵|战帖|叫阵|轰然|夺眶|撕裂|来不来", tail):
+    tail_clean = tail.strip().rstrip("」』”’\"')）】…。")
+    ends_hook = bool(tail_clean) and tail_clean[-1] in "？！?!"
+
+    if ends_hook or re.search(r"杀局|大战|强敌|破空|压境|逼近|震天|大阵|战帖|叫阵|轰然|夺眶|撕裂|来不来", tail):
         return {"type": "强钩", "detail": tail.strip()[:60]}
     elif re.search(r"倒数|按在剑柄|蓄势|蓄力|深吸一口气|眼神一凝|一步踏出|悄然运转|锁死|阵法亮起", tail):
         return {"type": "悬置", "detail": tail.strip()[:60]}

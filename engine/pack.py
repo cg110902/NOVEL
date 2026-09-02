@@ -403,6 +403,10 @@ def export_txt(book: Path) -> Path:
 
 
 def export_views(book: Path) -> Path:
+    def _cell(v) -> str:
+        # markdown 表格单元格转义（P3-12）：竖线与换行会破表
+        return str(v).replace("|", "\\|").replace("\n", " ")
+
     data = {key: state.load_state(book, key) for key in state.STATE_KEYS}
     L = ["# 状态视图（export --views 渲染；真值以 state/*.json 为准）", ""]
     L += ["## current", ""]
@@ -411,14 +415,14 @@ def export_views(book: Path) -> Path:
             L.append(f"- **{k}**: {v}")
     L += ["", "## entities", "", "| name | type | status | summary |", "|---|---|---|---|"]
     for e in data["entities"].get("entries", []):
-        L.append(f"| {e.get('name','')} | {e.get('type','')} | {e.get('status','')} | {e.get('summary','')} |")
+        L.append(f"| {_cell(e.get('name',''))} | {_cell(e.get('type',''))} | {_cell(e.get('status',''))} | {_cell(e.get('summary',''))} |")
     L += ["", "## lines 台账", "", "| id | name/content | status | target_ch | 权重 |", "|---|---|---|---|---|"]
     for g in data["lines"].get("foreshadows", []):
-        L.append(f"| {g['id']} | {g.get('name','')} | {g.get('status','')} | {g.get('target_ch','')} | {g.get('weight','-')} |")
+        L.append(f"| {g['id']} | {_cell(g.get('name',''))} | {g.get('status','')} | {g.get('target_ch','')} | {g.get('weight','-')} |")
     for m in data["lines"].get("misunderstandings", []):
-        L.append(f"| {m['id']} | {m.get('content','')[:30]} | {m.get('status','')} | {m.get('target_ch','')} | {m.get('level','-')} |")
+        L.append(f"| {m['id']} | {_cell(str(m.get('content',''))[:30])} | {m.get('status','')} | {m.get('target_ch','')} | {m.get('level','-')} |")
     for k in data["lines"].get("knowledge", []):
-        L.append(f"| {k['id']} | {str(k.get('secret',''))[:30]} | {k.get('status','')} | {k.get('target_ch','')} | {k.get('weight','-')} |")
+        L.append(f"| {k['id']} | {_cell(str(k.get('secret',''))[:30])} | {k.get('status','')} | {k.get('target_ch','')} | {k.get('weight','-')} |")
     L += ["", "## timeline", ""]
     for ev in data["timeline"].get("events", []):
         L.append(f"- {ev.get('time','')}｜{ev.get('event','')}（{ev.get('chapter','')}）")
@@ -432,13 +436,13 @@ def export_views(book: Path) -> Path:
     L += ["", "| ch | pool | delta | subject | balance |", "|---|---|---|---|---|"]
     for t in data["ledger"].get("transactions", []):
         L.append(f"| {t.get('chapter','')} | {t.get('pool','')} | {t.get('delta','')}"
-                 f" | {t.get('subject','')} | {t.get('balance_after','')} |")
+                 f" | {_cell(t.get('subject',''))} | {t.get('balance_after','')} |")
     L += ["", "## synopsis", ""]
     if data["synopsis"].get("book_logline"):
         L.append(f"> {data['synopsis']['book_logline']}")
     entries = data["synopsis"].get("chapters", {})
     for _, tok, v in sorted((v.get("num", 0), k, v) for k, v in entries.items()):
-        L.append(f"- {tok}《{v.get('title','') or '无题'}》：{v.get('synopsis','')}")
+        L.append(f"- {tok}《{_cell(v.get('title','') or '无题')}》：{_cell(v.get('synopsis',''))}")
     out = book / "export" / "views"
     out.mkdir(parents=True, exist_ok=True)
     path = out / "state_view.md"
