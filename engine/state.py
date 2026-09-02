@@ -137,6 +137,10 @@ failed/ = 失败提案，就地处修复后重跑 `sync`，引擎自动捡回。
 写提案的纪律：只写增量；事实必须能在本章 final 正文找到出处；不确定就不上账。
 current 只写要刷新的字段：缺省/空值＝不修改（引擎跳过空串与空数组，不当作清档）。
 status 只许 active/retired（越界整案回滚进 failed/）；"现状/近况"一律并入 summary——upsert 即覆盖，逐章刷新。
+修订通道（随提案合并，全程留审计痕迹）：
+  timeline.events 条目支持 {"time": "…", "event": "既有事件原文", "replace": "修订后描述"}——
+  按 time+event 逐字命中既有事件后只改写其描述（不新增、chapter 保持原值），未命中整案拒绝；
+  synopsis 支持 {"chapters": {"ch_XXX": {"title": "…", "synopsis": "…"}}}——跨章修订历史章的标题/梗概。
 填完六区先 `python studio.py proposal check ch_XXX`（结构预检+三方事实对照，不落盘），
 再 `sync ch_XXX --dry-run` 预演。
 """
@@ -400,8 +404,11 @@ def validate_proposal(proposal, expected_chapter: str | None = None) -> tuple[li
                     or not isinstance(ev.get("event"), str) or not ev["event"].strip()):
                 errors.append(f"timeline.events[{i}] 必须含非空字符串 time 与 event")
             for k in ev:
-                if k not in ("time", "event"):
+                if k not in ("time", "event", "replace"):
                     errors.append(f"timeline.events[{i}] 含未知字段: {k}（chapter 由引擎按提案章写入）")
+            if "replace" in ev and (not isinstance(ev["replace"], str) or not ev["replace"].strip()):
+                errors.append(f"timeline.events[{i}].replace 必须为非空字符串"
+                              "（修订语义：按 time+event 逐字命中既有事件后改写其描述）")
         for i, a in enumerate(tl.get("arcs", []) or []):
             if not isinstance(a, dict) or not isinstance(a.get("name"), str) or not a["name"].strip():
                 errors.append(f"timeline.arcs[{i}] 必须含非空字符串 name")
@@ -489,11 +496,30 @@ def validate_proposal(proposal, expected_chapter: str | None = None) -> tuple[li
     if isinstance(syn, dict):
         _plan("synopsis", 1)
         for k in syn:
-            if k not in ("book_logline", "title", "text"):
+            if k not in ("book_logline", "title", "text", "chapters"):
                 errors.append(f"synopsis 含未知字段: {k}")
         for f in ("text", "title", "book_logline"):
             if f in syn and not isinstance(syn[f], str):
                 errors.append(f"synopsis.{f} 必须为字符串")
+        chapters = syn.get("chapters")
+        if chapters is not None:
+            # 跨章修订通道：键=ch_XXX，值={title?/synopsis?}——修正历史章的标题/梗概。
+            if not isinstance(chapters, dict):
+                errors.append("synopsis.chapters 必须为对象（键=ch_XXX，值={title?, synopsis?}）")
+            else:
+                for c, cp in chapters.items():
+                    if not re.fullmatch(r"ch_\d{3,}", str(c)):
+                        errors.append(f"synopsis.chapters 键须匹配 ch_NNN: {c!r}")
+                        continue
+                    if not isinstance(cp, dict):
+                        errors.append(f"synopsis.chapters[{c}] 必须为对象")
+                        continue
+                    for f in cp:
+                        if f not in ("title", "synopsis"):
+                            errors.append(f"synopsis.chapters[{c}] 含未知字段: {f}（该通道只修订标题/梗概）")
+                    for f in ("title", "synopsis"):
+                        if f in cp and not isinstance(cp[f], str):
+                            errors.append(f"synopsis.chapters[{c}].{f} 必须为字符串")
     return errors, plan
 
 
@@ -639,9 +665,23 @@ def _merge_lines(state: dict, items: list[dict], ch_num: int, rep: dict) -> None
 
 def _merge_timeline(state: dict, patch: dict, ch: str, rep: dict) -> None:
     existing = {(e.get("time", ""), e.get("event", "")) for e in state["events"]}
-    added = skipped = 0
+    added = replaced = skipped = 0
     for ev in patch.get("events", []) or []:
         key = (ev.get("time", ""), ev.get("event", ""))
+        new_text = ev.get("replace")
+        if new_text is not None:
+            # 修订通道：按 (time, event) 逐字命中既有事件，只改写 event 描述（chapter 保持原值）。
+            target = next((e for e in state["events"]
+                           if (e.get("time", ""), e.get("event", "")) == key), None)
+            if target is None:
+                rep["errors"].append(
+                    f"timeline 事件修订未命中: {key[0]}｜{str(key[1])[:30]}…"
+                    "（time+event 须与 state/timeline.json 逐字一致）")
+                continue
+            target["event"] = new_text
+            replaced += 1
+            rep["updated"].append(f"📜 编年史修订：{key[0]}「{str(key[1])[:20]}…」→「{new_text[:32]}…」")
+            continue
         if key in existing:
             skipped += 1
             continue
@@ -650,6 +690,8 @@ def _merge_timeline(state: dict, patch: dict, ch: str, rep: dict) -> None:
         added += 1
     if added:
         rep["updated"].append(f"📜 编年史 +{added} 条")
+    if replaced:
+        rep["updated"].append(f"📜 编年史修订 {replaced} 条")
     if skipped:
         rep["warnings"].append(f"编年史去重跳过 {skipped} 条重复事件")
     arcs = state["arcs"]
@@ -767,6 +809,22 @@ def _merge_synopsis(state: dict, patch: dict, ch: str, rep: dict) -> None:
         chs[ch] = {"num": _chapter_num(ch) or 0, "title": patch.get("title", prev.get("title", "")),
                    "synopsis": patch["text"], "source": "manual"}
         rep["updated"].append(f"📖 章节梗概已登记（{ch}）")
+    # 跨章修订通道（处理顺序在 text 之后：同章同字段时以显式修订为准）
+    for c, cp in (patch.get("chapters") or {}).items():
+        chs = state.setdefault("chapters", {})
+        ent = chs.get(c)
+        if ent is None:
+            ent = {"num": _chapter_num(c) or 0, "title": "", "synopsis": "", "source": "manual"}
+            chs[c] = ent
+            rep["updated"].append(f"📖 新增章节梗概占位（{c}）")
+        for f in ("title", "synopsis"):
+            if f in cp:
+                v = cp[f]
+                if not v.strip():
+                    rep["warnings"].append(f"synopsis.chapters.{c}.{f} 为空白字符串，按未提供处理")
+                    continue
+                ent[f] = v
+                rep["updated"].append(f"📖 {c} {f} 已修订 →「{v[:24]}…」")
 
 
 # ---------------------------------------------------------------------------
