@@ -153,7 +153,14 @@ def cmd_init(args) -> int:
         "protagonist": args.protagonist or "",
         "mode": "automatic",
         "words_target": [2400, 3500],
+        "lines_cap": {
+            "active_foreshadows": 8,
+            "longline_foreshadows": 5,
+            "active_knowledge": 5,
+            "active_misunderstandings": 4
+        },
         "style_guards": [],
+        "generic_stopwords": [],
         "state_watch": {},
         "created_at": datetime.date.today().isoformat(),
     }
@@ -1149,6 +1156,269 @@ def cmd_dashboard(args) -> int:
     return 0
 
 
+def cmd_checkpoint(args) -> int:
+    """宏观航向校准点（每 5 章复盘）：对照分卷四分位里程碑、近 5 章进展与状态，发出偏航校准预警。"""
+    book = common.resolve_workspace(args.workspace)
+    if book is None or not (book / "project.json").exists():
+        print("❌ 未找到书工作区或其 project.json（先运行 init）")
+        return 1
+
+    ch_arg = getattr(args, "chapter", None)
+    if ch_arg:
+        ch = _norm_ch(ch_arg)
+        if ch is None:
+            print(f"❌ 无法解析章节编号: {ch_arg!r}（示例: 5 或 ch_005）")
+            return 2
+        ch_num = common.chapter_token_to_num(ch)
+    else:
+        latest = common.latest_chapter_number(book, "final") or common.latest_chapter_number(book, "beats") or 1
+        ch_num = latest
+        ch = f"ch_{ch_num:03d}"
+
+    # 1. 提取所属分卷与四分位阶段
+    vol_outline_path = None
+    for p in sorted((book / "outlines").glob("*/outline.md")):
+        vol_outline_path = p
+        break
+
+    phase_info = None
+    all_phases = []
+    if vol_outline_path and vol_outline_path.exists():
+        text = vol_outline_path.read_text(encoding="utf-8", errors="replace")
+        phases = re.findall(
+            r"-\s*\*\*([^\n*]+?)\s*[（(]\s*(?:ch_?)?(\d+)\s*[—\-–~至到]+\s*(?:ch_?)?(\d+)\s*(?:[｜|]\s*([^\n*]+?))?[)）]\s*\*\*",
+            text
+        )
+        for idx, (pname, start_s, end_s, feat) in enumerate(phases, 1):
+            s_num, e_num = int(start_s), int(end_s)
+            p_dict = {
+                "phase_index": idx,
+                "name": pname.strip(),
+                "range": [s_num, e_num],
+                "range_str": f"ch_{s_num:03d}—ch_{e_num:03d}",
+                "feature": feat.strip() if feat else ""
+            }
+            all_phases.append(p_dict)
+            if s_num <= ch_num <= e_num:
+                phase_info = p_dict
+
+    # 2. 提取近 5 章梗概与大事件
+    syn_data = state.load_state(book, "synopsis")
+    tl_data = state.load_state(book, "timeline")
+    cur_data = state.load_state(book, "current")
+
+    start_scan = max(1, ch_num - 4)
+    recent_chapters = []
+    for n in range(start_scan, ch_num + 1):
+        tok = f"ch_{n:03d}"
+        syn = syn_data.get("chapters", {}).get(tok, {})
+        evs = [e.get("event", "") for e in tl_data.get("events", []) if e.get("chapter") == tok]
+        recent_chapters.append({
+            "chapter": tok,
+            "title": syn.get("title", "未命名"),
+            "synopsis": syn.get("synopsis", "暂无梗概"),
+            "events": evs
+        })
+
+    # 3. 线台账分析（到期/闲置线）
+    gaps_data = evidence.gaps(book)
+    urgent_lines = [g for g in gaps_data["foreshadows"] if g.get("overdue") or g.get("idle_chapters", 0) >= 10]
+
+    # 4. 偏航判定与建议
+    assessment = []
+    directives = []
+    if phase_info:
+        p_end = phase_info["range"][1]
+        left_in_phase = p_end - ch_num
+        if left_in_phase == 0:
+            assessment.append(f"🏁 已到达阶段终点（{phase_info['range_str']}）：本章必须兑现阶段大高潮与里程碑成果！")
+            directives.append("本章或下一章必须完成阶段收束，兑现阶段核心成果，并为下一阶段铺设新转场与新目标。")
+        elif left_in_phase <= 2:
+            assessment.append(f"⏳ 阶段收束倒计时：距阶段终点仅剩 {left_in_phase} 章（目标 {phase_info['name']}）。")
+            directives.append(f"剧情应收拢支线，全面推向阶段高潮（{phase_info['feature']}），切忌节外生枝。")
+        else:
+            assessment.append(f"🟢 阶段稳步推进中（进度 {ch_num - phase_info['range'][0] + 1}/{p_end - phase_info['range'][0] + 1}）。")
+            directives.append(f"围绕本阶段核心功能（{phase_info['feature']}）按节奏层层推进矛盾与伏笔。")
+    else:
+        assessment.append("⚠️ 未在分卷大纲中匹配到四分位阶段，建议检查 outlines/vol_XX/outline.md 格式。")
+
+    if urgent_lines:
+        assessment.append(f"🚨 存在 {len(urgent_lines)} 条超期或闲置 ≥10 章的严重积压伏笔。")
+        directives.append(f"在接下来的 5 章 Beats 中必须安排回收（resolve）积压伏笔：{', '.join(x['id'] for x in urgent_lines[:3])}。")
+
+    payload = {
+        "chapter": ch,
+        "chapter_num": ch_num,
+        "current_phase": phase_info,
+        "all_phases": all_phases,
+        "recent_progress": recent_chapters,
+        "state_digest": {
+            "power_level": cur_data.get("power_level", ""),
+            "location": cur_data.get("location", ""),
+            "goal": cur_data.get("goal", ""),
+            "present_characters": cur_data.get("present_characters", [])
+        },
+        "urgent_lines": urgent_lines,
+        "assessment": assessment,
+        "directives": directives
+    }
+
+    if getattr(args, "json", False):
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+        return 0
+
+    print("=" * 70)
+    print(f" 🧭 [宏观航向校准点 Checkpoint] {ch}（复盘坐标与主线航向）")
+    print("=" * 70)
+    if phase_info:
+        print(f" 🎯 当前分卷坐标：{phase_info['name']}（{phase_info['range_str']}）")
+        if phase_info['feature']:
+            print(f"    阶段核心功能：{phase_info['feature']}")
+    print(f" 📍 当前现场状态：境界「{cur_data.get('power_level','-')}」｜ 地点「{cur_data.get('location','-')}」")
+    print(f"    当前核心目标：{cur_data.get('goal','-')}")
+    print("-" * 70)
+    print(" 📜 近 5 章推进脉络：")
+    for rc in recent_chapters:
+        ev_str = f" ｜ 事件: {'；'.join(rc['events'])}" if rc['events'] else ""
+        print(f"   • {rc['chapter']}《{rc['title']}》: {rc['synopsis']}{ev_str}")
+    print("-" * 70)
+    print(" 🧭 航向与偏离评估（Drift Assessment）：")
+    for a in assessment:
+        print(f"   {a}")
+    print(" 💡 主控调优指令（Next 5-Chapter Directives）：")
+    for d in directives:
+        print(f"   👉 {d}")
+    print("=" * 70)
+    return 0
+
+
+def cmd_state(args) -> int:
+    """极速状态查看与单字段纠偏指令（免 proposal 手术刀级微调）。"""
+    book = common.resolve_workspace(args.workspace)
+    if book is None or not (book / "project.json").exists():
+        print("❌ 未找到书工作区或其 project.json（先运行 init）")
+        return 1
+
+    action = getattr(args, "state_action", "show")
+    if not action:
+        action = "show"
+
+    if action == "show":
+        cur = state.load_state(book, "current")
+        if getattr(args, "json", False):
+            print(json.dumps(cur, ensure_ascii=False, indent=2))
+        else:
+            print("=" * 60)
+            print(" 📍 当前现场状态速览 (current.json)")
+            print("=" * 60)
+            for k, v in cur.items():
+                print(f" {k:<18}: {v}")
+        return 0
+
+    target = getattr(args, "target", "")
+    if not target:
+        print("❌ 请指定要查询或修改的字段路径（例如: current.injury 或 entities.赵掌柜.realm）")
+        return 2
+
+    # 解析 partition 与路径
+    parts = target.split(".", 1)
+    part_name = parts[0]
+    sub_path = parts[1] if len(parts) > 1 else ""
+
+    if part_name not in ("current", "entities", "lines", "timeline", "ledger", "synopsis"):
+        print(f"❌ 未知状态分区: {part_name}（合法: current / entities / lines / timeline / ledger / synopsis）")
+        return 2
+
+    st_data = state.load_state(book, part_name)
+
+    if action == "get":
+        val = None
+        if not sub_path:
+            val = st_data
+        elif part_name == "current":
+            val = st_data.get(sub_path)
+        elif part_name == "entities":
+            ent_parts = sub_path.split(".", 1)
+            ename = ent_parts[0]
+            ent = next((e for e in st_data.get("entries", []) if e.get("name") == ename), None)
+            if ent is None:
+                print(f"❌ 实体「{ename}」未注册")
+                return 1
+            if len(ent_parts) > 1:
+                val = ent.get(ent_parts[1])
+            else:
+                val = ent
+        else:
+            val = st_data.get(sub_path)
+
+        if getattr(args, "json", False):
+            print(json.dumps({"target": target, "value": val}, ensure_ascii=False, indent=2))
+        else:
+            print(f"{target} = {json.dumps(val, ensure_ascii=False) if isinstance(val, (dict, list)) else val}")
+        return 0
+
+    if action == "set":
+        raw_val = getattr(args, "value", "")
+        val = raw_val
+        if isinstance(raw_val, str):
+            trimmed = raw_val.strip()
+            if trimmed.isdigit():
+                val = int(trimmed)
+            elif trimmed in ("true", "True"):
+                val = True
+            elif trimmed in ("false", "False"):
+                val = False
+            elif trimmed in ("null", "None"):
+                val = None
+            elif (trimmed.startswith("{") and trimmed.endswith("}")) or (trimmed.startswith("[") and trimmed.endswith("]")):
+                try:
+                    val = json.loads(trimmed)
+                except Exception:
+                    try:
+                        import ast
+                        val = ast.literal_eval(trimmed)
+                    except Exception:
+                        if trimmed.startswith("{") and trimmed.endswith("}"):
+                            inner = trimmed[1:-1].strip()
+                            obj_dict = {}
+                            pairs = re.split(r",\s*(?=[A-Za-z0-9_]+:)", inner)
+                            for p in pairs:
+                                if ":" in p:
+                                    pk, pv = p.split(":", 1)
+                                    obj_dict[pk.strip().strip("'\"")] = pv.strip().strip("'\"")
+                            if obj_dict:
+                                val = obj_dict
+
+        if part_name == "current":
+            if not sub_path:
+                print("❌ 修改 current 必须指定具体字段（例如 current.injury）")
+                return 2
+            st_data[sub_path] = val
+        elif part_name == "entities":
+            ent_parts = sub_path.split(".", 1)
+            ename = ent_parts[0]
+            ent = next((e for e in st_data.get("entries", []) if e.get("name") == ename), None)
+            if ent is None:
+                print(f"❌ 实体「{ename}」不存在，拒绝猜测（请先注册该实体）")
+                return 1
+            if len(ent_parts) < 2:
+                print(f"❌ 修改实体必须指定属性字段（例如 entities.{ename}.realm）")
+                return 2
+            ent[ent_parts[1]] = val
+        else:
+            st_data[sub_path] = val
+
+        # 保存并校验
+        state.save_state(book, part_name, st_data)
+        if getattr(args, "json", False):
+            print(json.dumps({"ok": True, "target": target, "value": val}, ensure_ascii=False))
+        else:
+            print(f"✅ 状态纠偏完成：{target} 已更新为 {val!r}")
+        return 0
+
+    return 0
+
+
 # ---------------------------------------------------------------------------
 # help
 # ---------------------------------------------------------------------------
@@ -1158,6 +1428,8 @@ COMMAND_HELP = {
     "pack": "单章上下文三层装配（P0 热 / P1 别名触发 / P2 冷索引）",
     "evidence": "机械证据：all|mentions|gaps|dup|style|words|file|candidates|prev（纯 JSON，零裁决）",
     "check": "结构/schema/算术体检（errors 只允许事实级；有 errors 退出码 1）",
+    "checkpoint": "宏观航向校准点（每5章复盘分卷四分位里程碑与主线偏航）",
+    "state": "状态速查与手术刀单字段纠偏（get/set current/entities，防真值幻觉）",
     "sync": "提案合并 → 状态体检 → 快照（Stage 5 闭环，可 --dry-run）",
     "snapshot": "快照 list / create NAME / rollback NAME [--clean-drafts]",
     "export": "全书编译：--txt 拼接正文，--views 渲染状态视图",
@@ -1231,6 +1503,31 @@ def _build_subparsers(sub: argparse._SubParsersAction) -> None:
     q = sub.add_parser("check", help="结构/schema/算术体检（errors 只允许事实级）")
     _add_common_opts(q)
     q.set_defaults(func=cmd_check)
+
+    q = sub.add_parser("checkpoint", help="宏观航向校准点（每5章复盘分卷四分位里程碑与主线偏航）")
+    _add_common_opts(q)
+    q.add_argument("chapter", nargs="?", help="复盘目标章节（默认最新定稿/细纲章）")
+    q.set_defaults(func=cmd_checkpoint)
+
+    q = sub.add_parser("state", help="状态速查与手术刀单字段纠偏（show/get/set current/entities）")
+    _add_common_opts(q)
+    st_sub = q.add_subparsers(dest="state_action")
+    r = st_sub.add_parser("show", help="速览当前现场状态 (current.json)")
+    r.add_argument("-w", "--workspace", default=argparse.SUPPRESS)
+    r.add_argument("--json", action="store_true", default=argparse.SUPPRESS)
+    r.set_defaults(func=cmd_state)
+    r = st_sub.add_parser("get", help="查看指定字段值（例如: current.injury 或 entities.赵掌柜.realm）")
+    r.add_argument("target", help="字段路径")
+    r.add_argument("-w", "--workspace", default=argparse.SUPPRESS)
+    r.add_argument("--json", action="store_true", default=argparse.SUPPRESS)
+    r.set_defaults(func=cmd_state)
+    r = st_sub.add_parser("set", help="直接设置/纠偏指定字段（例如: current.injury \"轻伤已愈\"）")
+    r.add_argument("target", help="字段路径")
+    r.add_argument("value", help="新值（支持普通文本或 JSON 结构）")
+    r.add_argument("-w", "--workspace", default=argparse.SUPPRESS)
+    r.add_argument("--json", action="store_true", default=argparse.SUPPRESS)
+    r.set_defaults(func=cmd_state)
+    q.set_defaults(func=cmd_state)
 
     q = sub.add_parser("sync", help="提案合并 → 状态体检 → 快照（Stage 5 闭环）")
     _add_common_opts(q)

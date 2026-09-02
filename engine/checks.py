@@ -274,8 +274,44 @@ def verify_candidates(book: Path, ch: str, proposal: dict) -> dict:
                     if any(term in text for term in terms):
                         add("warn", "due_line_unhandled",
                             f"{g['id']}（target ch_{t:03d}）正文有触及、提案未操作——确认本章是否该还线")
+        
+        # 9. 伏笔配额检查（提案新增 plant 时检测是否超限）
+        proj = common.load_json(book / "project.json", default={}) or {}
+        lcap = proj.get("lines_cap") or {}
+        act_cap = lcap.get("active_foreshadows", 8)
+        long_cap = lcap.get("longline_foreshadows", 5)
+        open_act = [g for g in lines.get("foreshadows", []) if g.get("status") != "Resolved" and isinstance(g.get("target_ch"), int)]
+        open_long = [g for g in lines.get("foreshadows", []) if g.get("status") != "Resolved" and g.get("target_ch") == "longline"]
+        for g in (proposal.get("lines") or []):
+            if isinstance(g, dict) and g.get("kind") == "foreshadow" and g.get("action", "plant") == "plant":
+                tgt = g.get("target_ch")
+                if tgt == "longline" and len(open_long) >= long_cap:
+                    add("warn", "line_quota_exceeded",
+                        f"全书长线已达上限（{len(open_long)}/{long_cap}），提案再次 plant 长线《{g.get('name','')}》——建议先回收或精简旧线")
+                elif tgt != "longline" and len(open_act) >= act_cap:
+                    add("warn", "line_quota_exceeded",
+                        f"卷内活动伏笔池已满（{len(open_act)}/{act_cap}），提案再次 plant 活动线《{g.get('name','')}》——建议在后续章节优先回收旧线")
+
+        # 10. 高危状态变更检测（生命阵亡/严重伤残/境界异动/退役）
+        for ent in (proposal.get("entities") or []):
+            if not isinstance(ent, dict): continue
+            ename = ent.get("name", "未命名实体")
+            if ent.get("life_status") == "deceased":
+                add("warn", "critical_mutation", f"🚨【高危状态变更】实体「{ename}」生命状态变更为【战死/离世 (deceased)】，请重点核实正文确凿事实！")
+            if ent.get("action") == "retire" or ent.get("status") == "retired":
+                add("warn", "critical_mutation", f"🚨【高危状态变更】实体「{ename}」被标记为退役 (retired)，请核实！")
+
+        cur_p = proposal.get("current") or {}
+        if isinstance(cur_p, dict):
+            inj = str(cur_p.get("injury", ""))
+            for kw in ("断臂", "残疾", "瘫痪", "丹田被废", "经脉尽断", "濒死", "重伤垂死"):
+                if kw in inj:
+                    add("warn", "critical_mutation", f"🚨【高危状态变更】主角伤势出现严重伤残描述「{inj}」，请核实是否为正文真实设定！")
+                    break
+            if cur_p.get("power_level"):
+                add("info", "power_level_shift", f"⭐【境界变动】主角境界更新为「{cur_p['power_level']}」")
     except (ValueError, FileNotFoundError) as exc:
-        add("warn", "lines_unreadable", f"lines 不可读，线覆盖对照跳过: {exc}")
+        add("warn", "lines_unreadable", f"lines 不可读，线对照跳过: {exc}")
     return out
 
 
@@ -709,6 +745,23 @@ def run_checks(book: Path) -> dict:
     except (ValueError, FileNotFoundError) as exc:
         errors.append(_err("state_unreadable", f"lines 不可读: {exc}"))
 
+    # ---- 伏笔配额体检（双轨配额制，只报数/超限警告） ----
+    try:
+        lines_st = state.load_state(book, "lines")
+        lcap = proj.get("lines_cap") or {}
+        act_cap = lcap.get("active_foreshadows", 8)
+        long_cap = lcap.get("longline_foreshadows", 5)
+        open_act = [g for g in lines_st.get("foreshadows", []) if g.get("status") != "Resolved" and isinstance(g.get("target_ch"), int)]
+        open_long = [g for g in lines_st.get("foreshadows", []) if g.get("status") != "Resolved" and g.get("target_ch") == "longline"]
+        if len(open_act) > act_cap:
+            warnings.append(_err("line_quota_exceeded",
+                                 f"未结活动伏笔 {len(open_act)} 条 > 上限 {act_cap} 条（建议在后续章节优先回收 resolve，防僵尸伏笔堆积）"))
+        if len(open_long) > long_cap:
+            warnings.append(_err("longline_quota_exceeded",
+                                 f"未结全书长线 {len(open_long)} 条 > 上限 {long_cap} 条（长线过多分散主线焦点）"))
+    except (ValueError, FileNotFoundError):
+        pass
+
     # ---- tics 命中（project.style_guards × 定稿正文，纯计数） ----
     guards = [x for x in (proj.get("style_guards") or []) if isinstance(x, str) and x]
     if guards:
@@ -727,6 +780,43 @@ def run_checks(book: Path) -> dict:
             if share > FORM_SHARE_LIMIT:
                 warnings.append(_err("form_share_over_limit",
                                      f"{vol}: form「{form}」占比 {share:.0%} > {FORM_SHARE_LIMIT:.0%}"))
+
+    # ---- 叙事节奏体检（连续高压疲劳检测） ----
+    high_tension_forms = {"生死博弈", "高潮突破", "极限博弈", "高潮决战", "决战爆发", "危机激化"}
+    for vol_dir in sorted((book / "outlines").glob("vol_*")):
+        beats_files = sorted(vol_dir.glob("beats/ch_*.md"))
+        consecutive_high = []
+        for bf in beats_files:
+            try:
+                fm = common.parse_front_matter(bf.read_text(encoding="utf-8", errors="replace"))
+                form_val = str(fm.get("form", "")).strip()
+                ch_tok = bf.stem
+                is_high = form_val in high_tension_forms or any(k in form_val for k in ("博弈", "高潮", "决战", "生死"))
+                if is_high:
+                    consecutive_high.append((ch_tok, form_val))
+                    if len(consecutive_high) >= 3:
+                        chs = f"{consecutive_high[0][0]}—{consecutive_high[-1][0]}"
+                        warnings.append(_err("high_tension_fatigue",
+                                             f"{vol_dir.name}: {chs} 连续 {len(consecutive_high)} 章为高压战斗/决战（form={form_val}），建议在下一章切换为「战后清点/爽感兑现」章型，消化战利品与人情互动，防读者情绪疲劳！"))
+                else:
+                    consecutive_high = []
+            except OSError:
+                continue
+
+    # ---- 细纲场景具象度体检（防假大空口水章） ----
+    abstract_phrases = ["巧妙化解", "发生冲突", "展现谋略", "机智应对", "某些麻烦", "发生争执", "不长眼"]
+    for vol_dir in sorted((book / "outlines").glob("vol_*")):
+        for bf in sorted(vol_dir.glob("beats/ch_*.md")):
+            try:
+                btext = bf.read_text(encoding="utf-8", errors="replace")
+                for phr in abstract_phrases:
+                    if phr in btext:
+                        warnings.append(_err("beats_scene_abstract",
+                                             f"{vol_dir.name}/{bf.name}: 细纲中出现假大空抽象词「{phr}」——建议细化为具体的物理标的、利益死结或破局动作！"))
+                        break
+            except OSError:
+                continue
+
     stats["errors"] = len(errors)
     stats["warnings"] = len(warnings)
     return {"schema": "novel-studio.check/v1", "ok": not errors,

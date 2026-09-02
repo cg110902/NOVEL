@@ -11,9 +11,12 @@ from pathlib import Path
 from . import common, evidence, state
 
 PREV_TAIL_CHARS = 1000
+PREV_TAIL_CHARS = 1000
 SPINE_CAP = 10
 POINTER_WINDOW = 10
 PACK_TOKEN_CAP = 18000
+MAX_P1_ENTITIES = 12
+MAX_P1_INDIRECT = 5
 
 FILE_INDEX_AREAS = [
     ("project.json", "书配置：模式/字数带/style_guards"),
@@ -63,9 +66,39 @@ def _deviation_lines(book: Path) -> list[str]:
     return out
 
 
+def _volume_phase_milestone(book: Path, ch_num: int) -> str:
+    """从 outlines/vol_XX/outline.md 自动提取当前章所属阶段的里程碑与阶段功能（P0 恒常注入）。"""
+    outlines = sorted((book / "outlines").glob("*/outline.md"))
+    for outline_path in outlines:
+        try:
+            text = outline_path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        phases = re.findall(
+            r"-\s*\*\*([^\n*]+?)\s*[（(]\s*(?:ch_?)?(\d+)\s*[—\-–~至到]+\s*(?:ch_?)?(\d+)\s*(?:[｜|]\s*([^\n*]+?))?[)）]\s*\*\*",
+            text
+        )
+        for name, start_s, end_s, feat in phases:
+            s_num, e_num = int(start_s), int(end_s)
+            if s_num <= ch_num <= e_num:
+                feat_str = f" ｜ {feat.strip()}" if feat else ""
+                ch_tok = f"ch_{ch_num:03d}"
+                ch_line = ""
+                for ln in text.splitlines():
+                    if re.search(rf"\b(?:{ch_tok}|ch_{ch_num}|第\s*{ch_num}\s*章)\b\s*[:：]", ln):
+                        ch_line = re.sub(rf"^[\s\-*·]*\b(?:{ch_tok}|ch_{ch_num}|第\s*{ch_num}\s*章)\b\s*[:：]\s*", "", ln).strip()
+                        break
+                ch_plan = f"\n  - 当章预定规划：{ch_line}" if ch_line else ""
+                return f"{name.strip()}（ch_{s_num:03d}—ch_{e_num:03d}{feat_str}）{ch_plan}"
+    return ""
+
+
 def _form_notice(book: Path, ch: str, ch_num: int) -> list[str]:
     notice = []
-    cur_fm = common.parse_front_matter(_beats_text(book, ch))
+    beats_files = common.find_chapter_files(book, "beats", ch)
+    if not beats_files:
+        return notice
+    cur_fm = common.parse_front_matter(beats_files[-1].read_text(encoding="utf-8", errors="replace"))
     prev_files = common.find_chapter_files(book, "beats", ch_num - 1) if ch_num > 1 else []
     if prev_files:
         prev_fm = common.parse_front_matter(prev_files[-1].read_text(encoding="utf-8", errors="replace"))
@@ -77,7 +110,7 @@ def _form_notice(book: Path, ch: str, ch_num: int) -> list[str]:
 
 
 def _hard_reminders(book: Path, ch: str, ch_num: int) -> list[str]:
-    """纯算术事实：到期/过期线、未澄清误会、style_guards、偏离清单、form 同款提示。
+    """纯算术事实：到期/过期/闲置线、未澄清误会、style_guards、偏离清单、form 同款提示。
 
     容错说明：这里对 lines 台账损坏显式降级为"空台账"（而非抛错/静默兜底为默认值），
     属于 pack 这层"尽可能把上下文交给子代理"的有意例外——pack 的职责是装配提示，
@@ -107,27 +140,52 @@ def _hard_reminders(book: Path, ch: str, ch_num: int) -> list[str]:
         lines = state.load_state(book, "lines")
     except ValueError:
         lines = {"foreshadows": [], "misunderstandings": [], "knowledge": []}
-    # 线提醒按（权重高→低, 到期章）排——越重越靠前，同级越急越靠前（排序是机械的，取舍归读包的人）
+
     line_msgs: list[tuple] = []
     for g in lines.get("foreshadows", []):
+        if g.get("status") == "Resolved":
+            continue
         t = g.get("target_ch")
-        if isinstance(t, int) and g.get("status") != "Resolved" and t <= ch_num:
-            tag = "本章引爆" if t == ch_num else f"已逾期 {ch_num - t} 章"
-            line_msgs.append((t, evidence.line_sort_key(g, "foreshadow")[1],
-                              f"线 {g['id']}《{g['name']}》target_ch={t} → {tag}（状态 {g.get('status')}）"))
+        plant_ch = int(g.get("plant_ch") or 0)
+        idle = (ch_num - plant_ch) if plant_ch else 0
+        sk = evidence.line_sort_key(g, "foreshadow")[1]
+        gid, gname = g.get("id"), g.get("name", "")
+        if isinstance(t, int) and t <= ch_num:
+            tag = "🔥【本章引爆】" if t == ch_num else f"🚨【已逾期 {ch_num - t} 章】"
+            line_msgs.append((0, sk, f"{tag} 伏笔 {gid}《{gname}》（target ch_{t:03d}，状态 {g.get('status')}）"))
+        elif idle >= 10:
+            line_msgs.append((1, sk, f"🚨【紧急催还伏笔】{gid}《{gname}》已闲置 {idle} 章未提及！本章 Beats 建议安排回响(remind)或闭环(resolve)"))
+        elif isinstance(t, int) and 0 < t - ch_num <= 2:
+            line_msgs.append((2, sk, f"⏳【即将到期】伏笔 {gid}《{gname}》距到期仅剩 {t - ch_num} 章（target ch_{t:03d}）"))
+        elif idle >= 5:
+            line_msgs.append((3, sk, f"🟡【伏笔回响提醒】{gid}《{gname}》已沉寂 {idle} 章，建议安排线索动静"))
+
     for m in lines.get("misunderstandings", []):
         if m.get("status") != "Resolved":
             t = m.get("target_ch")
-            line_msgs.append((t if isinstance(t, int) else 10**6, evidence.line_sort_key(m, "misunderstanding")[1],
-                              f"误会 {m['id']} 未澄清：{m.get('parties','')}（{m.get('content','')[:30]}）"))
+            sk = evidence.line_sort_key(m, "misunderstanding")[1]
+            if isinstance(t, int) and t <= ch_num:
+                tag = "🔥【本章澄清】" if t == ch_num else f"🚨【已逾期 {ch_num - t} 章】"
+                line_msgs.append((0, sk, f"{tag} 误会 {m['id']} 未澄清：{m.get('parties','')}（{m.get('content','')[:30]}）"))
+            else:
+                line_msgs.append((2, sk, f"误会 {m['id']} 未澄清：{m.get('parties','')}（{m.get('content','')[:30]}）"))
+
     for k in lines.get("knowledge", []):
-        t = k.get("target_ch")
-        if isinstance(t, int) and k.get("status") != "Revealed" and t <= ch_num:
-            tag = "本章揭示" if t == ch_num else f"已逾期 {ch_num - t} 章"
-            line_msgs.append((t, evidence.line_sort_key(k, "knowledge")[1],
-                              f"知识线 {k['id']}《{str(k.get('secret',''))[:24]}》target_ch={t} → {tag}"
-                              f"（状态 {k.get('status')}）"))
-    line_msgs.sort(key=lambda x: (x[1], x[0]))
+        if k.get("status") != "Revealed":
+            t = k.get("target_ch")
+            plant_ch = int(k.get("plant_ch") or 0)
+            idle = (ch_num - plant_ch) if plant_ch else 0
+            sk = evidence.line_sort_key(k, "knowledge")[1]
+            kid, ksecret = k.get("id"), str(k.get("secret", ""))[:24]
+            if isinstance(t, int) and t <= ch_num:
+                tag = "🔥【本章揭示】" if t == ch_num else f"🚨【已逾期 {ch_num - t} 章】"
+                line_msgs.append((0, sk, f"{tag} 知识线 {kid}《{ksecret}》（target ch_{t:03d}，状态 {k.get('status')}）"))
+            elif idle >= 10:
+                line_msgs.append((1, sk, f"🚨【知识线沉寂】{kid}《{ksecret}》已闲置 {idle} 章"))
+            elif isinstance(t, int) and 0 < t - ch_num <= 2:
+                line_msgs.append((2, sk, f"⏳【即将揭示】知识线 {kid}《{ksecret}》距揭示仅剩 {t - ch_num} 章"))
+
+    line_msgs.sort(key=lambda x: (x[0], x[1]))
     out.extend(msg for _, _, msg in line_msgs)
     proj = common.load_json(book / "project.json", default={}) or {}
     guards = [x for x in (proj.get("style_guards") or []) if isinstance(x, str) and x]
@@ -168,7 +226,7 @@ def _entity_block(book: Path, name: str, cur: dict, lines: dict, full: bool) -> 
             touched.append(f"{g['id']}({g.get('status')})")
     if touched:
         block["lines"] = touched
-    for f in ("holder", "location", "condition"):
+    for f in ("holder", "location", "condition", "dossier"):
         if e.get(f):
             block[f] = e[f]
     # 随身清单：holder 指向本实体的在役道具（纯分组，物→人反查）
@@ -206,25 +264,55 @@ def build_pack(book: Path, ch: str, lean: bool = False, full: bool = False) -> d
 
     p0 = {
         "current": {k: v for k, v in cur["current"].items() if v not in ("", [], None)},
+        "volume_phase": _volume_phase_milestone(book, ch_num),
         "beats": beats,
         "prev_tail": _prev_final_tail(book, ch_num),
         "hard_reminders": _hard_reminders(book, ch, ch_num),
     }
     payload: dict = {"chapter": ch, "lean": lean, "full": full, "p0": p0, "p1": None, "p2": None}
 
-    lookup = evidence.entity_lookup(book)
-    hits = [name for name, aliases in lookup.items()
-             if sum(evidence.count_aliases(beats, aliases).values()) > 0]
+    # 启用安全别名查找（停用词过滤副别名）
+    lookup = evidence.entity_lookup(book, safe_aliases=True)
+    
+    # 统计最近 15 章出场的实体，供冷门实体过滤判定
+    finals = evidence.final_chapters(book)
+    recent_window = [c for c in finals if c[1] < ch_num][-15:]
+    recent_entity_mentions = set()
+    full_lookup = evidence.entity_lookup(book, safe_aliases=False)
+    for _, _, text in recent_window:
+        for name, aliases in full_lookup.items():
+            if sum(evidence.count_aliases(text, aliases).values()) > 0:
+                recent_entity_mentions.add(name)
+
+    present_set = set(cur["current"].get("present_characters", []))
+    raw_hits = []
+    for name, aliases in lookup.items():
+        counts = evidence.count_aliases(beats, aliases)
+        total_c = sum(counts.values())
+        if total_c > 0:
+            is_present = name in present_set
+            primary_hit = counts.get(name, 0) > 0
+            # 若该实体近 15 章从未出场，且不在 present，且 Beats 未出现其完整主名（仅被别名模糊命中）→ 视为冷门过滤
+            if ch_num > 5 and name not in recent_entity_mentions and not is_present and not primary_hit:
+                continue
+            raw_hits.append((is_present, primary_hit, total_c, name))
+
+    # 排序：在场优先 > 主名命中优先 > 提及频次 > 名字
+    raw_hits.sort(key=lambda x: (not x[0], not x[1], -x[2], x[3]))
+    hits = [name for _, _, _, name in raw_hits[:MAX_P1_ENTITIES]]
+
     p1: dict = {"entities": [], "indirect": [], "spine": []}
     if not lean:
-        for name in sorted(hits):
+        for name in hits:
             p1["entities"].append(_entity_block(book, name, cur, cur["lines"], full))
-        # 递归一层：注入内容再命中的新实体 → 只补一行摘要（深度 ≤2）
+        # 递归一层：注入内容再命中的新实体 → 只补一行摘要（深度 ≤2，最多 MAX_P1_INDIRECT 条）
         injected = " ".join(b["summary"] for b in p1["entities"])
+        indirect_cands = []
         for name in sorted(set(lookup) - set(hits)):
             if sum(evidence.count_aliases(injected, lookup[name]).values()) > 0:
                 ent = next((e for e in cur["entities"]["entries"] if e["name"] == name), {})
-                p1["indirect"].append(f"{name}：{str(ent.get('summary', ''))[:60]}")
+                indirect_cands.append(f"{name}：{str(ent.get('summary', ''))[:60]}")
+        p1["indirect"] = indirect_cands[:MAX_P1_INDIRECT]
         chapters = cur["synopsis"].get("chapters", {})
         spine = sorted(((v.get("num", 0), k, v) for k, v in chapters.items()))[-SPINE_CAP:]
         p1["spine"] = [f"{k}《{v.get('title','') or '无题'}》：{v.get('synopsis','')}" for _, k, v in spine]
@@ -299,7 +387,20 @@ def render_layer(name: str, obj, full: bool = False) -> str:
     if obj is None:
         return ""
     if name == "p0":
-        lines = [f"{k}: {v}" for k, v in obj["current"].items()]
+        lines = []
+        for k, v in obj["current"].items():
+            if k == "loadout" and isinstance(v, dict):
+                parts = []
+                if v.get("cultivation"): parts.append(f"主修:{v['cultivation']}")
+                if v.get("movement"): parts.append(f"身法:{v['movement']}")
+                if v.get("attack"): parts.append(f"杀招:{v['attack']}")
+                if v.get("trump_card"): parts.append(f"底牌:{v['trump_card']}")
+                if v.get("equipped_items"): parts.append(f"装备:{','.join(v['equipped_items'])}")
+                lines.append(f"loadout: {' | '.join(parts)}")
+            else:
+                lines.append(f"{k}: {v}")
+        if obj.get("volume_phase"):
+            lines += ["", "=== 本卷阶段航标 ===", f"- {obj['volume_phase']}"]
         lines += ["", "=== beats ===", obj["beats"], "", "=== 上章余温 ===", obj["prev_tail"],
                   "", "=== 硬提醒 ==="] + [f"- {m}" for m in obj["hard_reminders"]]
         return "\n".join(lines)
@@ -323,6 +424,8 @@ def render_layer(name: str, obj, full: bool = False) -> str:
                 lines.append(f"  随身: {', '.join(b['carries'])}")
             if b.get("lines"):
                 lines.append(f"  挂线: {', '.join(b['lines'])}")
+            if b.get("dossier"):
+                lines.append(f"  恩怨羁绊: {b['dossier']}")
             if b.get("card_text"):
                 card = b["card_text"] if full else b["card_text"][:400]
                 lines.append(f"  卡全文: {card}")

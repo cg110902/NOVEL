@@ -548,6 +548,13 @@ def _merge_current(state: dict, patch: dict, rep: dict) -> None:
                 rep["warnings"].append("current.present_characters 为空数组，按未提供处理（留空＝不修改）")
                 continue
             state["present_characters"] = list(v)
+        elif k == "loadout":
+            if not isinstance(v, dict):
+                rep["errors"].append("current.loadout 必须为对象")
+                continue
+            cur_ld = state.get("loadout") or {}
+            cur_ld.update(v)
+            state["loadout"] = cur_ld
         elif isinstance(v, str):
             if not v:
                 # 空串不落盘：这些是描述性字段，"清档"应写成描述（如"伤势已愈"）；
@@ -586,7 +593,7 @@ def _merge_entities(state: dict, items: list[dict], rep: dict) -> None:
             state["entries"].append(ent)
             idx[name] = ent
         for f in ("type", "card", "summary", "holder", "location", "condition",
-                  "realm", "faction", "life_status", "attitude", "charges", "max_charges"):
+                  "realm", "faction", "life_status", "attitude", "charges", "max_charges", "dossier"):
             if f in e:
                 ent[f] = e[f]
         if "status" in e:
@@ -614,6 +621,9 @@ def _merge_lines(state: dict, items: list[dict], ch_num: int, rep: dict) -> None
                 rep["errors"].append(f"plant {gid}: {terr}")
                 continue
             if kind == "foreshadow":
+                open_act_count = sum(1 for item in arr if item.get("status") != "Resolved" and isinstance(item.get("target_ch"), int))
+                if target != "longline" and open_act_count >= 8:
+                    rep["warnings"].append(f"卷内活动伏笔池已达上限（{open_act_count}/8），新伏笔 {gid} 已入库——请在后续章节及时安排回收（resolve）")
                 arr.append({"id": gid, "name": g["name"], "plant_ch": g.get("plant_ch") or ch_num,
                             "status": "Planted", "target_ch": target, "weight": g.get("weight", 1),
                             "plan": g.get("plan", "")})
@@ -986,27 +996,30 @@ def apply_inbox(book: Path, expect_chapter: str | None = None, dry_run: bool = F
     inbox = inbox_dir(book)
     overall = {"applied": 0, "failed": 0, "duplicates": 0, "skipped": 0, "results": [], "picked_up": False}
     def _failed_candidates() -> list[Path]:
-        """failed/ 中本章提案候选——含重名归档的 .2/.3 变体（P2-5：只认精确名会让二次失败永远滞留）。"""
+        """failed/ 中本章提案候选（按修改时间升序）——含重名归档的 .2/.3 变体
+        （P2-5：只认精确名会让二次失败永远滞留）。取最新一份捡回，旧案留作历史。"""
         fdir = inbox / "failed"
         if not expect_chapter or not fdir.is_dir():
             return []
-        return sorted(p for p in fdir.glob(f"{expect_chapter}*.json")
-                      if not p.name.endswith(NO_MERGE_SUFFIXES))
+        cands = [p for p in fdir.glob(f"{expect_chapter}*.json")
+                 if not p.name.endswith(NO_MERGE_SUFFIXES)]
+        cands.sort(key=lambda p: p.stat().st_mtime)
+        return cands
 
     with common.file_lock(state_dir(book), name=".state.lock", timeout=30.0):
         files = _gather(inbox)  # gather 置于锁内，消除 TOCTOU（P3-17）
-        # 捡回 failed/ 中本章提案；同章在途提案已存在时不捡回（以在途为准）。
+        # 捡回 failed/ 中本章最新一份提案；同章在途提案已存在时不捡回（以在途为准）。
         if expect_chapter and not (inbox / f"{expect_chapter}.json").exists():
             cands = _failed_candidates()
             if cands and not dry_run:
-                for c in cands:
-                    dest = inbox / c.name
-                    if not dest.exists():
-                        c.rename(dest)
-                overall["picked_up"] = True
-                files = _gather(inbox)
+                c = cands[-1]
+                dest = inbox / c.name
+                if not dest.exists():
+                    c.rename(dest)
+                    overall["picked_up"] = True
+                    files = _gather(inbox)
             elif cands:
-                files = cands + files  # dry-run 不落盘，仅纳入预演，保持与正式捡回语义一致
+                files = [cands[-1]] + files  # dry-run 不落盘，仅纳入预演，保持与正式捡回语义一致
         for pf in files:
             result = {"file": pf.name}
             try:

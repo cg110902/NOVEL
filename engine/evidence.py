@@ -80,15 +80,48 @@ def count_aliases(text: str, aliases: list[str]) -> dict[str, int]:
     return per
 
 
-def entity_lookup(book: Path) -> dict[str, list[str]]:
-    """注册名 → 检索词列表（含自身；只查 active）。"""
+# 通用实体停用词表（长度<=2的泛指名词，禁止作为全局副别名触发P1，防止误命中雪崩；主名不受此限）
+DEFAULT_GENERIC_STOPWORDS: frozenset[str] = frozenset({
+    "掌柜", "小二", "弟子", "长老", "飞剑", "客栈", "石头", "老头", "道人", "师兄",
+    "师姐", "师弟", "师妹", "门主", "城主", "教头", "护法", "少爷", "小姐", "老板",
+    "掌门", "散修", "伙计", "下人", "仆役", "兵卒", "山贼", "妖兽", "灵草", "灵石",
+    "丹药", "青年", "老者", "壮汉", "侍女", "黑衣人", "蒙面人", "首领", "统领",
+    "帮主", "舵主", "执事", "供奉", "堂主", "馆主", "路人", "随从", "护卫", "修士"
+})
+
+
+def entity_lookup(book: Path, safe_aliases: bool = False) -> dict[str, list[str]]:
+    """注册名 → 检索词列表（含自身；只查 active）。
+
+    safe_aliases=True 时启用停用词安全过滤：
+    - 主法定名（e["name"]）恒常保留（保护 2 字主角名如“韩立/沈拓”）；
+    - 长度 <= 2 且属于通用停用词的副别名被物理过滤，杜绝 P1 触发爆炸。
+    """
     ents = state.load_state(book, "entities")
+    proj = common.load_json(book / "project.json", default={}) or {}
+    extra_stopwords = set(proj.get("generic_stopwords") or [])
+    all_stopwords = DEFAULT_GENERIC_STOPWORDS | extra_stopwords
+
     lookup = {}
     for e in ents.get("entries", []):
         if e.get("status", "active") != "active":
             continue
-        names = [e["name"]] + [a for a in e.get("aliases", []) if a and a != e["name"]]
-        lookup[e["name"]] = names
+        primary = str(e.get("name", "")).strip()
+        if not primary:
+            continue
+        names = [primary]
+        for a in e.get("aliases", []):
+            if not a:
+                continue
+            a_str = str(a).strip()
+            if not a_str or a_str == primary:
+                continue
+            # 停用词物理拦截：长度 <= 2 且命中停用词的副别名丢弃
+            if safe_aliases and len(a_str) <= 2 and a_str in all_stopwords:
+                continue
+            if a_str not in names:
+                names.append(a_str)
+        lookup[primary] = names
     return lookup
 
 
@@ -161,14 +194,16 @@ def gaps(book: Path) -> dict:
         overdue = isinstance(t, int) and m.get("status") != "Resolved" and t < cur
         out["misunderstandings"].append({
             "id": m["id"], "parties": m.get("parties", ""), "status": m.get("status"),
-            "level": m.get("level"), "target_ch": t, "overdue": overdue})
+            "level": m.get("level"), "target_ch": t, "overdue": overdue,
+            "idle_chapters": (cur - int(m.get("plant_ch") or 0)) if m.get("status") != "Resolved" and m.get("plant_ch") else 0})
     for k in lines.get("knowledge", []):
         t = k.get("target_ch")
         overdue = isinstance(t, int) and k.get("status") != "Revealed" and t < cur
         out["knowledge"].append({
             "id": k["id"], "secret": k.get("secret", ""), "status": k.get("status"),
             "plant_ch": k.get("plant_ch"), "target_ch": t, "weight": k.get("weight", 1),
-            "overdue": overdue})
+            "overdue": overdue,
+            "idle_chapters": (cur - int(k.get("plant_ch") or 0)) if k.get("status") != "Revealed" else 0})
     # 逾期/到期清单排序（机械）：权重高者优先——多条线齐逾期时"先还哪条"有据
     out["foreshadows"].sort(key=lambda x: line_sort_key(x, "foreshadow"))
     out["misunderstandings"].sort(key=lambda x: line_sort_key(x, "misunderstanding"))

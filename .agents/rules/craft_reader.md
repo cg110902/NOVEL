@@ -19,13 +19,14 @@
    - 👥 **在场角色名单 (`present_characters`)**：章末确凿在场的存活角色名单（注：已阵亡角色禁止出现在在场名单）。
    - 🔄 **以下字段凡本章发生变动必刷，最常漏刷**：
      - `power_level`：境界/位阶突破或变化（如引气入体、晋阶）——**本章的核心突破事件尤其不能漏**；
+     - `loadout`：主角当前常驻作战体系（主修功法、身法、招牌杀招、保命底牌）；
      - `abilities`：新习得功法/技能/能力；
      - `injury`：受伤/痊愈变化（痊愈也要写"伤势已愈"，而非留旧文）；
      - `equipment`：装备/道具的获得、消耗、移交（消失要有去向）；
      - `assets`：非资金类资产变动（**资金一律走 `ledger` 流水，勿写进 assets**）；
      - `mood` / `goal` / `key_relationships` / `situation`：心境、目标、关系、处境随剧情演进。
 2. **新增/更新实体与高维状态（`entities`）**：
-   - **人物 (`person`)**：提取境界阶位 (`realm`)、所属阵营 (`faction`)、生命状态 (`life_status: "alive"|"deceased"|"missing"`)；
+   - **人物 (`person`)**：提取境界阶位 (`realm`)、所属阵营 (`faction`)、生命状态 (`life_status: "alive"|"deceased"|"missing"`)、**与主角的历史恩怨备忘 (`dossier`)**；
    - **势力 (`faction`)**：提取对主角阵营的立场 (`attitude: "hostile"|"neutral"|"friendly"|"allied"`)；
    - **道具 (`item`)**：提取持有者 (`holder`)、地点 (`location`)、完损 (`condition`)、剩余次数/充能 (`charges`, `max_charges`)。
 3. **伏笔与暗线推进（`lines`）**：

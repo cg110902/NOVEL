@@ -89,6 +89,10 @@
             "type": "integer",
             "minimum": 1,
             "description": "（item 用）最大使用次数/充能上限"
+          },
+          "dossier": {
+            "type": "string",
+            "description": "（person/faction 用）与主角的恩怨羁绊、历史过节与交互备忘（如'ch_002 曾被主角暗算，怀恨在心'）"
           }
         }
       }

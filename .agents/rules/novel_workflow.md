@@ -30,15 +30,17 @@
   - **状态机记落盘真值**：开局 `state/lines.json` 保持初始空账本，伏笔随章节推进逐章 `plant` 入库；
   - **法定实体 Schema 契约**：
     - 法定实体类型：`['faction', 'item', 'other', 'person', 'place']`；
-    - 法定字段：`name`, `type`, `status` (`'active'`|`'retired'`), `summary` (简介，禁止用 description/bio), `aliases`, `realm`, `faction`, `holder`, `location`, `condition`, `charges`, `max_charges`, `attitude`, `life_status`, `card` (人物卡相对路径，`pack --full` 注入卡全文)；
+    - 法定字段：`name`, `type`, `status` (`'active'`|`'retired'`), `summary` (简介，禁止用 description/bio), `aliases`, `realm`, `faction`, `holder`, `location`, `condition`, `charges`, `max_charges`, `attitude`, `life_status`, `dossier` (人物/势力与主角的恩怨羁绊备忘), `card` (人物卡相对路径，`pack --full` 注入卡全文)；
     - **严禁非法字段**：严禁出现 `id`, `category`, `entity_type`, `first_appearance` 等非 Schema 字段；
-  - **Schema 规范**：`current.json` 中 `key_relationships` 与 `time` 为字符串；`ledger.json` 通货使用 `initial` 与 `current`。
+  - **Schema 规范**：`current.json` 中 `key_relationships` 与 `time` 为字符串；`loadout` 记录主角常驻作战体系（主修/身法/杀招/底牌/装备）；`ledger.json` 通货使用 `initial` 与 `current`。
 
 ### Stage 1: 细纲构思（主控）
 - 依据前章事实简报与分卷大纲，确立当章核心戏剧目标、场景发展脉络、核心冲突与关键伏笔动作，写入 `outlines/vol_XX/beats/ch_XXX.md`；
-- **防复用与连续同 form 规范**：
-  1. **`form_reason`**：若连续章节采用相同 `form`（如连续 `剧情推进`），必须在 front-matter 声明 `form_reason: ...`；
-  2. **`style_notes`**：必须根据当章核心看点与情境焦点量身定制风格旋钮，禁止跨章完全复制相同字符串（避免 `style_notes_copy` 警告）。
+- **三要素具象硬核结构**：每个场景必须明确 🎯**物理标的**、⚔️**利益死结与底牌**、🎬**破局动作**，严禁假大空抽象空话；
+- **潮汐叙事章型（Tide Forms）与防疲劳规范**：
+  1. 善用 4 类标准潮汐章型：`生死博弈/高潮突破`（高压决战）、`战后清点/爽感兑现`（战利品清点与日常突破，防读者情绪疲劳）、`暗流汇聚/线索试探`、`危机逼近/决战蓄势`；
+  2. **`form_reason`**：若连续章节采用相同 `form`（如连续 `剧情推进` 或连续 `生死博弈`），必须在 front-matter 声明 `form_reason: ...`；
+  3. **`style_notes`**：必须根据当章核心看点与情境焦点量身定制风格旋钮，禁止跨章完全复制相同字符串（避免 `style_notes_copy` 警告）。
 
 ### Stage 2: 初稿起草（Drafter）
 - **调度**：主控调用 `invoke_subagent(TypeName="self", Role="Drafter", Prompt="...")`；

@@ -57,6 +57,17 @@
         "type": "string"
       },
       "description": "章末此刻仍在场的角色名（给下一章 P0 回温，不是本章出现过的全部人）；必须已注册在 state/entities.json（sync 强制闭合）"
+    },
+    "loadout": {
+      "type": "object",
+      "description": "主角当前常驻作战体系（核心功法/身法/招牌杀招/保命底牌），防后期技能失忆",
+      "properties": {
+        "cultivation": {"type": "string"},
+        "movement": {"type": "string"},
+        "attack": {"type": "string"},
+        "trump_card": {"type": "string"},
+        "equipped_items": {"type": "array", "items": {"type": "string"}}
+      }
     }
   }
 }

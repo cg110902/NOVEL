@@ -1,4 +1,4 @@
-import html
+from html import escape as html_escape
 import json
 import re
 from pathlib import Path
@@ -7,7 +7,7 @@ from . import common, evidence, state
 
 def generate_dashboard_html(book: Path) -> str:
     """生成包含人物关系、伏笔看板、情绪节奏与实时状态的现代化交互式看板 HTML"""
-    esc = html.escape  # P3-10: 所有插值过 esc，书名/实体名/summary 含 <>& 不再破版
+    esc = html_escape  # P3-10: 所有插值过 esc，书名/实体名/summary 含 <>& 不再破版
     proj = common.load_json(book / "project.json", default={})
     title = esc(str(proj.get("title", "未命名作品")))
     genre = esc(str(proj.get("genre", "通用网文")))
@@ -47,7 +47,7 @@ def generate_dashboard_html(book: Path) -> str:
             overdue_items.append({"id": k["id"], "title": str(k.get("secret", ""))[:18], "desc": f"逾期未揭示 ｜ 目标 ch_{k.get('target_ch')}"})
 
     # HTML 模版构建
-    html = f"""<!DOCTYPE html>
+    html_content = f"""<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
@@ -229,7 +229,7 @@ def generate_dashboard_html(book: Path) -> str:
 </body>
 </html>
 """
-    return html
+    return html_content
 
 def export_dashboard(book: Path) -> Path:
     out_file = book / "export" / "views" / "dashboard.html"
