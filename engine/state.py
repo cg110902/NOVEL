@@ -950,17 +950,23 @@ def _gather(inbox: Path) -> list[Path]:
 
 
 def _archive(pf: Path, dst: Path) -> Path:
-    """移动提案到归档目录；重名自动加 .2/.3… 绝不覆盖审计记录。"""
+    """移动提案到归档目录；重名自动加 .2/.3… 绝不覆盖审计记录；rename 竞态自动重试（P3-17）。"""
     dst.mkdir(parents=True, exist_ok=True)
-    target = dst / pf.name
-    if not target.exists():
-        pf.rename(target)
-        return target
+    try:
+        target = dst / pf.name
+        if not target.exists():
+            pf.rename(target)
+            return target
+    except OSError:
+        pass
     for i in range(2, 100):
         cand = dst / f"{pf.stem}.{i}{pf.suffix}"
-        if not cand.exists():
-            pf.rename(cand)
-            return cand
+        try:
+            if not cand.exists():
+                pf.rename(cand)
+                return cand
+        except OSError:
+            continue
     target = dst / f"{pf.stem}.{common.time_suffix()}{pf.suffix}"
     pf.rename(target)
     return target
@@ -976,17 +982,28 @@ def apply_inbox(book: Path, expect_chapter: str | None = None, dry_run: bool = F
     非 dry-run 时先从 failed/ 捡回本章提案重试。失败即停（不带着病状态继续合并下一份）。"""
     inbox = inbox_dir(book)
     overall = {"applied": 0, "failed": 0, "duplicates": 0, "skipped": 0, "results": [], "picked_up": False}
-    files = _gather(inbox)
-    failed_path = inbox / "failed" / f"{expect_chapter}.json" if expect_chapter else None
+    def _failed_candidates() -> list[Path]:
+        """failed/ 中本章提案候选——含重名归档的 .2/.3 变体（P2-5：只认精确名会让二次失败永远滞留）。"""
+        fdir = inbox / "failed"
+        if not expect_chapter or not fdir.is_dir():
+            return []
+        return sorted(p for p in fdir.glob(f"{expect_chapter}*.json")
+                      if not p.name.endswith(NO_MERGE_SUFFIXES))
 
     with common.file_lock(state_dir(book), name=".state.lock", timeout=30.0):
-        if not dry_run and failed_path and failed_path.exists() and not (inbox / f"{expect_chapter}.json").exists():
-            failed_path.rename(inbox / f"{expect_chapter}.json")
-            overall["picked_up"] = True
-            files = _gather(inbox)
-        elif dry_run and failed_path and failed_path.exists() and not (inbox / f"{expect_chapter}.json").exists():
-            # dry-run 不改文件，但把 failed/ 里的本章提案纳入预演，保持与正式捡回语义一致。
-            files = [failed_path] + [f for f in files if f.resolve() != failed_path.resolve()]
+        files = _gather(inbox)  # gather 置于锁内，消除 TOCTOU（P3-17）
+        # 捡回 failed/ 中本章提案；同章在途提案已存在时不捡回（以在途为准）。
+        if expect_chapter and not (inbox / f"{expect_chapter}.json").exists():
+            cands = _failed_candidates()
+            if cands and not dry_run:
+                for c in cands:
+                    dest = inbox / c.name
+                    if not dest.exists():
+                        c.rename(dest)
+                overall["picked_up"] = True
+                files = _gather(inbox)
+            elif cands:
+                files = cands + files  # dry-run 不落盘，仅纳入预演，保持与正式捡回语义一致
         for pf in files:
             result = {"file": pf.name}
             try:
@@ -997,7 +1014,14 @@ def apply_inbox(book: Path, expect_chapter: str | None = None, dry_run: bool = F
                 overall["failed"] += 1
                 if not dry_run:
                     result["archived_to"] = str(_archive(pf, inbox / "failed"))
-                break
+                # P2-2: 文件名可判定为其他章节的坏提案 → 归档后继续合并目标章；
+                # 归属不明（文件名无章号）或正是目标章 → 维持"失败即停"。
+                fn = common.chapter_number_from_name(pf.name)
+                tn = common.chapter_token_to_num(expect_chapter) if expect_chapter else None
+                if expect_chapter is None or fn is None or fn == tn:
+                    break
+                result["note"] = "非目标章提案，已归档 failed/ 并继续"
+                continue
             ch = proposal.get("chapter") if isinstance(proposal, dict) else None
             if expect_chapter is not None and ch != expect_chapter:
                 result["skipped"] = f"提案章节 {ch} ≠ 同步目标 {expect_chapter}（留在收件箱）"

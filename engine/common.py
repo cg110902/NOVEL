@@ -199,7 +199,9 @@ def atomic_write_text(path: Path | str, text: str, encoding: str = "utf-8") -> N
 
 
 def load_json(path: Path | str, default=None):
-    """读 JSON。文件缺失：有 default 则返回之，否则抛 ValueError；**内容损坏必抛，绝不静默兜底**。"""
+    """读 JSON。文件缺失：有 default 则返回之，否则抛 ValueError；**内容损坏必抛，绝不静默兜底**。
+    注意：default 只对 FileNotFoundError 生效——JSON 损坏/编码错误一律抛 ValueError，
+    调用方若需要降级展示请自行 try/except（P2-1 教训：传 default 不等于安全）。"""
     p = Path(path)
     try:
         return json.loads(p.read_text(encoding="utf-8"))

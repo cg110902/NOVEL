@@ -266,6 +266,11 @@ def build_pack(book: Path, ch: str, lean: bool = False, full: bool = False) -> d
     # P0 热层 / P1 温层是写作所需的活性上下文，尽最大可能保留；裁剪后重算预算并如实上报。
     if budget["over_budget"] and payload.get("p2"):
         fi = payload["p2"].get("file_index", [])
+        # 先对齐渲染口径：render_layer 只渲染前 25 条，>25 的部分先截掉再逐条裁（P2-7，
+        # 旧实现从尾部 pop，>25 时前 N 次 pop 对渲染与预算零影响，白裁且计数误导）
+        if len(fi) > 25:
+            fi = fi[:25]
+        payload["p2"]["file_index"] = fi
         trimmed = 0
         while budget["over_budget"] and fi:
             fi.pop()
@@ -278,6 +283,11 @@ def build_pack(book: Path, ch: str, lean: bool = False, full: bool = False) -> d
         if trimmed:
             budget["trimmed_file_index"] = trimmed
             budget["trim_note"] = f"超预算按优先级硬裁 P2 冷索引 {trimmed} 条（P0/P1 保留）"
+        if budget["over_budget"]:
+            # 冷索引裁空仍超限 → 显性标记，绝不静默（P0/P1 不裁是设计，但必须如实上报）
+            budget["hard_cap_breached"] = True
+            note = f"冷索引已裁空仍超预算（P0/P1 保留，超出 {budget['total'] - budget['cap']} tok）"
+            budget["trim_note"] = f"{budget['trim_note']}；{note}" if budget.get("trim_note") else note
 
     payload["budget_report"] = budget
     payload["hits"] = sorted(hits)

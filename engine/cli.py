@@ -175,7 +175,12 @@ def _glob_any(d: Path, pattern: str) -> bool:
 
 
 def _book_brief(book: Path) -> dict:
-    proj = common.load_json(book / "project.json", default={}) or {}
+    load_warnings: list[str] = []
+    try:
+        proj = common.load_json(book / "project.json", default={}) or {}
+    except ValueError as exc:
+        proj = {}
+        load_warnings.append(f"project.json 不可读（status 降级展示）：{exc}")
     # 过滤无章号的杂散文件（如 ch_notes.md）：None 混进 horizon 的 max() 会 TypeError 崩掉 status
     final_files = [f for f in common.find_chapter_files(book, "final")
                    if common.chapter_number_from_name(f.name) is not None]
@@ -193,9 +198,21 @@ def _book_brief(book: Path) -> dict:
             if (n := common.chapter_number_from_name(f.name)) is not None}
     finals = {common.chapter_number_from_name(f.name) for f in final_files}
     marker_path = book / "state" / ".applied_operations.json"
-    applied = common.load_json(marker_path, default={}) if marker_path.exists() else {}
+    try:
+        applied = common.load_json(marker_path, default={}) if marker_path.exists() else {}
+    except ValueError as exc:
+        applied = {}
+        load_warnings.append(f".applied_operations.json 不可读（merged 列失真；可用 snapshot rollback 恢复）：{exc}")
     horizon = max((beats | raws | finals | {latest}) | {latest + 1} | {1})
-    for n in range(1, horizon + 1):
+    # P2-3: 杂散大章号（如 ch_9999.md）不得让流水表按 1..horizon 全量展开——
+    # 只展开连续活跃段 1..contiguous，断档后的散章/下一章逐个追加为独立行。
+    active = beats | raws | finals
+    contiguous = 1
+    while contiguous in active:
+        contiguous += 1
+    display_nums = list(range(1, min(horizon, contiguous) + 1))
+    display_nums += sorted(x for x in (active | {latest + 1}) if x > contiguous)
+    for n in display_nums:
         tok = f"ch_{n:03d}"
         row = {
             "chapter": tok,
@@ -218,6 +235,7 @@ def _book_brief(book: Path) -> dict:
         "total_words": words,
         "pending_proposals": pending,
         "snapshot_count": len(snaps),
+        "load_warnings": load_warnings,
         "pipeline": pipeline,
     }
 
@@ -235,6 +253,13 @@ def _next_actions(brief: dict | None) -> list[str]:
 
 def cmd_status(args) -> int:
     book = common.resolve_workspace(args.workspace)
+    if args.workspace and (book is None or not book.exists()):
+        # 显式指定 -w 却不存在：明确报错，而非误入"还没有书"的兜底话术（P3-25）
+        print(f"❌ 指定的书工作区不存在: {book}")
+        books = common.list_books()
+        if books:
+            print("   现有书：" + "、".join(str(b) for b in books))
+        return 1
     if book is None or not book.exists():
         books = common.list_books()
         if args.json:
@@ -260,6 +285,8 @@ def cmd_status(args) -> int:
         print(json.dumps(brief, ensure_ascii=False, indent=2))
         return 0
     print("=" * 70)
+    for w in brief.get("load_warnings", []):
+        print(f" ⚠️ {w}")
     mark = lambda b: "✅" if b else "· "  # noqa: E731
     latest_str = (f"ch_{brief['latest_finalized']:03d}" if brief["latest_finalized"]
                   else "(未定稿)")
@@ -509,11 +536,16 @@ def cmd_sync(args) -> int:
     no_op = applied_now == 0 and overall.get("duplicates", 0) == 0
     if no_op and not overall.get("failed"):
         print("❌ 未合入任何变更（提案为错章/被留置/空提案），拒绝封存快照")
+        if any(r.get("noop") for r in overall["results"]):
+            print("   ↳ 空提案已归档 processed/：如需重提，请修改内容并换新 operation_id 后放回 state/inbox/")
         return 1
     if not args.dry_run and overall["failed"] == 0 and applied_now > 0:
         verify_errors = state.verify_state(book)
         if not verify_errors:
-            snap_ok, snap_msg = snapshot.create_snapshot(book, f"{ch}_done")
+            try:
+                snap_ok, snap_msg = snapshot.create_snapshot(book, f"{ch}_done")
+            except Exception as exc:  # noqa: BLE001 —— 状态已合并，快照失败须显性化而非裸崩（P2-4/P3-16）
+                snap_ok, snap_msg = False, f"快照创建异常（状态已合并，可用 snapshot create 手动补拍）：{exc}"
 
     payload = {"chapter": ch, "dry_run": args.dry_run, "apply": overall,
                "verify_errors": verify_errors, "snapshot": {"ok": snap_ok, "name": snap_msg}
@@ -532,6 +564,8 @@ def cmd_sync(args) -> int:
                 print(f"    ⚠️ {line}")
             for line in r.get("errors", []):
                 print(f"    ❌ {line}")
+            if r.get("note"):
+                print(f"    ℹ️ {r['note']}")
             if r.get("skipped"):
                 print(f"    ⏭️ {r['skipped']}")
             if r.get("archived_to"):
@@ -1033,6 +1067,7 @@ def cmd_snapshot(args) -> int:
         if ok and args.clean_drafts:
             base = snapshot.chapter_of_snapshot(chosen)
             removed = 0
+            pending_hint: list[str] = []
             if base:
                 for a in ("final", "raw"):
                     for f in common.find_chapter_files(book, a):
@@ -1045,7 +1080,21 @@ def cmd_snapshot(args) -> int:
                     if num and num > base:
                         f.unlink()
                         removed += 1
-            print(f"🧹 清理超前于快照的稿件/细纲：{removed} 个文件")
+                # P3-15: 超章校对注记一并清理；超章待办提案只提示不删（保住可能仍有价值的工作）
+                rev = book / "log" / "review"
+                if rev.is_dir():
+                    for f in rev.glob("ch_*.md"):
+                        num = common.chapter_number_from_name(f.name)
+                        if num and num > base:
+                            f.unlink()
+                            removed += 1
+                if (book / "state" / "inbox").is_dir():
+                    pending_hint = [p.name for p in (book / "state" / "inbox").glob("ch_*.json")
+                                    if (nn := common.chapter_number_from_name(p.name))
+                                    and nn > base and not p.name.endswith(state.NO_MERGE_SUFFIXES)]
+            print(f"🧹 清理超前于快照的稿件/细纲/注记：{removed} 个文件")
+            if pending_hint:
+                print(f"   ↳ 收件箱仍有 {len(pending_hint)} 份超章待办提案未删（保守起见请自行定夺）：{'、'.join(pending_hint[:5])}")
         return 0 if ok else 1
     return 2
 
@@ -1272,3 +1321,8 @@ def main(argv: list[str] | None = None) -> int:
     except KeyboardInterrupt:
         print("\n⏸ 已中断（状态文件有原子写保护，重跑 status 看现场）")
         return 130
+    except (ValueError, TimeoutError) as exc:
+        # 统一兜底：引擎以 ValueError/TimeoutError 表达业务拒绝（状态损坏/编码错误/锁超时等），
+        # 打一行可读错误而非裸 traceback（P2-1/P2-4）。
+        print(f"❌ {exc}")
+        return 1

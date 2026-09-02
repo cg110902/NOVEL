@@ -333,7 +333,8 @@ def review_gate(book: Path, ch: str) -> list[str]:
              if common.chapter_number_from_name(f.name) == common.chapter_token_to_num(ch)]
     k = 0
     if beats:
-        acc = common.md_section(beats[0].read_text(encoding="utf-8", errors="replace"), r"^##\s*(?:.*验收|.*契约)")
+        # 取版本号最大者（[-1]），与 review_skeleton/proposal auto/pack 同口径（P2-6）
+        acc = common.md_section(beats[-1].read_text(encoding="utf-8", errors="replace"), r"^##\s*(?:.*验收|.*契约)")
         k = max(_numbered_items(acc), default=0)
     rev = book / "log" / "review" / f"{ch}.md"
     if not rev.is_file():
@@ -413,17 +414,24 @@ def proposal_cross_facts(book: Path, ch: str, proposal: dict) -> dict:
     chs = [text for _, num, text in evidence.final_chapters(book) if num == n]
     if chs:
         text = chs[0]
-        led = state.load_state(book, "ledger")
-        facts["amounts_in_final"] = evidence._amount_scan(text, led.get("pools"))
-        facts["ledger_tx_in_proposal"] = len((proposal.get("ledger") or {}).get("transactions") or [])
-        lookup = evidence.entity_lookup(book)
-        per = {}
-        for name, aliases in lookup.items():
-            c = sum(evidence.count_aliases(text, aliases).values())
-            if c:
-                per[name] = c
-        facts["present_mentions"] = per
-    lines = state.load_state(book, "lines")
+        try:
+            led = state.load_state(book, "ledger")
+            facts["amounts_in_final"] = evidence._amount_scan(text, led.get("pools"))
+            facts["ledger_tx_in_proposal"] = len((proposal.get("ledger") or {}).get("transactions") or [])
+            lookup = evidence.entity_lookup(book)
+            per = {}
+            for name, aliases in lookup.items():
+                c = sum(evidence.count_aliases(text, aliases).values())
+                if c:
+                    per[name] = c
+            facts["present_mentions"] = per
+        except (ValueError, FileNotFoundError) as exc:
+            facts["error"] = f"状态不可读，三方对照降级: {exc}"  # P2-1：损坏降级为字段，不裸崩
+    try:
+        lines = state.load_state(book, "lines")
+    except (ValueError, FileNotFoundError) as exc:
+        facts.setdefault("error", f"lines 不可读: {exc}")
+        lines = {}
     due = []
     for arr, resolved in (("foreshadows", "Resolved"), ("misunderstandings", "Resolved"),
                           ("knowledge", "Revealed")):
