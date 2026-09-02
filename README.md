@@ -32,7 +32,7 @@ python studio.py init -w workspace/我的小说 -t "书名" -g "题材" -p "主�
 # 2. 查看当前进度与待办任务
 python studio.py status
 
-# 3. 准备当章上下文（自动聚合核心状态、实体与历史线索）
+# 3. 准备当章上下文（需已完成 Stage 1 细纲：outlines/vol_01/beats/ch_001.md）
 python studio.py pack ch_001
 
 # 4. 辅助证据查询（线索缺口、字数统计、上一章约束对照）

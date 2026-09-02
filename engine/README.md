@@ -6,8 +6,8 @@
 | 模块 | 职责 | 
 |---|---|
 | cli.py | 12 命令 argparse 目录、闸门与文案、proposal 骨架/结构预检、review 校对注记骨架 |  
-| common.py | 工作区定位、JSON 读写（坏文件入 failed/）、幂等登记簿 |  
-| state.py | 六表结构、提案合并（upsert/append/resolve…；lines 三台账 GUN/MIS/KNO 同生命周期且带权重排序、current 软槽位 mood/goal/key_relationships 原样搬运、entities 支持 item 的 holder/location/condition 并闭合校验 holder）、**落盘前体检**（verify_data：账本重算/唯一性/实体闭合，任一失败则整体拒绝、不归档、不封存）、空提案 no-op 识别、旧文件读时补全（结构键）、inbox README 播种 |  
+| common.py | 工作区/书定位、章节号与版本号解析、front-matter 解析、原子写、JSON 读写（损坏/编码错误抛 ValueError）、canonical 哈希、文件锁、token 估算、路径越界防护 |  
+| state.py | 六表结构、提案合并（entities: upsert/retire（register 为 upsert 别名）；lines 三台账 GUN/MIS/KNO 生命周期动作 plant/remind/update/resolve 且带权重排序；current 软槽位 mood/goal/key_relationships 原样搬运；entities 支持 item 的 holder/location/condition 并闭合校验 holder）、**落盘前体检**（verify_data：账本重算/唯一性/实体闭合，任一失败则整体拒绝、不归档、不封存）、空提案 no-op 识别、旧文件读时补全（结构键）、inbox README 播种、failed/ 归档与捡回、幂等登记簿 |  
 | validator.py + schemas/ | 提案/schema 机械校验（结构级，不判事实真伪） |  
 | checks.py | check：结构/schema/算术/逾期/form 占比 + 上章对照与自交检报数（style_notes_copy/words_band_crowded/acceptance_empty_criterion/line_action_*/retired_entity_on_stage）；sync 可选软提示 `review_gate`（校对注记存在时提示验收覆盖情况，不阻断、不影响退出码）；review 注记骨架数据（`review_skeleton`）、提案三方事实对照（`proposal_cross_facts`，含知识线揭示时机对照）；**引文机械校验（`validate_quotes`：quote 必须逐字见于当章 final，sync 硬闸）**；**算法版 Stage 4.5（`verify_candidates`：引文覆盖/章题/beats重叠/金额双向/在场差异/state_watch守望/候选新实体/到期线——八项 0 token 机械对照，只出候选清单）** |  
 | evidence.py | words/style(含 form 占比)/dup/mentions/gaps/file + candidates（Stage 5 工作单）/prev（Stage 1 上章对照）+ all 聚合——只输出数 |  
