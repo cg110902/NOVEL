@@ -648,7 +648,7 @@ def _cmd_proposal_auto(book: Path, ch: str, args) -> int:
 
     # 提取线动作
     lines_ops = []
-    action_sec = "\n".join(common.md_section(beats_text, r"^##\s*(?:.*线动作|伏笔与线动作)"))
+    action_sec = "\n".join(common.md_section(beats_text, r"^##\s*.*线(索)?动作"))
     for ln in action_sec.splitlines():
         ln = ln.strip()
         if not ln or ln.startswith(("#", "<")):

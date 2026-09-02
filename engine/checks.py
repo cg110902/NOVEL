@@ -370,7 +370,7 @@ def run_checks(book: Path) -> dict:
             warnings.append(_err("acceptance_empty_criterion",
                                  f"{f.name}: 目标/验收含空判据词 {'、'.join(crit_hits[:5])}"
                                  "（判据建议使用具体可验证的动词与实体名词）"))
-        action_sec = "\n".join(common.md_section(text, r"^##\s*(?:.*线动作|伏笔与线动作)"))
+        action_sec = "\n".join(common.md_section(text, r"^##\s*.*线(索)?动作"))
         orphans = sorted(set(re.findall(r"(?:GUN|MIS|KNO)-\d{3,}", action_sec)) - ledger_line_ids)
         if orphans:
             warnings.append(_err("line_action_orphan",
