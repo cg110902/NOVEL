@@ -9,6 +9,7 @@
 """
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 
@@ -175,9 +176,9 @@ def verify_candidates(book: Path, ch: str, proposal: dict) -> dict:
     txs = [t for t in (led.get("transactions") or []) if t.get("chapter") == ch]
     new_txs = [t for t in ((proposal.get("ledger") or {}).get("transactions") or [])
                if isinstance(t, dict) and (t.get("chapter") or ch) == ch]
-    tx_vals = {int(t.get("delta", 0)) for t in txs + new_txs if isinstance(t.get("delta"), int)}
-    for a in amounts:
-        miss = [v for v in a["values"] if v not in tx_vals]
+    tx_vals = {abs(int(t.get("delta", 0))) for t in txs + new_txs if isinstance(t.get("delta"), int)}
+    for a in amounts:  # 流水 delta 带符号（支出为负），金额对照按口径规则比对绝对值
+        miss = [v for v in a["values"] if abs(v) not in tx_vals]
         if miss:
             add("warn", "amount_unmatched",
                 f"正文金额候选 {a['samples']}（值 {miss}）未对应本章任何流水——确认是修辞还是漏账")
@@ -217,8 +218,14 @@ def verify_candidates(book: Path, ch: str, proposal: dict) -> dict:
         for name in cur_prop:
             if per.get(str(name), 0) == 0:
                 add("warn", "present_unmentioned", f"在场声明「{name}」在本章 final 零提及——核对是否章末真在场")
+        # 在场名单语义只针对"人物"——道具/势力类实体没有"在场"一说（实战噪音：holder 物被点名即误报）
+        try:
+            _persons = {e.get("name") for e in state.load_state(book, "entities").get("entries", [])
+                        if e.get("type", "person") == "person"}
+        except (ValueError, FileNotFoundError):
+            _persons = set()
         for name, c in sorted(per.items(), key=lambda x: -x[1]):
-            if c >= 2 and name not in cur_prop:
+            if c >= 2 and name not in cur_prop and (not _persons or name in _persons):
                 add("warn", "mention_not_present", f"「{name}」本章提及 {c} 次但未列入在场名单（漏报或早退，归主控判）")
                 break
 
@@ -238,6 +245,9 @@ def verify_candidates(book: Path, ch: str, proposal: dict) -> dict:
 
     # 7. 候选新实体（实验性：正文高频 2~4 字串，非注册、非停用词）
     known = [str(x).lower() for names in lookup.values() for x in names]
+    # 候选降噪停用词 = 引擎语言功能词底表 ∪ 主控供参 project.json.candidate_stopwords
+    cand_stop = _CAND_STOP | {str(w).strip() for w in (proj.get("candidate_stopwords") or [])
+                              if isinstance(w, str) and w.strip()}
     segs = [s for s in re.split(r"[^\u4e00-\u9fff]+", text) if len(s) >= 2]
     grams: dict[str, int] = {}
     for seg in segs:
@@ -246,8 +256,14 @@ def verify_candidates(book: Path, ch: str, proposal: dict) -> dict:
                 g = seg[i:i + L]
                 grams[g] = grams.get(g, 0) + 1
     cands = []
+    try:
+        _pools = state.load_state(book, "ledger").get("pools", {})
+    except (ValueError, FileNotFoundError):
+        _pools = {}
     for g, c in grams.items():
-        if c < 3 or g in _CAND_STOP or any(s in g for s in _CAND_STOP):
+        if c < 3 or g in cand_stop or any(s in g for s in cand_stop):
+            continue
+        if evidence.is_candidate_noise(g, _pools):  # 金额残渣/把字句/币种串的机械毛刺
             continue
         if any((g in k) or (k in g and len(k) >= 2) for k in known):
             continue
@@ -304,10 +320,18 @@ def verify_candidates(book: Path, ch: str, proposal: dict) -> dict:
         cur_p = proposal.get("current") or {}
         if isinstance(cur_p, dict):
             inj = str(cur_p.get("injury", ""))
-            for kw in ("断臂", "残疾", "瘫痪", "丹田被废", "经脉尽断", "濒死", "重伤垂死"):
-                if kw in inj:
-                    add("warn", "critical_mutation", f"🚨【高危状态变更】主角伤势出现严重伤残描述「{inj}」，请核实是否为正文真实设定！")
-                    break
+            # 高危伤势词表 = 主控供参 project.json.critical_injury_words（引擎零题材词表：
+            # 缺席=未配置→info 提示并跳过本档；空表=主控明确关闭）
+            crit_words = proj.get("critical_injury_words")
+            if crit_words is None:
+                add("info", "wordlist_unconfigured",
+                    "critical_injury_words 未配置：伤势高危警示档已跳过——"
+                    "请主控在 project.json 按本书题材供参（如 [\"重伤\",\"濒死\",...]）后生效（空表 = 明确关闭）")
+            elif inj:
+                for kw in [w for w in crit_words if isinstance(w, str) and w]:
+                    if kw in inj:
+                        add("warn", "critical_mutation", f"🚨【高危状态变更】主角伤势出现严重伤残描述「{inj}」，请核实是否为正文真实设定！")
+                        break
             if cur_p.get("power_level"):
                 add("info", "power_level_shift", f"⭐【境界变动】主角境界更新为「{cur_p['power_level']}」")
     except (ValueError, FileNotFoundError) as exc:
@@ -322,10 +346,137 @@ def _err(code: str, msg: str) -> dict:
 _BEATS_FM_KEYS = {"chapter", "vol", "form", "pov", "words", "style_notes", "form_reason",
                   "guard_extra", "editor_extra", "tension_curve"}
 
-# 空判据词表（形容词类判据的机械近似；与 evidence.AI_CONSTRUCTIONS 同一精神——
-# 只数固定清单。通用形容词识别属语义，引擎不做；书级可用 project.json.empty_criteria_words 追加）。
-EMPTY_CRITERIA_WORDS = ["读者", "感到", "觉得", "紧张", "揪心", "感动", "震撼",
-                        "代入感", "沉浸", "氛围感", "真实感", "节奏感", "余味", "回味"]
+# 主控供参参数表（引擎零题材词表契约）：词表的语义内容属书级局部设定，由主控按题材生成并注入
+# project.json（推荐经 `studio.py config` 手术刀命令），引擎只声明"收什么/什么形状"并机械消费。
+#   gap=True  → 键缺席时对应启发式整档停用，check 以 info `wordlist_unconfigured` 提示缺口；
+#   gap=False → 可选增配，缺席时引擎底表/默认行为仍在工作，不提示；
+#   键存在（含空表）= 主控已表态：空表即明确关闭，不再提示；形状错误 = check 报 param_shape_invalid。
+PARAM_SPEC: dict[str, dict] = {
+    "generic_stopwords": {"shape": "str_list", "gap": True,
+        "desc": "通用实体停用词（evidence 别名 P1 触发降噪 / pack）",
+        "example": ["掌柜", "警官", "乘务员"]},
+    "critical_injury_words": {"shape": "str_list", "gap": True,
+        "desc": "伤势高危警示词（verify critical_mutation 档）",
+        "example": ["重伤", "濒死", "截瘫"]},
+    "abstract_phrases": {"shape": "str_list", "gap": True,
+        "desc": "细纲假大空词（check beats_scene_abstract 档）",
+        "example": ["巧妙化解", "发生争执"]},
+    "high_heat_forms": {"shape": "str_list", "gap": True,
+        "desc": "高压章型名清单（check 连续高压疲劳检测，精确匹配 front-matter form 值）",
+        "example": ["生死博弈", "高潮突破"]},
+    "empty_criteria_words": {"shape": "str_list", "gap": True,
+        "desc": "验收条目空判词（check acceptance_empty_criterion 档）",
+        "example": ["读者", "沉浸感"]},
+    "hook_words": {"shape": "hook_tiers", "gap": True,
+        "desc": "章尾钩子分档词表（prev/dashboard；strong/suspense/anticlimax 三键，值各为词表）",
+        "example": {"strong": ["案发", "强敌登门"], "suspense": ["尾随", "深夜来电"], "anticlimax": ["虚惊一场"]}},
+    "candidate_stopwords": {"shape": "str_list", "gap": False,
+        "desc": "候选新实体追加降噪词（verify 候选清单过滤，追加到语言功能词底表；可选增配，不配不提示）",
+        "example": ["心头", "眼底"]},
+    "style_guards": {"shape": "str_list", "gap": False,
+        "desc": "文风禁忌词计数（evidence style / pack 红线展示），书级追加 AI_CONSTRUCTIONS 固定清单",
+        "example": ["极"]},
+    "state_watch": {"shape": "str_map", "gap": False,
+        "desc": "current 字段关键词守望（verify state_watch 档）：{字段: [词表]}",
+        "example": {"power_level": ["突破", "晋升"]}},
+}
+# 缺口总账口径（只统计 gap=True 的"缺席即停用"键）
+WORDLIST_SPEC = {k: v["desc"] for k, v in PARAM_SPEC.items() if v.get("gap")}
+
+
+def param_suggestions(book: Path, top: int = 12) -> dict:
+    """机械候选工作单（0 token，只数不报结论——采纳与否归主控裁决）。
+
+    用"召回 → 验证"模式消解主控的注意力税：引擎把频率异常者先算成候选清单，
+    主控扫一眼拍板，经 `config set --merge` 并入供参。
+    - generic_stopwords 候选：已注册实体的 ≤2 字别名在定稿全文的高频者（= P1 触发雪崩源）；
+    - candidate_stopwords 候选：全书高频 2 字词，剔除已注册名/别名、语言功能词底表与已配置项。
+    """
+    proj = common.load_json(book / "project.json", default={}) or {}
+    texts = [t for _, _, t in evidence.final_chapters(book)]
+    full = "\n".join(texts)
+    sugg: dict[str, list] = {}
+
+    # 1) generic_stopwords 候选：高频短别名
+    configured_stop = {str(w).strip() for w in (proj.get("generic_stopwords") or [])}
+    alias_hits: list[tuple[str, int, str]] = []
+    for e in state.load_state(book, "entities").get("entries", []):
+        if e.get("status", "active") != "active":
+            continue
+        for a in e.get("aliases", []):
+            a = str(a).strip()
+            if not a or len(a) > 2 or a == str(e.get("name", "")).strip() or a in configured_stop:
+                continue
+            c = full.count(a)
+            if c >= 3:
+                alias_hits.append((a, c, str(e.get("name", ""))))
+    sugg["generic_stopwords"] = [
+        {"word": w, "count": c, "of_entity": en}
+        for w, c, en in sorted(alias_hits, key=lambda x: -x[1])[:top]]
+
+    # 2) candidate_stopwords 候选：全书高频泛词（与 verify 同套 n-gram 口径：2~4 字 + 含并剔除切片毛刺）
+    known: list[str] = [str(proj.get("protagonist", "")).strip()]
+    for e in state.load_state(book, "entities").get("entries", []):
+        known.append(str(e.get("name", "")))
+        known.extend(str(a) for a in e.get("aliases", []) if a)
+    known = [k for k in known if k]
+    base = _CAND_STOP | configured_stop | {str(w).strip() for w in (proj.get("candidate_stopwords") or [])}
+    try:
+        _sugg_pools = state.load_state(book, "ledger").get("pools", {})
+    except (ValueError, FileNotFoundError):
+        _sugg_pools = {}
+    grams: dict[str, int] = {}
+    for seg in re.split(r"[^\u4e00-\u9fff]+", full):
+        if len(seg) >= 2:
+            for L in (2, 3, 4):
+                for i in range(len(seg) - L + 1):
+                    g = seg[i:i + L]
+                    grams[g] = grams.get(g, 0) + 1
+    cands = []
+    for g, c in grams.items():
+        if c < 6 or g in base or any(s in g for s in base):
+            continue
+        if evidence.is_candidate_noise(g, _sugg_pools):
+            continue
+        if any((g in k) or (k in g) for k in known):
+            continue
+        cands.append((g, c))
+    # 被同频或更高频的长候选包含的短切片是 n-gram 毛刺（如"廊尽"⊂"走廊尽头"），剔除
+    cands = [(g, c) for g, c in cands if not any(g != g2 and g in g2 and c2 >= c for g2, c2 in cands)]
+    sugg["candidate_stopwords"] = [
+        {"word": g, "count": c} for g, c in sorted(cands, key=lambda x: -x[1])[:top]]
+
+    return {"kind": "config_suggest", "final_chapters_scanned": len(texts),
+            "suggestions": sugg,
+            "adopt": "采纳手势：python studio.py config set <键> --merge '<JSON数组>'（并入现有值；"
+                     "判断采纳与否属语义裁决，归主控）"}
+
+
+def validate_param_value(key: str, value) -> str | None:
+    """供参参数形状校验（纯结构，零语义）。返回 None=合法；否则给人读的错误文案。"""
+    spec = PARAM_SPEC.get(key)
+    if spec is None:
+        return f"未知参数键「{key}」（合法键清单见 `python studio.py config guide`）"
+    shape = spec["shape"]
+    eg = json.dumps(spec["example"], ensure_ascii=False)
+    if shape == "str_list":
+        if not isinstance(value, list) or any(not isinstance(w, str) for w in value):
+            return f"「{key}」必须是字符串数组（形状示例：{eg}）"
+    elif shape == "hook_tiers":
+        if not isinstance(value, dict):
+            return f"「{key}」必须是对象（形状示例：{eg}）"
+        extra = set(value) - {"strong", "suspense", "anticlimax"}
+        if extra:
+            return f"「{key}」含未知分档 {sorted(extra)}（合法分档：strong/suspense/anticlimax）"
+        for tier, ws in value.items():
+            if not isinstance(ws, list) or any(not isinstance(w, str) for w in ws):
+                return f"「{key}.{tier}」必须是字符串数组"
+    elif shape == "str_map":
+        if (not isinstance(value, dict)
+                or any(not isinstance(k, str) or not isinstance(v, list)
+                       or any(not isinstance(w, str) for w in v) for k, v in value.items())):
+            return f"「{key}」必须是 字段名→字符串数组 的对象（形状示例：{eg}）"
+    return None
 
 _WORDS_BAND_RE = re.compile(r"(\d+)\s*[-–—~～]\s*(\d+)")
 
@@ -500,6 +651,7 @@ def proposal_cross_facts(book: Path, ch: str, proposal: dict) -> dict:
 def run_checks(book: Path) -> dict:
     errors: list[dict] = []
     warnings: list[dict] = []
+    infos: list[dict] = []
     stats: dict = {}
 
     # ---- project.json ----
@@ -519,6 +671,21 @@ def run_checks(book: Path) -> dict:
     band_ok = isinstance(band, list) and len(band) == 2 and all(isinstance(x, int) for x in band)
     if proj and "words_target" in proj and not band_ok:
         errors.append(_err("project_field_type", "project.json.words_target 必须是 [下限, 上限] 整数对"))
+
+    # ---- 词表供参缺口总账（缺席=未配置→提示并跳过对应启发式；空表=明确关闭，不提示） ----
+    if proj:
+        for wl_key, wl_desc in WORDLIST_SPEC.items():
+            if wl_key not in proj:
+                infos.append(_err("wordlist_unconfigured",
+                                  f"project.json 未配置「{wl_key}」（{wl_desc}）——对应启发式档已跳过；"
+                                  "请主控按本书题材供参后生效（空表 = 明确关闭）"
+                                  "（形状与示例见 `python studio.py config guide`）"))
+        # ---- 供参形状闸（键存在但形状非法 → 事实无关的结构错误，引擎可判） ----
+        for pkey in PARAM_SPEC:
+            if pkey in proj:
+                shape_err = validate_param_value(pkey, proj[pkey])
+                if shape_err:
+                    errors.append(_err("param_shape_invalid", f"project.json.{shape_err}"))
 
     # ---- 状态层（schema + 账本重算 + 唯一性，sync 前同款体检） ----
     for msg in state.verify_state(book):
@@ -627,9 +794,9 @@ def run_checks(book: Path) -> dict:
                     open_due.append((_g["target_ch"], _gid))
     except (ValueError, FileNotFoundError):
         pass  # lines 不可读已在 state_inconsistent 报 error；线对照降级为不跑
-    empty_words = list(EMPTY_CRITERIA_WORDS)
-    empty_words += [w for w in (proj.get("empty_criteria_words") or [])
-                    if isinstance(w, str) and w.strip() and w not in empty_words]
+    # 空判据词表 = 主控供参 project.json.empty_criteria_words（缺席/关闭时本档自然零触发）
+    empty_words = [w for w in (proj.get("empty_criteria_words") or [])
+                   if isinstance(w, str) and w.strip()]
     prev_by_vol: dict[str, dict] = {}
     for f in beats:
         text = f.read_text(encoding="utf-8", errors="replace")
@@ -781,9 +948,9 @@ def run_checks(book: Path) -> dict:
                 warnings.append(_err("form_share_over_limit",
                                      f"{vol}: form「{form}」占比 {share:.0%} > {FORM_SHARE_LIMIT:.0%}"))
 
-    # ---- 叙事节奏体检（连续高压疲劳检测） ----
-    high_tension_forms = {"生死博弈", "高潮突破", "极限博弈", "高潮决战", "决战爆发", "危机激化"}
-    for vol_dir in sorted((book / "outlines").glob("vol_*")):
+    # ---- 叙事节奏体检（连续高压疲劳检测；章型名清单 = 主控供参 project.json.high_heat_forms，精确匹配） ----
+    high_heat_forms = {w for w in (proj.get("high_heat_forms") or []) if isinstance(w, str) and w.strip()}
+    for vol_dir in sorted((book / "outlines").glob("vol_*")) if high_heat_forms else []:
         beats_files = sorted(vol_dir.glob("beats/ch_*.md"))
         consecutive_high = []
         for bf in beats_files:
@@ -791,7 +958,7 @@ def run_checks(book: Path) -> dict:
                 fm = common.parse_front_matter(bf.read_text(encoding="utf-8", errors="replace"))
                 form_val = str(fm.get("form", "")).strip()
                 ch_tok = bf.stem
-                is_high = form_val in high_tension_forms or any(k in form_val for k in ("博弈", "高潮", "决战", "生死"))
+                is_high = form_val in high_heat_forms
                 if is_high:
                     consecutive_high.append((ch_tok, form_val))
                     if len(consecutive_high) >= 3:
@@ -803,9 +970,9 @@ def run_checks(book: Path) -> dict:
             except OSError:
                 continue
 
-    # ---- 细纲场景具象度体检（防假大空口水章） ----
-    abstract_phrases = ["巧妙化解", "发生冲突", "展现谋略", "机智应对", "某些麻烦", "发生争执", "不长眼"]
-    for vol_dir in sorted((book / "outlines").glob("vol_*")):
+    # ---- 细纲场景具象度体检（假大空词表 = 主控供参 project.json.abstract_phrases） ----
+    abstract_phrases = [w for w in (proj.get("abstract_phrases") or []) if isinstance(w, str) and w.strip()]
+    for vol_dir in sorted((book / "outlines").glob("vol_*")) if abstract_phrases else []:
         for bf in sorted(vol_dir.glob("beats/ch_*.md")):
             try:
                 btext = bf.read_text(encoding="utf-8", errors="replace")
@@ -819,5 +986,6 @@ def run_checks(book: Path) -> dict:
 
     stats["errors"] = len(errors)
     stats["warnings"] = len(warnings)
+    stats["infos"] = len(infos)
     return {"schema": "novel-studio.check/v1", "ok": not errors,
-            "errors": errors, "warnings": warnings, "stats": stats}
+            "errors": errors, "warnings": warnings, "infos": infos, "stats": stats}

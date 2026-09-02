@@ -22,7 +22,7 @@ description: Universal factual auditor and state proposal generator for Novel St
    - **引文逐字摘自 final 原句（含标点）**，引擎机械校验引文是 final 的子串，编造/改写整案拒绝；
    - 找不到引文的结论直接删除（不确定就不上账的机械版）；
    - 提取章末确凿在场的所有角色名单、物理地点与时间；
-   - **刷新 current 全部变动字段**：境界（`power_level`）、功法（`abilities`）、伤势（`injury`）、装备（`equipment`）、非资金资产（`assets`）、心境/目标/关系/处境——本章发生突破/习得/痊愈/装备进出/资产变动时**绝不漏刷**；
+   - **刷新 current 全部变动字段**：位阶职级（`power_level`）、技能本领（`abilities`）、伤势（`injury`）、装备（`equipment`）、非资金资产（`assets`）、心境/目标/关系/处境——本章发生突破/习得/痊愈/装备进出/资产变动时**绝不漏刷**；
    - 提取当章确凿发生的道具与资源收支（馈赠/拾获也算，资金一律走 `ledger` 流水）；
    - 对照 beats 提取 `GUN-*` / `KNO-*` / `MIS-*` 的生命周期动作（`plant` / `remind` / `update` / `resolve`）；
    - 提取新出场的实体名称与一句话简介（`summary`）；

@@ -32,7 +32,16 @@
     - 法定实体类型：`['faction', 'item', 'other', 'person', 'place']`；
     - 法定字段：`name`, `type`, `status` (`'active'`|`'retired'`), `summary` (简介，禁止用 description/bio), `aliases`, `realm`, `faction`, `holder`, `location`, `condition`, `charges`, `max_charges`, `attitude`, `life_status`, `dossier` (人物/势力与主角的恩怨羁绊备忘), `card` (人物卡相对路径，`pack --full` 注入卡全文)；
     - **严禁非法字段**：严禁出现 `id`, `category`, `entity_type`, `first_appearance` 等非 Schema 字段；
-  - **Schema 规范**：`current.json` 中 `key_relationships` 与 `time` 为字符串；`loadout` 记录主角常驻作战体系（主修/身法/杀招/底牌/装备）；`ledger.json` 通货使用 `initial` 与 `current`。
+  - **词表供参契约（主控职责，Stage 0 一次性配置，随书演进可随时增补）**：
+    - **引擎零题材词表**：所有语义词表都由主控按本书题材生成、动态注入 `project.json`；引擎不内置任何"玄幻偏好"默认词表（引擎自带的仅限语言封闭类——标点/数词/量词/功能词，与协议枚举）；
+    - **供参手势（手术刀命令，勿手改 JSON）**：
+      - `python studio.py config guide`：引擎自我申报可接受参数的**型号单**（键/形状/示例）——"需要什么参数找主控要"的应答表；
+      - `python studio.py config suggest`：**机械候选工作单**（引擎统计全书高频短别名与高频泛词，只数不裁）——主控扫候选清单拍板即可，**召回劳动归引擎，验证劳动归主控**，免去全文翻找；
+      - `python studio.py config set <键> '<JSON值>'`：动态供参，后续命令即时生效（持久化、随快照封版）；`--merge` 并入现有值（采纳 suggest 候选的专用手势）；`config list / get / unset` 配套；
+    - **可配键**：`generic_stopwords`（别名触发降噪）、`critical_injury_words`（伤势高危警示）、`abstract_phrases`（细纲假大空）、`high_heat_forms`（高压章型名，精确匹配 form）、`empty_criteria_words`（验收空判词）、`hook_words`（章尾钩子分档，对象含 `strong`/`suspense`/`anticlimax` 三键）；可选增配：`candidate_stopwords`、`style_guards`、`state_watch`；
+    - **缺席 vs 空表 vs 畸形**：键不写 = 未配置 → `check` 以 ℹ️ `wordlist_unconfigured` 提示缺口（跳过对应启发式档）；键写 `[]` = 主控明确关闭；形状非法 → `check` 报 ❌ `param_shape_invalid`；
+    - **为什么这样做**：词表列举不完且天然偏题材——语义完备性由读过全文的 Reader/主控裁决保证；引擎词表只是主控下发的"绊索"，在使用中生长（漏配会暴露为缺口提示，想到新词随时 `config set` 增补）。
+  - **Schema 规范**：`current.json` 中 `key_relationships` 与 `time` 为字符串；`loadout` 记录主角的常驻手段体系（主修能力/招牌手法/底牌资源/装备——按题材自定：修仙填功法身法，都市填专业技能与人脉杠杆，科幻填装备与权限）；`ledger.json` 通货使用 `initial` 与 `current`。
 
 ### Stage 1: 细纲构思（主控）
 - 依据前章事实简报与分卷大纲，确立当章核心戏剧目标、场景发展脉络、核心冲突与关键伏笔动作，写入 `outlines/vol_XX/beats/ch_XXX.md`；
@@ -62,8 +71,8 @@
 - **输出**：`state/inbox/ch_XXX.json`（使用原生 `write_to_file` 工具）+ 事实表 `log/facts/ch_XXX.md`。
 
 ### Stage 4.5: 机械对照（0 token，主控运行）
-- 运行 `python studio.py proposal verify ch_XXX`：引擎对提案×final×状态做八项全机械对照（引文覆盖、章题对照、照抄任务书检测、金额双向对照、在场差异、state_watch 关键词守望、候选新实体、到期线覆盖），**只出候选差异清单（不阻断）**，主控逐条裁决"是否处理"；
-- `state_watch`（书级可选配置，`project.json.state_watch`）：`{"power_level": ["引气入体","炼气","筑基"], ...}`——正文出现词表中的词而 current 对应字段未提及时报警，专防"突破章忘刷境界"类遗漏；
+- 运行 `python studio.py proposal verify ch_XXX`：引擎对提案×final×状态做八项全机械对照（引文覆盖、章题对照、照抄任务书检测、金额双向对照、在场差异、state_watch 关键词守望、候选新实体、到期线覆盖），**只出候选差异清单（不阻断）**，主控逐条裁决"是否处理"；`--json` 净负载结构为 `{"chapter", "proposal", "quote_errors", "verify": {"items": [...]}}`，脚本消费时取 `verify.items`；
+- `state_watch`（书级可选配置，`project.json.state_watch`，推荐用 `config set` 注入）：`{"power_level": ["突破","晋升"], ...}`——词表按本书题材自拟（修仙书可写"结丹"，都市书可写"升职"，科幻书可写"晋升舰长"）；正文出现词表中的词而 current 对应字段未提及时报警，专防"突破章忘刷位阶"类遗漏；
 - （可选 LLM 验证员）高变动章（含交易/境界突破/≥3 新实体的章）可加派一个独立验证子代理：输入=提案+final（不给 Reader 的推理过程），逐条回指引文、反向穷举；常规章由 verify 的机械候选清单覆盖即可。
 
 ### Stage 5: 极速状态同步与快照封存（主控）
@@ -78,6 +87,7 @@
   3. 运行 `python studio.py proposal verify ch_XXX`（Stage 4.5 差异候选清单，逐条裁决）；
   4. 运行 `python studio.py sync ch_XXX` 合并真值并生成快照（快照落在 `state/snapshots/<时间戳>_ch_XXX_done`）；
   5. （可选机制）若存在校对注记 `log/review/ch_XXX.md`，sync 会以 ℹ️ 提示其验收覆盖情况（软提示，不阻断）。
+     注记由引擎生成骨架、主控填写：`python studio.py review new ch_XXX --write`（骨架已预填机器数据；每条勾选都必须附正文引文或 evidence 数值佐证——无证据的打钩=未审；不加 `--write` 则仅打印不落盘）。
 - **故障恢复**：
   - 提案被拒 → 归档在 `state/inbox/failed/ch_XXX.json`，就地修复后重跑 `sync ch_XXX` 引擎自动捡回；
   - 状态污染 → `python studio.py snapshot list` 查看 `state/snapshots/`，`python studio.py snapshot rollback <名称>` 回滚（回滚前自动备份为 `pre_rollback_*`；`--clean-drafts` 可一并清理超章稿件/细纲）；

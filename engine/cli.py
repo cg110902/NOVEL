@@ -1,6 +1,6 @@
-"""CLI 薄壳：12 命令、参数解析与编排。业务逻辑一律在 engine/*。
+"""CLI 薄壳：15 命令、参数解析与编排。业务逻辑一律在 engine/*。
 
-status / init / pack / evidence / check / sync / snapshot / export / dashboard / proposal / review / help。
+status / init / pack / evidence / check / checkpoint / state / config / sync / snapshot / export / dashboard / proposal / review / help。
 退出码：0=ok / 1=阻断（含 check errors、sync 失败）/ 2=用法错。
 """
 from __future__ import annotations
@@ -160,8 +160,9 @@ def cmd_init(args) -> int:
             "active_misunderstandings": 4
         },
         "style_guards": [],
-        "generic_stopwords": [],
         "state_watch": {},
+        # 注意：各类题材词表（generic_stopwords 等，见 checks.WORDLIST_SPEC）引擎零默认、由主控供参——
+        # init 故意不播种这些键：键缺席时 check 会以 info 提示缺口，引导主控按本书题材填写。
         "created_at": datetime.date.today().isoformat(),
     }
     common.dump_json(book / "project.json", proj)
@@ -461,9 +462,12 @@ def cmd_check(args) -> int:
             print(f" ❌ [{e['code']}] {e['msg']}")
         for w in report["warnings"]:
             print(f" ⚠️ [{w['code']}] {w['msg']}")
+        for i in report.get("infos", []):
+            print(f" ℹ️ [{i['code']}] {i['msg']}")
         if not report["errors"] and not report["warnings"]:
             print(" ✅ 无事实级问题")
         print(f" 汇总：errors {len(report['errors'])} ｜ warnings {len(report['warnings'])}"
+              f" ｜ infos {len(report.get('infos', []))}"
               f" ｜ 定稿章数 {report['stats'].get('final_chapters', 0)}")
     return 0 if report["ok"] else 1
 
@@ -1175,15 +1179,13 @@ def cmd_checkpoint(args) -> int:
         ch_num = latest
         ch = f"ch_{ch_num:03d}"
 
-    # 1. 提取所属分卷与四分位阶段
-    vol_outline_path = None
-    for p in sorted((book / "outlines").glob("*/outline.md")):
-        vol_outline_path = p
-        break
+    # 1. 提取所属分卷与四分位阶段（全卷扫描：多卷书章号全局递增，不能只看 vol_01）
+    outline_files = sorted((book / "outlines").glob("*/outline.md"))
 
     phase_info = None
     all_phases = []
-    if vol_outline_path and vol_outline_path.exists():
+    for vol_outline_path in outline_files:
+        vol_name = vol_outline_path.parent.name
         text = vol_outline_path.read_text(encoding="utf-8", errors="replace")
         phases = re.findall(
             r"-\s*\*\*([^\n*]+?)\s*[（(]\s*(?:ch_?)?(\d+)\s*[—\-–~至到]+\s*(?:ch_?)?(\d+)\s*(?:[｜|]\s*([^\n*]+?))?[)）]\s*\*\*",
@@ -1192,6 +1194,7 @@ def cmd_checkpoint(args) -> int:
         for idx, (pname, start_s, end_s, feat) in enumerate(phases, 1):
             s_num, e_num = int(start_s), int(end_s)
             p_dict = {
+                "volume": vol_name,
                 "phase_index": idx,
                 "name": pname.strip(),
                 "range": [s_num, e_num],
@@ -1200,7 +1203,7 @@ def cmd_checkpoint(args) -> int:
             }
             all_phases.append(p_dict)
             if s_num <= ch_num <= e_num:
-                phase_info = p_dict
+                phase_info = p_dict  # 同章号跨卷重叠时取后卷（排序序保证 vol_02 覆盖 vol_01）
 
     # 2. 提取近 5 章梗概与大事件
     syn_data = state.load_state(book, "synopsis")
@@ -1274,7 +1277,7 @@ def cmd_checkpoint(args) -> int:
         print(f" 🎯 当前分卷坐标：{phase_info['name']}（{phase_info['range_str']}）")
         if phase_info['feature']:
             print(f"    阶段核心功能：{phase_info['feature']}")
-    print(f" 📍 当前现场状态：境界「{cur_data.get('power_level','-')}」｜ 地点「{cur_data.get('location','-')}」")
+    print(f" 📍 当前现场状态：位阶职级「{cur_data.get('power_level','-')}」｜ 地点「{cur_data.get('location','-')}」")
     print(f"    当前核心目标：{cur_data.get('goal','-')}")
     print("-" * 70)
     print(" 📜 近 5 章推进脉络：")
@@ -1317,7 +1320,7 @@ def cmd_state(args) -> int:
 
     target = getattr(args, "target", "")
     if not target:
-        print("❌ 请指定要查询或修改的字段路径（例如: current.injury 或 entities.赵掌柜.realm）")
+        print("❌ 请指定要查询或修改的字段路径（例如: current.injury 或 entities.林舟.realm）")
         return 2
 
     # 解析 partition 与路径
@@ -1430,6 +1433,7 @@ COMMAND_HELP = {
     "check": "结构/schema/算术体检（errors 只允许事实级；有 errors 退出码 1）",
     "checkpoint": "宏观航向校准点（每5章复盘分卷四分位里程碑与主线偏航）",
     "state": "状态速查与手术刀单字段纠偏（get/set current/entities，防真值幻觉）",
+    "config": "书级词表参数手术刀：list|guide|suggest|get|set[--merge]|unset（主控供参通道，project.json）",
     "sync": "提案合并 → 状态体检 → 快照（Stage 5 闭环，可 --dry-run）",
     "snapshot": "快照 list / create NAME / rollback NAME [--clean-drafts]",
     "export": "全书编译：--txt 拼接正文，--views 渲染状态视图",
@@ -1438,6 +1442,163 @@ COMMAND_HELP = {
     "review": "校对注记：new <章节>（骨架预填验收条目+机器数据，--write 写 log/review/）",
     "help": "本命令目录（--json 供宿主解析）",
 }
+
+
+# ---------------------------------------------------------------------------
+# config：书级词表参数手术刀（主控供参通道；落 project.json 原子写，随快照封版）
+# ---------------------------------------------------------------------------
+def _merge_param_value(shape: str, old, new):
+    """--merge 并入语义：str_list 顺序并集去重；hook_tiers 分档并集；str_map 按键并集。"""
+    if old is None:
+        return new
+    if shape == "str_list":
+        out = [w for w in (old if isinstance(old, list) else []) if isinstance(w, str)]
+        for w in new:
+            if w not in out:
+                out.append(w)
+        return out
+    if shape in ("hook_tiers", "str_map"):
+        out = dict(old) if isinstance(old, dict) else {}
+        for k, ws in new.items():
+            cur = [w for w in out.get(k, []) if isinstance(w, str)] if isinstance(ws, list) else ws
+            if isinstance(ws, list):
+                for w in ws:
+                    if w not in cur:
+                        cur.append(w)
+            out[k] = cur
+        return out
+    return new
+
+
+def cmd_config(args) -> int:
+    """list / guide / get KEY / set KEY JSON / unset KEY——主控按本书题材为引擎供参。
+
+    引擎零题材词表：参数缺席（gap 键）→ 对应启发式停用并出 info 提示；空表 = 明确关闭。
+    """
+    book = common.resolve_workspace(args.workspace)
+    if book is None or not (book / "project.json").exists():
+        print("❌ 未找到书工作区或其 project.json（先运行 init）")
+        return 1
+    proj_path = book / "project.json"
+    try:
+        proj = common.load_json(proj_path)
+    except (ValueError, OSError) as exc:
+        print(f"❌ project.json 解析失败: {exc}")
+        return 1
+    act = getattr(args, "config_action", None) or "list"
+    spec = checks.PARAM_SPEC
+    js = getattr(args, "json", False)
+
+    if act == "guide":
+        payload = {"kind": "config_guide",
+                   "note": "引擎零题材词表：参数由主控按本书题材生成并注入；gap=true 的键缺席时对应启发式停用"
+                           "并出 ℹ️ 提示，空表=明确关闭；形状错误会在 check 中报 param_shape_invalid。",
+                   "params": {k: {"shape": v["shape"], "gap": v.get("gap", False), "desc": v["desc"],
+                                  "example": v["example"]} for k, v in spec.items()}}
+        if js:
+            print(json.dumps(payload, ensure_ascii=False, indent=2))
+        else:
+            print("=" * 74)
+            print(" 🧩 引擎可接受的词表参数型号单（主控按本书题材照此供参）")
+            print("=" * 74)
+            for k, v in spec.items():
+                tag = "缺席即停用" if v.get("gap") else "可选增配"
+                print(f" • {k}  [{v['shape']}｜{tag}]")
+                print(f"     {v['desc']}")
+                print(f"     形状示例: {json.dumps(v['example'], ensure_ascii=False)}")
+            print("\n用法: python studio.py config set <键> '<JSON值>' ｜ get <键> ｜ unset <键> ｜ list")
+        return 0
+
+    if act == "list":
+        rows = [{"key": k, "configured": k in proj, "shape": spec[k]["shape"],
+                 "gap": spec[k].get("gap", False), "value": proj.get(k), "desc": spec[k]["desc"]}
+                for k in spec]
+        if js:
+            print(json.dumps({"kind": "config_list", "params": rows}, ensure_ascii=False, indent=2))
+        else:
+            print("=" * 74)
+            print(" 🧩 书级词表参数现状（project.json）")
+            print("=" * 74)
+            for r_ in rows:
+                mark = "✅" if r_["configured"] else ("— 未配置(启发式停用)" if r_["gap"] else "— 可选未配置")
+                val = json.dumps(r_["value"], ensure_ascii=False) if r_["configured"] else ""
+                print(f" {r_['key']:<22} {mark} {val[:48]}")
+        return 0
+
+    if act == "suggest":
+        payload = checks.param_suggestions(book)
+        if js:
+            print(json.dumps(payload, ensure_ascii=False, indent=2))
+        else:
+            print("=" * 74)
+            print(f" 🧮 供参候选工作单（机械计数 {payload['final_chapters_scanned']} 章定稿；采纳与否归主控裁决）")
+            print("=" * 74)
+            for k, items in payload["suggestions"].items():
+                print(f" • {k}（{spec[k]['desc']}）")
+                if items:
+                    for it in items:
+                        extra = f"（出自 {it['of_entity']}）" if it.get("of_entity") else ""
+                        print(f"     {it['word']} ×{it['count']}{extra}")
+                else:
+                    print("     （暂无候选）")
+            print(f"\n{payload['adopt']}")
+        return 0
+
+    key = getattr(args, "key", None)
+    if not key:
+        print("❌ 请指定参数键（合法键见 `python studio.py config guide`）")
+        return 2
+    if key not in spec:
+        print(f"❌ 未知参数键「{key}」（合法键 {sorted(spec)}）")
+        return 2
+
+    if act == "get":
+        val = proj.get(key)
+        if js:
+            print(json.dumps({"key": key, "configured": key in proj, "value": val},
+                             ensure_ascii=False, indent=2))
+        elif key in proj:
+            print(f"{key} = {json.dumps(val, ensure_ascii=False)}")
+        else:
+            print(f"「{key}」未配置（{'gap 键：对应启发式停用中' if spec[key].get('gap') else '可选增配'}）")
+        return 0
+
+    if act == "set":
+        raw = getattr(args, "value", None)
+        if raw is None:
+            print("❌ set 需要提供 JSON 值，如：config set generic_stopwords '[\"掌柜\",\"警官\"]'"
+                  "；--merge 并入现有值（供 config suggest 采纳回路使用）")
+            return 2
+        try:
+            val = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            print(f"❌ 值必须是合法 JSON 字面量: {exc}")
+            return 2
+        if getattr(args, "merge", False):
+            val = _merge_param_value(spec[key]["shape"], proj.get(key), val)
+        shape_err = checks.validate_param_value(key, val)
+        if shape_err:
+            print(f"❌ 参数形状非法：project.json.{shape_err}")
+            return 1
+        proj[key] = val
+        common.dump_json(proj_path, proj)
+        note = "（空表 = 明确关闭该档）" if val in ([], {}) else ""
+        how = "并入现有值" if getattr(args, "merge", False) else "整体替换"
+        print(f"✅ project.json.{key} 已更新（{how}）{note}——后续命令即时生效（动态供参，随快照封版）")
+        return 0
+
+    if act == "unset":
+        if key in proj:
+            proj.pop(key)
+            common.dump_json(proj_path, proj)
+            tail = "gap 键回到未配置态：check 将恢复缺口提示（启发式停用）" if spec[key].get("gap") else "回到未配置态"
+            print(f"✅ project.json.{key} 已移除——{tail}")
+        else:
+            print(f"ℹ️ 「{key}」本就未配置，无需移除")
+        return 0
+
+    print(f"❌ 未知动作: {act}（合法: list|guide|get|set|unset）")
+    return 2
 
 
 def cmd_help(args) -> int:
@@ -1516,7 +1677,7 @@ def _build_subparsers(sub: argparse._SubParsersAction) -> None:
     r.add_argument("-w", "--workspace", default=argparse.SUPPRESS)
     r.add_argument("--json", action="store_true", default=argparse.SUPPRESS)
     r.set_defaults(func=cmd_state)
-    r = st_sub.add_parser("get", help="查看指定字段值（例如: current.injury 或 entities.赵掌柜.realm）")
+    r = st_sub.add_parser("get", help="查看指定字段值（例如: current.injury 或 entities.林舟.realm）")
     r.add_argument("target", help="字段路径")
     r.add_argument("-w", "--workspace", default=argparse.SUPPRESS)
     r.add_argument("--json", action="store_true", default=argparse.SUPPRESS)
@@ -1528,6 +1689,27 @@ def _build_subparsers(sub: argparse._SubParsersAction) -> None:
     r.add_argument("--json", action="store_true", default=argparse.SUPPRESS)
     r.set_defaults(func=cmd_state)
     q.set_defaults(func=cmd_state)
+
+    q = sub.add_parser("config", help="书级词表参数手术刀：list(默认)|guide|get|set|unset（主控供参通道）")
+    _add_common_opts(q)
+    cf_sub = q.add_subparsers(dest="config_action")
+    for _name, _hlp, _extra in (
+            ("list", "列出全部参数键的配置状态与当前值", ()),
+            ("guide", "引擎可接受参数的型号单（形状+示例，主控照此供参）", ()),
+            ("suggest", "供参候选工作单（机械计数高频短别名/泛词，主控裁决采纳）", ()),
+            ("get", "查看指定参数键（-w 书目录）", ("key",)),
+            ("set", "设置参数（值为 JSON 字面量；[]/{}=明确关闭；--merge 并入现有值）", ("key", "value")),
+            ("unset", "移除参数（回到未配置态；gap 键将恢复缺口提示）", ("key",))):
+        r = cf_sub.add_parser(_name, help=_hlp)
+        for _pos in _extra:
+            r.add_argument(_pos)
+        if _name == "set":
+            r.add_argument("--merge", action="store_true",
+                           help="并入现有值（数组并集去重 / 分档并集），而非整体替换")
+        r.add_argument("-w", "--workspace", default=argparse.SUPPRESS)
+        r.add_argument("--json", action="store_true", default=argparse.SUPPRESS)
+        r.set_defaults(func=cmd_config)
+    q.set_defaults(func=cmd_config)
 
     q = sub.add_parser("sync", help="提案合并 → 状态体检 → 快照（Stage 5 闭环）")
     _add_common_opts(q)

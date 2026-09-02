@@ -5,12 +5,12 @@
 
 | 模块 | 职责 | 
 |---|---|
-| cli.py | 12 命令 argparse 目录、闸门与文案、proposal 骨架/结构预检、review 校对注记骨架 |  
+| cli.py | 15 命令 argparse 目录、闸门与文案、proposal 骨架/结构预检、review 校对注记骨架、**config 词表参数手术刀（主控供参通道：list/guide/get/set/unset，原子写 project.json）** |  
 | common.py | 工作区/书定位、章节号与版本号解析、front-matter 解析、原子写、JSON 读写（损坏/编码错误抛 ValueError）、canonical 哈希、文件锁、token 估算、路径越界防护 |  
 | state.py | 六表结构、提案合并（entities: upsert/retire（register 为 upsert 别名）；lines 三台账 GUN/MIS/KNO 生命周期动作 plant/remind/update/resolve 且带权重排序；current 软槽位 mood/goal/key_relationships 原样搬运；entities 支持 item 的 holder/location/condition 并闭合校验 holder）、**落盘前体检**（verify_data：账本重算/唯一性/实体闭合，任一失败则整体拒绝、不归档、不封存）、空提案 no-op 识别、旧文件读时补全（结构键）、inbox README 播种、failed/ 归档与捡回、幂等登记簿 |  
 | validator.py + schemas/ | 提案/schema 机械校验（结构级，不判事实真伪） |  
-| checks.py | check：结构/schema/算术/逾期/form 占比 + 上章对照与自交检报数（style_notes_copy/words_band_crowded/acceptance_empty_criterion/line_action_*/retired_entity_on_stage）；sync 可选软提示 `review_gate`（校对注记存在时提示验收覆盖情况，不阻断、不影响退出码）；review 注记骨架数据（`review_skeleton`）、提案三方事实对照（`proposal_cross_facts`，含知识线揭示时机对照）；**引文机械校验（`validate_quotes`：quote 必须逐字见于当章 final，sync 硬闸）**；**算法版 Stage 4.5（`verify_candidates`：引文覆盖/章题/beats重叠/金额双向/在场差异/state_watch守望/候选新实体/到期线——八项 0 token 机械对照，只出候选清单）** |  
-| evidence.py | words/style(含 form 占比)/dup/mentions/gaps/file + candidates（Stage 5 工作单）/prev（Stage 1 上章对照）+ all 聚合——只输出数 |  
+| checks.py | check：结构/schema/算术/逾期/form 占比 + 上章对照与自交检报数（style_notes_copy/words_band_crowded/acceptance_empty_criterion/line_action_*/retired_entity_on_stage）；**词表供参契约（`WORDLIST_SPEC`，引擎零题材词表：词表键缺席→info `wordlist_unconfigured` 并跳过对应启发式；主控在 project.json 供参后生效；空表=明确关闭）**；sync 可选软提示 `review_gate`（校对注记存在时提示验收覆盖情况，不阻断、不影响退出码）；review 注记骨架数据（`review_skeleton`）、提案三方事实对照（`proposal_cross_facts`，含知识线揭示时机对照）；**引文机械校验（`validate_quotes`：quote 必须逐字见于当章 final，sync 硬闸）**；**算法版 Stage 4.5（`verify_candidates`：引文覆盖/章题/beats重叠/金额双向/在场差异/state_watch守望/候选新实体/到期线——八项 0 token 机械对照，只出候选清单）** |  
+| evidence.py | words/style(含 form 占比)/dup/mentions/gaps/file + candidates（Stage 5 工作单）/prev（Stage 1 上章对照）+ all 聚合——只输出数；**章尾钩子分档词表（`hook_words`）与别名停用词（`generic_stopwords`）均为主控供参参数（缺席则退化为纯结构/不过滤，缺口由 check 提示）**；保留的固定清单仅 AI_CONSTRUCTIONS（中文 AI 高频句式——模型层 tic，题材中立，书级 style_guards 追加） | 
 | pack.py | P0 热层（含完整 beats）/ P1 触发（人物块含 lines 触碰与随身道具清单 carries；道具块含 holder/location/condition）/ P2 索引，**超预算按优先级硬裁 P2 冷索引**（P0/P1 尽量保留，如实上报 budget）；导出文件名净化 |  
 | snapshot.py | 快照 create/list/rollback（pre_rollback 保护；模块不碰 manuscript；CLI 的 --clean-drafts 会额外清理超章稿件） |  
 | dashboard.py | 全景可视化看板 HTML 导出（人物关系网、伏笔看板、情绪心电图） |  

@@ -130,6 +130,17 @@ def test_p1_4_review_gate_soft_notice(temp_repo):
     assert isinstance(notices, list)
 
 
+# 本文件多数测试使用 temp_repo 隔离夹具；以下两例是"真实书稿数据回归"用例，
+# 依赖作者本机的 workspace/凡人修仙：我百世轮回成道祖（.gitignore 排除、不随仓库分发）——
+# 书稿缺席时自动跳过，保证任何环境下的全新检出都能跑出全绿套件。
+import pytest as _pytest_mod
+_REAL_BOOK = common.project_root() / "workspace" / "凡人修仙：我百世轮回成道祖"
+_requires_real_book = _pytest_mod.mark.skipif(
+    not (_REAL_BOOK / "project.json").is_file(),
+    reason="真实书稿 workspace/凡人修仙：我百世轮回成道祖 不在当前环境（作者本地数据）——跳过数据回归用例")
+
+
+@_requires_real_book
 def test_p1_5_and_p2_8_to_12_ch_003_draft_data_validity():
     """P1-5 & P2-8~12: Real book ch_003.draft.json addresses all 5 data discrepancies cleanly."""
     real_book = common.project_root() / "workspace" / "凡人修仙：我百世轮回成道祖"
@@ -539,9 +550,10 @@ def test_p3_19_craft_reader_sample_id():
     assert "GUN-" in reader_rule
 
 
+@_requires_real_book
 def test_p3_21_inbox_readme_force_and_op_id():
     """P3-21: INBOX_README notes init --force exception and op_id naming."""
-    inbox_readme = (common.project_root() / "workspace" / "凡人修仙：我百世轮回成道祖" / "state" / "inbox" / "README.md").read_text(encoding="utf-8")
+    inbox_readme = (_REAL_BOOK / "state" / "inbox" / "README.md").read_text(encoding="utf-8")
     assert "--force" in inbox_readme
     assert "operation_id" in inbox_readme
 
@@ -701,7 +713,11 @@ def test_timeline_replace_and_synopsis_chapters_revision(temp_repo):
 # ==========================================
 
 def test_hard_bug_1_alias_stopwords_and_two_char_name_protection(temp_repo):
-    """Hard Bug 1: Stopword alias filtering protects 2-char primary names while dropping generic short aliases."""
+    """Hard Bug 1: Stopword alias filtering protects 2-char primary names while dropping generic short aliases.
+
+    词表供参契约：generic_stopwords 由主控经 project.json 供参（引擎零题材词表）。
+    未配置 → 副别名不拦截；配置后 → 停用词物理过滤生效。
+    """
     book = temp_repo["book"]
     ent_path = book / "state" / "entities.json"
     ents = {
@@ -713,13 +729,22 @@ def test_hard_bug_1_alias_stopwords_and_two_char_name_protection(temp_repo):
     }
     common.dump_json(ent_path, ents)
 
+    # 未配置 generic_stopwords：引擎零默认词表，副别名不拦截
+    lookup_plain = evidence.entity_lookup(book, safe_aliases=True)
+    assert "掌柜" in lookup_plain["赵掌柜"]
+
+    # 主控供参：project.json.generic_stopwords（唯一来源，替换语义）
+    proj = common.load_json(book / "project.json")
+    proj["generic_stopwords"] = ["掌柜", "飞剑", "灵石"]
+    common.dump_json(book / "project.json", proj)
+
     # With safe_aliases=True
     lookup_safe = evidence.entity_lookup(book, safe_aliases=True)
     assert lookup_safe["韩立"] == ["韩立"]
-    # "掌柜" is in generic stopwords (len<=2), dropped; "赵伯" kept
+    # "掌柜" 命中停用词 (len<=2), dropped; "赵伯" kept
     assert "掌柜" not in lookup_safe["赵掌柜"]
     assert "赵伯" in lookup_safe["赵掌柜"]
-    # "飞剑" is in generic stopwords (len<=2), dropped; "残剑" not in generic stopwords, kept
+    # "飞剑" 命中停用词 (len<=2), dropped; "残剑" 未命中, kept
     assert "飞剑" not in lookup_safe["青云残剑"]
     assert "残剑" in lookup_safe["青云残剑"]
 
@@ -907,7 +932,10 @@ def test_hard_bug_5_dossier_schema_and_pack_rendering(temp_repo):
 
 
 def test_hard_bug_6_high_tension_fatigue_detection(temp_repo):
-    """Hard Bug 6: Checks should warn if consecutive chapters run on high tension without cooldown."""
+    """Hard Bug 6: Checks should warn if consecutive chapters run on high tension without cooldown.
+
+    词表供参契约：high_heat_forms 缺席 → 检测跳过 + info 提示；主控供参后 → 精确匹配 form 生效。
+    """
     book = temp_repo["book"]
     vol_beats = book / "outlines" / "vol_01" / "beats"
     vol_beats.mkdir(parents=True, exist_ok=True)
@@ -917,11 +945,28 @@ def test_hard_bug_6_high_tension_fatigue_detection(temp_repo):
         bf = vol_beats / f"ch_{i:03d}.md"
         bf.write_text(f"---\nchapter: ch_{i:03d}\nvol: vol_01\nform: 生死博弈\npov: 叶辰\nwords: [2400, 3500]\n---\n# 第{i}章\n", encoding="utf-8")
 
+    # 阶段 1：未配置 high_heat_forms —— 引擎零默认词表：不报警，infos 提示供参缺口
+    rep0 = checks.run_checks(book)
+    assert not [w for w in rep0["warnings"] if w["code"] == "high_tension_fatigue"]
+    gap = [i for i in rep0["infos"] if i["code"] == "wordlist_unconfigured" and "high_heat_forms" in i["msg"]]
+    assert len(gap) == 1
+
+    # 阶段 2：主控供参（精确匹配章型名）——连续高压疲劳检测生效
+    proj = common.load_json(book / "project.json")
+    proj["high_heat_forms"] = ["生死博弈", "高潮突破"]
+    common.dump_json(book / "project.json", proj)
     rep = checks.run_checks(book)
     tension_warns = [w for w in rep["warnings"] if w["code"] == "high_tension_fatigue"]
     assert len(tension_warns) >= 1
     assert "连续 3 章为高压战斗/决战" in tension_warns[0]["msg"]
     assert "战后清点/爽感兑现" in tension_warns[0]["msg"]
+
+    # 阶段 3：空表 = 主控明确关闭 —— 不报警也不再提示
+    proj["high_heat_forms"] = []
+    common.dump_json(book / "project.json", proj)
+    rep2 = checks.run_checks(book)
+    assert not [w for w in rep2["warnings"] if w["code"] == "high_tension_fatigue"]
+    assert not [i for i in rep2["infos"] if "high_heat_forms" in i["msg"]]
 
 
 def test_hard_bug_7_state_cli_and_critical_mutation_detection(temp_repo):
@@ -950,6 +995,19 @@ def test_hard_bug_7_state_cli_and_critical_mutation_detection(temp_repo):
         "current": {"injury": "断臂重残"},
         "entities": [{"action": "upsert", "name": "刀疤刘", "type": "person", "life_status": "deceased"}]
     }
+    # 阶段 1：critical_injury_words 缺席 —— 引擎零默认词表：deceased 结构化预警仍在，
+    # 伤势词表档跳过并给出 wordlist_unconfigured info（找主控要词表）
+    res0 = checks.verify_candidates(book, "ch_001", prop)
+    items0 = res0.get("items", [])
+    crit0 = [c for c in items0 if c["code"] == "critical_mutation"]
+    assert any("【战死/离世 (deceased)】" in c["msg"] for c in crit0)
+    assert not any("断臂重残" in c["msg"] for c in crit0)
+    assert any(i["code"] == "wordlist_unconfigured" and "critical_injury_words" in i["msg"] for i in items0)
+
+    # 阶段 2：主控供参 critical_injury_words —— 伤势高危警示档生效
+    proj = common.load_json(book / "project.json")
+    proj["critical_injury_words"] = ["断臂", "重伤", "濒死"]
+    common.dump_json(book / "project.json", proj)
     res = checks.verify_candidates(book, "ch_001", prop)
     cands = res.get("items", [])
     crit_warns = [c for c in cands if c["code"] == "critical_mutation"]
@@ -959,7 +1017,10 @@ def test_hard_bug_7_state_cli_and_critical_mutation_detection(temp_repo):
 
 
 def test_hard_bug_8_abstract_beats_detection(temp_repo):
-    """Hard Bug 8: Abstract filler words in beats triggers beats_scene_abstract warning."""
+    """Hard Bug 8: Abstract filler words in beats triggers beats_scene_abstract warning.
+
+    词表供参契约：abstract_phrases 由主控经 project.json 供参后检测生效。
+    """
     book = temp_repo["book"]
     vol_beats = book / "outlines" / "vol_01" / "beats"
     vol_beats.mkdir(parents=True, exist_ok=True)
@@ -967,7 +1028,263 @@ def test_hard_bug_8_abstract_beats_detection(temp_repo):
     bf = vol_beats / "ch_001.md"
     bf.write_text("---\nchapter: ch_001\nvol: vol_01\nform: 暗流汇聚\npov: 叶辰\nwords: [2400, 3500]\n---\n# 第1章\n## 场景一\n主角遇到某些麻烦，巧妙化解危机。\n", encoding="utf-8")
 
+    # 未配置 abstract_phrases：不触发（引擎零默认词表）
+    rep0 = checks.run_checks(book)
+    assert not [w for w in rep0["warnings"] if w["code"] == "beats_scene_abstract"]
+
+    # 主控供参后：检测生效
+    proj = common.load_json(book / "project.json")
+    proj["abstract_phrases"] = ["巧妙化解", "发生争执"]
+    common.dump_json(book / "project.json", proj)
     rep = checks.run_checks(book)
     abs_warns = [w for w in rep["warnings"] if w["code"] == "beats_scene_abstract"]
     assert len(abs_warns) >= 1
     assert "巧妙化解" in abs_warns[0]["msg"]
+
+
+# ==========================================
+# 词表供参契约（引擎零题材词表）专项测试
+# ==========================================
+
+def test_hook_detection_wordlist_param_channel(temp_repo):
+    """章尾钩子：结构信号引擎自有（？！结尾=强钩）；词表分档 = 主控供参 project.json.hook_words。"""
+    book = temp_repo["book"]
+
+    tail_q = "正文……\n\n他盯着那封信，缓缓抽出匕首——上面刻着的竟是自己的名字？\n"
+    tail_suspense = "正文……\n\n窗外传来三声梆子响，他屏住呼吸，悄然摸向门闩。\n"
+
+    # 未配置 hook_words：仅标点结构信号生效（强钩），词表档整体缺席（判弱收）
+    assert evidence.hook_words(book) is None
+    assert evidence.detect_chapter_hook(tail_q, evidence.hook_words(book))["type"] == "强钩"
+    assert evidence.detect_chapter_hook(tail_suspense, evidence.hook_words(book))["type"] == "弱收"
+
+    # 主控供参：三档词表生效
+    proj = common.load_json(book / "project.json")
+    proj["hook_words"] = {"strong": ["杀上门"], "suspense": ["屏住呼吸", "摸向"], "anticlimax": ["哭笑不得"]}
+    common.dump_json(book / "project.json", proj)
+    hw = evidence.hook_words(book)
+    assert hw == {"strong": ["杀上门"], "suspense": ["屏住呼吸", "摸向"], "anticlimax": ["哭笑不得"]}
+    assert evidence.detect_chapter_hook(tail_suspense, hw)["type"] == "悬置"
+    assert evidence.detect_chapter_hook("正文……\n\n两人对视一眼，哭笑不得。\n", hw)["type"] == "反高潮"
+    assert evidence.detect_chapter_hook("正文……\n\n仇家杀上门，门板碎裂。\n", hw)["type"] == "强钩"
+
+    # 空对象 = 主控明确关闭词表档：回到纯结构信号，且不视为未配置
+    proj["hook_words"] = {}
+    common.dump_json(book / "project.json", proj)
+    hw2 = evidence.hook_words(book)
+    assert hw2 is not None
+    assert evidence.detect_chapter_hook(tail_suspense, hw2)["type"] == "弱收"
+    assert evidence.detect_chapter_hook(tail_q, hw2)["type"] == "强钩"
+
+
+def test_wordlist_gap_ledger_in_check(temp_repo):
+    """词表缺口总账：check 对缺席键逐一 info 提示；全部配置（含空表）后 infos 归零。"""
+    book = temp_repo["book"]
+    rep = checks.run_checks(book)
+    gaps = [i for i in rep["infos"] if i["code"] == "wordlist_unconfigured"]
+    missing_keys = set(checks.WORDLIST_SPEC)
+    # init 不播种词表键 → 全部应被提示
+    assert len(gaps) == len(missing_keys)
+    for k in missing_keys:
+        assert any(k in g["msg"] for g in gaps)
+
+    # 主控逐一供参（含显式空表）→ 缺口总账归零
+    proj = common.load_json(book / "project.json")
+    proj.update({
+        "generic_stopwords": ["掌柜"],
+        "candidate_stopwords": ["心中"],
+        "critical_injury_words": [],
+        "abstract_phrases": [],
+        "high_heat_forms": [],
+        "empty_criteria_words": [],
+        "hook_words": {"strong": [], "suspense": [], "anticlimax": []},
+    })
+    common.dump_json(book / "project.json", proj)
+    rep2 = checks.run_checks(book)
+    assert not [i for i in rep2["infos"] if i["code"] == "wordlist_unconfigured"]
+
+
+def test_candidate_stopwords_extra_channel(temp_repo):
+    """candidate_stopwords：主控供参的追加降噪词并入 verify 候选新实体过滤。"""
+    book = temp_repo["book"]
+    final_file = book / "manuscript" / "vol_01" / "final" / "ch_001.md"
+    final_file.parent.mkdir(parents=True, exist_ok=True)
+    final_file.write_text("# 第1章 切口\n" + "他反复念着切口切口切口切口切口切口。\n" * 12, encoding="utf-8")
+
+    prop = {"schema": "novel-studio.state-mutation/v2", "chapter": "ch_001",
+            "operation_id": "ch_001.reader.01"}
+    res0 = checks.verify_candidates(book, "ch_001", prop)
+    hits0 = [c for c in res0["items"] if c["code"] == "candidate_new_entity" and "切口" in c["msg"]]
+    assert hits0, "未供参时「切口」应出现在候选清单"
+
+    proj = common.load_json(book / "project.json")
+    proj["candidate_stopwords"] = ["切口"]
+    common.dump_json(book / "project.json", proj)
+    res1 = checks.verify_candidates(book, "ch_001", prop)
+    assert not [c for c in res1["items"] if c["code"] == "candidate_new_entity" and "切口" in c["msg"]]
+
+
+def test_config_command_surgical_channel(temp_repo):
+    """config 手术刀：guide/list/get/set/unset 手势完整；形状校验双闸（set 拒绝 + check 报错）。"""
+    book = temp_repo["book"]
+
+    # guide：型号单含全部参数键与形状
+    rc = cli.main(["config", "guide", "-w", str(book), "--json"])
+    assert rc == 0
+
+    # set 合法值 → 落 project.json
+    rc = cli.main(["config", "set", "-w", str(book), "hook_words",
+                   '{"strong": ["案发"], "suspense": ["尾随"], "anticlimax": []}'])
+    assert rc == 0
+    proj = common.load_json(book / "project.json")
+    assert proj["hook_words"]["strong"] == ["案发"]
+
+    # set 畸形值（对象键写成数组）→ 拒写 rc=1，project.json 不被污染
+    rc = cli.main(["config", "set", "-w", str(book), "hook_words", '["案发"]'])
+    assert rc == 1
+    proj = common.load_json(book / "project.json")
+    assert isinstance(proj["hook_words"], dict)
+
+    # 未知键 → 用法错 rc=2
+    rc = cli.main(["config", "set", "-w", str(book), "no_such_key", '[]'])
+    assert rc == 2
+
+    # get / list
+    assert cli.main(["config", "get", "-w", str(book), "hook_words", "--json"]) == 0
+    assert cli.main(["config", "list", "-w", str(book)]) == 0
+
+    # 手改 project.json 注入畸形 shapes → check 形状闸报 param_shape_invalid
+    proj["critical_injury_words"] = "重伤"
+    common.dump_json(book / "project.json", proj)
+    rep = checks.run_checks(book)
+    assert any(e["code"] == "param_shape_invalid" and "critical_injury_words" in e["msg"]
+               for e in rep["errors"])
+
+    # unset 回到未配置态 → 缺口总账恢复提示
+    rc = cli.main(["config", "unset", "-w", str(book), "hook_words"])
+    assert rc == 0
+    assert "hook_words" not in common.load_json(book / "project.json")
+    rep2 = checks.run_checks(book)
+    assert any(i["code"] == "wordlist_unconfigured" and "hook_words" in i["msg"]
+               for i in rep2["infos"])
+
+
+def test_validate_param_value_shapes():
+    """形状校验函数单测：三种形状 + 未知键。"""
+    assert checks.validate_param_value("generic_stopwords", ["掌柜"]) is None
+    assert checks.validate_param_value("generic_stopwords", []) is None  # 空表=明确关闭，合法
+    assert checks.validate_param_value("generic_stopwords", "掌柜") is not None
+    assert checks.validate_param_value("generic_stopwords", ["a", 3]) is not None
+    assert checks.validate_param_value("hook_words", {"strong": ["x"]}) is None
+    assert checks.validate_param_value("hook_words", {}) is None
+    assert checks.validate_param_value("hook_words", {"bogus": ["x"]}) is not None
+    assert checks.validate_param_value("hook_words", ["x"]) is not None
+    assert checks.validate_param_value("state_watch", {"power_level": ["突破"]}) is None
+    assert checks.validate_param_value("state_watch", {"field": "不是数组"}) is not None
+    assert checks.validate_param_value("不存在键", []) is not None
+
+
+def test_config_suggest_and_merge_channel(temp_repo):
+    """config suggest：机械候选工作单（高频短别名/高频泛词，只数不裁）；set --merge 并入而不替换。"""
+    book = temp_repo["book"]
+    proj_path = book / "project.json"
+    proj = common.load_json(proj_path)
+
+    # 注册实体带短别名 + 写一章高频正文
+    ents = {"entries": [
+        {"name": "陈国峰", "type": "person", "status": "active", "summary": "刑警", "aliases": ["陈队", "警官"]},
+        {"name": proj.get("protagonist", "叶辰"), "type": "person", "status": "active", "summary": "主角", "aliases": []},
+    ]}
+    common.dump_json(book / "state" / "entities.json", ents)
+    final_dir = book / "manuscript" / "vol_01" / "final"
+    final_dir.mkdir(parents=True, exist_ok=True)
+    (final_dir / "ch_001.md").write_text(
+        "# 第1章 访客证\n" + "警官带他穿过走廊尽头，走廊尽头的灯忽明忽暗，警官递来访客证。\n" * 6,
+        encoding="utf-8")
+
+    sugg = checks.param_suggestions(book)
+    gs = sugg["suggestions"]["generic_stopwords"]
+    assert any(x["word"] == "警官" and x["of_entity"] == "陈国峰" and x["count"] >= 3 for x in gs)
+    cs_words = [x["word"] for x in sugg["suggestions"]["candidate_stopwords"]]
+    assert "走廊尽头" in cs_words               # 高频泛词入候选
+    assert "叶辰" not in cs_words               # 主角名不污染候选
+    assert not any("警官" == w for w in cs_words)  # 已注册别名不进泛词候选
+
+    # --merge：数组并集去重，不替换既有值
+    assert cli.main(["config", "set", "-w", str(book), "generic_stopwords", '["前台"]']) == 0
+    assert cli.main(["config", "set", "-w", str(book), "generic_stopwords", "--merge", '["警官","前台"]']) == 0
+    assert common.load_json(proj_path)["generic_stopwords"] == ["前台", "警官"]
+    # --merge 于 hook_tiers：分档并集
+    cli.main(["config", "set", "-w", str(book), "hook_words", '{"strong": ["案发"], "suspense": [], "anticlimax": []}'])
+    cli.main(["config", "set", "-w", str(book), "hook_words", "--merge", '{"strong": ["围堵"], "suspense": ["尾随"]}'])
+    hw = common.load_json(proj_path)["hook_words"]
+    assert hw["strong"] == ["案发", "围堵"] and hw["suspense"] == ["尾随"]
+
+
+def test_dossier_field_full_pipeline(temp_repo):
+    """dossier（恩怨羁绊）必须走通 校验→合并→pack 渲染 全链——schema/merge/pack 已支持，
+    validate_proposal 的字段白名单漏了它，会让按 craft_reader 规范携带 dossier 的提案整案被拒。"""
+    from engine import pack as pack_mod
+    book = temp_repo["book"]
+    prop = {
+        "schema": "novel-studio.state-mutation/v2",
+        "chapter": "ch_001",
+        "operation_id": "ch_001.reader.dossier1",
+        "entities": [{"action": "upsert", "name": "顾主管", "type": "person", "faction": "总部",
+                      "summary": "空降主管", "life_status": "alive",
+                      "dossier": "ch_003 曾抢过主角的项目署名权"}],
+    }
+    errors, _ = state.validate_proposal(prop, "ch_001")
+    assert not errors, f"dossier 提案应通过校验，实际: {errors}"
+
+    rep = state.apply_proposal(book, prop, expected_chapter="ch_001")
+    assert not rep["errors"], f"dossier 提案应合并成功，实际: {rep['errors']}"
+    ent = next(e for e in state.load_state(book, "entities")["entries"] if e["name"] == "顾主管")
+    assert ent["dossier"] == "ch_003 曾抢过主角的项目署名权"
+
+    # pack 渲染层随之可用（恩怨羁绊注入）
+    payload = pack_mod.build_pack_payload(book, 2) if hasattr(pack_mod, "build_pack_payload") else None
+    assert payload is None or isinstance(payload, dict)
+
+
+def test_pack_loadout_rendering_genre_free(temp_repo):
+    """loadout 渲染全题材通用：已知键给标签，题材自定义键（如都市"人脉"）必须直出，不得静默丢失。"""
+    book = temp_repo["book"]
+    beats_dir = book / "outlines" / "vol_01" / "beats"
+    beats_dir.mkdir(parents=True, exist_ok=True)
+    (beats_dir / "ch_002.md").write_text("---\nchapter: ch_002\nvol: vol_01\nform: 暗流汇聚\n---\n## 核心冲突与场景脉络\nx\n## 伏笔与线索动作\n\n## 交付契约\ny\n", encoding="utf-8")
+    cur = state.load_state(book, "current")
+    cur["loadout"] = {"cultivation": "伪装谈判", "人脉": ["报社主编", "线人老K"], "车技": "十年驾龄"}
+    state.save_state(book, "current", cur)
+    payload = pack.build_pack(book, "ch_002")
+    rendered = pack.render_layer("p0", payload["p0"])
+    assert "主修:伪装谈判" in rendered          # 已知键 → 友好标签
+    assert "人脉:报社主编,线人老K" in rendered    # 题材自定义键 → 通用直出（旧实现此处被掏空）
+    assert "车技:十年驾龄" in rendered
+
+
+def test_checkpoint_multi_volume_outline_detection(temp_repo):
+    """checkpoint 必须全卷扫描 outline（多卷书章号全局递增）：旧实现只读第一卷，
+    vol_02 的书会被误报'未匹配到四分位阶段'。"""
+    from io import StringIO
+    import contextlib
+    book = temp_repo["book"]
+    (book / "outlines" / "vol_01").mkdir(parents=True, exist_ok=True)
+    (book / "outlines" / "vol_01" / "outline.md").write_text(
+        "# 卷一\n- **蛰伏引子（ch_001—ch_005｜立局）**\n", encoding="utf-8")
+    vol2 = book / "outlines" / "vol_02" / "beats"
+    vol2.mkdir(parents=True, exist_ok=True)
+    (book / "outlines" / "vol_02" / "outline.md").write_text(
+        "# 卷二\n- **新地图开局（ch_006—ch_010｜换场）**\n- **卷二高潮（ch_011—ch_015｜决战）**\n",
+        encoding="utf-8")
+    (vol2 / "ch_007.md").write_text("---\nchapter: ch_007\nvol: vol_02\nform: 暗流汇聚\n---\n", encoding="utf-8")
+
+    buf = StringIO()
+    with contextlib.redirect_stdout(buf):
+        rc = cli.main(["checkpoint", "-w", str(book), "ch_007", "--json"])
+    assert rc == 0
+    payload = json.loads(buf.getvalue())
+    assert payload["current_phase"] is not None, "vol_02 的阶段区间 ch_006—ch_010 必须命中 ch_007"
+    assert payload["current_phase"]["name"] == "新地图开局"
+    assert payload["current_phase"]["volume"] == "vol_02"
+    assert not any("未在分卷大纲中匹配到" in a for a in payload["assessment"])

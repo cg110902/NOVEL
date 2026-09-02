@@ -292,7 +292,8 @@ def validate_proposal(proposal, expected_chapter: str | None = None) -> tuple[li
         _plan("entities", len(ents))
         allowed_entity_keys = {"action", "name", "type", "card", "summary", "status", "aliases",
                                "holder", "location", "condition", "quote",
-                               "realm", "faction", "life_status", "attitude", "charges", "max_charges"}
+                               "realm", "faction", "life_status", "attitude", "charges", "max_charges",
+                               "dossier"}
         for i, e in enumerate(ents):
             if not isinstance(e, dict):
                 errors.append(f"entities[{i}] 必须为对象")
@@ -316,7 +317,7 @@ def validate_proposal(proposal, expected_chapter: str | None = None) -> tuple[li
                 errors.append(f"entities[{i}].max_charges 必须为 ≥1 的整数")
             if "type" in e and e["type"] not in _ENTITY_TYPES:
                 errors.append(f"entities[{i}].type 非法: {e['type']!r}（合法：{'/'.join(sorted(_ENTITY_TYPES))}）")
-            for f in ("card", "summary", "holder", "location", "condition", "realm", "faction", "quote"):
+            for f in ("card", "summary", "holder", "location", "condition", "realm", "faction", "quote", "dossier"):
                 if f in e and not isinstance(e[f], str):
                     errors.append(f"entities[{i}].{f} 必须为字符串")
             if "aliases" in e:
