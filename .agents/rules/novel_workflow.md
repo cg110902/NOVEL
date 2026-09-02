@@ -52,8 +52,17 @@
 
 ### Stage 4: 事实审计与增量提案装配（Reader）
 - **调度**：主控调用 `invoke_subagent(TypeName="self", Role="Reader", Prompt="...")`；
-- **动作**：通读定稿正文，客观提炼 5 大事实（① 时空坐标与在场人物 ② 实体与高维状态 ③ 三类线索动线 ④ 道具与资产流水 ⑤ 剧情梗概、事件与危机时钟），直接装配为标准增量提案 JSON；
-- **输出**：`state/inbox/ch_XXX.json`（使用原生 `write_to_file` 工具）。
+- **动作（三段式，引文先行）**：
+  1. **提取事实表**（落盘 `log/facts/ch_XXX.md`）：逐条"先引文后结论"，引文逐字摘自 final（引擎机械校验必须是 final 的子串，编造即整案拒绝）；
+  2. **清单反扫**：8 项固定清单（钱/境界/伤势/装备/资产/在场/线动作/新实体）逐段扫 final，补"无信号的遗漏"；
+  3. **照表组装**：只许使用事实表中已存在的条目搬运成提案 JSON，禁止新增；每条变更带 `quote`；
+- **源优先级**：一切事实性文字逐字以 final 为源，beats 仅对照、禁止复用措辞；`synopsis.title` 逐字拷贝 final 首行章题；
+- **输出**：`state/inbox/ch_XXX.json`（使用原生 `write_to_file` 工具）+ 事实表 `log/facts/ch_XXX.md`。
+
+### Stage 4.5: 机械对照（0 token，主控运行）
+- 运行 `python studio.py proposal verify ch_XXX`：引擎对提案×final×状态做八项全机械对照（引文覆盖、章题对照、照抄任务书检测、金额双向对照、在场差异、state_watch 关键词守望、候选新实体、到期线覆盖），**只出候选差异清单（不阻断）**，主控逐条裁决"是否处理"；
+- `state_watch`（书级可选配置，`project.json.state_watch`）：`{"power_level": ["引气入体","炼气","筑基"], ...}`——正文出现词表中的词而 current 对应字段未提及时报警，专防"突破章忘刷境界"类遗漏；
+- （可选 LLM 验证员）高变动章（含交易/境界突破/≥3 新实体的章）可加派一个独立验证子代理：输入=提案+final（不给 Reader 的推理过程），逐条回指引文、反向穷举；常规章由 verify 的机械候选清单覆盖即可。
 
 ### Stage 5: 极速状态同步与快照封存（主控）
 - **输入合同（引擎强制，四项缺一即拒绝同步）**：
@@ -62,10 +71,11 @@
   3. 当章定稿 `manuscript/vol_XX/final/ch_XXX.md`；
   4. 在途提案 `state/inbox/ch_XXX.json`（chapter 须与目标章一致）。
 - **审定与闭环**：
-  1. 审定 Reader 交付的 `state/inbox/ch_XXX.json`，确认全局伏笔与实体登记无误；
-  2. 运行 `python studio.py proposal check ch_XXX` 预检；
-  3. 运行 `python studio.py sync ch_XXX` 合并真值并生成快照（快照落在 `state/snapshots/<时间戳>_ch_XXX_done`）；
-  4. （可选机制）若存在校对注记 `log/review/ch_XXX.md`，sync 会以 ℹ️ 提示其验收覆盖情况（软提示，不阻断）。
+  1. 审定 Reader 交付的 `state/inbox/ch_XXX.json`（对照 `log/facts/ch_XXX.md` 事实表），确认全局伏笔与实体登记无误；
+  2. 运行 `python studio.py proposal check ch_XXX` 预检（结构+引文机械校验）；
+  3. 运行 `python studio.py proposal verify ch_XXX`（Stage 4.5 差异候选清单，逐条裁决）；
+  4. 运行 `python studio.py sync ch_XXX` 合并真值并生成快照（快照落在 `state/snapshots/<时间戳>_ch_XXX_done`）；
+  5. （可选机制）若存在校对注记 `log/review/ch_XXX.md`，sync 会以 ℹ️ 提示其验收覆盖情况（软提示，不阻断）。
 - **故障恢复**：
   - 提案被拒 → 归档在 `state/inbox/failed/ch_XXX.json`，就地修复后重跑 `sync ch_XXX` 引擎自动捡回；
   - 状态污染 → `python studio.py snapshot list` 查看 `state/snapshots/`，`python studio.py snapshot rollback <名称>` 回滚（回滚前自动备份为 `pre_rollback_*`；`--clean-drafts` 可一并清理超章稿件/细纲）；
