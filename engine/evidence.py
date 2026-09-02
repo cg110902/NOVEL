@@ -80,14 +80,9 @@ def count_aliases(text: str, aliases: list[str]) -> dict[str, int]:
     return per
 
 
-# 通用实体停用词表（长度<=2的泛指名词，禁止作为全局副别名触发P1，防止误命中雪崩；主名不受此限）
-DEFAULT_GENERIC_STOPWORDS: frozenset[str] = frozenset({
-    "掌柜", "小二", "弟子", "长老", "飞剑", "客栈", "石头", "老头", "道人", "师兄",
-    "师姐", "师弟", "师妹", "门主", "城主", "教头", "护法", "少爷", "小姐", "老板",
-    "掌门", "散修", "伙计", "下人", "仆役", "兵卒", "山贼", "妖兽", "灵草", "灵石",
-    "丹药", "青年", "老者", "壮汉", "侍女", "黑衣人", "蒙面人", "首领", "统领",
-    "帮主", "舵主", "执事", "供奉", "堂主", "馆主", "路人", "随从", "护卫", "修士"
-})
+# 通用实体停用词表（长度<=2的泛指名词，禁止作为全局副别名触发P1，防止误命中雪崩；主名不受此限）。
+# 词表完全由主控经 project.json.generic_stopwords 供参——引擎零题材词表（缺席=未配置，
+# check 会以 info 提示缺口；空表=主控明确关闭）。单词表的召回完备性是语义问题，归主控。
 
 
 def entity_lookup(book: Path, safe_aliases: bool = False) -> dict[str, list[str]]:
@@ -96,11 +91,12 @@ def entity_lookup(book: Path, safe_aliases: bool = False) -> dict[str, list[str]
     safe_aliases=True 时启用停用词安全过滤：
     - 主法定名（e["name"]）恒常保留（保护 2 字主角名如“韩立/沈拓”）；
     - 长度 <= 2 且属于通用停用词的副别名被物理过滤，杜绝 P1 触发爆炸。
+    词表唯一来源：project.json.generic_stopwords（主控按本书题材供参）。
     """
     ents = state.load_state(book, "entities")
     proj = common.load_json(book / "project.json", default={}) or {}
-    extra_stopwords = set(proj.get("generic_stopwords") or [])
-    all_stopwords = DEFAULT_GENERIC_STOPWORDS | extra_stopwords
+    all_stopwords = {str(w).strip() for w in (proj.get("generic_stopwords") or [])
+                     if isinstance(w, str) and w.strip()}
 
     lookup = {}
     for e in ents.get("entries", []):
@@ -243,6 +239,32 @@ def _cn_num_to_int(s: str) -> int | None:
 _GENERIC_UNITS = {"块", "枚", "张", "个", "粒", "颗", "只", "道", "本", "卷", "盒", "条", "段"}
 
 
+def is_candidate_noise(g: str, ledger_pools: dict | None = None) -> bool:
+    """候选新实体/泛词的机械毛刺过滤（纯结构口口径，零语义裁断）。
+
+    过滤规则全部来自封闭语言类或账本自身数据，不引入任何题材词表：
+    - 以中文数词/计量量词开头：「三枚」「枚灵石」这类金额扫描残渣，永远不可能是实体名；
+    - 以把字句/处置介词开头：「把符牌」「在摊上」这类语法残渣（把/将/被/在为封闭介词类）；
+    - 以人称代词开头：「他把」「她说」这类语法残渣（人称代词为封闭小类——实体名从不以代词打头）；
+    - 包含账本资源池的名称或单位词：「灵石」是通货不是实体（数据驱动，题材自定）。
+    """
+    if not g:
+        return True
+    head = g[0]
+    if head in _CN_DIGITS or head in _CN_UNITS or head in _GENERIC_UNITS:
+        return True
+    if head in "把将被在":
+        return True
+    if head in "我你他她它咱您":
+        return True
+    for p in (ledger_pools or {}).values():
+        for term in (p.get("name"), p.get("unit")):
+            t = str(term or "").strip()
+            if t and len(t) >= 2 and t in g:
+                return True
+    return False
+
+
 def _amount_scan(text: str, pools: dict) -> list[dict]:
     """金额候选：阿拉伯/常见中文数词（千位内）× ledger 已声明池单位/名称。精准匹配货币上下文。"""
     out = []
@@ -252,7 +274,7 @@ def _amount_scan(text: str, pools: dict) -> list[dict]:
         if not unit and not name:
             continue
         recs = []
-        # 若量词为常见泛指量词（如"块/枚"），必须紧邻货币名称（如"两块灵石"），杜绝"两块点心/青石板"误判
+        # 若量词为常见泛指量词（如"块/枚"），必须紧邻货币名称（如"两百块钱"），杜绝"两块点心/青石板"误判
         if unit in _GENERIC_UNITS:
             if name:
                 patterns = [
@@ -267,8 +289,12 @@ def _amount_scan(text: str, pools: dict) -> list[dict]:
                 patterns.append(rf"({_NUM_RE})\s*{re.escape(name)}")
 
         for pat in patterns:
-            ms = re.findall(pat, text)
-            for m in ms:
+            for hit in re.finditer(pat, text):
+                m = hit.group(1)
+                # 重言计数回显（"一枚一枚数上桌"）：紧邻重复同一 数+量 组合是不定量修辞，非交易
+                nxt = text[hit.end():hit.end() + len(m) + len(unit) + 1] if unit else ""
+                if unit and nxt.startswith(m) and nxt.startswith(unit, len(m)):
+                    continue
                 v = int(m.replace(",", "").replace("，", "")) if m[0].isdigit() else _cn_num_to_int(m)
                 if v is not None:
                     recs.append((v, m))
@@ -446,12 +472,13 @@ def prev_contrast(book: Path, ch: str) -> dict:
     out["due_lines"] = due
     out["upcoming_lines"] = upcoming
 
-    # 钩子连章与情绪心电图分析
+    # 钩子连章与情绪心电图分析（词表 = 主控供参 project.json.hook_words；缺席则纯结构信号）
     hooks = []
     for past_n in range(max(1, n - 3), n):
         pf = common.find_chapter_files(book, "final", past_n)
         if pf:
-            h = detect_chapter_hook(pf[-1].read_text(encoding="utf-8", errors="replace"))
+            h = detect_chapter_hook(pf[-1].read_text(encoding="utf-8", errors="replace"),
+                                    hook_words(book))
             hooks.append((f"ch_{past_n:03d}", h["type"]))
     out["recent_hooks"] = hooks
     # P3-8: 只出机械数据（末尾连续同型钩子长度），裁决性"建议"文案已移除——evidence 零语义承诺
@@ -470,21 +497,43 @@ def prev_contrast(book: Path, ch: str) -> dict:
     return out
 
 
-def detect_chapter_hook(text: str) -> dict:
+def hook_words(book: Path) -> dict | None:
+    """章尾钩子词表装载：唯一来源 project.json.hook_words（主控按本书题材供参）。
+
+    缺席 → None（未配置：check 会以 info 提示缺口，引擎退化到纯结构信号）；
+    存在（含空对象/空表）→ 主控已表态，按给定词表判定。词表为纯词子串匹配（非正则）。
+    """
+    proj = common.load_json(book / "project.json", default={}) or {}
+    raw = proj.get("hook_words")
+    if not isinstance(raw, dict):
+        return None
+    return {tier: [str(w).strip() for w in (raw.get(tier) or []) if str(w).strip()]
+            for tier in ("strong", "suspense", "anticlimax")}
+
+
+def detect_chapter_hook(text: str, words: dict | None = None) -> dict:
     """分析章末结尾段落，判断章尾钩子类型（强钩 / 悬置 / 弱收 / 反高潮）。
 
-    强钩判定（P3-9 收窄）：末段以 ？/！ 收束（剥离引号括号后），或命中强冲突关键词——
-    不再把末 3 段任意位置的问号判为强钩（对话设问误报）。"""
+    结构信号（引擎自有、题材中立）：末段以 ？/！ 收束（剥离引号括号后）判强钩——
+    不把末 3 段任意位置的问号判为强钩（对话设问误报）。
+    词表信号（主控供参，project.json.hook_words 的三档 strong/suspense/anticlimax）：
+    未配置则整层跳过，引擎不持有任何题材词表。"""
     paras = _paragraphs(text)
     tail = "\n".join(paras[-3:]) if paras else text[-300:]
     tail_clean = tail.strip().rstrip("」』”’\"')）】…。")
     ends_hook = bool(tail_clean) and tail_clean[-1] in "？！?!"
+    words = words or {}
+    tiers = {t: [w for w in (words.get(t) or []) if w]
+             for t in ("strong", "suspense", "anticlimax")}
 
-    if ends_hook or re.search(r"杀局|大战|强敌|破空|压境|逼近|震天|大阵|战帖|叫阵|轰然|夺眶|撕裂|来不来", tail):
+    def _hit(ws: list[str]) -> bool:
+        return any(w in tail for w in ws)
+
+    if ends_hook or _hit(tiers["strong"]):
         return {"type": "强钩", "detail": tail.strip()[:60]}
-    elif re.search(r"倒数|按在剑柄|蓄势|蓄力|深吸一口气|眼神一凝|一步踏出|悄然运转|锁死|阵法亮起", tail):
+    elif _hit(tiers["suspense"]):
         return {"type": "悬置", "detail": tail.strip()[:60]}
-    elif re.search(r"尴尬|噎住|打嗝|干咳|哭笑不得|无语|噗嗤|呆立|面面相觑|嘴角微抽", tail):
+    elif _hit(tiers["anticlimax"]):
         return {"type": "反高潮", "detail": tail.strip()[:60]}
     else:
         return {"type": "弱收", "detail": tail.strip()[:60]}

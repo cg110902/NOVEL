@@ -11,7 +11,6 @@ from pathlib import Path
 from . import common, evidence, state
 
 PREV_TAIL_CHARS = 1000
-PREV_TAIL_CHARS = 1000
 SPINE_CAP = 10
 POINTER_WINDOW = 10
 PACK_TOKEN_CAP = 18000
@@ -19,7 +18,7 @@ MAX_P1_ENTITIES = 12
 MAX_P1_INDIRECT = 5
 
 FILE_INDEX_AREAS = [
-    ("project.json", "书配置：模式/字数带/style_guards"),
+    ("project.json", "书配置：模式/字数带/词表供参参数（见 config guide）"),
     ("bible", "圣经与世界（自由文本）"),
     ("characters", "人物卡（自由文本）"),
     ("outlines/main_plot.md", "全书脊柱")
@@ -390,12 +389,17 @@ def render_layer(name: str, obj, full: bool = False) -> str:
         lines = []
         for k, v in obj["current"].items():
             if k == "loadout" and isinstance(v, dict):
+                # loadout 子键全题材自由（文档：修仙填功法身法，都市填专业/人脉……）——
+                # 已知键给友好标签，未知键通用 k:v 直出，绝不静默丢弃题材自定义内容。
+                friendly = {"cultivation": "主修", "movement": "身法", "attack": "杀招",
+                            "trump_card": "底牌", "equipped_items": "装备"}
                 parts = []
-                if v.get("cultivation"): parts.append(f"主修:{v['cultivation']}")
-                if v.get("movement"): parts.append(f"身法:{v['movement']}")
-                if v.get("attack"): parts.append(f"杀招:{v['attack']}")
-                if v.get("trump_card"): parts.append(f"底牌:{v['trump_card']}")
-                if v.get("equipped_items"): parts.append(f"装备:{','.join(v['equipped_items'])}")
+                for sk, sv in v.items():
+                    if sv in ("", [], None):
+                        continue
+                    label = friendly.get(sk, sk)
+                    val = ",".join(sv) if isinstance(sv, list) else str(sv)
+                    parts.append(f"{label}:{val}")
                 lines.append(f"loadout: {' | '.join(parts)}")
             else:
                 lines.append(f"{k}: {v}")

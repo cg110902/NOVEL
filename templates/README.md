@@ -11,7 +11,7 @@
 | `project_bible.md` | init 自动 | `bible/project_bible.md` | Stage 0 | 主控 | 世界观背景、势力、核心法则设定 |
 | `main_plot.md` | init 自动 | `outlines/main_plot.md` | Stage 0 | 主控 | 全书主线脊柱、开局/中继/终局设定 |
 | `volume_outline.md` | init 自动（仅 vol_01） | `outlines/vol_XX/outline.md` | Stage 0 / 开新卷 | 主控 | 开新卷时**手工复制改名**，并注意标题中硬编码的 `vol_01` 卷号要改 |
-| `character_card.md` | init 自动（仅主角） | `characters/protagonist.md` | Stage 0 起 | 主控 | 后续角色**手工复制改名**（如 `characters/赵掌柜.md`）；人设卡（Want/Fear、性格与说话风格） |
+| `character_card.md` | init 自动（仅主角） | `characters/protagonist.md` | Stage 0 起 | 主控 | 后续角色**手工复制改名**（如 `characters/林编辑.md`——按本书角色自定）；人设卡（Want/Fear、性格与说话风格） |
 | `beats.md` | 手工复制/参考 | `outlines/vol_XX/beats/ch_XXX.md` | Stage 1 | 主控 | 单章细纲任务书（戏剧目标 + 场景脉络 + 伏笔线索 + 交付契约） |
 | `reader_review.md` | 手工参考 | 参考其 JSON 结构落盘为 `state/inbox/ch_XXX.json` | Stage 4 | Reader | 严谨客观事实审计，直接装配标准增量提案 JSON（消除手工搬运税；模板是 .md 承载 JSON，落盘须存为 .json） |
 

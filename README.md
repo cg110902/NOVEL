@@ -29,6 +29,13 @@
 # 1. 初始化新书（Stage 0）
 python studio.py init -w workspace/我的小说 -t "书名" -g "题材" -p "主角名"
 
+# 1.5 词表供参（主控按本书题材动态注入；引擎零题材词表，型号单见 guide）
+python studio.py config guide
+python studio.py config set generic_stopwords '["警官","前台"]'
+python studio.py config set hook_words '{"strong":["案发"],"suspense":["尾随"],"anticlimax":["虚惊一场"]}'
+# 连载中想到新词：config suggest 出机械候选工作单，拍板后 config set --merge 一键并入
+python studio.py config suggest
+
 # 2. 查看当前进度与待办任务
 python studio.py status
 

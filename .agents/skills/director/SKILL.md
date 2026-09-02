@@ -13,9 +13,10 @@ description: Universal director and orchestrator for Novel Studio. Coordinates w
 
 ### 1. 宏观设定与法定实体契约（Stage 0）
 - 确立核心法则、力量体系与文风红线（**坚决禁止冷峻阴暗逼仄，全篇采用直白通俗大白话**）；
+- **词表供参（Stage 0 一次性配置，之后随书生长）**：运行 `python studio.py config guide` 查看引擎可接受的参数型号单，按本书题材用 `python studio.py config set <键> '<JSON>'` 供参——引擎零题材词表，键缺席时 `check` 会ℹ️提示 `wordlist_unconfigured`（启发式停用），写 `[]` = 明确关闭，形状非法报 `param_shape_invalid`。**减负工具**：`config suggest` 让引擎用机械计数先出候选（高频短别名/泛词），主控只需扫清单拍板、`config set --merge` 一键采纳（召回劳动归引擎，验证劳动归主控）；
 - **实体 Schema 严格契约**：
   - 法定实体类型：`['faction', 'item', 'other', 'person', 'place']`；
-  - 法定字段：`['name', 'type', 'status', 'summary', 'aliases', 'realm', 'faction', 'holder', 'location', 'condition', 'charges', 'max_charges', 'attitude', 'life_status', 'card']`（`card` = 人物卡相对路径，供 `pack --full` 注入卡全文）；
+  - 法定字段：`['name', 'type', 'status', 'summary', 'aliases', 'realm', 'faction', 'holder', 'location', 'condition', 'charges', 'max_charges', 'attitude', 'life_status', 'dossier', 'card']`（`dossier` = 人物/势力与主角的恩怨羁绊备忘（pack 渲染注入）；`card` = 人物卡相对路径，供 `pack --full` 注入卡全文）；
   - 严禁使用 `id`, `category`, `entity_type`, `first_appearance` 等非 Schema 字段；简介字段必须为 `summary`。
 
 ### 2. 细纲装配与防复用规范（Stage 1）

@@ -20,7 +20,7 @@ def generate_dashboard_html(book: Path) -> str:
     # 2. 章节与钩子分析
     chapters_info = []
     for tok, num, text in evidence.final_chapters(book):
-        hook_info = evidence.detect_chapter_hook(text) if hasattr(evidence, "detect_chapter_hook") else {"type": "未知", "detail": ""}
+        hook_info = evidence.detect_chapter_hook(text, evidence.hook_words(book))
         words = common.cjk_count(text)
         chapters_info.append({
             "chapter": esc(tok),
