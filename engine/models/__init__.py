@@ -15,6 +15,7 @@ from .lines import (
     KnowledgeStatus,
 )
 from .current import CurrentState, Loadout
+from .synopsis import SynopsisState, ChapterSynopsis
 from .patch import ProposalModel
 from .adapter import validate_with_model, export_clean_data, MODEL_REGISTRY
 
@@ -44,6 +45,8 @@ __all__ = [
     "KnowledgeStatus",
     "CurrentState",
     "Loadout",
+    "SynopsisState",
+    "ChapterSynopsis",
     "ProposalModel",
     "validate_with_model",
     "export_clean_data",

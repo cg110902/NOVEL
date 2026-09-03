@@ -89,9 +89,10 @@ def _volume_phase_milestone(book: Path, ch_num: int) -> str:
                 feat_str = f" ｜ {feat.strip()}" if feat else ""
                 ch_tok = f"ch_{ch_num:03d}"
                 ch_line = ""
+                # 修复：移除 \b 边界，\b 对中文无效，改用更宽松的匹配，兼容“第7章：”等中文写法
                 for ln in text.splitlines():
-                    if re.search(rf"\b(?:{ch_tok}|ch_{ch_num}|第\s*{ch_num}\s*章)\b\s*[:：]", ln):
-                        ch_line = re.sub(rf"^[\s\-*·]*\b(?:{ch_tok}|ch_{ch_num}|第\s*{ch_num}\s*章)\b\s*[:：]\s*", "", ln).strip()
+                    if re.search(rf"(?:{re.escape(ch_tok)}|ch_{ch_num}|第\s*{ch_num}\s*章)\s*[:：]", ln):
+                        ch_line = re.sub(rf"^[\s\-*·]*(?:{re.escape(ch_tok)}|ch_{ch_num}|第\s*{ch_num}\s*章)\s*[:：]\s*", "", ln).strip()
                         break
                 ch_plan = f"\n  - 当章预定规划：{ch_line}" if ch_line else ""
                 return f"{name.strip()}（ch_{s_num:03d}—ch_{e_num:03d}{feat_str}）{ch_plan}"
@@ -115,13 +116,8 @@ def _form_notice(book: Path, ch: str, ch_num: int) -> list[str]:
 
 
 def _hard_reminders(book: Path, ch: str, ch_num: int) -> list[str]:
-    """纯算术事实：到期/过期/闲置线、未澄清误会、style_guards、偏离清单、form 同款提示。
-
-    容错说明：这里对 lines 台账损坏显式降级为"空台账"（而非抛错/静默兜底为默认值），
-    属于 pack 这层"尽可能把上下文交给子代理"的有意例外——pack 的职责是装配提示，
-    台账损坏应由 check/状态体检报错，不让它阻断"还能写的章"。"""
+    """纯算术事实：到期/过期/闲置线、未澄清误会、style_guards、偏离清单、form 同款提示。"""
     out: list[str] = []
-    # 危机时钟提醒（P0 倒计时压迫感注入）
     try:
         tl = state.load_state(book, "timeline")
         for clk in tl.get("clocks", []):
@@ -151,7 +147,10 @@ def _hard_reminders(book: Path, ch: str, ch_num: int) -> list[str]:
         if g.get("status") == "Resolved":
             continue
         t = g.get("target_ch")
-        plant_ch = int(g.get("plant_ch") or 0)
+        try:
+            plant_ch = int(g.get("plant_ch") or 0)
+        except (ValueError, TypeError):
+            plant_ch = 0
         idle = (ch_num - plant_ch) if plant_ch else 0
         sk = evidence.line_sort_key(g, "foreshadow")[1]
         gid, gname = g.get("id"), g.get("name", "")
@@ -178,7 +177,10 @@ def _hard_reminders(book: Path, ch: str, ch_num: int) -> list[str]:
     for k in lines.get("knowledge", []):
         if k.get("status") != "Revealed":
             t = k.get("target_ch")
-            plant_ch = int(k.get("plant_ch") or 0)
+            try:
+                plant_ch = int(k.get("plant_ch") or 0)
+            except (ValueError, TypeError):
+                plant_ch = 0
             idle = (ch_num - plant_ch) if plant_ch else 0
             sk = evidence.line_sort_key(k, "knowledge")[1]
             kid, ksecret = k.get("id"), str(k.get("secret", ""))[:24]
@@ -210,15 +212,12 @@ def _entity_block(book: Path, name: str, cur: dict, lines: dict, full: bool) -> 
     block = {"name": name, "type": e.get("type", "other"), "summary": e.get("summary", ""),
              "status": e.get("status", "active"),
              "on_stage": name in cur["current"].get("present_characters", [])}
-    
-    # 挂载高维实体属性
     for attr in ("realm", "faction", "life_status", "attitude"):
         if e.get(attr):
             block[attr] = e[attr]
     if e.get("charges") is not None:
         max_c = e.get("max_charges")
         block["charges"] = f"{e['charges']}/{max_c}" if max_c else str(e["charges"])
-
     touched = []
     alias = [name] + list(e.get("aliases", []))
     for g in (lines.get("foreshadows", []) + lines.get("misunderstandings", [])
@@ -234,7 +233,6 @@ def _entity_block(book: Path, name: str, cur: dict, lines: dict, full: bool) -> 
     for f in ("holder", "location", "condition", "dossier"):
         if e.get(f):
             block[f] = e[f]
-    # 随身清单：holder 指向本实体的在役道具（纯分组，物→人反查）
     carried = []
     for it in cur["entities"].get("entries", []):
         if it.get("type") != "item" or it.get("status") == "retired":
@@ -276,10 +274,7 @@ def build_pack(book: Path, ch: str, lean: bool = False, full: bool = False) -> d
     }
     payload: dict = {"chapter": ch, "lean": lean, "full": full, "p0": p0, "p1": None, "p2": None}
 
-    # 启用安全别名查找（停用词过滤副别名）
     lookup = evidence.entity_lookup(book, safe_aliases=True)
-    
-    # 统计最近 15 章出场的实体，供冷门实体过滤判定
     finals = evidence.final_chapters(book)
     recent_window = [c for c in finals if c[1] < ch_num][-15:]
     recent_entity_mentions = set()
@@ -297,12 +292,10 @@ def build_pack(book: Path, ch: str, lean: bool = False, full: bool = False) -> d
         if total_c > 0:
             is_present = name in present_set
             primary_hit = counts.get(name, 0) > 0
-            # 若该实体近 15 章从未出场，且不在 present，且 Beats 未出现其完整主名（仅被别名模糊命中）→ 视为冷门过滤
             if ch_num > 5 and name not in recent_entity_mentions and not is_present and not primary_hit:
                 continue
             raw_hits.append((is_present, primary_hit, total_c, name))
 
-    # 排序：在场优先 > 主名命中优先 > 提及频次 > 名字
     raw_hits.sort(key=lambda x: (not x[0], not x[1], -x[2], x[3]))
     hits = [name for _, _, _, name in raw_hits[:MAX_P1_ENTITIES]]
 
@@ -310,11 +303,9 @@ def build_pack(book: Path, ch: str, lean: bool = False, full: bool = False) -> d
     if not lean:
         for name in hits:
             p1["entities"].append(_entity_block(book, name, cur, cur["lines"], full))
-        # 递归一层：注入内容再命中的新实体 → 只补一行摘要（深度 ≤2，最多 MAX_P1_INDIRECT 条）
         injected = " ".join(b["summary"] for b in p1["entities"])
         indirect_cands = []
         hop_added = set()
-        # NetworkX 1-Hop 实体拓扑剪枝（优先提取直接关联的门派、法宝、宿敌等）
         if _HAS_NX and cur["entities"].get("entries"):
             G = nx.Graph()
             ent_map = {}
@@ -382,13 +373,14 @@ def build_pack(book: Path, ch: str, lean: bool = False, full: bool = False) -> d
     budget["cap"] = PACK_TOKEN_CAP
     budget["over_budget"] = budget["total"] > PACK_TOKEN_CAP
 
-    # 超预算硬裁（engine/README.md 契约）：优先裁 P2 冷索引（file_index），
-    # P0 热层 / P1 温层是写作所需的活性上下文，尽最大可能保留；裁剪后重算预算并如实上报。
+    # 超预算硬裁：优先裁 P2 冷索引，修复计数失真
     if budget["over_budget"] and payload.get("p2"):
+        original_len = len(payload["p2"].get("file_index", []))
         fi = payload["p2"].get("file_index", [])
-        # 先对齐渲染口径：render_layer 只渲染前 25 条，>25 的部分先截掉再逐条裁（P2-7，
-        # 旧实现从尾部 pop，>25 时前 N 次 pop 对渲染与预算零影响，白裁且计数误导）
+        # 对齐渲染口径：render 只渲染前25条，超出部分先截断并计入裁剪
+        trimmed_due_to_render_cap = 0
         if len(fi) > 25:
+            trimmed_due_to_render_cap = len(fi) - 25
             fi = fi[:25]
         payload["p2"]["file_index"] = fi
         trimmed = 0
@@ -400,11 +392,19 @@ def build_pack(book: Path, ch: str, lean: bool = False, full: bool = False) -> d
             budget["p2"] = common.est_tokens(r)
             budget["total"] = budget["p0"] + budget.get("p1", 0) + budget["p2"]
             budget["over_budget"] = budget["total"] > budget["cap"]
-        if trimmed:
-            budget["trimmed_file_index"] = trimmed
-            budget["trim_note"] = f"超预算按优先级硬裁 P2 冷索引 {trimmed} 条（P0/P1 保留）"
+        total_trimmed = trimmed_due_to_render_cap + trimmed
+        if total_trimmed:
+            budget["trimmed_file_index"] = total_trimmed
+            # 区分两种裁剪来源，信息更准确
+            parts = []
+            if trimmed_due_to_render_cap:
+                parts.append(f"渲染口径对齐截断 {trimmed_due_to_render_cap} 条（>25）")
+            if trimmed:
+                parts.append(f"超预算硬裁 {trimmed} 条")
+            budget["trim_note"] = "；".join(parts) + "（P0/P1 保留）"
+            if original_len > 25:
+                budget["original_file_index_count"] = original_len
         if budget["over_budget"]:
-            # 冷索引裁空仍超限 → 显性标记，绝不静默（P0/P1 不裁是设计，但必须如实上报）
             budget["hard_cap_breached"] = True
             note = f"冷索引已裁空仍超预算（P0/P1 保留，超出 {budget['total'] - budget['cap']} tok）"
             budget["trim_note"] = f"{budget['trim_note']}；{note}" if budget.get("trim_note") else note
@@ -415,15 +415,12 @@ def build_pack(book: Path, ch: str, lean: bool = False, full: bool = False) -> d
 
 
 def render_layer(name: str, obj, full: bool = False) -> str:
-    """预算自报用的确定性纯文本渲染（与 render_pack 同口径的简化版）。"""
     if obj is None:
         return ""
     if name == "p0":
         lines = []
         for k, v in obj["current"].items():
             if k == "loadout" and isinstance(v, dict):
-                # loadout 子键全题材自由（文档：修仙填功法身法，都市填专业/人脉……）——
-                # 已知键给友好标签，未知键通用 k:v 直出，绝不静默丢弃题材自定义内容。
                 friendly = {"cultivation": "主修", "movement": "身法", "attack": "杀招",
                             "trump_card": "底牌", "equipped_items": "装备"}
                 parts = []
@@ -485,6 +482,10 @@ def render_pack(payload: dict) -> str:
         out += ["", "## P2 冷层（索引）", render_layer("p2", payload["p2"], full=payload["full"])]
     out += ["", f"budget: p0={b['p0']} p1={b.get('p1', 0)} p2={b.get('p2', 0)} "
                 f"total={b['total']}/{b['cap']} tokens（超预算={b['over_budget']}）"]
+    if b.get("trimmed_file_index"):
+        out += [f"trim: 已裁 P2 冷索引 {b['trimmed_file_index']} 条（{b.get('trim_note','')}）"]
+    if b.get("hard_cap_breached"):
+        out += ["⚠️ 冷索引已裁空仍超预算，P0/P1 已保留，超限部分需主控手动精简 beats"]
     return "\n".join(out)
 
 
@@ -495,13 +496,9 @@ def open_file(book: Path, rel: str) -> dict:
     return {"path": rel, "text": p.read_text(encoding="utf-8", errors="replace")}
 
 
-# ---------------------------------------------------------------------------
-# export：全书编译（final 纯净正文直接可用；视图按需渲染，非常态义务）
-# ---------------------------------------------------------------------------
 def _safe_filename(name: str, fallback: str = "book") -> str:
-    """把书名净化成可安全用于文件名的字符串（剥离路径分隔符/控制字符/越界点段）。"""
-    s = re.sub(r"[\\/<>:\"|?*\x00-\x1f]", "_", (name or "").strip())
-    s = re.sub(r"\.\.+", "_", s)          # 防止 ".." 路径越界
+    s = re.sub(r"[\\/<>\"|?*\x00-\x1f]", "_", (name or "").strip())
+    s = re.sub(r"\.\.+", "_", s)
     s = re.sub(r"\s+", "_", s).strip("._")
     return s or fallback
 
@@ -513,10 +510,9 @@ def export_txt(book: Path) -> Path:
     if proj.get("genre"):
         parts.append(f"> {proj['genre']} · 引擎编译\n")
     ms = book / "manuscript"
-    vols = sorted({f.relative_to(ms).parts[0] for f in ms.glob("*/final/ch_*.md")})
- 
-    # 与 evidence.final_chapters 同口径：同章多版本只取版本号最大者（v10 > v2）；
-    # key 用 (卷, 章号)，避免跨卷同章号互相覆盖（vol_02/ch_001 不被 vol_01/ch_001 顶掉）。
+    if not ms.is_dir():
+        raise ValueError(f"manuscript 目录不存在: {ms}")
+    vols = sorted({f.relative_to(ms).parts[0] for f in ms.glob("*/final/ch_*.md") if len(f.relative_to(ms).parts) >= 2})
     chosen: dict[tuple[str, int], tuple[str, Path]] = {}
     for vol in vols:
         vfiles = sorted((ms / vol / "final").glob("ch_*.md"), key=common.natural_chapter_sort_key)
@@ -536,7 +532,6 @@ def export_txt(book: Path) -> Path:
             parts.extend(body)
     out = book / "export"
     out.mkdir(parents=True, exist_ok=True)
-    # 文件名用净化过的书名（safe_child_path 纪律：不把可控输入直接拼进路径）
     path = out / f"{_safe_filename(title)}.txt"
     path.write_text("\n".join(parts), encoding="utf-8")
     return path
@@ -544,7 +539,6 @@ def export_txt(book: Path) -> Path:
 
 def export_views(book: Path) -> Path:
     def _cell(v) -> str:
-        # markdown 表格单元格转义（P3-12）：竖线与换行会破表
         return str(v).replace("|", "\\|").replace("\n", " ")
 
     data = {key: state.load_state(book, key) for key in state.STATE_KEYS}

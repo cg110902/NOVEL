@@ -26,13 +26,10 @@ except ImportError:
     _HAS_RICH = False
     console = None
 
- 
-
 SLOT_RE = re.compile(r"\{\{\s*slot:(\w+)(?:\|[^}]*)?\s*\}\}")
 
 
 def _norm_ch(token: str) -> str | None:
-    """'7'/'ch_007' → 'ch_007'；非法返回 None（调用方转退出码 2）。"""
     if isinstance(token, str) and re.fullmatch(r"ch_\d{3,}", token):
         return token
     n = common.chapter_token_to_num(token)
@@ -45,11 +42,23 @@ def _add_common_opts(p: argparse.ArgumentParser, json_flag: bool = True) -> None
         p.add_argument("--json", action="store_true", help="结构化 JSON 输出（Agent 首选用例）")
 
 
-
+def _resolve_and_validate(ws_arg: str | None) -> Path | None:
+    """统一解析并校验工作区必须在 workspace_root 之下（防 -w 越界）。"""
+    book = common.resolve_workspace(ws_arg)
+    if book is None:
+        return None
+    try:
+        # 若显式指定 -w，必须校验在 workspace_root 内
+        if ws_arg:
+            common.ensure_workspace_inside(book)
+    except ValueError as exc:
+        print(f"❌ {exc}")
+        return None  # 调用方会按 None 处理，但已打印越界错误
+    return book
 
 
 # ---------------------------------------------------------------------------
-# init（脚手架 + 状态播种 + 模板槽位实例化）
+# init
 # ---------------------------------------------------------------------------
 TEMPLATE_MAP = {
     "project_bible.md": "bible/project_bible.md",
@@ -60,7 +69,6 @@ TEMPLATE_MAP = {
 
 
 def _instantiate_templates(book: Path, slots: dict[str, str]) -> list[str]:
-    """templates/*.md → 工作区文件；已知槽位纯替换，未提供的保留 {{slot:…}} 由 check 督着填。"""
     tdir = common.project_root() / "templates"
     done = []
     for tpl, dest_rel in TEMPLATE_MAP.items():
@@ -82,19 +90,20 @@ def _instantiate_templates(book: Path, slots: dict[str, str]) -> list[str]:
 
 
 def _init_workspace(arg: str) -> Path:
-    """init 的书目录归一化：相对路径若未指向 workspace/，自动归位到 workspace/<arg>，
-    避免用户在仓库根目录建书（如 `init -w 我的书` 误建到仓库根）。"""
     p = Path(arg).expanduser()
     if p.is_absolute():
-        return common.resolve_workspace(arg)
+        resolved = common.resolve_workspace(arg)
+        assert resolved is not None
+        common.ensure_workspace_inside(resolved)
+        return resolved
     rel = p
     if not rel.parts or rel.parts[0] != "workspace":
         rel = Path("workspace") / rel
     if rel.parts == ("workspace",):
-        # 裸 workspace 会把书建在仓库 workspace/ 根——list_books 只扫其子目录，这本书会"隐形"
         raise ValueError("-w 不能是 workspace 本身：请指定书目录，如 -w workspace/我的书")
     book = common.resolve_workspace(str(rel))
     assert book is not None
+    common.ensure_workspace_inside(book)
     return book
 
 
@@ -107,8 +116,6 @@ def cmd_init(args) -> int:
     except ValueError as exc:
         print(f"❌ {exc}")
         return 2
-    # 书的家是 workspace/：list_books 只扫描其子目录，workspace 外的书对 status "隐形"；
-    # 尤其禁止 --force/--clean 触及 workspace 之外的任意目录（防误删非书目录）。
     _wr = common.workspace_root().resolve()
     if book.resolve() != _wr and _wr not in book.resolve().parents:
         print(f"❌ 书目录必须在 {_wr} 之下: {book}")
@@ -121,7 +128,6 @@ def cmd_init(args) -> int:
         if args.clean:
             import shutil
             cleared = 0
-            # 只清 manuscript 与收件箱里的待办提案；processed/failed 是审计记录，永不删除（审计记录只增不删原则）。
             if (book / "manuscript").exists():
                 shutil.rmtree(book / "manuscript")
                 (book / "manuscript" / "vol_01" / "raw").mkdir(parents=True, exist_ok=True)
@@ -137,6 +143,7 @@ def cmd_init(args) -> int:
                 (inbox / "processed").mkdir(parents=True, exist_ok=True)
                 (inbox / "failed").mkdir(parents=True, exist_ok=True)
             (book / "log" / "review").mkdir(parents=True, exist_ok=True)
+            (book / "log" / "critic").mkdir(parents=True, exist_ok=True)
             print(f"🧹 已清理草稿区与待办收件箱（保留圣经/细纲/状态；审计记录 processed/failed 保留）: "
                   f"{book}（{cleared} 处）")
             print("   说明：state/（6 JSON + .applied_operations.json）与快照已保留，"
@@ -154,7 +161,7 @@ def cmd_init(args) -> int:
     for d in ("bible", "characters", "outlines/vol_01/beats",
               "manuscript/vol_01/raw", "manuscript/vol_01/final",
               "state/inbox/processed", "state/inbox/failed", "state/snapshots",
-              "log/review"):
+              "log/review", "log/critic"):
         (book / d).mkdir(parents=True, exist_ok=True)
 
     proj = {
@@ -172,13 +179,10 @@ def cmd_init(args) -> int:
         },
         "style_guards": [],
         "state_watch": {},
-        # 注意：各类题材词表（generic_stopwords 等，见 checks.WORDLIST_SPEC）引擎零默认、由主控供参——
-        # init 故意不播种这些键：键缺席时 check 会以 info 提示缺口，引导主控按本书题材填写。
         "created_at": datetime.date.today().isoformat(),
     }
     common.dump_json(book / "project.json", proj)
     seeded = state.init_state(book)
-    # 自动预置主角法定实体，消除首章 present_characters / holder 闭合硬阻断陷阱
     if args.protagonist:
         ent_path = book / "state" / "entities.json"
         if ent_path.exists():
@@ -196,8 +200,9 @@ def cmd_init(args) -> int:
                     })
                     ents_data["entries"] = entries
                     state.save_state(book, "entities", ents_data)
-            except Exception:
-                pass
+            except (ValueError, OSError) as exc:
+                # M4 修复：不再静默吞掉异常，至少提示
+                print(f"⚠️ 主角实体预置失败（不阻断 init）: {exc}")
     done = _instantiate_templates(book, {"title": args.title or "", "genre": args.genre or "",
                                          "protagonist": args.protagonist or ""})
     print(f"✅ 书工作区已创建: {book}（状态机播种 {seeded} 个 JSON；模板实例化 {len(done)} 份：{', '.join(done)}）")
@@ -207,7 +212,7 @@ def cmd_init(args) -> int:
 
 
 # ---------------------------------------------------------------------------
-# status（进度 + 逐章流水线行； ）
+# status
 # ---------------------------------------------------------------------------
 def _glob_any(d: Path, pattern: str) -> bool:
     return d.is_dir() and any(d.glob(pattern))
@@ -220,13 +225,11 @@ def _book_brief(book: Path) -> dict:
     except ValueError as exc:
         proj = {}
         load_warnings.append(f"project.json 不可读（status 降级展示）：{exc}")
-    # 过滤无章号的杂散文件（如 ch_notes.md）：None 混进 horizon 的 max() 会 TypeError 崩掉 status
     final_files = [f for f in common.find_chapter_files(book, "final")
                    if common.chapter_number_from_name(f.name) is not None]
     words = sum(common.cjk_count(f.read_text(encoding="utf-8", errors="replace")) for f in final_files)
     latest = max((common.chapter_number_from_name(f.name) or 0 for f in final_files), default=0)
     inbox = book / "state" / "inbox"
-    # 与 state._gather 同口径：draft/template/sample 不参与合并，所以不算"待合并提案"。
     pending = sorted(p.name for p in inbox.glob("ch_*.json")
                      if not p.name.endswith(state.NO_MERGE_SUFFIXES)) if inbox.is_dir() else []
     snaps = snapshot.list_snapshots(book)
@@ -243,8 +246,6 @@ def _book_brief(book: Path) -> dict:
         applied = {}
         load_warnings.append(f".applied_operations.json 不可读（merged 列失真；可用 snapshot rollback 恢复）：{exc}")
     horizon = max((beats | raws | finals | {latest}) | {latest + 1} | {1})
-    # P2-3: 杂散大章号（如 ch_9999.md）不得让流水表按 1..horizon 全量展开——
-    # 只展开连续活跃段 1..contiguous，断档后的散章/下一章逐个追加为独立行。
     active = beats | raws | finals
     contiguous = 1
     while contiguous in active:
@@ -291,20 +292,24 @@ def _next_actions(brief: dict | None) -> list[str]:
 
 
 def cmd_status(args) -> int:
-    book = common.resolve_workspace(args.workspace)
-    if args.workspace and (book is None or not book.exists()):
-        # 显式指定 -w 却不存在：明确报错，而非误入"还没有书"的兜底话术（P3-25）
-        print(f"❌ 指定的书工作区不存在: {book}")
-        books = common.list_books()
-        if books:
-            print("   现有书：" + "、".join(str(b) for b in books))
-        return 1
+    book = _resolve_and_validate(args.workspace)
+    # 若显式指定 -w 但解析失败（越界或不存在），_resolve_and_validate 已打印越界错误；补充不存在提示
+    if args.workspace:
+        raw = common.resolve_workspace(args.workspace)
+        if raw is not None and not raw.exists():
+            print(f"❌ 指定的书工作区不存在: {raw}")
+            books = common.list_books()
+            if books:
+                print("   现有书：" + "、".join(str(b) for b in books))
+            return 1
+        if book is None:
+            # 越界情况已打印，直接返回
+            return 1
     if book is None or not book.exists():
         books = common.list_books()
         if args.json:
             hint = ("存在多本书，请 -w 指定" if len(books) > 1
                     else 'python studio.py init -w workspace/<slug> -t "书名"')
-            # exists=False 表示"未解析到唯一选中书"，而非"没有任何书"；用 reason 显式说明歧义来源。
             reason = "multiple_books" if len(books) > 1 else "no_books"
             print(json.dumps({"exists": False, "reason": reason,
                               "books": [str(b) for b in books], "next_action": hint},
@@ -326,7 +331,7 @@ def cmd_status(args) -> int:
     print("=" * 70)
     for w in brief.get("load_warnings", []):
         print(f" ⚠️ {w}")
-    mark = lambda b: "✅" if b else "· "  # noqa: E731
+    mark = lambda b: "✅" if b else "· "
     latest_str = (f"ch_{brief['latest_finalized']:03d}" if brief["latest_finalized"]
                   else "(未定稿)")
     print(f" 📖 {brief['title'] or '(未命名)'} ｜ {brief['genre'] or '?'} ｜ 模式 {brief['mode']}")
@@ -348,7 +353,6 @@ def cmd_status(args) -> int:
 
 
 def _status_debts(book) -> None:
-    """账上提醒（纯数出来的事实）：快到期/已逾期的线 + failed/ 积压。"""
     notes: list[str] = []
     n_fail = len(list((book / "state" / "inbox" / "failed").glob("*.json"))) \
         if (book / "state" / "inbox" / "failed").is_dir() else 0
@@ -368,17 +372,17 @@ def _status_debts(book) -> None:
             notes.append(f"⏳ {nid} 距到期 {left} 章（target ch_{x['target_ch']:03d}）")
         if len(soon) > 2:
             notes.append(f"   （另有 {len(soon) - 2} 条同量级，见 evidence gaps）")
-    except Exception:  # noqa: BLE001 —— 提醒行永不压垮 status
+    except Exception:
         pass
     for n in notes:
         print(f"      {n}")
 
 
 # ---------------------------------------------------------------------------
-# pack：单章上下文三层装配 
+# pack
 # ---------------------------------------------------------------------------
 def cmd_pack(args) -> int:
-    book = common.resolve_workspace(args.workspace)
+    book = _resolve_and_validate(args.workspace)
     if book is None or not (book / "project.json").exists():
         print("❌ 未找到书工作区或其 project.json（先运行 init）")
         return 1
@@ -410,10 +414,10 @@ def cmd_pack(args) -> int:
 
 
 # ---------------------------------------------------------------------------
-# evidence：机械证据（纯 JSON 输出；空结果=合法事实 rc 0；用法错 rc 2）
+# evidence
 # ---------------------------------------------------------------------------
 def cmd_evidence(args) -> int:
-    book = common.resolve_workspace(args.workspace)
+    book = _resolve_and_validate(args.workspace)
     if book is None or not (book / "project.json").exists():
         print("❌ 未找到书工作区或其 project.json（先运行 init）")
         return 1
@@ -459,7 +463,7 @@ def cmd_evidence(args) -> int:
         if payload.get("unknown"):
             print(json.dumps(payload, ensure_ascii=False, indent=2))
             return 2
-    else:  # dup | style
+    else:
         if len(rest) > 1:
             print(f"❌ evidence {kind} 至多一个章节参数")
             return 2
@@ -475,10 +479,10 @@ def cmd_evidence(args) -> int:
 
 
 # ---------------------------------------------------------------------------
-# check：结构/schema/算术体检（errors→rc1 阻断；warnings 只报数不阻断）
+# check
 # ---------------------------------------------------------------------------
 def cmd_check(args) -> int:
-    book = common.resolve_workspace(args.workspace)
+    book = _resolve_and_validate(args.workspace)
     if book is None or not (book / "project.json").exists():
         print("❌ 未找到书工作区或其 project.json（先运行 init）")
         return 1
@@ -504,10 +508,10 @@ def cmd_check(args) -> int:
 
 
 # ---------------------------------------------------------------------------
-# sync：提案合并 → 状态体检 → 快照（Stage 5 闭环）
+# sync
 # ---------------------------------------------------------------------------
 def cmd_sync(args) -> int:
-    book = common.resolve_workspace(args.workspace)
+    book = _resolve_and_validate(args.workspace)
     if book is None or not (book / "project.json").exists():
         print("❌ 未找到书工作区或其 project.json（先运行 init）")
         return 1
@@ -525,7 +529,6 @@ def cmd_sync(args) -> int:
     has_proposal = proposal_path is not None
     has_manuscript = bool(common.find_chapter_files(book, "final", ch))
 
-    # 前置闸门（dry-run 与正式一致）：定稿必须存在；提案必须存在且内容对应本章。
     if not has_manuscript:
         print(f"❌ 未找到 {ch} 的定稿（final），拒绝空同步（Stage 5 输入合同：beats/raw/final 齐）")
         print(f"   💡 修复指引：请由 Stage 3 Editor 完成定稿重塑并写入 manuscript/vol_XX/final/{ch}.md")
@@ -550,7 +553,6 @@ def cmd_sync(args) -> int:
         print(f"   💡 修复指引：修改提案中的 `\"chapter\": \"{ch}\"` 字段使其与文件名完全一致")
         return 1
 
-    # 引文接地闸门（0 token）：quote 必须逐字见于当章 final——编造/改写引文物理上无法过闸。
     quote_errors = checks.validate_quotes(book, ch, proposal_data)
     if quote_errors:
         for e in quote_errors:
@@ -558,8 +560,6 @@ def cmd_sync(args) -> int:
         print("   💡 修复指引：请检查提案中的 quote 字段，确保引文原句逐字存在于当章 final 正文中（严禁篡改原句字词）")
         return 1
 
-    # 前置闸门：Stage 5 输入合同 beats/raw/final 齐（novel_workflow.md#Stage 5）。
-    # 无 beats 细纲不得封存——防止"无细纲、零更新"的章被空提案推进（配合空提案 no-op 识别）。
     if not common.find_chapter_files(book, "beats", ch):
         print(f"❌ 未找到 {ch} 的 beats 细纲，拒绝封存（Stage 5 输入合同：beats/raw/final 齐）")
         print(f"   💡 修复指令：运行 `python studio.py beats new {ch} --write` 自动装配当章细纲任务书")
@@ -569,7 +569,6 @@ def cmd_sync(args) -> int:
         print(f"   💡 修复指引：请由 Stage 2 Drafter 起草初稿并落盘于 manuscript/vol_XX/raw/{ch}_v1.md")
         return 1
 
-    # 校对注记（可选机制：若存在则做软性提示，未创建则直通跳过以极速节省 Token）
     dest = book / "log" / "review" / f"{ch}.md"
     if dest.is_file():
         gate = checks.review_gate(book, ch)
@@ -581,7 +580,6 @@ def cmd_sync(args) -> int:
     verify_errors: list[str] = []
     snap_msg, snap_ok = "", True
     applied_now = overall.get("applied", 0)
-    # 只有真正应用/重复通过才算有效同步；错章/空转（skipped>0 且 applied=0）拒绝。
     no_op = applied_now == 0 and overall.get("duplicates", 0) == 0
     if no_op and not overall.get("failed"):
         print("❌ 未合入任何变更（提案为错章/被留置/空提案），拒绝封存快照")
@@ -593,7 +591,7 @@ def cmd_sync(args) -> int:
         if not verify_errors:
             try:
                 snap_ok, snap_msg = snapshot.create_snapshot(book, f"{ch}_done")
-            except Exception as exc:  # noqa: BLE001 —— 状态已合并，快照失败须显性化而非裸崩（P2-4/P3-16）
+            except Exception as exc:
                 snap_ok, snap_msg = False, f"快照创建异常（状态已合并，可用 snapshot create 手动补拍）：{exc}"
 
     payload = {"chapter": ch, "dry_run": args.dry_run, "apply": overall,
@@ -635,10 +633,9 @@ def cmd_sync(args) -> int:
 
 
 # ---------------------------------------------------------------------------
-# proposal：new——骨架生成（结构预填，内容留白；引擎不判断该不该上账）
+# proposal
 # ---------------------------------------------------------------------------
 def _cmd_proposal_check(book: Path, ch: str, args) -> int:
-    """在途提案结构预检 + 三方事实对照（不落盘；不要求 final/注记在场——那是 sync 的闸门）。"""
     def _fail(msg: str) -> int:
         if getattr(args, "json", False):
             print(json.dumps({"chapter": ch, "error": msg}, ensure_ascii=False))
@@ -711,10 +708,6 @@ def _cmd_proposal_check(book: Path, ch: str, args) -> int:
 
 
 def _cmd_proposal_verify(book: Path, ch: str, args) -> int:
-    """Stage 5 机械对照（0 token）：提案×final×状态 全机械对照电池。
-
-    只数差异、只出候选清单（warn/info），零裁决、不阻断——是否处理归主控。
-    """
     def _fail(msg: str) -> int:
         if getattr(args, "json", False):
             print(json.dumps({"chapter": ch, "error": msg}, ensure_ascii=False))
@@ -767,23 +760,21 @@ def _cmd_proposal_verify(book: Path, ch: str, args) -> int:
 
 
 def _cmd_proposal_auto(book: Path, ch: str, args) -> int:
-    """自动基于 beats 与 final 生成高精准度状态提案草案（严格保证合法 schema 与增量数据）。"""
     inbox = book / "state" / "inbox"
     n = common.chapter_token_to_num(ch)
     if not n:
         print(f"❌ 非法章号: {ch}")
         return 1
-    
+
     beats_files = common.find_chapter_files(book, "beats", n)
     if not beats_files:
         print(f"❌ 未找到 {ch} 的 beats 细纲（Stage 1 未完成）")
         return 1
     beats_text = beats_files[-1].read_text(encoding="utf-8", errors="replace")
-    
+
     final_files = common.find_chapter_files(book, "final", n)
     final_text = final_files[-1].read_text(encoding="utf-8", errors="replace") if final_files else ""
-    
-    # 提取标题
+
     title = ""
     if final_text:
         m = re.search(r"^#\s*(?:第\s*[0-9零一二三四五六七八九十百千]+\s*章|ch_\d+)\s*(.+)$", final_text, re.M)
@@ -797,7 +788,6 @@ def _cmd_proposal_auto(book: Path, ch: str, args) -> int:
         m = re.search(r"^#+\s*(.+)$", beats_text, re.M)
         title = m.group(1).strip() if m else f"第{n}章"
 
-    # 提取线动作
     lines_ops = []
     action_sec = "\n".join(common.md_section(beats_text, r"^##\s*.*线(索)?动作"))
     for ln in action_sec.splitlines():
@@ -817,7 +807,7 @@ def _cmd_proposal_auto(book: Path, ch: str, args) -> int:
             kind = "foreshadow" if (lid and "GUN" in lid) or ("GUN" in ln) or ("伏笔" in ln) else \
                    "misunderstanding" if (lid and "MIS" in lid) or ("MIS" in ln) or ("误会" in ln) else \
                    "knowledge" if (lid and "KNO" in lid) or ("KNO" in ln) or ("知识" in ln) or ("秘密" in ln) else "foreshadow"
-            
+
             if kind == "foreshadow":
                 item = {
                     "action": "plant",
@@ -838,7 +828,7 @@ def _cmd_proposal_auto(book: Path, ch: str, args) -> int:
                     "level": 1,
                     "target_ch": n + 3
                 }
-            else:  # knowledge
+            else:
                 item = {
                     "action": "plant",
                     "kind": "knowledge",
@@ -876,7 +866,6 @@ def _cmd_proposal_auto(book: Path, ch: str, args) -> int:
                         up_item["content"] = ln
                     lines_ops.append(up_item)
 
-    # 提取在场人物
     lookup = evidence.entity_lookup(book)
     present_chars = []
     if final_text:
@@ -888,7 +877,6 @@ def _cmd_proposal_auto(book: Path, ch: str, args) -> int:
         cur_state = state.load_state(book, "current")
         present_chars = list(cur_state.get("present_characters", []))
 
-    # 生成梗概草稿
     raw_scenes = common.md_section(beats_text, r"^##\s*(?:.*冲突与场景脉络|.*场景推进|.*场景脉络|.*拍点|拍点与场景切片)")
     beats_scenes = []
     for ln in raw_scenes:
@@ -897,7 +885,6 @@ def _cmd_proposal_auto(book: Path, ch: str, args) -> int:
             continue
         if s.startswith("**本章核心矛盾死结**") or s.startswith("场景一") or s.startswith("场景二") or s.startswith("场景三"):
             continue
-        # 清理前缀如 核心事件与对抗动作：或 📍 **章末物理刀口卡点**：（容忍加粗与列表符，P3-6）
         cleaned = re.sub(r"^(?:核心事件与对抗动作|角色互动与言语试探|破局行动与结果|[-·*]*\s*📍\s*\**章末物理刀口卡点\**)[:：]\s*", "", s).strip()
         if cleaned and not cleaned.startswith(("<", "<!--")):
             beats_scenes.append(cleaned)
@@ -925,7 +912,7 @@ def _cmd_proposal_auto(book: Path, ch: str, args) -> int:
             "text": synopsis_text
         }
     }
-    
+
     if getattr(args, "write", False):
         target = inbox / f"{ch}.json"
         if target.exists() and not getattr(args, "force", False):
@@ -944,7 +931,7 @@ def _cmd_proposal_auto(book: Path, ch: str, args) -> int:
 
 
 def cmd_proposal(args) -> int:
-    book = common.resolve_workspace(args.workspace)
+    book = _resolve_and_validate(args.workspace)
     if book is None or not (book / "state").is_dir():
         print("❌ 未找到书工作区状态目录（先运行 init）")
         return 1
@@ -972,8 +959,6 @@ def cmd_proposal(args) -> int:
     skeleton = {
         "schema": "novel-studio.state-mutation/v2", "chapter": ch,
         "operation_id": f"{ch}.director.{mmdd}",
-        # current 只写增量（键清单见 engine/schemas/current.schema.json）；不预填空值——
-        # 空串曾把上一章的现场速写整体清掉，未填骨架应当保持 no-op 而不是清档
         "current": {},
         "entities": [], "lines": [],
         "ledger": {"transactions": []}, "timeline": {"events": [], "arcs": []},
@@ -995,7 +980,7 @@ def cmd_proposal(args) -> int:
 
 
 # ---------------------------------------------------------------------------
-# review：校对注记骨架（预填验收条目与机器数据；结果与证据仍由主控填写）
+# review
 # ---------------------------------------------------------------------------
 def _render_review_md(d: dict) -> str:
     qb = d["quote_balance"]
@@ -1043,7 +1028,7 @@ def _render_review_md(d: dict) -> str:
 
 
 def cmd_review(args) -> int:
-    book = common.resolve_workspace(args.workspace)
+    book = _resolve_and_validate(args.workspace)
     if book is None or not (book / "project.json").exists():
         print("❌ 未找到书工作区或其 project.json（先运行 init）")
         return 1
@@ -1082,10 +1067,10 @@ def cmd_review(args) -> int:
 
 
 # ---------------------------------------------------------------------------
-# beats：new / scaffold（Stage 1 细纲智能脚手架）
+# beats
 # ---------------------------------------------------------------------------
 def cmd_beats(args) -> int:
-    book = common.resolve_workspace(args.workspace)
+    book = _resolve_and_validate(args.workspace)
     if book is None or not (book / "project.json").exists():
         print("❌ 未找到书工作区或其 project.json（先运行 init）")
         return 1
@@ -1099,7 +1084,6 @@ def cmd_beats(args) -> int:
         return 2
     tok = f"ch_{n:03d}"
 
-    # 探测所属卷目录
     vol_str = "vol_01"
     for vdir in sorted((book / "outlines").glob("vol_*")):
         otext = (vdir / "outline.md").read_text(encoding="utf-8", errors="ignore") if (vdir / "outline.md").is_file() else ""
@@ -1116,17 +1100,14 @@ def cmd_beats(args) -> int:
     proj = common.load_json(book / "project.json", default={}) or {}
     protagonist = proj.get("protagonist", "主角名")
 
-    # 获取阶段里程碑规划
     milestone = pack_mod._volume_phase_milestone(book, n)
 
-    # 获取当前现场
     try:
         cur = state.load_state(book, "current")
     except Exception:
         cur = {}
     sit = cur.get("situation", "")
 
-    # 获取到期/紧迫线索
     due_lines_str = ""
     try:
         lines_st = state.load_state(book, "lines")
@@ -1179,10 +1160,10 @@ def cmd_beats(args) -> int:
 
 
 # ---------------------------------------------------------------------------
-# critic：老白读者毒舌评测与爽点热力报告（Stage 4 并行质检）
+# critic
 # ---------------------------------------------------------------------------
 def cmd_critic(args) -> int:
-    book = common.resolve_workspace(args.workspace)
+    book = _resolve_and_validate(args.workspace)
     if book is None or not (book / "project.json").exists():
         print("❌ 未找到书工作区或其 project.json（先运行 init）")
         return 1
@@ -1215,7 +1196,6 @@ def cmd_critic(args) -> int:
             print(text)
         return 0
 
-    # 不存在时，检查 final
     final_files = common.find_chapter_files(book, "final", n)
     if not final_files:
         print(f"❌ 未找到 {tok} 的定稿（final），无法进行读者评测（需先由 Editor 定稿）")
@@ -1260,10 +1240,10 @@ def cmd_critic(args) -> int:
 
 
 # ---------------------------------------------------------------------------
-# graph：实体拓扑沙盘与中介寻路（NetworkX 强力赋能）
+# graph
 # ---------------------------------------------------------------------------
 def cmd_graph(args) -> int:
-    book = common.resolve_workspace(args.workspace)
+    book = _resolve_and_validate(args.workspace)
     if book is None or not (book / "project.json").exists():
         print("❌ 未找到书工作区或其 project.json（先运行 init）")
         return 1
@@ -1278,10 +1258,10 @@ def cmd_graph(args) -> int:
 
 
 # ---------------------------------------------------------------------------
-# snapshot：list / create / rollback（--clean-drafts 清理超前稿件）
+# snapshot
 # ---------------------------------------------------------------------------
 def cmd_snapshot(args) -> int:
-    book = common.resolve_workspace(args.workspace)
+    book = _resolve_and_validate(args.workspace)
     if book is None or not (book / "state").is_dir():
         print("❌ 未找到书工作区状态目录（先运行 init）")
         return 1
@@ -1328,19 +1308,20 @@ def cmd_snapshot(args) -> int:
                     if num and num > base:
                         f.unlink()
                         removed += 1
-                # P3-15: 超章校对注记一并清理；超章待办提案只提示不删（保住可能仍有价值的工作）
-                rev = book / "log" / "review"
-                if rev.is_dir():
-                    for f in rev.glob("ch_*.md"):
-                        num = common.chapter_number_from_name(f.name)
-                        if num and num > base:
-                            f.unlink()
-                            removed += 1
+                # 修复：超章校对注记 + 毒舌评测一并清理
+                for log_sub in ("review", "critic"):
+                    log_dir = book / "log" / log_sub
+                    if log_dir.is_dir():
+                        for f in log_dir.glob("ch_*.md"):
+                            num = common.chapter_number_from_name(f.name)
+                            if num and num > base:
+                                f.unlink()
+                                removed += 1
                 if (book / "state" / "inbox").is_dir():
                     pending_hint = [p.name for p in (book / "state" / "inbox").glob("ch_*.json")
                                     if (nn := common.chapter_number_from_name(p.name))
                                     and nn > base and not p.name.endswith(state.NO_MERGE_SUFFIXES)]
-            print(f"🧹 清理超前于快照的稿件/细纲/注记：{removed} 个文件")
+            print(f"🧹 清理超前于快照的稿件/细纲/注记/评测：{removed} 个文件")
             if pending_hint:
                 print(f"   ↳ 收件箱仍有 {len(pending_hint)} 份超章待办提案未删（保守起见请自行定夺）：{'、'.join(pending_hint[:5])}")
         return 0 if ok else 1
@@ -1348,15 +1329,15 @@ def cmd_snapshot(args) -> int:
 
 
 # ---------------------------------------------------------------------------
-# export：全书编译（--txt 拼接 / --views 状态视图渲染）
+# export
 # ---------------------------------------------------------------------------
 def cmd_export(args) -> int:
-    book = common.resolve_workspace(args.workspace)
+    book = _resolve_and_validate(args.workspace)
     if book is None or not (book / "project.json").exists():
         print("❌ 未找到书工作区或其 project.json（先运行 init）")
         return 1
     if not args.txt and not args.views:
-        args.txt = args.views = True  # 无标记 = 全量
+        args.txt = args.views = True
     written = []
     try:
         if args.txt:
@@ -1376,7 +1357,7 @@ def cmd_export(args) -> int:
 
 
 def cmd_dashboard(args) -> int:
-    book = common.resolve_workspace(args.workspace)
+    book = _resolve_and_validate(args.workspace)
     if book is None or not (book / "project.json").exists():
         print("❌ 未找到书工作区或其 project.json（先运行 init）")
         return 1
@@ -1398,8 +1379,7 @@ def cmd_dashboard(args) -> int:
 
 
 def cmd_checkpoint(args) -> int:
-    """宏观航向校准点（每 5 章复盘）：对照分卷四分位里程碑、近 5 章进展与状态，发出偏航校准预警。"""
-    book = common.resolve_workspace(args.workspace)
+    book = _resolve_and_validate(args.workspace)
     if book is None or not (book / "project.json").exists():
         print("❌ 未找到书工作区或其 project.json（先运行 init）")
         return 1
@@ -1416,7 +1396,6 @@ def cmd_checkpoint(args) -> int:
         ch_num = latest
         ch = f"ch_{ch_num:03d}"
 
-    # 1. 提取所属分卷与四分位阶段（全卷扫描：多卷书章号全局递增，不能只看 vol_01）
     outline_files = sorted((book / "outlines").glob("*/outline.md"))
 
     phase_info = None
@@ -1440,9 +1419,8 @@ def cmd_checkpoint(args) -> int:
             }
             all_phases.append(p_dict)
             if s_num <= ch_num <= e_num:
-                phase_info = p_dict  # 同章号跨卷重叠时取后卷（排序序保证 vol_02 覆盖 vol_01）
+                phase_info = p_dict
 
-    # 2. 提取近 5 章梗概与大事件
     syn_data = state.load_state(book, "synopsis")
     tl_data = state.load_state(book, "timeline")
     cur_data = state.load_state(book, "current")
@@ -1460,11 +1438,9 @@ def cmd_checkpoint(args) -> int:
             "events": evs
         })
 
-    # 3. 线台账分析（到期/闲置线）
     gaps_data = evidence.gaps(book)
     urgent_lines = [g for g in gaps_data["foreshadows"] if g.get("overdue") or g.get("idle_chapters", 0) >= 10]
 
-    # 4. 偏航判定与建议
     assessment = []
     directives = []
     if phase_info:
@@ -1533,8 +1509,7 @@ def cmd_checkpoint(args) -> int:
 
 
 def cmd_state(args) -> int:
-    """极速状态查看与单字段纠偏指令（免 proposal 手术刀级微调）。"""
-    book = common.resolve_workspace(args.workspace)
+    book = _resolve_and_validate(args.workspace)
     if book is None or not (book / "project.json").exists():
         print("❌ 未找到书工作区或其 project.json（先运行 init）")
         return 1
@@ -1560,7 +1535,6 @@ def cmd_state(args) -> int:
         print("❌ 请指定要查询或修改的字段路径（例如: current.injury 或 entities.林舟.realm）")
         return 2
 
-    # 解析 partition 与路径
     parts = target.split(".", 1)
     part_name = parts[0]
     sub_path = parts[1] if len(parts) > 1 else ""
@@ -1648,7 +1622,6 @@ def cmd_state(args) -> int:
         else:
             st_data[sub_path] = val
 
-        # 保存并校验
         state.save_state(book, part_name, st_data)
         if getattr(args, "json", False):
             print(json.dumps({"ok": True, "target": target, "value": val}, ensure_ascii=False))
@@ -1752,10 +1725,9 @@ RECIPES = [
 
 
 # ---------------------------------------------------------------------------
-# config：书级词表参数手术刀（主控供参通道；落 project.json 原子写，随快照封版）
+# config
 # ---------------------------------------------------------------------------
 def _merge_param_value(shape: str, old, new):
-    """--merge 并入语义：str_list 顺序并集去重；hook_tiers 分档并集；str_map 按键并集。"""
     if old is None:
         return new
     if shape == "str_list":
@@ -1778,11 +1750,7 @@ def _merge_param_value(shape: str, old, new):
 
 
 def cmd_config(args) -> int:
-    """list / guide / get KEY / set KEY JSON / unset KEY——主控按本书题材为引擎供参。
-
-    引擎零题材词表：参数缺席（gap 键）→ 对应启发式停用并出 info 提示；空表 = 明确关闭。
-    """
-    book = common.resolve_workspace(args.workspace)
+    book = _resolve_and_validate(args.workspace)
     if book is None or not (book / "project.json").exists():
         print("❌ 未找到书工作区或其 project.json（先运行 init）")
         return 1
@@ -1983,7 +1951,7 @@ def _build_subparsers(sub: argparse._SubParsersAction) -> None:
     _add_common_opts(q)
     q.add_argument("kind", choices=["all", "mentions", "gaps", "dup", "style", "words", "file",
                                     "candidates", "prev"])
-    q.set_defaults(func=cmd_evidence)  # file 接受第二参（章节号）
+    q.set_defaults(func=cmd_evidence)
     q.add_argument("args", nargs="*", help="kind 参数（名字/章节等）")
     q.set_defaults(func=cmd_evidence)
 
@@ -2178,7 +2146,5 @@ def main(argv: list[str] | None = None) -> int:
         print("\n⏸ 已中断（状态文件有原子写保护，重跑 status 看现场）")
         return 130
     except (ValueError, TimeoutError) as exc:
-        # 统一兜底：引擎以 ValueError/TimeoutError 表达业务拒绝（状态损坏/编码错误/锁超时等），
-        # 打一行可读错误而非裸 traceback（P2-1/P2-4）。
         print(f"❌ {exc}")
         return 1

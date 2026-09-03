@@ -32,7 +32,6 @@ NO_MERGE_SUFFIXES = (".draft.json", ".template.json", ".sample.json")
 
 _SCHEMA_CACHE: dict[str, dict] = {}
 
-# lines 台账三类的机械口径（ID 前缀/状态枚举/可更新字段）——合并与校验共用，零语义
 _LINE_KIND_SPEC = {
     "foreshadow": {"id_re": GUN_ID_RE, "prefix": "GUN",
                    "statuses": ("Planted", "Reminded", "Resolved"), "resolved": "Resolved",
@@ -64,9 +63,6 @@ _ENTITY_TYPES = frozenset(
     _schema("entities")["properties"]["entries"]["items"]["properties"]["type"]["enum"])
 
 
-# ---------------------------------------------------------------------------
-# 目录与默认值
-# ---------------------------------------------------------------------------
 def state_dir(book: Path) -> Path:
     return Path(book) / STATE_DIR_NAME
 
@@ -143,7 +139,7 @@ status 只许 active/retired（越界整案回滚进 failed/）；"现状/近况
 修订通道（随提案合并，全程留审计痕迹）：
   timeline.events 条目支持 {"time": "…", "event": "既有事件原文", "replace": "修订后描述"}——
   按 time+event 逐字命中既有事件后只改写其描述（不新增、chapter 保持原值），未命中整案拒绝；
-  synopsis 支持 {"chapters": {"ch_XXX": {"title": "…", "synopsis": "…"}}}——跨章修订历史章的标题/梗概。
+  synopsis 支持 {"chapters": {"ch_XXX": {"title": "…", "synopsis": "…"}}——跨章修订历史章的标题/梗概。
 引文接地（强烈建议）：各条目（entities/lines/ledger.transactions/timeline.events/timeline.clocks/synopsis）
   可携带 "quote": "逐字摘自本章 final 的支撑句"——sync 前引擎机械校验引文必须是当章 final 的子串，
   编造或改写引文将整案拒绝；未携带引文的条目由 `proposal verify` 提示。
@@ -153,7 +149,6 @@ Stage 4 Reader 仅需落盘本 JSON 即可交付，严禁在子沙箱盲跑测�
 
 
 def init_state(book: Path) -> int:
-    """建目录树 + 播种 6 个状态文件与 inbox 样例（已存在者不动）。返回播种数。"""
     sd = state_dir(book)
     seeded = 0
     for key in STATE_KEYS:
@@ -165,18 +160,14 @@ def init_state(book: Path) -> int:
     (sd / INBOX_NAME / "failed").mkdir(parents=True, exist_ok=True)
     (sd / "snapshots").mkdir(parents=True, exist_ok=True)
     (Path(book) / "log" / "review").mkdir(parents=True, exist_ok=True)
+    (Path(book) / "log" / "critic").mkdir(parents=True, exist_ok=True)
     readme = sd / INBOX_NAME / "README.md"
     if not readme.exists():
         readme.write_text(INBOX_README, encoding="utf-8")
     return seeded
 
 
-# ---------------------------------------------------------------------------
-# 读写（双双过 schema）
-# ---------------------------------------------------------------------------
 def _fill_missing_required(key: str, data: dict) -> dict:
-    """读时补全：旧版状态文件缺新增 required 键时按结构默认值补齐（纯结构，零语义）。
-    补齐只在内存生效，下一次 save 自然落盘；不改写文件内容以外的任何东西。"""
     if key == "lines":
         for arr_key in ("foreshadows", "misunderstandings", "knowledge"):
             if arr_key not in data:
@@ -188,7 +179,7 @@ def load_state(book: Path, key: str) -> dict:
     p = state_dir(book) / f"{key}.json"
     if not p.exists():
         raise ValueError(f"状态文件缺失: {p.name}（先运行 studio init）")
-    data = common.load_json(p)  # 损坏 → 直接抛，不静默兜底
+    data = common.load_json(p)
     data = _fill_missing_required(key, data)
     errors = validator.validate(data, _schema(key))
     if errors:
@@ -213,9 +204,6 @@ def _load_marker(book: Path) -> dict:
     return marker
 
 
-# ---------------------------------------------------------------------------
-# 小工具
-# ---------------------------------------------------------------------------
 def _chapter_num(ch: str) -> int | None:
     m = CH_RE.search(ch or "")
     return int(m.group(1)) if m else None
@@ -231,7 +219,6 @@ def _next_id(items: list[dict], id_key: str, prefix: str) -> str:
 
 
 def _norm_target(value) -> tuple[object, str | None]:
-    """target_ch：正整数（引爆章）或 'longline'（长线）。返回 (规范值, 错误)。"""
     if value is None:
         return "longline", None
     if isinstance(value, int) and not isinstance(value, bool):
@@ -249,18 +236,13 @@ def _index_by(items: list[dict], key: str) -> dict:
     return {str(it.get(key, "")): it for it in items}
 
 
-# ---------------------------------------------------------------------------
-# 提案：校验
-# ---------------------------------------------------------------------------
 def validate_proposal(proposal, expected_chapter: str | None = None) -> tuple[list[str], dict]:
-    """返回 (errors, section_plan)。section_plan 用于 dry-run 展示。"""
     errors: list[str] = []
     plan: dict[str, str] = {}
     if not isinstance(proposal, dict):
         return ["提案必须是 JSON 对象"], plan
 
     errors.extend(validator.validate(proposal, _schema("proposal")))
-    # Pydantic V2 强类型领域模型深度校验（方案 B 接入）
     pydantic_errors = models.validate_with_model("proposal", proposal)
     for pe in pydantic_errors:
         if pe not in errors:
@@ -280,7 +262,6 @@ def validate_proposal(proposal, expected_chapter: str | None = None) -> tuple[li
     def _plan(sec, n):
         plan[sec] = f"合并 {sec} × {n}"
 
-    # --- current ---
     cur = proposal.get("current")
     if isinstance(cur, dict):
         _plan("current", len(cur))
@@ -291,7 +272,6 @@ def validate_proposal(proposal, expected_chapter: str | None = None) -> tuple[li
         if pcs is not None and (not isinstance(pcs, list) or any(not isinstance(x, str) for x in pcs)):
             errors.append("current.present_characters 必须是字符串数组")
 
-    # --- entities ---
     ents = proposal.get("entities")
     if isinstance(ents, list):
         _plan("entities", len(ents))
@@ -320,6 +300,12 @@ def validate_proposal(proposal, expected_chapter: str | None = None) -> tuple[li
                 errors.append(f"entities[{i}].charges 必须为 ≥0 的整数")
             if "max_charges" in e and (not isinstance(e["max_charges"], int) or isinstance(e["max_charges"], bool) or e["max_charges"] < 1):
                 errors.append(f"entities[{i}].max_charges 必须为 ≥1 的整数")
+            if "charges" in e and "max_charges" in e:
+                try:
+                    if int(e["charges"]) > int(e["max_charges"]):
+                        errors.append(f"entities[{i}].charges({e['charges']}) 不能大于 max_charges({e['max_charges']})")
+                except Exception:
+                    pass
             if "type" in e and e["type"] not in _ENTITY_TYPES:
                 errors.append(f"entities[{i}].type 非法: {e['type']!r}（合法：{'/'.join(sorted(_ENTITY_TYPES))}）")
             for f in ("card", "summary", "holder", "location", "condition", "realm", "faction", "quote", "dossier"):
@@ -331,7 +317,6 @@ def validate_proposal(proposal, expected_chapter: str | None = None) -> tuple[li
                 elif any(not isinstance(a, str) for a in e["aliases"]):
                     errors.append(f"entities[{i}].aliases 的元素必须为字符串")
 
-    # --- lines ---
     lines = proposal.get("lines")
     if isinstance(lines, list):
         _plan("lines", len(lines))
@@ -347,14 +332,13 @@ def validate_proposal(proposal, expected_chapter: str | None = None) -> tuple[li
             action = g.get("action", "plant")
             if kind == "knowledge":
                 if action not in ("plant", "update", "resolve"):
-                    errors.append(f"lines[{i}].action 非法: {action}（knowledge 支持 plant/update/resolve，"
-                                  f"揭不揭由你判断——引擎只记账）")
+                    errors.append(f"lines[{i}].action 非法: {action}（knowledge 支持 plant/update/resolve）")
                     continue
             elif action not in ("plant", "update", "remind", "resolve", "escalate"):
                 errors.append(f"lines[{i}].action 非法: {action}")
                 continue
             if action == "escalate" and kind != "misunderstanding":
-                errors.append(f"lines[{i}]: escalate 只适用于 misunderstanding（误会加深/激化）")
+                errors.append(f"lines[{i}]: escalate 只适用于 misunderstanding")
                 continue
             base_keys = {"kind", "action", "id", "quote"}
             if action == "plant":
@@ -382,15 +366,14 @@ def validate_proposal(proposal, expected_chapter: str | None = None) -> tuple[li
                 if pc is not None and (not isinstance(pc, int) or isinstance(pc, bool) or pc < 1):
                     errors.append(f"lines[{i}].plant_ch 必须为正整数")
             else:
-                if action in ("remind", "resolve", "escalate"):
-                    allowed = base_keys | spec["plant_fields"] | spec["update_fields"]
-                    for k in g:
-                        if k not in allowed:
-                            errors.append(f"lines[{i}] 含未知字段: {k}")
+                if "target_ch" in g:
+                    _, terr = _norm_target(g["target_ch"])
+                    if terr:
+                        errors.append(f"lines[{i}]: {terr}")
                 if not g.get("id"):
                     errors.append(f"lines[{i}]（{action}）必须提供 id")
                 if action == "remind" and kind != "foreshadow":
-                    errors.append(f"lines[{i}]: remind 只适用于 foreshadow（knowledge/misunderstanding 保持现状即可，无需多余动作）")
+                    errors.append(f"lines[{i}]: remind 只适用于 foreshadow")
                 if action == "update":
                     for f in spec["update_str"]:
                         if f in g and not isinstance(g[f], str):
@@ -402,7 +385,6 @@ def validate_proposal(proposal, expected_chapter: str | None = None) -> tuple[li
                             not isinstance(g["weight"], int) or isinstance(g["weight"], bool) or g["weight"] < 1):
                         errors.append(f"lines[{i}].weight 必须为 ≥1 的整数")
 
-    # --- timeline ---
     tl = proposal.get("timeline")
     if isinstance(tl, dict):
         n = len(tl.get("events", []) or []) + len(tl.get("arcs", []) or []) + len(tl.get("clocks", []) or [])
@@ -414,18 +396,16 @@ def validate_proposal(proposal, expected_chapter: str | None = None) -> tuple[li
             if not isinstance(ev, dict):
                 errors.append(f"timeline.events[{i}] 必须为对象")
                 continue
-            # time/event 必须是字符串：非字符串会让合并期的去重键不可哈希（直接崩）
             if (not isinstance(ev.get("time"), str) or not ev["time"].strip()
                     or not isinstance(ev.get("event"), str) or not ev["event"].strip()):
                 errors.append(f"timeline.events[{i}] 必须含非空字符串 time 与 event")
             for k in ev:
                 if k not in ("time", "event", "replace", "quote"):
-                    errors.append(f"timeline.events[{i}] 含未知字段: {k}（chapter 由引擎按提案章写入）")
+                    errors.append(f"timeline.events[{i}] 含未知字段: {k}")
             if "replace" in ev and (not isinstance(ev["replace"], str) or not ev["replace"].strip()):
-                errors.append(f"timeline.events[{i}].replace 必须为非空字符串"
-                              "（修订语义：按 time+event 逐字命中既有事件后改写其描述）")
+                errors.append(f"timeline.events[{i}].replace 必须为非空字符串")
             if "quote" in ev and (not isinstance(ev["quote"], str) or not ev["quote"].strip()):
-                errors.append(f"timeline.events[{i}].quote 必须为非空字符串（逐字摘自 final 的支撑句）")
+                errors.append(f"timeline.events[{i}].quote 必须为非空字符串")
         for i, a in enumerate(tl.get("arcs", []) or []):
             if not isinstance(a, dict) or not isinstance(a.get("name"), str) or not a["name"].strip():
                 errors.append(f"timeline.arcs[{i}] 必须含非空字符串 name")
@@ -451,25 +431,24 @@ def validate_proposal(proposal, expected_chapter: str | None = None) -> tuple[li
             if "status" in c and c["status"] not in ("Active", "Triggered", "Defused", "Expired"):
                 errors.append(f"timeline.clocks[{i}].status 必须 ∈ ['Active', 'Triggered', 'Defused', 'Expired']")
 
-    # --- ledger ---
     led = proposal.get("ledger")
     if isinstance(led, dict):
         txs = led.get("transactions", []) or []
         _plan("ledger", len(txs))
         for k in led:
             if k not in ("pools", "transactions"):
-                errors.append(f"ledger 含未知字段: {k}（说明性字段不进提案）")
+                errors.append(f"ledger 含未知字段: {k}")
         pools = led.get("pools")
         if pools is not None:
             if not isinstance(pools, dict):
-                errors.append("ledger.pools 必须为对象（新增/修订资源池声明）")
+                errors.append("ledger.pools 必须为对象")
             else:
                 for pid, p in pools.items():
                     if not isinstance(p, dict):
                         errors.append(f"ledger.pools[{pid}] 必须为对象")
                         continue
                     if "current" in p:
-                        errors.append(f"ledger.pools[{pid}].current 不接受声明（余额一律由流水重算，禁止手改）")
+                        errors.append(f"ledger.pools[{pid}].current 不接受声明（余额一律由流水重算）")
                     if "initial" in p and (not isinstance(p["initial"], int) or isinstance(p["initial"], bool)):
                         errors.append(f"ledger.pools[{pid}].initial 必须为整数")
                     for f in ("name", "unit"):
@@ -489,26 +468,24 @@ def validate_proposal(proposal, expected_chapter: str | None = None) -> tuple[li
             if "subject" in t and not isinstance(t["subject"], str):
                 errors.append(f"ledger.transactions[{i}].subject 必须为字符串")
             elif not str(t.get("subject", "")).strip():
-                errors.append(f"ledger.transactions[{i}].subject 必填（记账事由）")
+                errors.append(f"ledger.transactions[{i}].subject 必填")
             if "type" in t and t["type"] not in ("income", "expense", "opening_balance", "manual"):
-                errors.append(f"ledger.transactions[{i}].type 必须 ∈ "
-                              "['income', 'expense', 'opening_balance', 'manual']")
+                errors.append(f"ledger.transactions[{i}].type 必须 ∈ ['income', 'expense', 'opening_balance', 'manual']")
             delta = t.get("delta")
             if not isinstance(delta, int) or isinstance(delta, bool):
-                errors.append(f"ledger.transactions[{i}].delta 必须为整数（收入为正/支出为负；拒绝浮点）")
+                errors.append(f"ledger.transactions[{i}].delta 必须为整数")
             else:
                 ttype = t.get("type")
                 if ttype == "income" and delta < 0:
-                    errors.append(f"ledger.transactions[{i}]: type=income 但 delta={delta}（正收负支）")
+                    errors.append(f"ledger.transactions[{i}]: type=income 但 delta={delta}")
                 if ttype == "expense" and delta > 0:
                     errors.append(f"ledger.transactions[{i}]: type=expense 但 delta={delta}（支出必须为负数）")
             if t.get("chapter") is not None and not re.fullmatch(r"ch_\d{3,}", str(t["chapter"])):
-                errors.append(f"ledger.transactions[{i}].chapter 须匹配 ch_NNN（缺省用提案章节）")
+                errors.append(f"ledger.transactions[{i}].chapter 须匹配 ch_NNN")
             for f in ("counterparty", "note", "quote"):
                 if f in t and not isinstance(t[f], str):
                     errors.append(f"ledger.transactions[{i}].{f} 必须为字符串")
 
-    # --- synopsis ---
     syn = proposal.get("synopsis")
     if isinstance(syn, dict):
         _plan("synopsis", 1)
@@ -520,9 +497,8 @@ def validate_proposal(proposal, expected_chapter: str | None = None) -> tuple[li
                 errors.append(f"synopsis.{f} 必须为字符串")
         chapters = syn.get("chapters")
         if chapters is not None:
-            # 跨章修订通道：键=ch_XXX，值={title?/synopsis?}——修正历史章的标题/梗概。
             if not isinstance(chapters, dict):
-                errors.append("synopsis.chapters 必须为对象（键=ch_XXX，值={title?, synopsis?}）")
+                errors.append("synopsis.chapters 必须为对象")
             else:
                 for c, cp in chapters.items():
                     if not re.fullmatch(r"ch_\d{3,}", str(c)):
@@ -533,16 +509,13 @@ def validate_proposal(proposal, expected_chapter: str | None = None) -> tuple[li
                         continue
                     for f in cp:
                         if f not in ("title", "synopsis"):
-                            errors.append(f"synopsis.chapters[{c}] 含未知字段: {f}（该通道只修订标题/梗概）")
+                            errors.append(f"synopsis.chapters[{c}] 含未知字段: {f}")
                     for f in ("title", "synopsis"):
                         if f in cp and not isinstance(cp[f], str):
                             errors.append(f"synopsis.chapters[{c}].{f} 必须为字符串")
     return errors, plan
 
 
-# ---------------------------------------------------------------------------
-# 提案：各分区内存合并（只改传入的 data 副本；错误写入 report.errors）
-# ---------------------------------------------------------------------------
 def _merge_current(state: dict, patch: dict, rep: dict) -> None:
     allowed = set(_schema("current")["properties"])
     for k, v in patch.items():
@@ -554,7 +527,7 @@ def _merge_current(state: dict, patch: dict, rep: dict) -> None:
                 rep["errors"].append("current.present_characters 必须为字符串数组")
                 continue
             if not v:
-                rep["warnings"].append("current.present_characters 为空数组，按未提供处理（留空＝不修改）")
+                rep["warnings"].append("current.present_characters 为空数组，按未提供处理")
                 continue
             state["present_characters"] = list(v)
         elif k == "loadout":
@@ -566,9 +539,7 @@ def _merge_current(state: dict, patch: dict, rep: dict) -> None:
             state["loadout"] = cur_ld
         elif isinstance(v, str):
             if not v:
-                # 空串不落盘：这些是描述性字段，"清档"应写成描述（如"伤势已愈"）；
-                # 空串几乎只会来自未填写的表单/骨架，照单全收会抹掉上一章的现场速写。
-                rep["warnings"].append(f"current.{k} 为空字符串，按未提供处理（留空＝不修改）")
+                rep["warnings"].append(f"current.{k} 为空字符串，按未提供处理")
                 continue
             state[k] = v
         else:
@@ -585,7 +556,7 @@ def _merge_entities(state: dict, items: list[dict], rep: dict) -> None:
         if action == "retire":
             ent = idx.get(name)
             if ent is None:
-                rep["errors"].append(f"retire 未登记实体「{name}」——不猜测，先补 upsert")
+                rep["errors"].append(f"retire 未登记实体「{name}」")
                 continue
             ent["status"] = "retired"
             rep["updated"].append(f"🗂️ 实体退役：{name}")
@@ -593,10 +564,27 @@ def _merge_entities(state: dict, items: list[dict], rep: dict) -> None:
         ent = idx.get(name)
         etype = e.get("type", "other")
         if etype not in valid_types:
-            rep["errors"].append(
-                f"实体「{name}」type 非法: {etype}（合法：{'/'.join(sorted(valid_types))}）"
-            )
+            rep["errors"].append(f"实体「{name}」type 非法: {etype}")
             continue
+        if "charges" in e and "max_charges" in e:
+            try:
+                if int(e["charges"]) > int(e["max_charges"]):
+                    rep["errors"].append(f"实体「{name}」charges({e['charges']}) > max_charges({e['max_charges']})")
+                    continue
+            except Exception:
+                pass
+        elif ent is not None:
+            try:
+                if "charges" in e and ent.get("max_charges") is not None:
+                    if int(e["charges"]) > int(ent["max_charges"]):
+                        rep["errors"].append(f"实体「{name}」charges({e['charges']}) > 既有 max_charges({ent['max_charges']})")
+                        continue
+                if "max_charges" in e and ent.get("charges") is not None:
+                    if int(ent["charges"]) > int(e["max_charges"]):
+                        rep["errors"].append(f"实体「{name}」既有 charges({ent['charges']}) > 新 max_charges({e['max_charges']})")
+                        continue
+            except Exception:
+                pass
         if ent is None:
             ent = {"name": name, "type": etype, "aliases": [], "card": "", "summary": "", "status": "active"}
             state["entries"].append(ent)
@@ -623,7 +611,7 @@ def _merge_lines(state: dict, items: list[dict], ch_num: int, rep: dict) -> None
         if action == "plant":
             gid = g.get("id") or _next_id(arr, "id", spec["prefix"])
             if gid in idx:
-                rep["errors"].append(f"{gid} 已存在，重复 plant 拒绝（改状态请用 update/resolve）")
+                rep["errors"].append(f"{gid} 已存在，重复 plant 拒绝")
                 continue
             target, terr = _norm_target(g.get("target_ch"))
             if terr:
@@ -631,30 +619,31 @@ def _merge_lines(state: dict, items: list[dict], ch_num: int, rep: dict) -> None
                 continue
             if kind == "foreshadow":
                 open_act_count = sum(1 for item in arr if item.get("status") != "Resolved" and isinstance(item.get("target_ch"), int))
+                open_long_count = sum(1 for item in arr if item.get("status") != "Resolved" and item.get("target_ch") == "longline")
                 if target != "longline" and open_act_count >= 8:
-                    rep["warnings"].append(f"卷内活动伏笔池已达上限（{open_act_count}/8），新伏笔 {gid} 已入库——请在后续章节及时安排回收（resolve）")
+                    rep["warnings"].append(f"卷内活动伏笔池已达上限（{open_act_count}/8），新伏笔 {gid} 已入库")
+                if target == "longline" and open_long_count >= 5:
+                    rep["warnings"].append(f"全书长线已达上限（{open_long_count}/5），新长线 {gid} 已入库")
                 arr.append({"id": gid, "name": g["name"], "plant_ch": g.get("plant_ch") or ch_num,
                             "status": "Planted", "target_ch": target, "weight": g.get("weight", 1),
                             "plan": g.get("plan", "")})
-                rep["updated"].append(f"🕸️ 埋设伏笔 {gid}《{g['name']}》→ target {target}"
-                                      f"（权重 {g.get('weight', 1)}）")
+                rep["updated"].append(f"🕸️ 埋设伏笔 {gid}《{g['name']}》→ target {target}")
             elif kind == "misunderstanding":
                 arr.append({"id": gid, "parties": g["parties"], "content": g["content"],
                             "truth": g.get("truth", ""), "level": g.get("level", 1),
                             "target_ch": target, "status": "Active"})
                 rep["updated"].append(f"🎭 新误会 {gid}：{g['content'][:30]}")
-            else:  # knowledge
+            else:
                 arr.append({"id": gid, "secret": g["secret"], "plant_ch": g.get("plant_ch") or ch_num,
                             "status": "Concealed", "target_ch": target,
                             "weight": g.get("weight", 1), "note": g.get("note", "")})
-                rep["updated"].append(f"🔒 知识线登记 {gid}《{g['secret'][:24]}》→ 计划揭示 {target}"
-                                      f"（权重 {g.get('weight', 1)}）")
+                rep["updated"].append(f"🔒 知识线登记 {gid}《{g['secret'][:24]}》→ 计划揭示 {target}")
             idx[gid] = arr[-1]
             continue
         gid = g.get("id")
         ent = idx.get(gid)
         if ent is None:
-            rep["errors"].append(f"{action} 目标 {gid} 不存在——台账里没有这条，拒绝猜测")
+            rep["errors"].append(f"{action} 目标 {gid} 不存在")
             continue
         if action == "resolve":
             ent["status"] = spec["resolved"]
@@ -679,11 +668,13 @@ def _merge_lines(state: dict, items: list[dict], ch_num: int, rep: dict) -> None
             if "content" in g and isinstance(g["content"], str):
                 ent["content"] = g["content"]
             if "target_ch" in g:
-                tgt, _ = _norm_target(g["target_ch"])
-                if tgt:
-                    ent["target_ch"] = tgt
+                tgt, terr = _norm_target(g["target_ch"])
+                if terr:
+                    rep["errors"].append(f"escalate {gid}: {terr}")
+                    continue
+                ent["target_ch"] = tgt
             rep["updated"].append(f"⚡ {gid} 误会激化（强度等级 {ent.get('level', 1)}）")
-        else:  # update
+        else:
             for k, v in g.items():
                 if k in ("kind", "action", "id", "quote"):
                     continue
@@ -710,13 +701,10 @@ def _merge_timeline(state: dict, patch: dict, ch: str, rep: dict) -> None:
         key = (ev.get("time", ""), ev.get("event", ""))
         new_text = ev.get("replace")
         if new_text is not None:
-            # 修订通道：按 (time, event) 逐字命中既有事件，只改写 event 描述（chapter 保持原值）。
             target = next((e for e in state["events"]
                            if (e.get("time", ""), e.get("event", "")) == key), None)
             if target is None:
-                rep["errors"].append(
-                    f"timeline 事件修订未命中: {key[0]}｜{str(key[1])[:30]}…"
-                    "（time+event 须与 state/timeline.json 逐字一致）")
+                rep["errors"].append(f"timeline 事件修订未命中: {key[0]}｜{str(key[1])[:30]}…")
                 continue
             target["event"] = new_text
             replaced += 1
@@ -750,10 +738,9 @@ def _merge_timeline(state: dict, patch: dict, ch: str, rep: dict) -> None:
             if a.get(f):
                 ent[f] = a[f]
         if a.get("strategy"):
-            ent["strategy"] = a["strategy"]  # 覆盖式：当前策略只留最新，历史按章归档
+            ent["strategy"] = a["strategy"]
             hist = ent.setdefault("strategy_history", [])
             entry = {"chapter": ch, "strategy": a["strategy"]}
-            # 去重：同章同策略只在历史里记一次，避免重复提案/重放导致膨胀。
             if not any(h.get("chapter") == ch and h.get("strategy") == a["strategy"] for h in hist):
                 hist.append(entry)
         rep["updated"].append(f"🧠 {name} 阶段 → {ent.get('stage', '')}")
@@ -785,42 +772,68 @@ def _merge_ledger(state: dict, patch: dict, ch: str, rep: dict) -> None:
     pools = state["pools"]
     for pid, p in (patch.get("pools") or {}).items():
         if pid in pools:
-            # 已有池只允许改 display 名/单位；initial 是历史事实，禁止事后改
-            #（否则既有 balance_after 与重算值必然冲突，造成"永不可合并"的死路）。
             for f in ("name", "unit"):
                 if f in p:
                     pools[pid][f] = p[f]
-            if "initial" in p and int(p["initial"]) != int(pools[pid].get("initial", 0)):
-                rep["errors"].append(
-                    f"资源池 '{pid}' 是既有池，禁止修改 initial（按账本不变量，改期初=改历史）")
-                return
+            if "initial" in p:
+                try:
+                    if int(p["initial"]) != int(pools[pid].get("initial", 0)):
+                        rep["errors"].append(f"资源池 '{pid}' 是既有池，禁止修改 initial")
+                        return
+                except (ValueError, TypeError):
+                    rep["errors"].append(f"资源池 '{pid}' initial 必须为整数（收到 {p['initial']!r}）")
+                    return
             if any(f in p for f in ("name", "unit")):
-                rep["warnings"].append(f"资源池 {pid} 声明已修订（余额随重算变化属预期）")
+                rep["warnings"].append(f"资源池 {pid} 声明已修订")
         else:
+            try:
+                init_val = int(p.get("initial", 0))
+            except (ValueError, TypeError):
+                rep["errors"].append(f"新资源池 {pid} initial 必须为整数（收到 {p.get('initial')!r}）")
+                return
             pools[pid] = {"name": p.get("name", pid), "unit": p.get("unit", ""),
-                          "initial": p.get("initial", 0), "current": p.get("initial", 0)}
+                          "initial": init_val, "current": init_val}
             rep["updated"].append(f"💱 新资源池 {pid}（{p.get('name', pid)}）")
 
-    running = {k: v.get("initial", 0) for k, v in pools.items()}
+    running = {}
+    for k, v in pools.items():
+        try:
+            running[k] = int(v.get("initial", 0))
+        except (ValueError, TypeError):
+            rep["errors"].append(f"资源池 {k} initial 非整数：{v.get('initial')!r}")
+            return
+
     for i, t in enumerate(state["transactions"]):
         pool = t.get("pool")
         if pool not in running:
-            rep["errors"].append(f"既有流水 #{i + 1} 引用未声明池 '{pool}'（数据损坏：修复 ledger 或回滚快照）")
+            rep["errors"].append(f"既有流水 #{i + 1} 引用未声明池 '{pool}'")
             return
-        running[pool] += int(t.get("delta", 0))
+        try:
+            delta = int(t.get("delta", 0))
+        except (ValueError, TypeError):
+            rep["errors"].append(f"既有流水 #{i + 1} delta 非整数：{t.get('delta')!r}")
+            return
+        running[pool] += delta
         rec = t.get("balance_after")
-        if rec is not None and int(rec) != running[pool]:
-            rep["errors"].append(
-                f"既有流水 #{i + 1} balance_after={rec} 与重算值 {running[pool]} 不符——"
-                "状态文件疑似被手改；回滚到最近快照（见 studio snapshot list）")
-            return
+        if rec is not None:
+            try:
+                if int(rec) != running[pool]:
+                    rep["errors"].append(f"既有流水 #{i + 1} balance_after={rec} 与重算值 {running[pool]} 不符")
+                    return
+            except (ValueError, TypeError):
+                rep["errors"].append(f"既有流水 #{i + 1} balance_after 非整数：{rec!r}")
+                return
 
     for t in patch.get("transactions", []) or []:
         pool = t["pool"]
         if pool not in pools:
-            rep["errors"].append(f"流水引用未声明资源池 '{pool}'（先在 ledger.pools 登记）")
+            rep["errors"].append(f"流水引用未声明资源池 '{pool}'")
             continue
-        delta = int(t["delta"])
+        try:
+            delta = int(t["delta"])
+        except (ValueError, TypeError):
+            rep["errors"].append(f"流水 delta 非整数：{t.get('delta')!r}")
+            continue
         running[pool] += delta
         tx = {"chapter": t.get("chapter", ch), "pool": pool, "delta": delta,
               "type": t.get("type") or ("income" if delta >= 0 else "expense"),
@@ -845,11 +858,10 @@ def _merge_synopsis(state: dict, patch: dict, ch: str, rep: dict) -> None:
         chs = state.setdefault("chapters", {})
         prev = chs.get(ch, {})
         if prev.get("source") == "manual" and prev.get("synopsis") and prev["synopsis"] != patch["text"]:
-            rep["warnings"].append(f"⚠️ {ch} 已有人工梗概，本次提交覆盖之（旧：{prev['synopsis'][:30]}…）")
+            rep["warnings"].append(f"⚠️ {ch} 已有人工梗概，本次提交覆盖之")
         chs[ch] = {"num": _chapter_num(ch) or 0, "title": patch.get("title", prev.get("title", "")),
                    "synopsis": patch["text"], "source": "manual"}
         rep["updated"].append(f"📖 章节梗概已登记（{ch}）")
-    # 跨章修订通道（处理顺序在 text 之后：同章同字段时以显式修订为准）
     for c, cp in (patch.get("chapters") or {}).items():
         chs = state.setdefault("chapters", {})
         ent = chs.get(c)
@@ -867,11 +879,7 @@ def _merge_synopsis(state: dict, patch: dict, ch: str, rep: dict) -> None:
                 rep["updated"].append(f"📖 {c} {f} 已修订 →「{v[:24]}…」")
 
 
-# ---------------------------------------------------------------------------
-# 应用一份提案
-# ---------------------------------------------------------------------------
 def _merge_proposal_into(data: dict, proposal: dict, ch, ch_num, rep: dict) -> None:
-    """在内存副本上执行全部分区合并；rep['errors'] 非空 = 整体拒绝（含 dry-run 预演）。"""
     if proposal.get("current"):
         _merge_current(data["current"], proposal["current"], rep)
     if proposal.get("entities"):
@@ -906,17 +914,16 @@ def apply_proposal(book: Path, proposal: dict, expected_chapter: str | None = No
         return rep
     if op in marker:
         if marker[op] != proposal_hash:
-            rep["errors"].append(f"operation_id {op} 已用于不同内容，拒绝复用（请换新 id）")
+            rep["errors"].append(f"operation_id {op} 已用于不同内容，拒绝复用")
         else:
-            rep["warnings"].append(f"operation_id {op} 已应用过，跳过（幂等）")
+            rep["warnings"].append(f"operation_id {op} 已应用过，跳过")
             rep["duplicate"] = True
         return rep
     if proposal_hash in marker.values():
-        rep["warnings"].append("相同内容提案（canonical hash）已应用过，跳过（幂等）")
+        rep["warnings"].append("相同内容提案已应用过，跳过")
         rep["duplicate"] = True
         return rep
 
-    # 内存事务：先取全部 SSOT 副本，任何损坏 → 拒绝合并（dry-run 与正式同一条路）。
     try:
         data = {key: copy.deepcopy(load_state(book, key)) for key in STATE_KEYS}
     except ValueError as exc:
@@ -926,18 +933,12 @@ def apply_proposal(book: Path, proposal: dict, expected_chapter: str | None = No
 
     _merge_proposal_into(data, proposal, ch, ch_num, rep)
     if rep["errors"]:
-        # 有错 → 一个字节都不写。dry-run 也返回真实合并错误，而非只给"计划"。
-        # 清空"已更新"列出以免误导（整体回滚，任何分区都未生效）。
         rep["updated"] = []
         rep["warnings"] = []
         if dry_run:
             rep["dry_run"] = True
         return rep
 
-    # 同步前置闸门（Stage 5 状态落盘前体检闸门，novel_workflow.md#Stage 5）：
-    # 在内存副本上先跑"状态体检"（账本重算/唯一性/实体闭合），全部通过才允许落盘。
-    # 任何体检失败 → 整体拒绝，一个字节都不写、不归档、不封存快照——避免"脏状态已写入、
-    # 提案却进了 processed/、无法走 failed/ 捡回"的不可恢复污染。
     verify_errors = verify_data(data)
     if verify_errors:
         rep["errors"].extend(verify_errors)
@@ -947,8 +948,6 @@ def apply_proposal(book: Path, proposal: dict, expected_chapter: str | None = No
             rep["dry_run"] = True
         return rep
 
-    # 空提案识别：以合并前后六表的 canonical hash 为准，而不是"有没有写过字段"——
-    # 写入与原值相同或空的内容不算变更。防止未填骨架/零信息提案被计入 applied 并封存快照。
     rep["changed"] = any(common.canonical_json_hash(data[key]) != before_hash[key]
                          for key in STATE_KEYS)
 
@@ -956,11 +955,19 @@ def apply_proposal(book: Path, proposal: dict, expected_chapter: str | None = No
         rep["dry_run"] = True
         return rep
 
-    # 落盘阶段：全量备份 → 写 → 登记幂等；异常 → 字节级回滚
     sd = state_dir(book)
     paths = {key: sd / f"{key}.json" for key in STATE_KEYS}
     marker_path = sd / MARKER_NAME
-    backup = {p: p.read_bytes() for p in list(paths.values()) + ([marker_path] if marker_path.exists() else [])}
+    backup: dict[Path, bytes] = {}
+    existed_marker = marker_path.exists()
+    for p in list(paths.values()) + ([marker_path] if existed_marker else []):
+        if p.exists():
+            try:
+                backup[p] = p.read_bytes()
+            except OSError:
+                pass
+    newly_created: list[Path] = [] if existed_marker else [marker_path]
+
     try:
         for key in STATE_KEYS:
             save_state(book, key, data[key])
@@ -970,14 +977,15 @@ def apply_proposal(book: Path, proposal: dict, expected_chapter: str | None = No
         for p, content in backup.items():
             with contextlib.suppress(OSError):
                 p.write_bytes(content)
+        for p in newly_created:
+            if p not in backup:
+                with contextlib.suppress(OSError):
+                    p.unlink()
         rep["errors"].append(f"落盘异常，已整体回滚: {exc}")
         rep["rollback"] = True
     return rep
 
 
-# ---------------------------------------------------------------------------
-# 收件箱批处理（sync 的第一步）
-# ---------------------------------------------------------------------------
 def _gather(inbox: Path) -> list[Path]:
     if not inbox.exists():
         return []
@@ -985,7 +993,6 @@ def _gather(inbox: Path) -> list[Path]:
 
 
 def _archive(pf: Path, dst: Path) -> Path:
-    """移动提案到归档目录；重名自动加 .2/.3… 绝不覆盖审计记录；rename 竞态自动重试（P3-17）。"""
     dst.mkdir(parents=True, exist_ok=True)
     try:
         target = dst / pf.name
@@ -1008,29 +1015,32 @@ def _archive(pf: Path, dst: Path) -> Path:
 
 
 def pending_proposals(book: Path) -> list[Path]:
-    """inbox 中的未决正式提案（CLI status 共用；不含 drafts/templates/samples）。"""
     return _gather(inbox_dir(book))
 
 
 def apply_inbox(book: Path, expect_chapter: str | None = None, dry_run: bool = False) -> dict:
-    """锁内批处理收件箱。expect_chapter 模式只合并本章提案，其余留在原地；
-    非 dry-run 时先从 failed/ 捡回本章提案重试。失败即停（不带着病状态继续合并下一份）。"""
     inbox = inbox_dir(book)
     overall = {"applied": 0, "failed": 0, "duplicates": 0, "skipped": 0, "results": [], "picked_up": False}
+
     def _failed_candidates() -> list[Path]:
-        """failed/ 中本章提案候选（按修改时间升序）——含重名归档的 .2/.3 变体
-        （P2-5：只认精确名会让二次失败永远滞留）。取最新一份捡回，旧案留作历史。"""
         fdir = inbox / "failed"
         if not expect_chapter or not fdir.is_dir():
             return []
-        cands = [p for p in fdir.glob(f"{expect_chapter}*.json")
-                 if not p.name.endswith(NO_MERGE_SUFFIXES)]
-        cands.sort(key=lambda p: p.stat().st_mtime)
+        cands: list[Path] = []
+        exact = fdir / f"{expect_chapter}.json"
+        if exact.is_file() and not exact.name.endswith(NO_MERGE_SUFFIXES):
+            cands.append(exact)
+        for p in fdir.glob(f"{expect_chapter}.*.json"):
+            if p.name.endswith(NO_MERGE_SUFFIXES):
+                continue
+            if common.chapter_number_from_name(p.name) == common.chapter_token_to_num(expect_chapter):
+                if p.name.startswith(expect_chapter + "."):
+                    cands.append(p)
+        cands = sorted(set(cands), key=lambda p: p.stat().st_mtime)
         return cands
 
     with common.file_lock(state_dir(book), name=".state.lock", timeout=30.0):
-        files = _gather(inbox)  # gather 置于锁内，消除 TOCTOU（P3-17）
-        # 捡回 failed/ 中本章最新一份提案；同章在途提案已存在时不捡回（以在途为准）。
+        files = _gather(inbox)
         if expect_chapter and not (inbox / f"{expect_chapter}.json").exists():
             cands = _failed_candidates()
             if cands and not dry_run:
@@ -1041,7 +1051,7 @@ def apply_inbox(book: Path, expect_chapter: str | None = None, dry_run: bool = F
                     overall["picked_up"] = True
                     files = _gather(inbox)
             elif cands:
-                files = [cands[-1]] + files  # dry-run 不落盘，仅纳入预演，保持与正式捡回语义一致
+                files = [cands[-1]] + files
         for pf in files:
             result = {"file": pf.name}
             try:
@@ -1052,8 +1062,6 @@ def apply_inbox(book: Path, expect_chapter: str | None = None, dry_run: bool = F
                 overall["failed"] += 1
                 if not dry_run:
                     result["archived_to"] = str(_archive(pf, inbox / "failed"))
-                # P2-2: 文件名可判定为其他章节的坏提案 → 归档后继续合并目标章；
-                # 归属不明（文件名无章号）或正是目标章 → 维持"失败即停"。
                 fn = common.chapter_number_from_name(pf.name)
                 tn = common.chapter_token_to_num(expect_chapter) if expect_chapter else None
                 if expect_chapter is None or fn is None or fn == tn:
@@ -1062,7 +1070,7 @@ def apply_inbox(book: Path, expect_chapter: str | None = None, dry_run: bool = F
                 continue
             ch = proposal.get("chapter") if isinstance(proposal, dict) else None
             if expect_chapter is not None and ch != expect_chapter:
-                result["skipped"] = f"提案章节 {ch} ≠ 同步目标 {expect_chapter}（留在收件箱）"
+                result["skipped"] = f"提案章节 {ch} ≠ 同步目标 {expect_chapter}"
                 overall["skipped"] += 1
                 overall["results"].append(result)
                 continue
@@ -1078,23 +1086,17 @@ def apply_inbox(book: Path, expect_chapter: str | None = None, dry_run: bool = F
                 overall["duplicates"] += 1
             elif rep.get("changed"):
                 overall["applied"] += 1
-            else:  # no-op：合并后无任何实际变更 → 计为 skipped，不推进流水线、不封存快照
+            else:
                 overall["skipped"] += 1
                 rep["noop"] = True
-                rep["warnings"].append("提案合并后无任何实际变更（no-op），不计入已应用、不封存")
+                rep["warnings"].append("提案合并后无任何实际变更（no-op）")
             if not dry_run:
                 rep["archived_to"] = str(_archive(pf, inbox / "processed"))
     return overall
 
 
-# ---------------------------------------------------------------------------
-# 合并后体检（sync 第二步；M2 的 check 命令复用）
-# ---------------------------------------------------------------------------
 def verify_data(data: dict[str, dict]) -> list[str]:
-    """在内存/磁盘的六表副本上跑机械体检：账本重算、唯一性、实体闭合。
-    与 verify_state 同口径，但接受任意 data 副本（apply_proposal 在落盘前用它预检）。"""
     errors: list[str] = []
-    # 0. Pydantic V2 五大核心领域模型强类型与未知键深度体检（方案 B 深度接入）
     for sec in ("current", "entities", "lines", "timeline", "ledger"):
         if sec in data and isinstance(data[sec], dict):
             p_errors = models.validate_with_model(sec, data[sec], prefix=sec)
@@ -1103,18 +1105,36 @@ def verify_data(data: dict[str, dict]) -> list[str]:
                     errors.append(pe)
 
     led = data["ledger"]
-    running = {k: v.get("initial", 0) for k, v in led.get("pools", {}).items()}
+    running = {}
+    for k, v in led.get("pools", {}).items():
+        try:
+            running[k] = int(v.get("initial", 0))
+        except (ValueError, TypeError):
+            errors.append(f"资源池 {k} initial 非整数：{v.get('initial')!r}")
+            continue
     for i, t in enumerate(led.get("transactions", []), 1):
         pool = t.get("pool")
         if pool not in running:
             errors.append(f"流水 #{i} 引用未声明池 '{pool}'")
             continue
-        running[pool] += int(t.get("delta", 0))
-        if t.get("balance_after") is not None and int(t["balance_after"]) != running[pool]:
-            errors.append(f"流水 #{i} balance_after={t['balance_after']} ≠ 重算 {running[pool]}")
+        try:
+            delta = int(t.get("delta", 0))
+        except (ValueError, TypeError):
+            errors.append(f"流水 #{i} delta 非整数：{t.get('delta')!r}")
+            continue
+        running[pool] += delta
+        if t.get("balance_after") is not None:
+            try:
+                if int(t["balance_after"]) != running[pool]:
+                    errors.append(f"流水 #{i} balance_after={t['balance_after']} ≠ 重算 {running[pool]}")
+            except (ValueError, TypeError):
+                errors.append(f"流水 #{i} balance_after 非整数：{t['balance_after']!r}")
     for k, v in led.get("pools", {}).items():
-        if int(v.get("current", 0)) != running.get(k, 0):
-            errors.append(f"资源池 {k} 声明余额 {v.get('current')} ≠ 流水累计 {running.get(k, 0)}")
+        try:
+            if int(v.get("current", 0)) != running.get(k, 0):
+                errors.append(f"资源池 {k} 声明余额 {v.get('current')} ≠ 流水累计 {running.get(k, 0)}")
+        except (ValueError, TypeError):
+            errors.append(f"资源池 {k} current 非整数：{v.get('current')!r}")
 
     for arr_key, id_re, label in (("foreshadows", GUN_ID_RE, "伏笔"), ("misunderstandings", MIS_ID_RE, "误会"),
                                   ("knowledge", KNO_ID_RE, "知识线")):
@@ -1130,7 +1150,6 @@ def verify_data(data: dict[str, dict]) -> list[str]:
     if dup:
         errors.append(f"实体注册表重名: {dup}")
 
-    # 闭合性与生死状态：current.present_characters 必须已注册且非离世
     known = set(names)
     deceased_names = set()
     for e in data["entities"].get("entries", []):
@@ -1140,32 +1159,40 @@ def verify_data(data: dict[str, dict]) -> list[str]:
             deceased_names.update(str(a) for a in e.get("aliases", []) if a)
     for name in data["current"].get("present_characters", []):
         if str(name).strip() and str(name) not in known:
-            errors.append(f"current.present_characters 引用未登记实体「{name}」"
-                          f"（💡 修复指引：在提案 entities 列表中补充登记：{{\"action\":\"upsert\",\"name\":\"{name}\",\"type\":\"person\",\"summary\":\"...\"}}）")
+            errors.append(f"current.present_characters 引用未登记实体「{name}」")
         elif str(name) in deceased_names:
-            errors.append(f"current.present_characters 引用已离世/战死实体「{name}」（life_status=deceased）"
-                          "（💡 修复指引：若非回忆/补叙闪回场景，请将该角色从 present_characters 移除，或修改其 life_status）")
+            errors.append(f"current.present_characters 引用已离世实体「{name}」")
 
-    # 闭合性：item 实体的 holder 必须已注册（人名/别名）——持有关系不许悬空
     for e in data["entities"].get("entries", []):
         holder = str(e.get("holder", "")).strip()
         if holder and holder not in known:
-            errors.append(f"实体「{e.get('name','')}」的 holder「{holder}」未登记"
-                          f"（💡 修复指引：持有者 holder 必须是已注册实体，请在提案 entities 补充注册「{holder}」）")
+            errors.append(f"实体「{e.get('name','')}」的 holder「{holder}」未登记")
+        if holder and holder in deceased_names:
+            errors.append(f"实体「{e.get('name','')}」的 holder「{holder}」已离世——持有关系悬空")
+        try:
+            if e.get("charges") is not None and e.get("max_charges") is not None:
+                if int(e["charges"]) > int(e["max_charges"]):
+                    errors.append(f"实体「{e.get('name','')}」charges({e['charges']}) > max_charges({e['max_charges']})")
+        except (ValueError, TypeError):
+            pass
 
-    # 危机时钟校验
+    seen_clocks = set()
     for i, clk in enumerate(data["timeline"].get("clocks", []), 1):
         cname = clk.get("name")
         if not cname:
             errors.append(f"时钟 #{i} 缺少 name 名称")
+            continue
+        if cname in seen_clocks:
+            errors.append(f"危机时钟重名: 「{cname}」")
+        else:
+            seen_clocks.add(cname)
         tch = clk.get("target_ch")
-        if not isinstance(tch, int) or tch < 1:
-            errors.append(f"时钟「{cname or i}」target_ch 非法: {tch}（须为 ≥1 的正整数）")
+        if not isinstance(tch, int) or isinstance(tch, bool) or tch < 1:
+            errors.append(f"时钟「{cname or i}」target_ch 非法: {tch}")
     return errors
 
 
 def verify_state(book: Path) -> list[str]:
-    """从磁盘加载六表并跑机械体检（M2 的 check 命令与 sync 复用）。"""
     data: dict[str, dict] = {}
     for key in STATE_KEYS:
         try:

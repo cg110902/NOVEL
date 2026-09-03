@@ -5,17 +5,15 @@ from . import common, evidence, state
 
 def generate_dashboard_html(book: Path) -> str:
     """生成包含人物关系、伏笔看板、情绪节奏与实时状态的现代化交互式看板 HTML"""
-    esc = html_escape  # P3-10: 所有插值过 esc，书名/实体名/summary 含 <>& 不再破版
+    esc = html_escape
     proj = common.load_json(book / "project.json", default={})
     title = esc(str(proj.get("title", "未命名作品")))
     genre = esc(str(proj.get("genre", "通用网文")))
 
-    # 1. 状态与实体
     cur = state.load_state(book, "current")
     ents = state.load_state(book, "entities").get("entries", [])
     gaps_data = evidence.gaps(book)
 
-    # 2. 章节与钩子分析
     chapters_info = []
     for tok, num, text in evidence.final_chapters(book):
         hook_info = evidence.detect_chapter_hook(text, evidence.hook_words(book))
@@ -28,23 +26,24 @@ def generate_dashboard_html(book: Path) -> str:
             "hook_desc": esc(hook_info.get("detail", "")[:30]),
         })
     
-    # 3. 伏笔与暗线状态清洗
     active_guns = [g for g in gaps_data.get("foreshadows", []) if str(g.get("status", "")).lower() != "resolved" and not g.get("overdue")]
     active_mis = [m for m in gaps_data.get("misunderstandings", []) if str(m.get("status", "")).lower() != "resolved" and not m.get("overdue")]
     active_kno = [k for k in gaps_data.get("knowledge", []) if str(k.get("status", "")).lower() != "revealed" and not k.get("overdue")]
     
     overdue_items = []
+    max_final = gaps_data.get("max_final_chapter")
+    # 修复：当 max_final 为 None（无定稿）时 overdue 判断仍需可用，按 target_ch 存在即计为潜在逾期
     for g in gaps_data.get("foreshadows", []):
-        if g.get("overdue"):
-            overdue_items.append({"id": g["id"], "title": g.get("name", ""), "desc": f"逾期 {g.get('idle_chapters', 0)} 章 ｜ 目标 ch_{g.get('target_ch')}"})
+        if g.get("overdue") or (max_final is None and isinstance(g.get("target_ch"), int)):
+            idle = g.get('idle_chapters', 0)
+            overdue_items.append({"id": g["id"], "title": g.get("name", ""), "desc": f"逾期 {idle} 章 ｜ 目标 ch_{g.get('target_ch')}" if max_final is not None else f"目标 ch_{g.get('target_ch')}（暂无定稿，待核对）"})
     for m in gaps_data.get("misunderstandings", []):
-        if m.get("overdue"):
-            overdue_items.append({"id": m["id"], "title": m.get("parties", ""), "desc": f"逾期未澄清 ｜ 目标 ch_{m.get('target_ch')}"})
+        if m.get("overdue") or (max_final is None and isinstance(m.get("target_ch"), int)):
+            overdue_items.append({"id": m["id"], "title": m.get("parties", ""), "desc": f"逾期未澄清 ｜ 目标 ch_{m.get('target_ch')}" if max_final is not None else f"目标 ch_{m.get('target_ch')}（待核对）"})
     for k in gaps_data.get("knowledge", []):
-        if k.get("overdue"):
-            overdue_items.append({"id": k["id"], "title": str(k.get("secret", ""))[:18], "desc": f"逾期未揭示 ｜ 目标 ch_{k.get('target_ch')}"})
+        if k.get("overdue") or (max_final is None and isinstance(k.get("target_ch"), int)):
+            overdue_items.append({"id": k["id"], "title": str(k.get("secret", ""))[:18], "desc": f"逾期未揭示 ｜ 目标 ch_{k.get('target_ch')}" if max_final is not None else f"目标 ch_{k.get('target_ch')}（待核对）"})
 
-    # HTML 模版构建
     html_content = f"""<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -81,14 +80,12 @@ def generate_dashboard_html(book: Path) -> str:
         .card-header {{ display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 10px; }}
         .card-title {{ font-size: 16px; font-weight: 600; color: var(--accent-cyan); display: flex; align-items: center; gap: 8px; }}
         
-        /* 状态面板 */
         .status-badge-group {{ display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 14px; }}
         .status-badge {{ background: rgba(6, 182, 212, 0.12); color: var(--accent-cyan); border: 1px solid rgba(6, 182, 212, 0.3); padding: 4px 10px; border-radius: 6px; font-size: 12px; }}
         .stat-item {{ margin-bottom: 10px; font-size: 14px; display: flex; }}
         .stat-label {{ color: var(--text-muted); min-width: 80px; font-weight: 500; }}
         .stat-val {{ color: var(--text-main); flex: 1; }}
         
-        /* 实体网格 */
         .entity-grid {{ display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }}
         .entity-card {{ background: var(--bg-sub); border-radius: 8px; padding: 12px; border-left: 4px solid var(--accent-cyan); }}
         .entity-card.place {{ border-left-color: var(--accent-emerald); }}
@@ -98,7 +95,6 @@ def generate_dashboard_html(book: Path) -> str:
         .entity-name {{ font-weight: 600; font-size: 14px; margin-bottom: 4px; display: flex; justify-content: space-between; }}
         .entity-summary {{ font-size: 12px; color: var(--text-muted); line-height: 1.4; }}
         
-        /* 看板 */
         .kanban {{ display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }}
         .kanban-col {{ background: rgba(15, 23, 42, 0.6); border-radius: 8px; padding: 12px; border: 1px solid var(--border); }}
         .kanban-col-header {{ font-size: 13px; font-weight: 600; margin-bottom: 10px; padding-bottom: 6px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; }}
@@ -106,7 +102,6 @@ def generate_dashboard_html(book: Path) -> str:
         .kanban-card-title {{ font-weight: 600; margin-bottom: 4px; color: var(--text-main); }}
         .kanban-card-meta {{ color: var(--text-muted); font-size: 11px; display: flex; justify-content: space-between; margin-top: 6px; }}
         
-        /* 节奏与钩子 */
         .pacing-table {{ width: 100%; border-collapse: collapse; font-size: 13px; }}
         .pacing-table th, .pacing-table td {{ padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--border); }}
         .pacing-table th {{ color: var(--text-muted); font-weight: 500; }}
@@ -129,7 +124,6 @@ def generate_dashboard_html(book: Path) -> str:
     </div>
     
     <div class="grid-container">
-        <!-- 主角实时状态面板 -->
         <div class="card col-4">
             <div class="card-header">
                 <div class="card-title">⚡ 主角现场状态（{esc(str(cur.get('time', '未知时间')))}）</div>
@@ -146,7 +140,6 @@ def generate_dashboard_html(book: Path) -> str:
             <div class="stat-item"><span class="stat-label">当前目标</span><span class="stat-val" style="color: var(--accent-cyan);">{esc(str(cur.get('goal', '无')))}</span></div>
         </div>
 
-        <!-- 伏笔与暗线看板 -->
         <div class="card col-8">
             <div class="card-header">
                 <div class="card-title">📌 伏笔与暗线生命周期看板（Lines SSOT）</div>
@@ -183,7 +176,6 @@ def generate_dashboard_html(book: Path) -> str:
             </div>
         </div>
 
-        <!-- 章节节奏与钩子心电图 -->
         <div class="card col-6">
             <div class="card-header">
                 <div class="card-title">📈 章节心电图与章尾钩子交替</div>
@@ -208,7 +200,6 @@ def generate_dashboard_html(book: Path) -> str:
             </table>
         </div>
 
-        <!-- 人物与关键实体 -->
         <div class="card col-6">
             <div class="card-header">
                 <div class="card-title">👥 出场人物与关键实体网络（已登记 {len(ents)} 个）</div>
