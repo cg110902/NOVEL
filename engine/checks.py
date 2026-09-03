@@ -25,7 +25,6 @@ SLOT_RE = re.compile(r"\{\{\s*slot:")
 CANDIDATE_RE = re.compile(r"candidate_[0-9A-Za-z_*]")
 FORM_SHARE_LIMIT = 0.40
 
-# 引文接地（0 token 机械校验）支持 quote 的分区遍历描述表：(列表取值器, 条目名)
 _QUOTE_SLOTS: list[tuple[str, object]] = [
     ("entities", lambda p: p.get("entities") or []),
     ("lines", lambda p: p.get("lines") or []),
@@ -36,13 +35,12 @@ _QUOTE_SLOTS: list[tuple[str, object]] = [
 
 
 def _iter_quote_items(proposal: dict):
-    """产出 (路径名, 条目) ——提案中所有可携带 quote 的条目（synopsis 单列）。"""
     if not isinstance(proposal, dict):
         return
     for name, getter in _QUOTE_SLOTS:
         try:
             items = getter(proposal)
-        except Exception:  # noqa: BLE001 —— 结构异常交给 schema 校验报错
+        except Exception:
             continue
         for i, item in enumerate(items):
             if isinstance(item, dict):
@@ -53,35 +51,20 @@ def _iter_quote_items(proposal: dict):
 
 
 def _norm_quote_ws(s: str) -> str:
-    """折叠多余空白与换行，用于引文跨行折叠容错比对。"""
     return re.sub(r"\s+", " ", s or "").strip()
 
 
 def _norm_quote_punct(s: str) -> str:
-    """归一化常见标点与空白，用于引文在严格匹配失败后的安全等价容错比对。
-    涵盖中英文引号、破折号、省略号，并剥离首尾句读，防止截取边界标点微差导致假阳性拦截。"""
     if not s:
         return ""
-    # 折叠空白
     t = re.sub(r"\s+", "", s)
-    # 归一化各类单双引号与角引号
     t = re.sub(r"[「」『』“”‘’\"']", "\"", t)
-    # 归一化破折号
     t = re.sub(r"[—–―─\-]{2,}", "——", t)
-    # 归一化省略号
     t = re.sub(r"[…]{1,}|\.{3,}|。{3,}", "……", t)
-    # 剥离首尾常见停顿与句读标点
     return t.strip("，。！？；：、,.;:!?\"")
 
 
 def validate_quotes(book: Path, ch: str, proposal: dict) -> list[str]:
-    """引文机械校验（0 token）：提案条目可选 quote 必须逐字出现在当章 final 中。
-
-    final 缺失 → 返回空（sync 的输入合同另有闸门）；quote 非串/空白/不在 final → 逐条报错，
-    编造或改写引文在物理上无法过闸。这是"引文先行"纪律的引擎侧牙齿。
-    （三级容错：严格字面匹配 → 空白/折行折叠比对 → Unicode 标点与边界等价归一化，
-     彻底防范 Gemini 系列模型 标点规整或排版差异导致的整案拒绝假阳性）。
-    """
     finals = common.find_chapter_files(book, "final", ch)
     if not finals:
         return []
@@ -96,18 +79,14 @@ def validate_quotes(book: Path, ch: str, proposal: dict) -> list[str]:
         if not isinstance(q, str) or not q.strip():
             errors.append(f"{where}.quote 必须为非空字符串（逐字摘自 final 的支撑句）")
             continue
-        # 1. 严格字面子串命中
         if q in text:
             continue
-        # 2. 空白/折行折叠二次容错命中
         norm_q = _norm_quote_ws(q)
         if norm_q and norm_q in norm_text:
             continue
-        # 3. Unicode 标点等价与首尾边界容错三次命中（需保持至少4个有效字符的语义支撑度）
         norm_p_q = _norm_quote_punct(q)
         if norm_p_q and len(norm_p_q) >= 4 and norm_p_q in norm_punct_text:
             continue
-        # 4. RapidFuzz 局部相似度容错命中（需 >= 8 汉字且 partial_ratio >= 90.0%，防漏抄语气助词假阳性）
         if _HAS_RAPIDFUZZ and norm_p_q and len(norm_p_q) >= 8:
             score = fuzz.partial_ratio(norm_p_q, norm_punct_text)
             if score >= 90.0:
@@ -118,7 +97,7 @@ def validate_quotes(book: Path, ch: str, proposal: dict) -> list[str]:
 
 
 def _char_shingles(text: str, n: int) -> set[str]:
-    z = re.sub(r"[\s，。！？、；：「」『』“”‘’\"'（）()《》〈〉—…·\-~,.;:?!\n]", "", text or "")
+    z = re.sub(r"[\s，。！？、；：「」『』“”‘’\"'（）()《》〈〉—…·\-~,.;:?!\\n]", "", text or "")
     return {z[i:i + n] for i in range(0, max(0, len(z) - n + 1))}
 
 
@@ -130,12 +109,6 @@ _CAND_STOP = set("他们的自己一个没有什么这个那个已经现在时�
 
 
 def verify_candidates(book: Path, ch: str, proposal: dict) -> dict:
-    """Stage 5 机械对照电池（0 token）：提案 × final × 状态 的全机械对照电池。
-
-    只数差异、只出候选清单（sev=warn/info），零裁决——判断归主控。任何一项都不阻断 sync。
-    覆盖 8 项：引文覆盖、章题对照、beats 重叠（源纯度）、金额对照（双向）、在场差异、
-    state_watch 关键词守望、候选新实体（实验性）、到期线覆盖。
-    """
     n = common.chapter_token_to_num(ch)
     out: dict = {"kind": "verify", "chapter": ch, "items": []}
     if not n:
@@ -151,7 +124,6 @@ def verify_candidates(book: Path, ch: str, proposal: dict) -> dict:
     def add(sev: str, code: str, msg: str) -> None:
         items.append({"sev": sev, "code": code, "msg": msg})
 
-    # 1. 引文覆盖
     total = missing = 0
     for where, item in _iter_quote_items(proposal):
         if not isinstance(item, dict):
@@ -167,7 +139,6 @@ def verify_candidates(book: Path, ch: str, proposal: dict) -> dict:
         add("warn", "quote_none", "提案未携带任何引文——整套引文接地机制未启用")
     out["stats"] = {"quote_slots": total, "quote_missing": missing}
 
-    # 2. 章题对照（final 首行标题行 vs 本次提交/已登记标题）
     m = re.search(r"^#\s*(.+?)\s*$", text, re.M)
     if not m:
         add("info", "title_absent", "final 无章题标题行，章题机械对照跳过（Editor 契约要求首行章题）")
@@ -183,7 +154,6 @@ def verify_candidates(book: Path, ch: str, proposal: dict) -> dict:
         if submitted and submitted != final_title:
             add("warn", "title_mismatch", f"章题与 final 不一致: 提交「{submitted}」≠ final「{final_title}」（契约：逐字拷贝）")
 
-    # 3. beats 重叠（源纯度：事实性文字须来自 final，不得照抄任务书）
     beats_files = common.find_chapter_files(book, "beats", n)
     if beats_files:
         beats_sh = _char_shingles(beats_files[-1].read_text(encoding="utf-8", errors="replace"), 8)
@@ -212,7 +182,6 @@ def verify_candidates(book: Path, ch: str, proposal: dict) -> dict:
                     f"{where} 与任务书 beats 存在 {len(shared)} 处 8 字连续重叠（如「{ex}」）——"
                     "疑似照抄任务书，事实性文字须逐字以 final 为源")
 
-    # 4. 金额对照（双向：正文金额候选 vs 本章流水；引文可豁免口径差）
     try:
         led = state.load_state(book, "ledger")
     except (ValueError, FileNotFoundError) as exc:
@@ -224,7 +193,7 @@ def verify_candidates(book: Path, ch: str, proposal: dict) -> dict:
     new_txs = [t for t in ((proposal.get("ledger") or {}).get("transactions") or [])
                if isinstance(t, dict) and (t.get("chapter") or ch) == ch]
     tx_vals = {abs(int(t.get("delta", 0))) for t in txs + new_txs if isinstance(t.get("delta"), int)}
-    for a in amounts:  # 流水 delta 带符号（支出为负），金额对照按口径规则比对绝对值
+    for a in amounts:
         miss = [v for v in a["values"] if abs(v) not in tx_vals]
         if miss:
             add("warn", "amount_unmatched",
@@ -240,13 +209,11 @@ def verify_candidates(book: Path, ch: str, proposal: dict) -> dict:
                     f"ledger.transactions[{i}] 金额 {t['delta']} 既无正文金额候选、也无引文——补 quote 或核对数值")
     out["stats"]["amount_candidates"] = len(cand_vals)
 
-    # 5. 在场差异（提及计数 vs 声明名单，双向）
     try:
         lookup = evidence.entity_lookup(book)
     except (ValueError, FileNotFoundError) as exc:
         add("warn", "entities_unreadable", f"实体表不可读，在场对照跳过: {exc}")
         lookup = {}
-    # 预同步对照口径：提案本次正在注册的实体并入检索表，避免"新实体在场"误报
     for e in (proposal.get("entities") or []):
         if isinstance(e, dict) and e.get("action", "upsert") != "retire" and str(e.get("name", "")).strip():
             name = str(e["name"])
@@ -265,7 +232,6 @@ def verify_candidates(book: Path, ch: str, proposal: dict) -> dict:
         for name in cur_prop:
             if per.get(str(name), 0) == 0:
                 add("warn", "present_unmentioned", f"在场声明「{name}」在本章 final 零提及——核对是否章末真在场")
-        # 在场名单语义只针对"人物"——道具/势力类实体没有"在场"一说（实战噪音：holder 物被点名即误报）
         try:
             _persons = {e.get("name") for e in state.load_state(book, "entities").get("entries", [])
                         if e.get("type", "person") == "person"}
@@ -276,7 +242,6 @@ def verify_candidates(book: Path, ch: str, proposal: dict) -> dict:
                 add("warn", "mention_not_present", f"「{name}」本章提及 {c} 次但未列入在场名单（漏报或早退，归主控判）")
                 break
 
-    # 6. state_watch 关键词守望（书级配置 project.json.state_watch: {current字段: [词表]}）
     proj = common.load_json(book / "project.json", default={}) or {}
     try:
         cur_state = state.load_state(book, "current")
@@ -286,16 +251,13 @@ def verify_candidates(book: Path, ch: str, proposal: dict) -> dict:
     for field, terms in (proj.get("state_watch") or {}).items():
         if not isinstance(terms, list):
             continue
-        # 优先比对本次待审提案已更新的字段值；若提案未修改该字段，则比对当前磁盘状态
         active_val = str(prop_cur[field]) if field in prop_cur else str(cur_state.get(field, ""))
         for term in terms:
             if isinstance(term, str) and term in text and term not in active_val:
                 add("warn", "state_watch_hit",
                     f"正文出现「{term}」但提案/现场 current.{field} 未提及——疑似状态刷新遗漏（修辞/闪回情形忽略）")
 
-    # 7. 候选新实体（实验性：正文高频 2~4 字串，非注册、非停用词）
     known = [str(x).lower() for names in lookup.values() for x in names]
-    # 候选降噪停用词 = 引擎语言功能词底表 ∪ 主控供参 project.json.candidate_stopwords
     cand_stop = _CAND_STOP | {str(w).strip() for w in (proj.get("candidate_stopwords") or [])
                               if isinstance(w, str) and w.strip()}
     segs = [s for s in re.split(r"[^\u4e00-\u9fff]+", text) if len(s) >= 2]
@@ -313,7 +275,7 @@ def verify_candidates(book: Path, ch: str, proposal: dict) -> dict:
     for g, c in grams.items():
         if c < 3 or g in cand_stop or any(s in g for s in cand_stop):
             continue
-        if evidence.is_candidate_noise(g, _pools):  # 金额残渣/把字句/币种串的机械毛刺
+        if evidence.is_candidate_noise(g, _pools):
             continue
         if any((g in k) or (k in g and len(k) >= 2) for k in known):
             continue
@@ -322,7 +284,6 @@ def verify_candidates(book: Path, ch: str, proposal: dict) -> dict:
     for g, c in sorted(cands, key=lambda x: -x[1])[:12]:
         add("info", "candidate_new_entity", f"「{g}」出现 {c} 次且未注册——若是新实体请补 entities upsert（实验性候选，误报勿理）")
 
-    # 8. 到期线覆盖（final 触及但提案未操作）
     try:
         lines = state.load_state(book, "lines")
         ops_ids = {str(g.get("id")) for g in (proposal.get("lines") or [])
@@ -340,8 +301,7 @@ def verify_candidates(book: Path, ch: str, proposal: dict) -> dict:
                     if any(term in text for term in terms):
                         add("warn", "due_line_unhandled",
                             f"{g['id']}（target ch_{t:03d}）正文有触及、提案未操作——确认本章是否该还线")
-        
-        # 9. 伏笔配额检查（提案新增 plant 时检测是否超限）
+
         proj = common.load_json(book / "project.json", default={}) or {}
         lcap = proj.get("lines_cap") or {}
         act_cap = lcap.get("active_foreshadows", 8)
@@ -358,9 +318,9 @@ def verify_candidates(book: Path, ch: str, proposal: dict) -> dict:
                     add("warn", "line_quota_exceeded",
                         f"卷内活动伏笔池已满（{len(open_act)}/{act_cap}），提案再次 plant 活动线《{g.get('name','')}》——建议在后续章节优先回收旧线")
 
-        # 10. 高危状态变更检测（生命阵亡/严重伤残/境界异动/退役）
         for ent in (proposal.get("entities") or []):
-            if not isinstance(ent, dict): continue
+            if not isinstance(ent, dict):
+                continue
             ename = ent.get("name", "未命名实体")
             if ent.get("life_status") == "deceased":
                 add("warn", "critical_mutation", f"🚨【高危状态变更】实体「{ename}」生命状态变更为【战死/离世 (deceased)】，请重点核实正文确凿事实！")
@@ -370,8 +330,6 @@ def verify_candidates(book: Path, ch: str, proposal: dict) -> dict:
         cur_p = proposal.get("current") or {}
         if isinstance(cur_p, dict):
             inj = str(cur_p.get("injury", ""))
-            # 高危伤势词表 = 主控供参 project.json.critical_injury_words（引擎零题材词表：
-            # 缺席=未配置→info 提示并跳过本档；空表=主控明确关闭）
             crit_words = proj.get("critical_injury_words")
             if crit_words is None:
                 add("info", "wordlist_unconfigured",
@@ -397,11 +355,6 @@ _BEATS_FM_KEYS = {"chapter", "vol", "form", "pov", "words", "style_notes", "form
                   "guard_extra", "editor_extra", "tension_curve", "tension_score",
                   "stage_mode", "suppression_factors", "release_trigger"}
 
-# 主控供参参数表（引擎零题材词表契约）：词表的语义内容属书级局部设定，由主控按题材生成并注入
-# project.json（推荐经 `studio.py config` 手术刀命令），引擎只声明"收什么/什么形状"并机械消费。
-#   gap=True  → 键缺席时对应启发式整档停用，check 以 info `wordlist_unconfigured` 提示缺口；
-#   gap=False → 可选增配，缺席时引擎底表/默认行为仍在工作，不提示；
-#   键存在（含空表）= 主控已表态：空表即明确关闭，不再提示；形状错误 = check 报 param_shape_invalid。
 PARAM_SPEC: dict[str, dict] = {
     "generic_stopwords": {"shape": "str_list", "gap": True,
         "desc": "通用实体停用词（evidence 别名 P1 触发降噪 / pack）",
@@ -431,24 +384,15 @@ PARAM_SPEC: dict[str, dict] = {
         "desc": "current 字段关键词守望（verify state_watch 档）：{字段: [词表]}",
         "example": {"power_level": ["突破", "晋升"]}},
 }
-# 缺口总账口径（只统计 gap=True 的"缺席即停用"键）
 WORDLIST_SPEC = {k: v["desc"] for k, v in PARAM_SPEC.items() if v.get("gap")}
 
 
 def param_suggestions(book: Path, top: int = 12) -> dict:
-    """机械候选工作单（0 token，只数不报结论——采纳与否归主控裁决）。
-
-    用"召回 → 验证"模式消解主控的注意力税：引擎把频率异常者先算成候选清单，
-    主控扫一眼拍板，经 `config set --merge` 并入供参。
-    - generic_stopwords 候选：已注册实体的 ≤2 字别名在定稿全文的高频者（= P1 触发雪崩源）；
-    - candidate_stopwords 候选：全书高频 2 字词，剔除已注册名/别名、语言功能词底表与已配置项。
-    """
     proj = common.load_json(book / "project.json", default={}) or {}
     texts = [t for _, _, t in evidence.final_chapters(book)]
     full = "\n".join(texts)
     sugg: dict[str, list] = {}
 
-    # 1) generic_stopwords 候选：高频短别名
     configured_stop = {str(w).strip() for w in (proj.get("generic_stopwords") or [])}
     alias_hits: list[tuple[str, int, str]] = []
     for e in state.load_state(book, "entities").get("entries", []):
@@ -465,7 +409,6 @@ def param_suggestions(book: Path, top: int = 12) -> dict:
         {"word": w, "count": c, "of_entity": en}
         for w, c, en in sorted(alias_hits, key=lambda x: -x[1])[:top]]
 
-    # 2) candidate_stopwords 候选：全书高频泛词（与 verify 同套 n-gram 口径：2~4 字 + 含并剔除切片毛刺）
     known: list[str] = [str(proj.get("protagonist", "")).strip()]
     for e in state.load_state(book, "entities").get("entries", []):
         known.append(str(e.get("name", "")))
@@ -492,7 +435,6 @@ def param_suggestions(book: Path, top: int = 12) -> dict:
         if any((g in k) or (k in g) for k in known):
             continue
         cands.append((g, c))
-    # 被同频或更高频的长候选包含的短切片是 n-gram 毛刺（如"廊尽"⊂"走廊尽头"），剔除
     cands = [(g, c) for g, c in cands if not any(g != g2 and g in g2 and c2 >= c for g2, c2 in cands)]
     sugg["candidate_stopwords"] = [
         {"word": g, "count": c} for g, c in sorted(cands, key=lambda x: -x[1])[:top]]
@@ -504,7 +446,6 @@ def param_suggestions(book: Path, top: int = 12) -> dict:
 
 
 def validate_param_value(key: str, value) -> str | None:
-    """供参参数形状校验（纯结构，零语义）。返回 None=合法；否则给人读的错误文案。"""
     spec = PARAM_SPEC.get(key)
     if spec is None:
         return f"未知参数键「{key}」（合法键清单见 `python studio.py config guide`）"
@@ -533,18 +474,15 @@ _WORDS_BAND_RE = re.compile(r"(\d+)\s*[-–—~～]\s*(\d+)")
 
 
 def _words_band(s: str) -> tuple[int | None, int | None]:
-    """'2200-3200' → (2200, 3200)；解析不出 → (None, None)。"""
     m = _WORDS_BAND_RE.search(s or "")
     return (int(m.group(1)), int(m.group(2))) if m else (None, None)
 
 
 def _style_knobs(s: str) -> tuple[str, ...]:
-    """style_notes 竖线分旋钮（全同=复印机的比较键）。"""
     return tuple(p.strip() for p in re.split(r"[|｜]", s or "") if p.strip())
 
 
 def _numbered_items(lines: list[str]) -> dict[int, str]:
-    """`N.`/`N、`起头的行 → {序号: 整行及后续缩进/子行内容}（跳空行，只认节内）。"""
     out: dict[int, str] = {}
     current_num = None
     for ln in lines:
@@ -561,17 +499,10 @@ def _numbered_items(lines: list[str]) -> dict[int, str]:
 
 
 def review_gate(book: Path, ch: str) -> list[str]:
-    """校对注记体检（可选机制，软提示）：注记存在时检查「验收」节是否逐条答完 beats「验收」。
-
-    只数行与符号；结果由调用方决定呈现方式——sync 流程将其作为 ℹ️ 提示打印，
-    不影响退出码、不阻断封存（见 cli.cmd_sync）。注记不存在 = 机制未启用，
-    返回创建提醒（同样不构成错误）。
-    """
     beats = [f for f in common.find_chapter_files(book, "beats")
              if common.chapter_number_from_name(f.name) == common.chapter_token_to_num(ch)]
     k = 0
     if beats:
-        # 取版本号最大者（[-1]），与 review_skeleton/proposal auto/pack 同口径（P2-6）
         acc = common.md_section(beats[-1].read_text(encoding="utf-8", errors="replace"), r"^##\s*(?:.*验收|.*契约)")
         k = max(_numbered_items(acc), default=0)
     rev = book / "log" / "review" / f"{ch}.md"
@@ -587,10 +518,8 @@ def review_gate(book: Path, ch: str) -> list[str]:
     missing = [n for n in range(1, k + 1) if n not in items]
     if missing:
         issues.append(f"验收 {missing} 未被校对注记回答（共 {k} 条，须逐条 N. ✓/✗+证据）")
-    # 证据判定（Stage 4/5 验收证据规范）：每条结论必须带证据——正文引文，或 evidence 字段名+数值。
-    # 不再用"整行 ≥24 字符"的任意长阈值（会误伤语句精炼但已给引文/数值的证据）。
-    EVIDENCE_QUOTE_RE = re.compile(r"[「“\"'『]")          # 引号 = 正文引文
-    EVIDENCE_FIELD_RE = re.compile(r"[A-Za-z_][\w]*[:：]\s*[\d.]+|[A-Za-z_]+\s*=\s*[\d.]+")  # 字段:值
+    EVIDENCE_QUOTE_RE = re.compile(r"[「“\"'『]")
+    EVIDENCE_FIELD_RE = re.compile(r"[A-Za-z_][\w]*[:：]\s*[\d.]+|[A-Za-z_]+\s*=\s*[\d.]+")
     for n, line in sorted(items.items()):
         if not re.search(r"[✓✗×√]", line):
             issues.append(f"验收 {n} 无 ✓/✗ 判定符")
@@ -600,8 +529,6 @@ def review_gate(book: Path, ch: str) -> list[str]:
 
 
 def review_skeleton(book: Path, ch: str) -> dict:
-    """校对注记骨架数据（Stage 5）：验收条目/必须保留自 beats 提取，机器数据逐项预填。
-    纯提取/计数——每项的「结果」与证据仍由主控填写；零裁决。"""
     n = common.chapter_token_to_num(ch)
     if not n:
         raise ValueError(f"非法章号: {ch!r}")
@@ -644,7 +571,6 @@ def review_skeleton(book: Path, ch: str) -> dict:
 
 
 def proposal_cross_facts(book: Path, ch: str, proposal: dict) -> dict:
-    """提案×final×状态 三方对照：只出机械事实，零裁决措辞（是否上账归主控）。"""
     n = common.chapter_token_to_num(ch)
     facts: dict = {}
     if not isinstance(proposal, dict) or not n:
@@ -664,7 +590,7 @@ def proposal_cross_facts(book: Path, ch: str, proposal: dict) -> dict:
                     per[name] = c
             facts["present_mentions"] = per
         except (ValueError, FileNotFoundError) as exc:
-            facts["error"] = f"状态不可读，三方对照降级: {exc}"  # P2-1：损坏降级为字段，不裸崩
+            facts["error"] = f"状态不可读，三方对照降级: {exc}"
     try:
         lines = state.load_state(book, "lines")
     except (ValueError, FileNotFoundError) as exc:
@@ -681,7 +607,6 @@ def proposal_cross_facts(book: Path, ch: str, proposal: dict) -> dict:
     ops = sorted({str(g.get("id")) for g in (proposal.get("lines") or [])
                   if isinstance(g, dict) and g.get("id") and g.get("action", "plant") != "plant"})
     facts["lines_ops_in_proposal"] = ops
-    # 知识线揭示时机对照：提案标记 KNO 揭示 × 台账计划揭示章（纯算术比数，提前/逾期归主控）
     ledger_kno = {str(k.get("id")): k for k in lines.get("knowledge", [])}
     timing = []
     for g in (proposal.get("lines") or []):
@@ -705,7 +630,6 @@ def run_checks(book: Path) -> dict:
     infos: list[dict] = []
     stats: dict = {}
 
-    # ---- project.json ----
     proj_path = book / "project.json"
     proj: dict = {}
     if not proj_path.exists():
@@ -723,7 +647,6 @@ def run_checks(book: Path) -> dict:
     if proj and "words_target" in proj and not band_ok:
         errors.append(_err("project_field_type", "project.json.words_target 必须是 [下限, 上限] 整数对"))
 
-    # ---- 词表供参缺口总账（缺席=未配置→提示并跳过对应启发式；空表=明确关闭，不提示） ----
     if proj:
         for wl_key, wl_desc in WORDLIST_SPEC.items():
             if wl_key not in proj:
@@ -731,18 +654,15 @@ def run_checks(book: Path) -> dict:
                                   f"project.json 未配置「{wl_key}」（{wl_desc}）——对应启发式档已跳过；"
                                   "请主控按本书题材供参后生效（空表 = 明确关闭）"
                                   "（形状与示例见 `python studio.py config guide`）"))
-        # ---- 供参形状闸（键存在但形状非法 → 事实无关的结构错误，引擎可判） ----
         for pkey in PARAM_SPEC:
             if pkey in proj:
                 shape_err = validate_param_value(pkey, proj[pkey])
                 if shape_err:
                     errors.append(_err("param_shape_invalid", f"project.json.{shape_err}"))
 
-    # ---- 状态层（schema + 账本重算 + 唯一性，sync 前同款体检） ----
     for msg in state.verify_state(book):
         errors.append(_err("state_inconsistent", msg))
 
-    # ---- 实体引用闭合（current.present_characters ∈ 注册表名/别名） ----
     try:
         ents = state.load_state(book, "entities")["entries"]
         known = set()
@@ -755,7 +675,6 @@ def run_checks(book: Path) -> dict:
                 errors.append(_err("unregistered_character",
                                    f"current.present_characters 引用未登记实体「{name}」"
                                    "（先在 entities 提案注册，名字须与卡一致）"))
-        # retired 实体上台：retired=退场/死亡，仍在 present = 事实矛盾（闪回章由主控判读）
         retired = set()
         for e in ents:
             if e.get("status") == "retired":
@@ -769,9 +688,6 @@ def run_checks(book: Path) -> dict:
     except (ValueError, FileNotFoundError) as exc:
         errors.append(_err("state_unreadable", str(exc)))
 
-     # ---- 稿件结构：final 章号断档 / 同版本号重复（一章多版本是合法溯源，只取版本最大者）----
-    # 分组键 = (卷, 章号, 版本号)：跨卷同章号互不覆盖（vol_02/ch_001 合法），
-    # 仅同卷、同章号、同版本号出现多份定稿 = 真正重复。
     final_files = common.find_chapter_files(book, "final")
     ver_by_ch: dict[tuple[str, int], dict[int, list[Path]]] = {}
     for f in final_files:
@@ -785,19 +701,16 @@ def run_checks(book: Path) -> dict:
             ver_by_ch.setdefault((vol, n), {}).setdefault(v, []).append(f)
     per_ch: dict[tuple[str, int], Path] = {}
     for (vol, n), vers in sorted(ver_by_ch.items()):
-        # 同一版本号出现多个文件 = 真正重复；不同版本号 = 审计留痕（v2/v10），取版本号最大者。
         dup = [f for fs in vers.values() if len(fs) > 1 for f in fs]
         if dup:
             errors.append(_err("duplicate_final",
                                f"{vol} 第{n}章同版本号有多份定稿: {', '.join(f.name for f in dup)}"))
         top = max(vers)
         per_ch[(vol, n)] = vers[top][0]
-    # 断档按卷检查：只对已有定稿的卷判断连续区间，避免把卷间间隙误判。
     vol_nums: dict[str, list[int]] = {}
     for (vol, n) in per_ch:
         vol_nums.setdefault(vol, []).append(n)
     for vol, nums in sorted(vol_nums.items()):
-        # 规划起始章检测：若大纲 outlines/{vol}/outline.md 明确规划了更小的起始章，则以规划起始章为起点，防止分卷跳写漏检
         plan_start = None
         vol_outline = book / "outlines" / vol / "outline.md"
         if vol_outline.is_file():
@@ -808,10 +721,15 @@ def run_checks(book: Path) -> dict:
                     plan_start = min(ch_hits)
             except OSError:
                 pass
-        if vol == "vol_01":
-            start = 1
-        elif plan_start is not None and plan_start < min(nums):
+        # M3 修复：vol_01 不再无条件从 1 开始
+        if plan_start is not None and plan_start < min(nums):
             start = plan_start
+        elif vol == "vol_01":
+            if plan_start is None and min(nums) > 1:
+                # 无大纲规划且首章不是 1，不强制补 1，避免 false positive
+                start = min(nums)
+            else:
+                start = 1
         else:
             start = min(nums)
         missing = sorted(set(range(start, max(nums) + 1)) - set(nums))
@@ -820,10 +738,14 @@ def run_checks(book: Path) -> dict:
                                f"{vol} final 章号断档: {missing}（第 {start} 与 {max(nums)} 章之间无定稿）"))
     stats["final_chapters"] = len(per_ch)
 
-    # ---- 占位符：槽位未实例化禁止入流水线 ----
     slot_hits = []
     for md in sorted(book.rglob("*.md")):
+        if md.is_symlink():
+            continue
         try:
+            # 防越界：resolve 后仍需在 book 内
+            if md.resolve() != book and book.resolve() not in md.resolve().parents:
+                continue
             if SLOT_RE.search(md.read_text(encoding="utf-8", errors="ignore")):
                 slot_hits.append(md.relative_to(book).as_posix())
         except OSError:
@@ -831,24 +753,25 @@ def run_checks(book: Path) -> dict:
     for rel in slot_hits:
         errors.append(_err("unfilled_slot", f"{rel} 存在未填充槽位 {{{{slot:...}}}}（Stage 0 未完成）"))
 
-    # ---- 稿件禁工程痕迹（candidate_* 泄漏进 manuscript）----
     ms = book / "manuscript"
     if ms.is_dir():
         for md in sorted(ms.rglob("*.md")):
+            if md.is_symlink():
+                continue
             try:
+                if md.resolve() != book and book.resolve() not in md.resolve().parents:
+                    continue
                 if CANDIDATE_RE.search(md.read_text(encoding="utf-8", errors="ignore")):
                     errors.append(_err("candidate_leak",
                         f"{md.relative_to(book).as_posix()} 含 candidate_* 工程痕迹（AGENTS 防污染原则：稿件严禁工程标记）"))
             except OSError:
                 continue
 
-    # ---- beats 协议（机械部分）：同 form 连章必须给理由；form 缺失；超键拦截；
-    #      上章对照与自交检报数（style_notes 全同 / words 带贴近 / 空判据词 / 线动作对照）----
     beats = sorted(common.find_chapter_files(book, "beats"),
                    key=lambda p: (p.parts[-3] if len(p.parts) > 2 else "",
                                   common.chapter_number_from_name(p.name) or 0))
     ledger_line_ids: set[str] = set()
-    open_due: list[tuple[int, str]] = []  # (target_ch, id)：未结且有整数到期章的线
+    open_due: list[tuple[int, str]] = []
     try:
         _lines_state = state.load_state(book, "lines")
         for _arr, _resolved in (("foreshadows", "Resolved"), ("misunderstandings", "Resolved"),
@@ -860,16 +783,14 @@ def run_checks(book: Path) -> dict:
                 if str(_g.get("status", "")).strip().lower() != _resolved.lower() and isinstance(_g.get("target_ch"), int):
                     open_due.append((_g["target_ch"], _gid))
     except (ValueError, FileNotFoundError):
-        pass  # lines 不可读已在 state_inconsistent 报 error；线对照降级为不跑
+        pass
 
-    # ---- 伏笔与暗线饥饿断言（Plotline Starvation：超期 ≥2 章未解决）----
     latest_final = max((n for _, n in per_ch.keys()), default=0)
     for tch, gid in open_due:
         if latest_final >= tch + 2:
             warnings.append(_err("plotline_starvation",
                                  f"伏笔/暗线 {gid} 预定 ch_{tch:03d} 解决，当前已连载至 ch_{latest_final:03d}（严重饥饿，请尽快安排回响或闭环）"))
 
-    # 空判据词表 = 主控供参 project.json.empty_criteria_words（缺席/关闭时本档自然零触发）
     empty_words = [w for w in (proj.get("empty_criteria_words") or [])
                    if isinstance(w, str) and w.strip()]
     prev_by_vol: dict[str, dict] = {}
@@ -923,15 +844,12 @@ def run_checks(book: Path) -> dict:
             warnings.append(_err("line_action_orphan",
                                  f"{f.name}: 线动作栏引用台账不存在的线 {', '.join(orphans[:5])}"
                                  "（先 plant 或核对 ID）"))
-        missing = sorted({gid for t, gid in open_due if t <= num and gid not in action_sec})
-        if missing:
+        missing_ids = sorted({gid for t, gid in open_due if t <= num and gid not in action_sec})
+        if missing_ids:
             warnings.append(_err("line_action_missing",
-                                 f"{f.name}: 到期/逾期线 {', '.join(missing[:5])} 未出现在「线动作」栏"
+                                 f"{f.name}: 到期/逾期线 {', '.join(missing_ids[:5])} 未出现在「线动作」栏"
                                  "（不还须写顺延理由，novel_workflow.md#Stage 1）"))
 
-    # ---- 流程事实（warn 级）：final 无 raw / 无 beats ----
-    # 与 final 的 per_ch 同口径，按 (卷, 章号) 键控：跨卷同章号互不覆盖，
-    # 避免 vol_02/ch_001 的缺口被 vol_01/ch_001 的原料"顶掉"而漏报。
     def _vol_nums(area: str) -> set[tuple[str, int]]:
         out = set()
         for f in common.find_chapter_files(book, area):
@@ -955,7 +873,6 @@ def run_checks(book: Path) -> dict:
         if (vol, n) not in beats_nums:
             warnings.append(_err("final_without_beats", f"{tok}: 有定稿但无 beats 细纲（流程事实，供核对）"))
 
-    # ---- 字数带偏离（只报数：beats words / project.words_target 都是手感带，不阻断封存） ----
     if band_ok:
         lo, hi = band
         for tok, _, text in evidence.final_chapters(book):
@@ -963,7 +880,6 @@ def run_checks(book: Path) -> dict:
             if c < lo or c > hi:
                 warnings.append(_err("word_band_deviation", f"{tok}: 字数 {c} 在目标带 [{lo}, {hi}] 之外"))
 
-    # ---- 编码卫生（P3-4）：正文出现替换符 \ufffd = 疑似非 UTF-8 保存，字数统计已失真 ----
     for f in common.find_chapter_files(book, "final"):
         try:
             t = f.read_text(encoding="utf-8", errors="replace")
@@ -974,8 +890,6 @@ def run_checks(book: Path) -> dict:
             warnings.append(_err("encoding_replacement_chars",
                                  f"{f.name}: 含 {n_bad} 个替换符（疑似非 UTF-8 编码保存，字数/统计口径已失真）"))
 
-
-    # ---- 线逾期（算术事实） ----
     try:
         g = evidence.gaps(book)
         for item in g["foreshadows"] + g["misunderstandings"] + g.get("knowledge", []):
@@ -987,7 +901,6 @@ def run_checks(book: Path) -> dict:
     except (ValueError, FileNotFoundError) as exc:
         errors.append(_err("state_unreadable", f"lines 不可读: {exc}"))
 
-    # ---- 伏笔配额体检（双轨配额制，只报数/超限警告） ----
     try:
         lines_st = state.load_state(book, "lines")
         lcap = proj.get("lines_cap") or {}
@@ -1004,7 +917,6 @@ def run_checks(book: Path) -> dict:
     except (ValueError, FileNotFoundError):
         pass
 
-    # ---- tics 命中（project.style_guards × 定稿正文，纯计数） ----
     guards = [x for x in (proj.get("style_guards") or []) if isinstance(x, str) and x]
     if guards:
         for tok, _, text in evidence.final_chapters(book):
@@ -1014,7 +926,6 @@ def run_checks(book: Path) -> dict:
                     warnings.append(_err("style_guard_hit",
                                          f"{tok}: 「{gtxt}」出现 {c} 次"))
 
-    # ---- form 占比（>40% 卷内，仅当卷内已达到 5 章以上样本时统计） ----
     for vol, rec in evidence.form_distribution(book).items():
         if rec.get("count", 0) < 5:
             continue
@@ -1023,7 +934,6 @@ def run_checks(book: Path) -> dict:
                 warnings.append(_err("form_share_over_limit",
                                      f"{vol}: form「{form}」占比 {share:.0%} > {FORM_SHARE_LIMIT:.0%}"))
 
-    # ---- 叙事节奏体检（连续高压疲劳检测；章型名清单 = 主控供参 project.json.high_heat_forms，精确匹配） ----
     high_heat_forms = {w for w in (proj.get("high_heat_forms") or []) if isinstance(w, str) and w.strip()}
     for vol_dir in sorted((book / "outlines").glob("vol_*")) if high_heat_forms else []:
         beats_files = sorted(vol_dir.glob("beats/ch_*.md"))
@@ -1045,7 +955,6 @@ def run_checks(book: Path) -> dict:
             except OSError:
                 continue
 
-    # ---- 细纲场景具象度体检（假大空词表 = 主控供参 project.json.abstract_phrases） ----
     abstract_phrases = [w for w in (proj.get("abstract_phrases") or []) if isinstance(w, str) and w.strip()]
     for vol_dir in sorted((book / "outlines").glob("vol_*")) if abstract_phrases else []:
         for bf in sorted(vol_dir.glob("beats/ch_*.md")):
@@ -1059,7 +968,6 @@ def run_checks(book: Path) -> dict:
             except OSError:
                 continue
 
-    # ---- 叙事健康雷达：主角出场失焦检测（连续 2 章主角登场段落率 < 15% 警报） ----
     protagonist = str(proj.get("protagonist", "")).strip()
     if protagonist:
         protagonist_names = {protagonist}
@@ -1089,7 +997,6 @@ def run_checks(book: Path) -> dict:
                 warnings.append(_err("protagonist_pov_drift",
                                      f"主角视角失焦警报：最近连续 {len(low_streak)} 章 {chs_desc} 主角「{protagonist}」登场段落率低于 15%，疑似配角戏份喧宾夺主！建议在下一章强化主角的主动破局与核心对白！"))
 
-    # ---- 叙事健康雷达：张力心律不齐检测（连续低迷平淡 / 连续高压窒息） ----
     for vol_dir in sorted((book / "outlines").glob("vol_*")):
         beats_files = sorted(vol_dir.glob("beats/ch_*.md"))
         flatline_streak = []

@@ -18,6 +18,7 @@ from . import common, state
 
 SNAPSHOT_DIR_NAME = "snapshots"
 MANIFEST_NAME = "manifest.json"
+MAX_SNAPSHOT_NAME_LEN = 80
 
 
 def snapshots_root(book: Path) -> Path:
@@ -28,19 +29,37 @@ def _state_files(book: Path) -> list[Path]:
     sd = state.state_dir(book)
     out = []
     for p in sorted(sd.iterdir()):
-        if not p.is_file():
+        if not p.is_file() or p.is_symlink():
             continue
         if p.name in {".state.lock", ".engine.lock", MANIFEST_NAME}:
             continue
         if p.suffix in (".json", ".md") and (not p.name.startswith(".") or p.name == state.MARKER_NAME):
+            # 加固：确保解析后仍在 state 目录内
+            try:
+                if p.resolve() != sd and sd.resolve() not in p.resolve().parents:
+                    continue
+            except OSError:
+                continue
             out.append(p)
     return out
 
 
 def _clean_name(name: str) -> str:
-    clean = re.sub(r"[^\w\u4e00-\u9fff.-]", "_", (name or "").strip())
+    raw = (name or "").strip()
+    if not raw:
+        raise ValueError(f"快照名称非法: {name!r}（不能为空）")
+    if len(raw) > MAX_SNAPSHOT_NAME_LEN:
+        raise ValueError(f"快照名称过长（>{MAX_SNAPSHOT_NAME_LEN}）: {raw[:40]}…")
+    # 防止路径穿越与隐藏文件
+    if "/" in raw or "\\" in raw or "\x00" in raw:
+        raise ValueError(f"快照名称含非法字符 /\\ : {name!r}")
+    clean = re.sub(r"[^\w\u4e00-\u9fff.-]", "_", raw)
+    # 二次校验：清理后仍需合法
     if not clean or clean in {".", ".."} or ".." in clean or clean.startswith("."):
-        raise ValueError(f"快照名称非法: {name!r}")
+        raise ValueError(f"快照名称非法: {name!r}（清理后为 {clean!r}）")
+    # 防止名称仅由下划线/点构成
+    if not re.search(r"[\w\u4e00-\u9fff]", clean):
+        raise ValueError(f"快照名称非法（无有效字符）: {name!r}")
     return clean
 
 
@@ -68,7 +87,14 @@ def create_snapshot(book: Path, snapshot_name: str) -> tuple[bool, str]:
         for f in _state_files(book):
             shutil.copy2(f, folder / f.name)
             copied.append(f.name)
-        common.dump_json(folder / MANIFEST_NAME, _manifest_of(folder))
+        manifest = _manifest_of(folder)
+        common.dump_json(folder / MANIFEST_NAME, manifest)
+        # 二次校验：确保写入的 manifest 与实际文件一致
+        ok, msg = _verify_manifest(folder)
+        if not ok:
+            # 清理损坏快照
+            shutil.rmtree(folder, ignore_errors=True)
+            return False, f"快照创建后自检失败已回滚: {msg}"
     return True, folder.name
 
 
@@ -102,6 +128,7 @@ def rollback_snapshot(book: Path, target: str) -> tuple[bool, str, str]:
 
     回滚前把当前 state 顶层文件备份为 pre_rollback_<ts> 快照，本身也可再回滚回去。
     """
+
     sd = state.state_dir(book)
     root = snapshots_root(book)
     if not root.is_dir():
@@ -111,8 +138,6 @@ def rollback_snapshot(book: Path, target: str) -> tuple[bool, str, str]:
         m = re.match(r"^\d{8}_\d{6}(?:_\d+)?_(.+)$", n)
         return m.group(1) if m else n
 
-    # pre_rollback_* 备份同样是合法回滚目标（docstring：本身也可再回滚回去）——
-    # 排除它们会造成"snapshot list 看得见、rollback 却找不到"的自相矛盾。
     all_dirs = [d for d in root.iterdir() if d.is_dir()]
     exact = [d for d in all_dirs if strip_ts(d.name) == target]
     matched = exact or [d for d in all_dirs if target in d.name]
@@ -125,8 +150,6 @@ def rollback_snapshot(book: Path, target: str) -> tuple[bool, str, str]:
     ok, msg = _verify_manifest(chosen)
     if not ok:
         return False, msg, ""
-    # 完整性第二道：manifest 只保证"列出的文件没坏"，不保证六表齐全——
-    # 残缺快照一旦回滚，缺的那张表会被当"回滚点不存在"直接删除，状态机当场残废。
     missing = [f"{k}.json" for k in state.STATE_KEYS if not (chosen / f"{k}.json").is_file()]
     if missing:
         return False, f"快照缺少状态文件 {'、'.join(missing)}，拒绝回滚", ""
@@ -137,7 +160,13 @@ def rollback_snapshot(book: Path, target: str) -> tuple[bool, str, str]:
         backup_dir.mkdir(parents=True, exist_ok=False)
         for f in _state_files(book):
             shutil.copy2(f, backup_dir / f.name)
-        common.dump_json(backup_dir / MANIFEST_NAME, _manifest_of(backup_dir))
+        backup_manifest = _manifest_of(backup_dir)
+        common.dump_json(backup_dir / MANIFEST_NAME, backup_manifest)
+        # 修复：pre_rollback 备份自检，确保备份本身可用（否则回滚后无法再滚回）
+        bok, bmsg = _verify_manifest(backup_dir)
+        if not bok:
+            shutil.rmtree(backup_dir, ignore_errors=True)
+            return False, f"回滚前备份自检失败，拒绝回滚以免丢失现场: {bmsg}", ""
         restored = []
         restored_names = set()
         for f in sorted(chosen.iterdir()):
@@ -145,7 +174,6 @@ def rollback_snapshot(book: Path, target: str) -> tuple[bool, str, str]:
                 shutil.copy2(f, sd / f.name)
                 restored.append(f.name)
                 restored_names.add(f.name)
-        # 清理快照点之后新增的顶层状态文件（不在快照 = 回滚点不存在，保留会与旧现场冲突）。
         for f in list(sd.iterdir()):
             if not f.is_file() or f.name in restored_names:
                 continue

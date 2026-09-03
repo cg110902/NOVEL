@@ -51,20 +51,16 @@ def build_narrative_graph(ws_path: Path) -> nx.Graph:
                     summary=ent.get("summary", ""),
                 )
 
-            # 建立实体间关系边（仅在目标节点真实存在时连边，避免产生未登记的幽灵节点）
             for ent in entries:
                 name = ent.get("name")
                 if not name or name not in G:
                     continue
-                # 所属势力
                 faction = ent.get("faction")
                 if faction and faction in G:
                     G.add_edge(name, faction, relation="faction", label="所属势力")
-                # 道具持有者
                 holder = ent.get("holder")
                 if holder and holder in G:
                     G.add_edge(name, holder, relation="holder", label="持有")
-                # 地理位置关联
                 loc = ent.get("location")
                 if loc:
                     for node in list(G.nodes):
@@ -73,7 +69,7 @@ def build_narrative_graph(ws_path: Path) -> nx.Graph:
         except Exception:
             pass
 
-    # 2. 伏笔/误会/秘密线索关联加载
+    # 2. 伏笔/误会/秘密线索关联加载（M1 修复：补上 knowledge 线）
     lines_file = state_dir / "lines.json"
     if lines_file.is_file():
         try:
@@ -94,6 +90,16 @@ def build_narrative_graph(ws_path: Path) -> nx.Graph:
                 for node in list(G.nodes):
                     if (node in gun_name or (plan and node in plan)) and node != gun_id:
                         G.add_edge(node, gun_id, relation="foreshadow", label="伏笔关联")
+
+            # 修复 M1：知识线 previously missing
+            for kno in ldata.get("knowledge", []):
+                kno_id = kno.get("id", "KNO")
+                secret = kno.get("secret", "")
+                note = kno.get("note", "")
+                G.add_node(kno_id, node_type="line", line_type="knowledge", secret=secret, note=note)
+                for node in list(G.nodes):
+                    if (node in secret or (note and node in note)) and node != kno_id:
+                        G.add_edge(node, kno_id, relation="knowledge", label="秘密关联")
         except Exception:
             pass
 
@@ -218,7 +224,6 @@ def cmd_centrality(G: nx.Graph) -> None:
 
 
 def run_graph(book: Path, action: str | None, **kwargs) -> int:
-    """供 CLI 或独立脚本调用的执行入口。"""
     common.reconfigure_utf8()
     if not _HAS_NX:
         print("❌ 未检测到 networkx 库，请运行 pip install networkx")

@@ -22,9 +22,8 @@ except ImportError:
 SENT_SPLIT_RE = re.compile(r"[。！？!?…；\n]+")
 QUOTE_LINE_RE = re.compile(r"^\s*[「“\"『]")
 SHINGLE_N = 12
-REP_MIN = 8  # 整句自重复的最小句长（低于此的短句重复属正常修辞）
+REP_MIN = 8
 
-# 6 个中文 AI 高频句式（§5.7 拟人保险丝的固定清单；书级 tics 由 project.style_guards 追加）
 AI_CONSTRUCTIONS: list[tuple[str, str]] = [
     ("不是…而是…", r"不是[^。！？]{1,15}[，,]?\s*而是"),
     ("仿佛…一般", r"仿佛[^。！？]{0,15}(?:一般|般)"),
@@ -43,6 +42,7 @@ AI_CONSTRUCTIONS: list[tuple[str, str]] = [
 def final_chapters(book: Path) -> list[tuple[str, int, str]]:
     """按 (卷, 章号) 升序的 [(ch_token, num, text)]，一章多文件时取版本号最大者（v10 > v2）。
     注意：key = (卷, 章号)，避免跨卷同章号互相覆盖（vol_02/ch_001 不会被 vol_01/ch_001 顶掉）。
+    字数口径：仅去除首行章题标题行，保留正文中其他 # 开头的行（如“#号房”对话）。
     """
     by_ch: dict[tuple[str, int], tuple[str, int, Path]] = {}
     for f in common.find_chapter_files(book, "final"):
@@ -55,13 +55,22 @@ def final_chapters(book: Path) -> list[tuple[str, int, str]]:
             key = (vol, n)
             cur = by_ch.get(key)
             if cur is None or common.chapter_version_from_name(f.name) > common.chapter_version_from_name(cur[2].name):
-                # P3-13: token 带卷前缀，跨卷同章号不再产生重名 ch_XXX
                 by_ch[key] = (f"{vol}/ch_{n:03d}", n, f)
     out = []
     for key in sorted(by_ch):
         tok, _, p = by_ch[key]
         raw = p.read_text(encoding="utf-8", errors="replace")
-        out.append((tok, key[1], re.sub(r"^\s*#.*$", "", raw, flags=re.M)))  # 字数口径=正文，不含标题行
+        # 仅去除首个非空标题行（以 # 开头），而非全文所有 # 行，避免误删正文对话
+        lines = raw.splitlines()
+        idx = 0
+        while idx < len(lines) and not lines[idx].strip():
+            idx += 1
+        if idx < len(lines) and re.match(r"^\s*#", lines[idx]):
+            # 标题行后保留其余
+            body = "\n".join(lines[idx + 1:])
+        else:
+            body = raw
+        out.append((tok, key[1], body))
     return out
 
 
@@ -78,10 +87,6 @@ def _shingles(sents: list[str], n: int = SHINGLE_N) -> set[str]:
 
 
 def count_aliases(text: str, aliases: list[str]) -> dict[str, int]:
-    """最长优先的非重叠计数：「当铺赵四」命中后其内嵌「赵四」不重复计。
-
-    过滤空串别名（避免空正则匹配全文）；无有效别名时返回空 dict，绝不崩溃。
-    """
     valid = [a for a in (aliases or []) if a and str(a).strip()]
     if not valid:
         return {}
@@ -92,24 +97,11 @@ def count_aliases(text: str, aliases: list[str]) -> dict[str, int]:
     return per
 
 
-# 通用实体停用词表（长度<=2的泛指名词，禁止作为全局副别名触发P1，防止误命中雪崩；主名不受此限）。
-# 词表完全由主控经 project.json.generic_stopwords 供参——引擎零题材词表（缺席=未配置，
-# check 会以 info 提示缺口；空表=主控明确关闭）。单词表的召回完备性是语义问题，归主控。
-
-
 def entity_lookup(book: Path, safe_aliases: bool = False) -> dict[str, list[str]]:
-    """注册名 → 检索词列表（含自身；只查 active）。
-
-    safe_aliases=True 时启用停用词安全过滤：
-    - 主法定名（e["name"]）恒常保留（保护 2 字主角名如“韩立/沈拓”）；
-    - 长度 <= 2 且属于通用停用词的副别名被物理过滤，杜绝 P1 触发爆炸。
-    词表唯一来源：project.json.generic_stopwords（主控按本书题材供参）。
-    """
     ents = state.load_state(book, "entities")
     proj = common.load_json(book / "project.json", default={}) or {}
     all_stopwords = {str(w).strip() for w in (proj.get("generic_stopwords") or [])
                      if isinstance(w, str) and w.strip()}
-
     lookup = {}
     for e in ents.get("entries", []):
         if e.get("status", "active") != "active":
@@ -124,7 +116,6 @@ def entity_lookup(book: Path, safe_aliases: bool = False) -> dict[str, list[str]
             a_str = str(a).strip()
             if not a_str or a_str == primary:
                 continue
-            # 停用词物理拦截：长度 <= 2 且命中停用词的副别名丢弃
             if safe_aliases and len(a_str) <= 2 and a_str in all_stopwords:
                 continue
             if a_str not in names:
@@ -150,7 +141,7 @@ def words(book: Path) -> dict:
 def mentions(book: Path, target: str | None = None) -> dict:
     lookup = entity_lookup(book)
     if target and target not in lookup:
-        for name, aliases in lookup.items():  # 允许用别名查询
+        for name, aliases in lookup.items():
             if target in aliases:
                 target = name
                 break
@@ -160,7 +151,7 @@ def mentions(book: Path, target: str | None = None) -> dict:
                     "unknown": True}
         names = lookup[target]
     else:
-        names = None  # 总表模式
+        names = None
     chapters = final_chapters(book)
     items = []
     for tok, _, text in chapters:
@@ -212,7 +203,6 @@ def gaps(book: Path) -> dict:
             "plant_ch": k.get("plant_ch"), "target_ch": t, "weight": k.get("weight", 1),
             "overdue": overdue,
             "idle_chapters": (cur - int(k.get("plant_ch") or 0)) if k.get("status") != "Revealed" else 0})
-    # 逾期/到期清单排序（机械）：权重高者优先——多条线齐逾期时"先还哪条"有据
     out["foreshadows"].sort(key=lambda x: line_sort_key(x, "foreshadow"))
     out["misunderstandings"].sort(key=lambda x: line_sort_key(x, "misunderstanding"))
     out["knowledge"].sort(key=lambda x: line_sort_key(x, "knowledge"))
@@ -225,7 +215,6 @@ def gaps(book: Path) -> dict:
     return out
 
 
-# --------------------------------------------------------------------------- 工作单小件（Stage 5 候选对照 / Stage 1 上章对照）
 _CN_DIGITS = {"零": 0, "一": 1, "二": 2, "两": 2, "両": 2, "三": 3, "四": 4,
               "五": 5, "六": 6, "七": 7, "八": 8, "九": 9}
 _CN_UNITS = {"十": 10, "百": 100, "千": 1000}
@@ -233,10 +222,8 @@ _NUM_RE = r"[0-9][0-9,，]*|[零一二两両三四五六七八九十百千]{1,6}
 
 
 def _cn_num_to_int(s: str) -> int | None:
-    """中文数词→整数（千位内常见形：三十/一百二/千五百；解不出返回 None，零语义）。"""
     if not s:
         return None
-    # "两/両" 作为数词只能表示 2，不能紧跟在个位数字后充当第二位数字（如"五两"并非合法数词）
     if ("两" in s or "両" in s) and re.search(r"[一二三四五六七八九][两両]", s):
         return None
     total, num = 0, 0
@@ -257,14 +244,7 @@ _GENERIC_UNITS = {"块", "枚", "张", "个", "粒", "颗", "只", "道", "本",
 
 
 def is_candidate_noise(g: str, ledger_pools: dict | None = None) -> bool:
-    """候选新实体/泛词的机械毛刺过滤（纯结构口口径，零语义裁断）。
-
-    过滤规则全部来自封闭语言类或账本自身数据，不引入任何题材词表：
-    - 以中文数词/计量量词开头：「三枚」「枚灵石」这类金额扫描残渣，永远不可能是实体名；
-    - 以把字句/处置介词开头：「把符牌」「在摊上」这类语法残渣（把/将/被/在为封闭介词类）；
-    - 以人称代词开头：「他把」「她说」这类语法残渣（人称代词为封闭小类——实体名从不以代词打头）；
-    - 包含账本资源池的名称或单位词：「灵石」是通货不是实体（数据驱动，题材自定）。
-    """
+    """候选新实体/泛词的机械毛刺过滤（改进：账本池名仅精确匹配才过滤，避免‘灵石’误杀‘灵石矿’）。"""
     if not g:
         return True
     head = g[0]
@@ -277,13 +257,19 @@ def is_candidate_noise(g: str, ledger_pools: dict | None = None) -> bool:
     for p in (ledger_pools or {}).values():
         for term in (p.get("name"), p.get("unit")):
             t = str(term or "").strip()
-            if t and len(t) >= 2 and t in g:
+            if not t:
+                continue
+            # 仅精确相等才算噪音，子串不再误杀（修复 M5）
+            if g == t:
+                return True
+            # 若池名是通用货币且长度<=2，且候选以该货币结尾但本身更长（如“灵石矿” vs “灵石”），不算噪音
+            # 保留旧逻辑的宽松过滤仅对完全包含且长度相近的情况
+            if len(t) >= 2 and len(g) == len(t) and t in g:
                 return True
     return False
 
 
 def _amount_scan(text: str, pools: dict) -> list[dict]:
-    """金额候选：阿拉伯/常见中文数词（千位内）× ledger 已声明池单位/名称。精准匹配货币上下文。"""
     out = []
     for pid, p in (pools or {}).items():
         unit = str(p.get("unit") or "").strip()
@@ -291,7 +277,6 @@ def _amount_scan(text: str, pools: dict) -> list[dict]:
         if not unit and not name:
             continue
         recs = []
-        # 若量词为常见泛指量词（如"块/枚"），必须紧邻货币名称（如"两百块钱"），杜绝"两块点心/青石板"误判
         if unit in _GENERIC_UNITS:
             if name:
                 patterns = [
@@ -310,17 +295,14 @@ def _amount_scan(text: str, pools: dict) -> list[dict]:
         for pat in patterns:
             for hit in re.finditer(pat, text):
                 m = hit.group(1)
-                # 重言计数回显（"一枚一枚数上桌"）：紧邻重复同一 数+量 组合是不定量修辞，非交易
                 nxt = text[hit.end():hit.end() + len(m) + len(unit) + 1] if unit else ""
                 if unit and nxt.startswith(m) and nxt.startswith(unit, len(m)):
                     continue
-                # 过滤常见时间与文字量词歧义（例如："一两日/一两天/一两月"、"两篇文章"）
                 after_char = text[hit.end():hit.end() + 2]
                 if unit == "两" and any(after_char.startswith(tc) for tc in ("日", "天", "月", "年", "个")):
                     continue
                 if unit == "文" and any(after_char.startswith(tc) for tc in ("章", "篇", "件", "理", "武", "风", "字")):
                     continue
-                # 过滤模糊概数修辞（如前置紧邻"成百上千"、"数以"、"好几"）
                 pre_char = text[max(0, hit.start() - 3):hit.start()]
                 if any(pre_char.endswith(x) for x in ("成百上", "成千上", "数以", "约有几", "好几")):
                     continue
@@ -339,17 +321,13 @@ def _amount_scan(text: str, pools: dict) -> list[dict]:
 
 
 def _line_terms_for(g: dict, kind: str, reg_terms: list[str]) -> list[str]:
-    """从线台账条目提取计数词：整句 name/parties + 其中包含的注册名/别名 +
-    （误会）parties 的分词。全部来自台账结构化字段，零正文 NLP。"""
     terms: list[str] = []
     if kind == "foreshadow":
         name = str(g.get("name", "")).strip()
         if name:
             terms.append(name)
-        # plan 也是主控写的结构化线元数据：其中提到的注册名同样是本线的关键实体
         blob = name + " " + str(g.get("plan", ""))
     elif kind == "knowledge":
-        # secret 是一整句事实，整句计数无意义——只数其中的注册名（与 foreshadow.plan 同口径）
         blob = str(g.get("secret", "")) + " " + str(g.get("note", ""))
     else:
         parties = str(g.get("parties", "")).strip()
@@ -367,8 +345,6 @@ def _line_terms_for(g: dict, kind: str, reg_terms: list[str]) -> list[str]:
 
 
 def line_sort_key(g: dict, kind: str) -> tuple:
-    """台账线排序键（纯机械）：整数到期章在前（longline 殿后）→ 权重/级别高→低 → 章号 → ID。
-    weight/level 是主控写的语义分级，引擎只用于排清单出数，不做判断。"""
     prio_field = "level" if kind == "misunderstanding" else "weight"
     prio = g.get(prio_field)
     prio = int(prio) if isinstance(prio, int) and not isinstance(prio, bool) and prio >= 1 else 1
@@ -377,20 +353,32 @@ def line_sort_key(g: dict, kind: str) -> tuple:
 
 
 def candidates(book: Path, ch: str) -> dict:
-    """Stage 5 工作单数据：以本章 final 为源做机器对照，只出数、零裁决。
-
-    是否上账、是否动线的判断全归主控（AGENTS 宪法：语义边界）。
-    """
     n = common.chapter_token_to_num(ch)
     tok = f"ch_{n:03d}" if n else ch
     if not n:
         return {"kind": "candidates", "chapter": ch, "error": f"非法章号: {ch!r}"}
-    chs = [(t, num, text) for t, num, text in final_chapters(book) if num == n]
-    if not chs:
+    # 处理多卷同章号：优先选卷号最大的（最新卷），并提示歧义
+    all_finals = final_chapters(book)
+    matched = [(t, num, text, Path(t)) for t, num, text in all_finals if num == n]
+    if not matched:
         return {"kind": "candidates", "chapter": tok,
                 "error": f"无 {tok} 的 final（工作单以 final 为源；数 raw 用 evidence file）"}
-    _, _, text = chs[0]
+    if len(matched) > 1:
+        # 按卷号排序，取最大卷
+        def _vol_num(tok_str: str) -> int:
+            m = common.VOL_RE.search(tok_str)
+            return int(m.group(1)) if m else 0
+        matched.sort(key=lambda x: _vol_num(x[0]))
+        # 保留提示
+        chosen_t, _, text = matched[-1][0], matched[-1][1], matched[-1][2]
+        ambiguous = [m[0] for m in matched]
+    else:
+        chosen_t, _, text = matched[0][0], matched[0][1], matched[0][2]
+        ambiguous = []
     out: dict = {"kind": "candidates", "chapter": tok, "source": "final"}
+    if ambiguous:
+        out["ambiguous_volumes"] = ambiguous
+        out["chosen"] = chosen_t
 
     lines = state.load_state(book, "lines")
     lookup = entity_lookup(book)
@@ -406,7 +394,7 @@ def candidates(book: Path, ch: str) -> dict:
             t = g.get("target_ch")
             if isinstance(t, int):
                 item = {"id": g["id"], "kind": kind, "target_ch": t}
-                sk = line_sort_key(g, kind)  # 排序键在剥离权重前取，输出条目不携带权重
+                sk = line_sort_key(g, kind)
                 if t <= n:
                     due.append((t, sk[1], sk[3], item))
                 elif t <= n + 2:
@@ -416,19 +404,16 @@ def candidates(book: Path, ch: str) -> dict:
                 line_hits.append({"id": g["id"], "kind": kind,
                                   "label": str(g.get("name", g.get("parties", g.get("secret", "")))),
                                   "target_ch": t, "hits": hits})
-    # 统一口径：权重高→低，同级按到期章、再按 ID（与 gaps/pack/status 同一条排序）
     due = [p[3] for p in sorted(due, key=lambda p: (p[1], p[0], p[2]))]
     upcoming = [p[3] for p in sorted(upcoming, key=lambda p: (p[1], p[0], p[2]))]
     out["line_hits"] = line_hits
     out["due_lines"] = due
     out["upcoming_lines"] = upcoming
 
-    # 金额候选：数字（阿拉伯/中文数词）× ledger 已声明池单位（币种不硬编码）
     led = state.load_state(book, "ledger")
     out["amounts"] = _amount_scan(text, led.get("pools"))
     out["ledger_now"] = {pid: p.get("current") for pid, p in (led.get("pools") or {}).items()}
 
-    # beats 的 [新实体→注册] 标记（Stage 1 已做的语义活，Stage 5 只做登记对照）
     markers = []
     for f in common.find_chapter_files(book, "beats", n):
         for i, ln in enumerate(f.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
@@ -436,7 +421,6 @@ def candidates(book: Path, ch: str) -> dict:
                 markers.append({"line": i, "text": ln.strip()[:80]})
     out["new_entity_markers"] = markers
 
-    # 本章注册实体提及计数（填 present_characters 的对照数据）
     per = {}
     for name, aliases in lookup.items():
         c = sum(count_aliases(text, aliases).values())
@@ -444,7 +428,6 @@ def candidates(book: Path, ch: str) -> dict:
             per[name] = c
     out["present_candidates"] = per
 
-    # 利用 jieba.posseg 词性标注提取高精度专有名词候选（人名nr/地名ns/机构nt/专名nz）
     proper_nouns = []
     if _HAS_JIEBA:
         known_all = set(lookup.keys())
@@ -460,7 +443,6 @@ def candidates(book: Path, ch: str) -> dict:
         proper_nouns = [w for w, _ in sorted(counts.items(), key=lambda x: -x[1])[:10]]
     out["proper_noun_candidates"] = proper_nouns
 
-    # current.json 非空字段（状态摘要；字段随 schema 扩展自动带上）
     cur = state.load_state(book, "current")
     out["state_digest"] = {k: v for k, v in cur.items() if v not in ("", [], None)}
 
@@ -471,8 +453,6 @@ def candidates(book: Path, ch: str) -> dict:
 
 
 def prev_contrast(book: Path, ch: str) -> dict:
-    """Stage 1 上章约束对照卡：上一章 form/旋钮/words/必须保留 + 本章（beats 若已写）+
-    开放线概况。纯提取/算术，选不选、改不改归主控。"""
     n = common.chapter_token_to_num(ch)
     tok = f"ch_{n:03d}" if n else ch
     if not n:
@@ -517,7 +497,6 @@ def prev_contrast(book: Path, ch: str) -> dict:
     out["due_lines"] = due
     out["upcoming_lines"] = upcoming
 
-    # 钩子连章与情绪心电图分析（词表 = 主控供参 project.json.hook_words；缺席则纯结构信号）
     hooks = []
     for past_n in range(max(1, n - 3), n):
         pf = common.find_chapter_files(book, "final", past_n)
@@ -526,7 +505,6 @@ def prev_contrast(book: Path, ch: str) -> dict:
                                     hook_words(book))
             hooks.append((f"ch_{past_n:03d}", h["type"]))
     out["recent_hooks"] = hooks
-    # P3-8: 只出机械数据（末尾连续同型钩子长度），裁决性"建议"文案已移除——evidence 零语义承诺
     hook_run = None
     if hooks:
         last_type = hooks[-1][1]
@@ -543,11 +521,6 @@ def prev_contrast(book: Path, ch: str) -> dict:
 
 
 def hook_words(book: Path) -> dict | None:
-    """章尾钩子词表装载：唯一来源 project.json.hook_words（主控按本书题材供参）。
-
-    缺席 → None（未配置：check 会以 info 提示缺口，引擎退化到纯结构信号）；
-    存在（含空对象/空表）→ 主控已表态，按给定词表判定。词表为纯词子串匹配（非正则）。
-    """
     proj = common.load_json(book / "project.json", default={}) or {}
     raw = proj.get("hook_words")
     if not isinstance(raw, dict):
@@ -557,12 +530,6 @@ def hook_words(book: Path) -> dict | None:
 
 
 def detect_chapter_hook(text: str, words: dict | None = None) -> dict:
-    """分析章末结尾段落，判断章尾钩子类型（强钩 / 悬置 / 弱收 / 反高潮）。
-
-    结构信号（引擎自有、题材中立）：末段以 ？/！ 收束（剥离引号括号后）判强钩——
-    不把末 3 段任意位置的问号判为强钩（对话设问误报）。
-    词表信号（主控供参，project.json.hook_words 的三档 strong/suspense/anticlimax）：
-    未配置则整层跳过，引擎不持有任何题材词表。"""
     paras = _paragraphs(text)
     tail = "\n".join(paras[-3:]) if paras else text[-300:]
     tail_clean = tail.strip().rstrip("」』”’\"')）】…。")
@@ -585,7 +552,7 @@ def detect_chapter_hook(text: str, words: dict | None = None) -> dict:
 
 
 def dup(book: Path, ch: str | None = None) -> dict:
-    full = final_chapters(book)  # 只读一遍磁盘：单章模式与全书邻接对比共用同一份
+    full = final_chapters(book)
     full_sh = [(t, _shingles(_sentences(x))) for t, _, x in full]
     n = common.chapter_token_to_num(ch) if ch is not None else None
     chapters = full if ch is None else [c for c in full if c[1] == n]
@@ -620,14 +587,13 @@ def dup(book: Path, ch: str | None = None) -> dict:
 
 
 def _stats_one(text: str, guard_words: list) -> dict:
-    """单篇文本的全套计数——定稿扫描与草稿实测（file_stats）共用同一把尺。"""
     sents = _sentences(text)
     lens = [len(re.sub(r"\s+", "", s)) for s in sents] or [0]
     mean = sum(lens) / len(lens)
     var = sum((x - mean) ** 2 for x in lens) / len(lens)
     total_chars = sum(lens) or 1
     paras = _paragraphs(text)
-    heads = [re.sub(r"^[^\u4e00-\u9fffA-Za-z0-9]+", "", p)[:2] for p in paras]  # 剥引号/标点起头再取两字
+    heads = [re.sub(r"^[^\u4e00-\u9fffA-Za-z0-9]+", "", p)[:2] for p in paras]
     lines = [ln for ln in text.splitlines() if ln.strip()]
     dialogue_lines = sum(1 for ln in lines if QUOTE_LINE_RE.match(ln))
     cons = {name: len(re.findall(pat, text)) for name, pat in AI_CONSTRUCTIONS}
@@ -642,11 +608,13 @@ def _stats_one(text: str, guard_words: list) -> dict:
 
 
 def file_stats(book: Path, rel: str, ch: str | None = None) -> dict:
-    """工作区内任意稿件的单篇实测（起草/改稿场景：数 raw，不装进定稿口径）。
-    可选章节号 → 并入该章 beats 的 guard_extra（起草现场用本章禁忌同一把尺）。"""
     base = book.resolve()
-    path = (book / rel).resolve()
-    if base not in path.parents or not path.is_file():
+    # 使用 safe_child_path 统一校验越界与 symlink
+    try:
+        path = common.safe_child_path(book, rel)
+    except ValueError as exc:
+        return {"error": f"路径越界或不存在: {exc}"}
+    if not path.is_file():
         return {"error": f"工作区内找不到文件: {rel}"}
     proj = common.load_json(book / "project.json", default={}) or {}
     guards = list(proj.get("style_guards", []) or [])
@@ -662,7 +630,6 @@ def file_stats(book: Path, rel: str, ch: str | None = None) -> dict:
 
 
 def _beats_guard_extra(book: Path, num: int) -> list[str]:
-    """本章 beats front-matter 的 guard_extra（竖线分隔）——章级禁忌的引擎可数化。"""
     for f in common.find_chapter_files(book, "beats"):
         if common.chapter_number_from_name(f.name) == num:
             fm = common.parse_front_matter(f.read_text(encoding="utf-8", errors="replace"))
@@ -693,7 +660,6 @@ def _paragraphs(text: str) -> list[str]:
 
 
 def form_distribution(book: Path) -> dict:
-    """按卷统计 beats front-matter 的 form（≤40% 上限的计数依据，判断留给主控）。"""
     out: dict[str, dict] = {}
     for f in sorted(common.find_chapter_files(book, "beats")):
         fm = common.parse_front_matter(f.read_text(encoding="utf-8", errors="replace"))

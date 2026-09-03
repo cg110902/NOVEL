@@ -24,6 +24,40 @@ VOL_RE = re.compile(r"vol[_-]?0*(\d+)", re.IGNORECASE)
 VERSION_RE = re.compile(r"[_-]?v(\d+)(?:\D|$)", re.IGNORECASE)
 _CJK_RE = re.compile(r"[\u4e00-\u9fff]")
 
+# 中文数字到阿拉伯数字的简易映射（用于“第三章”这类写法）
+_CN_NUM_MAP = {
+    "一": 1, "二": 2, "两": 2, "三": 3, "四": 4, "五": 5,
+    "六": 6, "七": 7, "八": 8, "九": 9, "十": 10,
+    "零": 0, "〇": 0,
+}
+
+
+def _cn_chapter_to_int(s: str) -> int | None:
+    """尝试将“第三章/第十章/第十二章”等中文数字转为 int，失败返回 None。"""
+    s = s.strip()
+    # 只处理 1-99 的常见情况
+    if not s:
+        return None
+    # 十
+    if s == "十":
+        return 10
+    # 十X
+    m = re.fullmatch(r"十([一二三四五六七八九])", s)
+    if m:
+        return 10 + _CN_NUM_MAP[m.group(1)]
+    # X十
+    m = re.fullmatch(r"([一二三四五六七八九])十", s)
+    if m:
+        return _CN_NUM_MAP[m.group(1)] * 10
+    # X十Y
+    m = re.fullmatch(r"([一二三四五六七八九])十([一二三四五六七八九])", s)
+    if m:
+        return _CN_NUM_MAP[m.group(1)] * 10 + _CN_NUM_MAP[m.group(2)]
+    # 单字
+    if s in _CN_NUM_MAP and _CN_NUM_MAP[s] != 0:
+        return _CN_NUM_MAP[s]
+    return None
+
 
 def reconfigure_utf8() -> None:
     """Windows 控制台 UTF-8 修正（POSIX 下为空操作）。"""
@@ -68,11 +102,22 @@ def resolve_workspace(arg: str | None, root: Path | None = None) -> Path | None:
     return books[0] if len(books) == 1 else None
 
 
+def ensure_workspace_inside(book_path: Path | None, root: Path | None = None) -> Path:
+    """校验书目录必须在 workspace/ 之下，否则抛 ValueError（防 -w 越界改任意目录）。"""
+    if book_path is None:
+        raise ValueError("未指定书工作区")
+    wr = workspace_root(root).resolve()
+    bp = Path(book_path).resolve()
+    if bp != wr and wr not in bp.parents:
+        raise ValueError(f"书目录必须在 {wr} 之下: {bp}")
+    return bp
+
+
 # ---------------------------------------------------------------------------
 # 章节号（全仓库唯一口径）
 # ---------------------------------------------------------------------------
 def chapter_token_to_num(token: object) -> int | None:
-    """'7' / 'ch_007' / 7 / '第3章' / 'chapter3' → 3；解析失败 None（绝不抛）。"""
+    """'7' / 'ch_007' / 7 / '第3章' / '第三章' / 'chapter3' → 3；解析失败 None（绝不抛）。"""
     if isinstance(token, bool) or token is None:
         return None
     if isinstance(token, int):
@@ -84,6 +129,12 @@ def chapter_token_to_num(token: object) -> int | None:
     if m:
         n = int(m.group(1))
         return n if n >= 1 else None
+    # 中文数字章节：第X章
+    m = re.search(r"第\s*([一二三四五六七八九十零〇两]+)\s*章", s)
+    if m:
+        n = _cn_chapter_to_int(m.group(1))
+        if n and n >= 1:
+            return n
     return None
 
 
@@ -136,13 +187,26 @@ def natural_chapter_sort_key(path: Path) -> tuple[int, int, int, str]:
 
 
 def find_chapter_files(book_dir: Path, area: str = "final", target: object = None) -> list[Path]:
-    """扫描 ch_*.md。area ∈ {final, raw, beats}。"""
-    book_dir = Path(book_dir)
+    """扫描 ch_*.md。area ∈ {final, raw, beats}。加固：跳过 symlink、越界解析。"""
+    book_dir = Path(book_dir).resolve()
     if area == "beats":
         base, pattern = book_dir / "outlines", "*/beats/ch_*.md"
     else:
         base, pattern = book_dir / "manuscript", f"*/{area}/ch_*.md"
-    files = [f for f in base.glob(pattern) if not f.name.startswith(".")]
+    raw_files = [f for f in base.glob(pattern) if not f.name.startswith(".")]
+    files: list[Path] = []
+    for f in raw_files:
+        # 跳过符号链接，防止外部文件注入
+        if f.is_symlink():
+            continue
+        try:
+            resolved = f.resolve()
+            # 必须仍在 book_dir 内
+            if resolved != book_dir and book_dir not in resolved.parents:
+                continue
+        except OSError:
+            continue
+        files.append(f)
     if target is not None:
         files = [f for f in files if file_matches_chapter(f, target)]
     return sorted(files, key=natural_chapter_sort_key)
@@ -168,8 +232,6 @@ def parse_front_matter(text: str) -> dict[str, str]:
         if ":" in ln and not ln.startswith((" ", "\t", "#")):
             k, _, v = ln.partition(":")
             v = v.strip()
-            # 剥离行内注释（模板引导遗留）：整段以 # 开头＝空值；「空白+#」截断。
-            # 只认带前置空白的 #，词中 #（如 C#）不受影响。
             if v.startswith("#"):
                 v = ""
             else:
@@ -205,7 +267,6 @@ def atomic_write_text(path: Path | str, text: str, encoding: str = "utf-8") -> N
             fh.write(text)
             fh.flush()
             os.fsync(fh.fileno())
-        # 在 Windows 上处理并发文件锁/IDE实时索引/杀毒软件短暂占用导致的 PermissionError (WinError 5/32)
         for attempt in range(4):
             try:
                 os.replace(tmp, p)
@@ -214,6 +275,19 @@ def atomic_write_text(path: Path | str, text: str, encoding: str = "utf-8") -> N
                 if attempt == 3:
                     raise
                 time.sleep(0.05 * (2 ** attempt))
+        # POSIX 持久化：fsync 父目录，确保 rename 落盘（断电不丢）
+        with contextlib.suppress(Exception):
+            # Windows 上 O_DIRECTORY 可能不支持，回退到不 fsync 目录
+            try:
+                dir_fd = os.open(p.parent, os.O_DIRECTORY)
+            except (AttributeError, OSError):
+                # 回退：尝试普通 open 目录（部分平台）
+                dir_fd = None
+            if dir_fd is not None:
+                try:
+                    os.fsync(dir_fd)
+                finally:
+                    os.close(dir_fd)
     except BaseException:
         with contextlib.suppress(OSError):
             os.unlink(tmp)
@@ -222,12 +296,17 @@ def atomic_write_text(path: Path | str, text: str, encoding: str = "utf-8") -> N
 
 def load_json(path: Path | str, default=None):
     """读 JSON。文件缺失：有 default 则返回之，否则抛 ValueError；**内容损坏必抛，绝不静默兜底**。
-    注意：default 只对 FileNotFoundError 生效——JSON 损坏/编码错误一律抛 ValueError，
-    调用方若需要降级展示请自行 try/except（P2-1 教训：传 default 不等于安全）。
-    读取兼容 UTF-8 BOM（Windows 记事本常见，P3-3）；GBK 等其他编码 → 包装为带文件名的
-    ValueError（P3-4），不再裸抛 UnicodeDecodeError。"""
+    加固：超大文件（>10MB）拒绝解析，防 JSON 炸弹。"""
     p = Path(path)
     try:
+        # 防炸弹：先检查文件大小
+        try:
+            if p.stat().st_size > 10 * 1024 * 1024:
+                raise ValueError(f"JSON 文件过大（>{10}MB），拒绝解析: {p.name}")
+        except FileNotFoundError:
+            raise
+        except OSError:
+            pass
         return json.loads(p.read_text(encoding="utf-8-sig"))
     except FileNotFoundError:
         if default is not None:
@@ -252,7 +331,9 @@ def canonical_json_hash(obj) -> str:
 @contextlib.contextmanager
 def file_lock(dir_path: Path | str, name: str = ".engine.lock", timeout: float = 30.0):
     """同目录互斥锁（O_EXCL 创建锁文件）；超时抛 TimeoutError；>120s 的陈锁允许抢占。
-    锁目录 = 被保护资源所在目录（同文件系统保证原子创建）。"""
+
+    改进：双重 mtime 检查 + inode 校验，缩小 TOCTOU 窗口，避免误删他人新锁。
+    """
     lock = Path(dir_path) / name
     lock.parent.mkdir(parents=True, exist_ok=True)
     deadline = time.monotonic() + timeout
@@ -267,17 +348,26 @@ def file_lock(dir_path: Path | str, name: str = ".engine.lock", timeout: float =
             break
         except FileExistsError:
             try:
-                if time.time() - lock.stat().st_mtime > 120:
-                    # 陈锁抢占（P3-18）：stat 判定后立即 unlink，竞态窗口缩至微秒级；
-                    # 锁恰被他人释放/重建时 unlink 失败 → 下一轮重试，代价可忽略
-                    lock.unlink()
-                    continue
+                # 第一次检查
+                st1 = lock.stat()
+                age1 = time.time() - st1.st_mtime
+                if age1 > 120:
+                    # 二次检查，缩小竞态窗口
+                    time.sleep(0.01)
+                    try:
+                        st2 = lock.stat()
+                        # 必须仍是同一 inode 且仍陈旧，才抢占
+                        if st2.st_ino == st1.st_ino and (time.time() - st2.st_mtime) > 120:
+                            lock.unlink()
+                            continue
+                    except FileNotFoundError:
+                        # 锁在两次检查间已消失，直接重试创建
+                        continue
             except OSError:
-                pass  # 锁消失或被重建 → 走正常重试
+                pass
             if time.monotonic() >= deadline:
                 raise TimeoutError(f"等待锁超时（{timeout}s）: {lock}") from None
             attempts += 1
-            # 平滑微退避，避免极高频自旋消耗系统资源
             sleep_time = min(0.05, 0.01 * (1.15 ** min(attempts, 12)))
             time.sleep(sleep_time)
     try:
