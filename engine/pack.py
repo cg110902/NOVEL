@@ -10,6 +10,12 @@ from pathlib import Path
 
 from . import common, evidence, state
 
+try:
+    import networkx as nx
+    _HAS_NX = True
+except ImportError:
+    _HAS_NX = False
+
 PREV_TAIL_CHARS = 1000
 SPINE_CAP = 10
 POINTER_WINDOW = 10
@@ -307,7 +313,34 @@ def build_pack(book: Path, ch: str, lean: bool = False, full: bool = False) -> d
         # 递归一层：注入内容再命中的新实体 → 只补一行摘要（深度 ≤2，最多 MAX_P1_INDIRECT 条）
         injected = " ".join(b["summary"] for b in p1["entities"])
         indirect_cands = []
-        for name in sorted(set(lookup) - set(hits)):
+        hop_added = set()
+        # NetworkX 1-Hop 实体拓扑剪枝（优先提取直接关联的门派、法宝、宿敌等）
+        if _HAS_NX and cur["entities"].get("entries"):
+            G = nx.Graph()
+            ent_map = {}
+            for e in cur["entities"]["entries"]:
+                n_name = e.get("name")
+                if not n_name:
+                    continue
+                ent_map[n_name] = e
+                G.add_node(n_name, summary=str(e.get("summary", ""))[:60])
+            for n_name, e in ent_map.items():
+                holder = e.get("holder")
+                if holder and holder in G:
+                    G.add_edge(n_name, holder, rel="holder")
+                faction = e.get("faction")
+                if faction and faction in G:
+                    G.add_edge(n_name, faction, rel="faction")
+            for h in hits:
+                if h in G:
+                    for nbr in G.neighbors(h):
+                        if nbr not in hits and nbr not in hop_added:
+                            hop_added.add(nbr)
+                            summary = G.nodes[nbr].get("summary", "")
+                            sum_str = f"：{summary}" if summary else ""
+                            indirect_cands.append(f"{nbr}（关联）{sum_str}")
+
+        for name in sorted(set(lookup) - set(hits) - hop_added):
             if sum(evidence.count_aliases(injected, lookup[name]).values()) > 0:
                 ent = next((e for e in cur["entities"]["entries"] if e["name"] == name), {})
                 indirect_cands.append(f"{name}：{str(ent.get('summary', ''))[:60]}")

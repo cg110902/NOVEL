@@ -107,6 +107,7 @@
           "status": {
             "enum": [
               "Active",
+              "Escalated",
               "Resolved"
             ]
           }

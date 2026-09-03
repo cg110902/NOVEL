@@ -1,91 +1,86 @@
-# novel_workflow.md — 小说创作流水线标准 SOP
+# novel_workflow.md — 小说创作流水线标准 SOP（全题材通用版）
 
-本文档定义 Novel Studio 创作工序（Stage 0–5）的标准流程、各工序的**输入输出（I/O）契约**与协同规范。
+本文档定义 Novel Studio 创作工序（Stage 0–5）的工程标准流程、各工序的**输入输出（I/O）严密契约**与协同规范。
 
 ---
 
-## 一、 全流水线阶段输入/输出 (I/O) 契约全景表
+## 一、 流水线阶段 I/O 契约全景表
 
-| 阶段 | 负责角色 | 📥 必须读取的输入物 (Inputs) | ⚙️ 核心工序动作 (Actions) | 📤 必须交付的产出物 (Outputs) |
+| 阶段 | 负责角色 | 📥 输入物 (Inputs) | ⚙️ 核心工序 (Actions) | 📤 输出物 (Outputs) |
 |---|---|---|---|---|
-| **Stage 0<br/>设定构想** | **主控<br/>(Director)** | • 用户书名、题材、核心脑洞与创意要求<br/>• 模板库 `templates/` | 初始化工作区，确立世界观/力量法则、文风红线（禁止冷峻阴暗逼仄，全篇直白大白话）、核心人物特征与人设、分卷主线大纲及状态机初始真值。 | • `bible/project_bible.md`<br/>• `characters/*.md`<br/>• `outlines/main_plot.md`<br/>• `outlines/vol_XX/outline.md`<br/>• `state/*.json` (初始状态) |
-| **Stage 1<br/>细纲装配** | **主控<br/>(Director)** | • 当前状态 `state/current.json`<br/>• 伏笔台账 `state/lines.json`<br/>• 分卷大纲 `vol_XX/outline.md`<br/>• 前章事实简报与情境<br/>• 细纲模板 `templates/beats.md` | 梳理当章核心矛盾死结、场景推进脉络、关键冲突与伏笔线索，组装高清晰度、低阅读成本的细纲任务书。 | • 当章细纲任务书：<br/>`outlines/vol_XX/beats/ch_XXX.md` |
-| **Stage 2<br/>初稿起草** | **起草员<br/>(Drafter)** | • 当章细纲 `beats/ch_XXX.md`<br/>• 上章尾声情境与梗概 (pack)<br/>• 章初状态 `current.json` (pack)<br/>• 核心人物人设与起草指南 `craft_drafter.md` | 充分发挥想象力，承接前章余温，**禁止冷峻阴暗逼仄文风，全篇使用通俗直白大白话**，以动作化推进和对白机锋产出高能初稿毛坯。 | • 初稿正文文件：<br/>`manuscript/vol_XX/raw/ch_XXX_v1.md`<br/>(纯小说 Markdown，约 2400~3500 字)<br/>• 向主控汇报完稿概况 |
-| **Stage 3<br/>文学重塑** | **精修师<br/>(Editor)** | • 当章细纲 `beats/ch_XXX.md`<br/>• 初稿毛坯 `raw/ch_XXX_v1.md`<br/>• 定稿指南 `craft_editor.md` | **专注于文学质感与阅读快感**：彻底清除冷峻压抑调性，全篇以接地气大白话重写润色，剪除冗长内心戏，执行物理刀口截断，打磨顺滑定稿。 | • 纯净定稿正文文件：<br/>`manuscript/vol_XX/final/ch_XXX.md`<br/>(100% 纯正文)<br/>• 向主控汇报定稿情况 |
-| **Stage 4<br/>事实审计<br/>& 提案装配** | **审计员<br/>(Reader)** | • 定稿正文 `final/ch_XXX.md`<br/>• 当章细纲 `beats/ch_XXX.md`<br/>• 审计规范 `craft_reader.md` | **严谨客观事实审计与状态提案装配**：<br/>通读定稿正文，客观提取 5 大事实（时空、在场角色、道具变动、伏笔动线、新增实体），直接装配为标准增量提案 JSON。 | • 标准增量提案文件：<br/>`state/inbox/ch_XXX.json`<br/>(符合 Schema 规范的纯净 JSON) |
-| **Stage 5<br/>审定与状态封存** | **主控<br/>(Director)** | • 当章四件套：`beats/ch_XXX.md` + `raw/ch_XXX_v1.md` + `final/ch_XXX.md` + `state/inbox/ch_XXX.json`<br/>• 提案规范 `state/inbox/README.md` | 审定 Reader 交付的增量提案，执行 `proposal check` 预检与 `proposal verify` 机械差异对照，确认全局伏笔与实体登记无误后，运行 `studio.py sync` 触发校验并生成原子快照。 | • 机器真值更新：`state/*.json`<br/>• 归档快照：`state/snapshots/<时间戳>_ch_XXX_done` |
+| **Stage 0<br/>设定构想** | **主控<br/>(Director)** | • 书名、题材、核心脑洞与作者创意<br/>• 模板库 `templates/` | 初始化工作区；确立核心法则、语言定调、核心人物卡、分卷大纲；播种状态机真值与初始主角实体。 | • `bible/project_bible.md`<br/>• `characters/*.md`<br/>• `outlines/main_plot.md`<br/>• `outlines/vol_XX/outline.md`<br/>• `state/*.json` (初始状态底座) |
+| **Stage 1<br/>细纲装配** | **主控<br/>(Director)** | • 实时状态 `state/current.json`<br/>• 伏笔台账 `state/lines.json`<br/>• 分卷大纲 `vol_XX/outline.md`<br/>• 上章事实与 Critic 建议<br/>• 细纲模板 `templates/beats.md` | 梳理戏剧冲突、叙事比重、物理标的、利益死结与伏笔动作，生成结构化细纲任务书。 | • 当章细纲任务书：<br/>`outlines/vol_XX/beats/ch_XXX.md` |
+| **Stage 2<br/>初稿起草** | **起草员<br/>(Drafter)** | • 当章细纲 `beats/ch_XXX.md`<br/>• 上章情境与梗概 (`pack`)<br/>• 章初状态与人物性格 (`pack`)<br/>• 起草指南 `craft_drafter.md` | 承接前章现场，以动作化推进和机锋对白展开冲突，篇幅自由舒展（2000~6000+ 汉字），产出初稿毛坯。 | • 初稿文件：<br/>`manuscript/vol_XX/raw/ch_XXX_v1.md`<br/>• 核心看点简要汇报 |
+| **Stage 3<br/>文学重塑** | **精修师<br/>(Editor)** | • 当章细纲 `beats/ch_XXX.md`<br/>• 初稿毛坯 `raw/ch_XXX_v1.md`<br/>• 定稿指南 `craft_editor.md` | 以顺畅读感为唯一导向；全力保留黄金细节，剔除工业废话与心理独白；执行物理刀口收尾，一次精修成型。 | • 纯净定稿文件：<br/>`manuscript/vol_XX/final/ch_XXX.md`<br/>(首行为章题标题行，后为100%纯正文) |
+| **Stage 4A<br/>事实审计** | **审计员<br/>(Reader)** | • 定稿正文 `final/ch_XXX.md`<br/>• 当章细纲 `beats/ch_XXX.md`<br/>• 审计规范 `craft_reader.md` | 客观排查 5 大事实变动（角色、时空、道具资源、伏笔动线、新增实体），装配内嵌逐字引文（quote）的增量提案。 | • 标准增量提案文件：<br/>`state/inbox/ch_XXX.json`<br/>(符合 Schema 规范) |
+| **Stage 4B<br/>毒舌评测** | **评测员<br/>(Critic)** | • 定稿正文 `final/ch_XXX.md`<br/>• 评测标准 `craft_critic.md` | 模拟十年老白读者，测算毒点、爽点、留存三大指标，输出紧凑评分卡，作为 Director 风控闸门与下章 Drafter 建议。 | • 评测报告文件：<br/>`log/critic/ch_XXX.md`<br/>(300~500 汉字紧凑卡) |
+| **Stage 5<br/>裁决与同步** | **主控<br/>(Director)** | • beats + raw + final + inbox JSON<br/>• Critic 评分报告 | 查阅 Critic 报告执行风控裁决（不合格打回重修）；合格后执行 `studio sync` 原子合并真值并封存快照。 | • 状态真值更新：`state/*.json`<br/>• 完整快照：`state/snapshots/<id>_ch_XXX_done`<br/>• 最终成品交付人类作者 |
 
 ---
 
-## 二、 各阶段操作指南与数据规范
+## 二、 各阶段操作指南与通用契约
 
 ### Stage 0: 设定构想与立项（主控）
-- **初始化工程**：运行 `python studio.py init -w workspace/<slug> -t "书名" -g "题材" -p "主角名"`；
-- **核心设定落地**：
-  1. **世界观与核心法则（`bible/project_bible.md`）**：明确题材规则、力量体系与文风基调（禁止冷峻阴暗逼仄，全篇直白大白话）；
-  2. **人物设定（`characters/*.md`）**：为主要角色建立人物卡，明确 Want/Fear、性格特征与说话风格；
-  3. **分卷大纲（`outlines/vol_XX/outline.md`）**：规划分卷主要情节走向、核心高潮与预期伏笔清单；
-- **状态机与两账分离**：
-  - **大纲记规划**：在卷大纲中预先构思全卷伏笔；
-  - **状态机记落盘真值**：开局 `state/lines.json` 保持初始空账本，伏笔随章节推进逐章 `plant` 入库；
-  - **法定实体 Schema 契约**：
-    - 法定实体类型：`['faction', 'item', 'other', 'person', 'place']`；
-    - 法定字段：`name`, `type`, `status` (`'active'`|`'retired'`), `summary` (简介，禁止用 description/bio), `aliases`, `realm`, `faction`, `holder`, `location`, `condition`, `charges`, `max_charges`, `attitude`, `life_status`, `dossier` (人物/势力与主角的恩怨羁绊备忘), `card` (人物卡相对路径，`pack --full` 注入卡全文)；
-    - **严禁非法字段**：严禁出现 `id`, `category`, `entity_type`, `first_appearance` 等非 Schema 字段；
-  - **词表供参契约（主控职责，Stage 0 一次性配置，随书演进可随时增补）**：
-    - **引擎零题材词表**：所有语义词表都由主控按本书题材生成、动态注入 `project.json`；引擎不内置任何"玄幻偏好"默认词表（引擎自带的仅限语言封闭类——标点/数词/量词/功能词，与协议枚举）；
-    - **供参手势（手术刀命令，勿手改 JSON）**：
-      - `python studio.py config guide`：引擎自我申报可接受参数的**型号单**（键/形状/示例）——"需要什么参数找主控要"的应答表；
-      - `python studio.py config suggest`：**机械候选工作单**（引擎统计全书高频短别名与高频泛词，只数不裁）——主控扫候选清单拍板即可，**召回劳动归引擎，验证劳动归主控**，免去全文翻找；
-      - `python studio.py config set <键> '<JSON值>'`：动态供参，后续命令即时生效（持久化、随快照封版）；`--merge` 并入现有值（采纳 suggest 候选的专用手势）；`config list / get / unset` 配套；
-    - **可配键**：`generic_stopwords`（别名触发降噪）、`critical_injury_words`（伤势高危警示）、`abstract_phrases`（细纲假大空）、`high_heat_forms`（高压章型名，精确匹配 form）、`empty_criteria_words`（验收空判词）、`hook_words`（章尾钩子分档，对象含 `strong`/`suspense`/`anticlimax` 三键）；可选增配：`candidate_stopwords`、`style_guards`、`state_watch`；
-    - **缺席 vs 空表 vs 畸形**：键不写 = 未配置 → `check` 以 ℹ️ `wordlist_unconfigured` 提示缺口（跳过对应启发式档）；键写 `[]` = 主控明确关闭；形状非法 → `check` 报 ❌ `param_shape_invalid`；
-    - **为什么这样做**：词表列举不完且天然偏题材——语义完备性由读过全文的 Reader/主控裁决保证；引擎词表只是主控下发的"绊索"，在使用中生长（漏配会暴露为缺口提示，想到新词随时 `config set` 增补）。
-  - **Schema 规范**：`current.json` 中 `key_relationships` 与 `time` 为字符串；`loadout` 记录主角的常驻手段体系（主修能力/招牌手法/底牌资源/装备——按题材自定：修仙填功法身法，都市填专业技能与人脉杠杆，科幻填装备与权限）；`ledger.json` 通货使用 `initial` 与 `current`。
+- **初始化工程**：`python studio.py init -w workspace/<slug> -t "书名" -g "题材" -p "主角名"`；
+  - 引擎会自动将主角注册进 `state/entities.json`，并将默认字数带设置为 `[2000, 6000]`。
+- **法定实体契约（全题材通用）**：
+  - **法定类型**：`['person', 'item', 'faction', 'place', 'other']`；
+  - **法定字段**：`name` (唯一标识), `type`, `status` (`'active'`|`'retired'`), `summary` (简介，禁止用 description/bio), `aliases`, `realm` (或职级/代差), `faction`, `holder`, `location`, `condition`, `charges`, `max_charges`, `attitude`, `life_status`, `dossier` (与主角的羁绊备忘), `card` (人物卡相对路径)；
+  - **严禁非法字段**：严禁出现 `id`, `category`, `entity_type` 等非法字段。
+- **词表供参手势（引擎零预设，由主控按题材注入）**：
+  - `python studio.py config guide`：查看引擎可接受参数型号单；
+  - `python studio.py config suggest`：让引擎机械统计全书高频短别名与高频泛词；
+  - `python studio.py config set <键> '<JSON值>' [--merge]`：动态供参，即时生效随快照封版。
 
 ### Stage 1: 细纲构思（主控）
-- 依据前章事实简报与分卷大纲，确立当章核心戏剧目标、场景发展脉络、核心冲突与关键伏笔动作，写入 `outlines/vol_XX/beats/ch_XXX.md`；
-- **三要素具象硬核结构**：每个场景必须明确 🎯**物理标的**、⚔️**利益死结与底牌**、🎬**破局动作**，严禁假大空抽象空话；
-- **潮汐叙事章型（Tide Forms）与防疲劳规范**：
-  1. 善用 4 类标准潮汐章型：`生死博弈/高潮突破`（高压决战）、`战后清点/爽感兑现`（战利品清点与日常突破，防读者情绪疲劳）、`暗流汇聚/线索试探`、`危机逼近/决战蓄势`；
-  2. **`form_reason`**：若连续章节采用相同 `form`（如连续 `剧情推进` 或连续 `生死博弈`），必须在 front-matter 声明 `form_reason: ...`；
-  3. **`style_notes`**：必须根据当章核心看点与情境焦点量身定制风格旋钮，禁止跨章完全复制相同字符串（避免 `style_notes_copy` 警告）。
+- **脚手架生成**：`python studio.py beats new ch_XXX --write`；
+- **核心场景要素**：
+  1. 🎯 **物理标的**：争夺的具体标的（合同、证据、秘境玉简、能源核心、晋升提名）；
+  2. ⚔️ **利益死结**：双方互不相让的诉求，禁止提前软化妥协；
+  3. 🎬 **破局动作**：以角色具体的动作或决策打破僵局；
+- **防情绪疲劳规范**：连续 3 章高压决战后，建议配置一章战后清点或爽感兑现章型；连续采用相同 `form` 须在 front-matter 提供 `form_reason`。
 
-### Stage 2: 初稿起草（Drafter）
-- **调度**：主控调用 `invoke_subagent(TypeName="self", Role="Drafter", Prompt="...")`；
-- **动作**：承接上章情境，放飞想象力展开叙事，以直白大白话和动作化推进拉满冲突与对白；
-- **输出**：`manuscript/vol_XX/raw/ch_XXX_v1.md`（使用原生 `write_to_file` 工具）。
+### Stage 2: 初稿起草（Drafter · 算力放飞）
+- **调度方式**：`invoke_subagent(TypeName="self", Role="Drafter", Model="inherit", Prompt="...")`；
+- **执行规范**：
+  - 承接前章现场，以行动和对白拉开冲突，严禁原地长篇自问自答；
+  - **篇幅彻底放飞**：字数在 **2000~6000+ 汉字**区间完全自由舒展，重在情节饱满；
+  - **Tool Budget ≤ 3 次**：读材料 1~2 次 → 原生写 `raw/ch_XXX_v1.md` 1 次 → 汇报 1 次；严禁在终端编写任何指标统计脚本；
+- **接力流转**：完稿后主控立即触发 Stage 3，中间不向人类汇报。
 
-### Stage 3: 文学重塑（Editor）
-- **调度**：主控调用 `invoke_subagent(TypeName="self", Role="Editor", Prompt="...")`；
-- **动作**：以直白通俗读感与明快节奏为导向，自由重写与润色，彻底清洗冷峻阴暗逼仄调性，物理刀口截断；
-- **输出**：`manuscript/vol_XX/final/ch_XXX.md`（使用原生 `write_to_file` 工具）。
+### Stage 3: 文学重塑（Editor · 读感优先）
+- **调度方式**：`invoke_subagent(TypeName="self", Role="Editor", Model="inherit", Prompt="...")`；
+- **执行规范**：
+  - **全力精修黄金细节**：压迫感、巧思破局、收获落袋、机锋对白；
+  - **坚决剔除工业废话**：出戏科普、套路生理描写、脑内独白、事后哲理感悟；
+  - **物理刀口收尾**：定稿首行为章题标题行（`# 第N章 标题`），章末落在具体的动作或悬念瞬间；
+  - **一次成型落盘**：使用 `write_to_file` 写入 `final/ch_XXX.md`，严禁在终端跑任何修剪或统计命令；
+- **接力流转**：完稿后主控立即单次并发触发 Stage 4 Reader 与 Critic。
 
-### Stage 4: 事实审计与增量提案装配（Reader）
-- **调度**：主控调用 `invoke_subagent(TypeName="self", Role="Reader", Prompt="...")`；
-- **动作（三段式，引文先行）**：
-  1. **提取事实表**（落盘 `log/facts/ch_XXX.md`）：逐条"先引文后结论"，引文逐字摘自 final（引擎机械校验必须是 final 的子串，编造即整案拒绝）；
-  2. **清单反扫**：8 项固定清单（钱/境界/伤势/装备/资产/在场/线动作/新实体）逐段扫 final，补"无信号的遗漏"；
-  3. **照表组装**：只许使用事实表中已存在的条目搬运成提案 JSON，禁止新增；每条变更带 `quote`；
-- **源优先级**：一切事实性文字逐字以 final 为源，beats 仅对照、禁止复用措辞；`synopsis.title` 逐字拷贝 final 首行章题；
-- **输出**：`state/inbox/ch_XXX.json`（使用原生 `write_to_file` 工具）+ 事实表 `log/facts/ch_XXX.md`。
+### Stage 4: 双轨并行质检（Reader 事实审计 + Critic 毒舌评测）
+- **调度方式（Antigravity 单调用并发）**：
+  ```json
+  {
+    "Subagents": [
+      { "TypeName": "self", "Role": "Reader", "Model": "inherit", "Prompt": "Stage 4A 事实审计..." },
+      { "TypeName": "self", "Role": "Critic", "Model": "inherit", "Prompt": "Stage 4B 毒舌评测..." }
+    ]
+  }
+  ```
+- **轨 A·事实审计 (Reader)**：
+  - 严格以 final 正文为源，提取时空、在场角色、境界职级、装备资产、资金流水、伏笔动线与新实体；
+  - 每条变动**必须携带 `quote`（逐字摘自 final 原句，含标点）**；
+  - 直接落盘 `state/inbox/ch_XXX.json`；严禁在子沙箱跑 verify/sync 测试；
+- **轨 B·老白毒舌评测 (Critic)**：
+  - 测算毒点指数 (0~100)、爽点转化率 (0~100%)、留存抓手 (0~100)；
+  - 给出评级（S/A/B/C）与修改建议，紧凑落盘至 `log/critic/ch_XXX.md`（300~500 汉字）。
 
-### Stage 5: 审定、机械对照与状态封存（主控）
-- **输入合同（引擎强制，四项缺一即拒绝同步）**：
-  1. 当章细纲 `outlines/vol_XX/beats/ch_XXX.md`；
-  2. 当章草稿 `manuscript/vol_XX/raw/ch_XXX_v1.md`；
-  3. 当章定稿 `manuscript/vol_XX/final/ch_XXX.md`；
-  4. 在途提案 `state/inbox/ch_XXX.json`（chapter 须与目标章一致）。
-- **三步闭环心智（Check → Verify → Sync）**：
-  1. **步骤 1（硬门禁·结构与引文预检）**：运行 `python studio.py proposal check ch_XXX`，对提案 Schema 结构、字段合法性以及引文（quote 是否为 final 子串）进行机械硬校验（校验不通过整案阻断）；
-  2. **步骤 2（软对照·0 Token 机械差异核对）**：运行 `python studio.py proposal verify ch_XXX`，引擎对提案×final×状态做八项全机械对照（引文覆盖、章题对照、照抄任务书检测、金额双向对照、在场差异、state_watch 关键词守望、候选新实体、到期线覆盖），**只出候选差异清单（不阻断）**，主控扫视清单裁决是否需要补录；
-     - `state_watch`（书级可选配置，`project.json.state_watch`，推荐用 `config set` 注入）：`{"power_level": ["突破","晋升"], ...}`——词表按本书题材自拟（修仙书可写"结丹"，都市书可写"升职"，科幻书可写"晋升舰长"）；正文出现词表中的词而 current 对应字段未提及时报警，专防"突破章忘刷位阶"类遗漏；
-     - （可选 LLM 验证员）高变动章（含交易/境界突破/≥3 新实体的章）可加派一个独立验证子代理：输入=提案+final（不给 Reader 的推理过程），逐条回指引文、反向穷举；常规章由 verify 的机械候选清单覆盖即可；
-  3. **步骤 3（一键封存·真值合并与快照归档）**：运行 `python studio.py sync ch_XXX` 合并真值并生成快照（快照落在 `state/snapshots/<时间戳>_ch_XXX_done`）。
-- **可选验收注记（Review Gate）**：
-  - 若存在校对注记 `log/review/ch_XXX.md`，sync 会以 ℹ️ 提示其验收覆盖情况（软提示，不阻断）。
-  - 注记由引擎生成骨架、主控填写：`python studio.py review new ch_XXX --write`（骨架已预填机器数据；每条勾选都必须附正文引文或 evidence 数值佐证——无证据的打钩=未审；不加 `--write` 则仅打印不落盘）。
-- **故障恢复**：
-  - 提案被拒 → 归档在 `state/inbox/failed/ch_XXX.json`，就地修复后重跑 `sync ch_XXX` 引擎自动捡回；
-  - 状态污染 → `python studio.py snapshot list` 查看 `state/snapshots/`，`python studio.py snapshot rollback <名称>` 回滚（回滚前自动备份为 `pre_rollback_*`；`--clean-drafts` 可一并清理超章稿件/细纲）；
-  - 已封存章的事实修订 → 并入下一章提案随 sync 合并（timeline 事件用 `replace` 修订、历史章标题/梗概用 `synopsis.chapters` 修订，见 `state/inbox/README.md`）。
+### Stage 5: 裁决闭环、状态同步与快照封存（主控）
+- **风控闸门（Critic Gate）**：
+  - 若 Critic 评级为 **C** 或 **毒点指数 > 30**（憋屈不还手、圣母降智）：**主控携带修改建议直接打回 Stage 3 让 Editor 重塑再验**；
+  - 若评测合格（A/S 级）：放行进入同步流水线。
+- **一键原子同步**：
+  - 执行 `python studio.py sync ch_XXX`：引擎自动执行引文校验、账目平账、实体更新、状态验证与快照创建；
+  - 全景看板 HTML（`python studio.py dashboard`）默认每 5 章（如 ch_005, ch_010）或用户要求时刷新一次。
+- **成品交付**：
+  - 主控直接向人类作者呈送定稿成品与核心看点，邀请作者终审验收。

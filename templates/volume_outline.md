@@ -43,7 +43,7 @@
 
 ## 本卷埋线 / 还线清单（对齐 state/lines.json）
 
-<!-- 对齐 state/lines.json 的 4 大法定动线：plant 首次埋设 / remind 伏笔回响 / update 属性更新 / resolve 闭环回收 -->
-- **GUN（伏笔）**：<!-- plant 埋设 / remind 回响 / resolve 闭环还线计划 -->
+<!-- 对齐 state/lines.json 的 5 大法定动线：plant 首次埋设 / remind 伏笔回响 / update 属性更新 / escalate 误会激化 / resolve 闭环回收 -->
+- **GUN（伏笔）**：<!-- plant 埋设 / remind 回响 / update 状态演变 / resolve 闭环还线计划 -->
 - **KNO（秘密）**：<!-- plant 知情差建立 / resolve 揭示节点 -->
-- **MIS（误会/认知差）**：<!-- plant 认知差产生 / resolve 澄清节点 -->
+- **MIS（误会/认知差）**：<!-- plant 认知差产生 / escalate 误会激化 / resolve 澄清节点 -->

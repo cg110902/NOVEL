@@ -1,7 +1,7 @@
 """evidence：机械证据（mentions|gaps|dup|style|words|file|candidates|prev；all 聚合）。
 
 原则 ：只数事实、零裁决——本模块输出里不允许出现「可疑/建议/达标」类语义词；
-判断属于主控。空结果 = 合法事实（退出码 0）。全部纯 regex/算术，禁一切 NLP 依赖。
+判断属于主控与子代理。空结果 = 合法事实（退出码 0）。支持 jieba 词性标注提取高精度专名候选与关键词，坚决不做主观文学裁决。
 """
 from __future__ import annotations
 
@@ -10,6 +10,14 @@ import re
 from pathlib import Path
 
 from . import common, state
+
+try:
+    import jieba
+    import jieba.posseg as pseg
+    import jieba.analyse
+    _HAS_JIEBA = True
+except ImportError:
+    _HAS_JIEBA = False
 
 SENT_SPLIT_RE = re.compile(r"[。！？!?…；\n]+")
 QUOTE_LINE_RE = re.compile(r"^\s*[「“\"『]")
@@ -20,10 +28,14 @@ REP_MIN = 8  # 整句自重复的最小句长（低于此的短句重复属正�
 AI_CONSTRUCTIONS: list[tuple[str, str]] = [
     ("不是…而是…", r"不是[^。！？]{1,15}[，,]?\s*而是"),
     ("仿佛…一般", r"仿佛[^。！？]{0,15}(?:一般|般)"),
+    ("宛如…一般", r"宛如[^。！？]{0,15}(?:一般|般)"),
     ("空气凝固/凝重", r"空气[^。！？]{0,8}(?:凝固|凝重|仿佛凝固)"),
     ("嘴角勾起/上扬", r"嘴角[^。！？]{0,6}(?:勾起|上扬|勾起一抹)"),
     ("眼底闪过", r"眼底[^。！？]{0,4}闪过"),
     ("心中一凛/一紧/暗道", r"心中[^。！？]{0,6}(?:一凛|一紧|暗道|一惊)"),
+    ("眼神微凝/微眯/一缩", r"眼神[^。！？]{0,4}(?:微凝|一凝|微眯|猛地一缩)"),
+    ("深吸一口气", r"深吸了一?口气|长舒了一?口气"),
+    ("不由自主/不由得", r"不由自主地?|不由得"),
 ]
 
 
@@ -224,9 +236,14 @@ def _cn_num_to_int(s: str) -> int | None:
     """中文数词→整数（千位内常见形：三十/一百二/千五百；解不出返回 None，零语义）。"""
     if not s:
         return None
+    # "两/両" 作为数词只能表示 2，不能紧跟在个位数字后充当第二位数字（如"五两"并非合法数词）
+    if ("两" in s or "両" in s) and re.search(r"[一二三四五六七八九][两両]", s):
+        return None
     total, num = 0, 0
     for ch in s:
         if ch in _CN_DIGITS:
+            if num != 0 and ch in ("两", "両"):
+                return None
             num = _CN_DIGITS[ch]
         elif ch in _CN_UNITS:
             total += (num or 1) * _CN_UNITS[ch]
@@ -296,6 +313,16 @@ def _amount_scan(text: str, pools: dict) -> list[dict]:
                 # 重言计数回显（"一枚一枚数上桌"）：紧邻重复同一 数+量 组合是不定量修辞，非交易
                 nxt = text[hit.end():hit.end() + len(m) + len(unit) + 1] if unit else ""
                 if unit and nxt.startswith(m) and nxt.startswith(unit, len(m)):
+                    continue
+                # 过滤常见时间与文字量词歧义（例如："一两日/一两天/一两月"、"两篇文章"）
+                after_char = text[hit.end():hit.end() + 2]
+                if unit == "两" and any(after_char.startswith(tc) for tc in ("日", "天", "月", "年", "个")):
+                    continue
+                if unit == "文" and any(after_char.startswith(tc) for tc in ("章", "篇", "件", "理", "武", "风", "字")):
+                    continue
+                # 过滤模糊概数修辞（如前置紧邻"成百上千"、"数以"、"好几"）
+                pre_char = text[max(0, hit.start() - 3):hit.start()]
+                if any(pre_char.endswith(x) for x in ("成百上", "成千上", "数以", "约有几", "好几")):
                     continue
                 v = int(m.replace(",", "").replace("，", "")) if m[0].isdigit() else _cn_num_to_int(m)
                 if v is not None:
@@ -416,6 +443,22 @@ def candidates(book: Path, ch: str) -> dict:
         if c:
             per[name] = c
     out["present_candidates"] = per
+
+    # 利用 jieba.posseg 词性标注提取高精度专有名词候选（人名nr/地名ns/机构nt/专名nz）
+    proper_nouns = []
+    if _HAS_JIEBA:
+        known_all = set(lookup.keys())
+        for aliases in lookup.values():
+            known_all.update(aliases)
+        for w, flag in pseg.cut(text):
+            if flag in ("nr", "ns", "nt", "nz") and 2 <= len(w) <= 6:
+                if w not in known_all and not is_candidate_noise(w, led.get("pools")):
+                    proper_nouns.append(w)
+        counts = {}
+        for w in proper_nouns:
+            counts[w] = counts.get(w, 0) + 1
+        proper_nouns = [w for w, _ in sorted(counts.items(), key=lambda x: -x[1])[:10]]
+    out["proper_noun_candidates"] = proper_nouns
 
     # current.json 非空字段（状态摘要；字段随 schema 扩展自动带上）
     cur = state.load_state(book, "current")
@@ -589,12 +632,13 @@ def _stats_one(text: str, guard_words: list) -> dict:
     dialogue_lines = sum(1 for ln in lines if QUOTE_LINE_RE.match(ln))
     cons = {name: len(re.findall(pat, text)) for name, pat in AI_CONSTRUCTIONS}
     guards = {g: text.count(g) for g in guard_words if isinstance(g, str) and g}
+    top_tags = jieba.analyse.extract_tags(text, topK=8) if _HAS_JIEBA else []
     return {"cjk": common.cjk_count(text), "sentences": len(lens),
             "len_mean": round(mean, 1), "len_stdev": round(math.sqrt(var), 1),
             "max_share": round(max(lens) / total_chars, 3),
             "dialogue_line_ratio": round(dialogue_lines / max(1, len(lines)), 3),
             "para_head_repeat": len(heads) - len(set(heads)), "para_count": len(paras),
-            "ai_constructions": cons, "style_guards_hits": guards}
+            "ai_constructions": cons, "style_guards_hits": guards, "top_keywords": top_tags}
 
 
 def file_stats(book: Path, rel: str, ch: str | None = None) -> dict:

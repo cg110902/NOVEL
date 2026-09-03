@@ -205,7 +205,15 @@ def atomic_write_text(path: Path | str, text: str, encoding: str = "utf-8") -> N
             fh.write(text)
             fh.flush()
             os.fsync(fh.fileno())
-        os.replace(tmp, p)
+        # 在 Windows 上处理并发文件锁/IDE实时索引/杀毒软件短暂占用导致的 PermissionError (WinError 5/32)
+        for attempt in range(4):
+            try:
+                os.replace(tmp, p)
+                break
+            except PermissionError:
+                if attempt == 3:
+                    raise
+                time.sleep(0.05 * (2 ** attempt))
     except BaseException:
         with contextlib.suppress(OSError):
             os.unlink(tmp)
@@ -249,6 +257,7 @@ def file_lock(dir_path: Path | str, name: str = ".engine.lock", timeout: float =
     lock.parent.mkdir(parents=True, exist_ok=True)
     deadline = time.monotonic() + timeout
     acquired = False
+    attempts = 0
     while True:
         try:
             fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
@@ -267,7 +276,10 @@ def file_lock(dir_path: Path | str, name: str = ".engine.lock", timeout: float =
                 pass  # 锁消失或被重建 → 走正常重试
             if time.monotonic() >= deadline:
                 raise TimeoutError(f"等待锁超时（{timeout}s）: {lock}") from None
-            time.sleep(0.05)
+            attempts += 1
+            # 平滑微退避，避免极高频自旋消耗系统资源
+            sleep_time = min(0.05, 0.01 * (1.15 ** min(attempts, 12)))
+            time.sleep(sleep_time)
     try:
         yield lock
     finally:

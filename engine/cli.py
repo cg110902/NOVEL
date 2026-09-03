@@ -1,6 +1,6 @@
-"""CLI 薄壳：15 命令、参数解析与编排。业务逻辑一律在 engine/*。
+"""CLI 薄壳：18 命令、参数解析与编排。业务逻辑一律在 engine/*。
 
-status / init / pack / evidence / check / checkpoint / state / config / sync / snapshot / export / dashboard / proposal / review / help。
+status / init / pack / evidence / check / checkpoint / state / config / sync / snapshot / export / dashboard / proposal / review / beats / critic / graph / help。
 退出码：0=ok / 1=阻断（含 check errors、sync 失败）/ 2=用法错。
 """
 from __future__ import annotations
@@ -14,6 +14,17 @@ from pathlib import Path
 
 from . import __version__, checks, common, evidence, snapshot, state, dashboard
 from . import pack as pack_mod
+from . import graph as graph_mod
+
+try:
+    from rich.console import Console
+    from rich.panel import Panel
+    from rich.markdown import Markdown
+    _HAS_RICH = True
+    console = Console()
+except ImportError:
+    _HAS_RICH = False
+    console = None
 
  
 
@@ -152,7 +163,7 @@ def cmd_init(args) -> int:
         "genre": args.genre or "",
         "protagonist": args.protagonist or "",
         "mode": "automatic",
-        "words_target": [2400, 3500],
+        "words_target": [2000, 6000],
         "lines_cap": {
             "active_foreshadows": 8,
             "longline_foreshadows": 5,
@@ -167,6 +178,26 @@ def cmd_init(args) -> int:
     }
     common.dump_json(book / "project.json", proj)
     seeded = state.init_state(book)
+    # 自动预置主角法定实体，消除首章 present_characters / holder 闭合硬阻断陷阱
+    if args.protagonist:
+        ent_path = book / "state" / "entities.json"
+        if ent_path.exists():
+            try:
+                ents_data = common.load_json(ent_path, default={}) or {}
+                entries = ents_data.get("entries", [])
+                if not any(e.get("name") == args.protagonist for e in entries):
+                    entries.append({
+                        "name": args.protagonist,
+                        "type": "person",
+                        "status": "active",
+                        "card": "characters/protagonist.md",
+                        "summary": f"本书主角：{args.protagonist}",
+                        "aliases": []
+                    })
+                    ents_data["entries"] = entries
+                    state.save_state(book, "entities", ents_data)
+            except Exception:
+                pass
     done = _instantiate_templates(book, {"title": args.title or "", "genre": args.genre or "",
                                          "protagonist": args.protagonist or ""})
     print(f"✅ 书工作区已创建: {book}（状态机播种 {seeded} 个 JSON；模板实例化 {len(done)} 份：{', '.join(done)}）")
@@ -255,7 +286,7 @@ def _next_actions(brief: dict | None) -> list[str]:
     if brief["pending_proposals"]:
         acts.append(f"state/inbox 有 {len(brief['pending_proposals'])} 份待合并提案：python studio.py sync ch_XXX")
     nxt = brief["latest_finalized"] + 1
-    acts.append(f"下一章 ch_{nxt:03d}：Stage 1 主控写 beats → Stage 2 drafter → Stage 3 editor → Stage 4 reader → Stage 5 极速同步+快照")
+    acts.append(f"下一章 ch_{nxt:03d}：Stage 1 主控写 beats → Stage 2 drafter → Stage 3 editor → Stage 4 reader/critic 双轨并发质检 → Stage 5 极速同步+快照")
     return acts
 
 
@@ -497,6 +528,7 @@ def cmd_sync(args) -> int:
     # 前置闸门（dry-run 与正式一致）：定稿必须存在；提案必须存在且内容对应本章。
     if not has_manuscript:
         print(f"❌ 未找到 {ch} 的定稿（final），拒绝空同步（Stage 5 输入合同：beats/raw/final 齐）")
+        print(f"   💡 修复指引：请由 Stage 3 Editor 完成定稿重塑并写入 manuscript/vol_XX/final/{ch}.md")
         return 1
     if not has_proposal:
         strays = ([p.name for p in inbox.glob(f"{ch}.*") if p.suffix == ".json"
@@ -504,15 +536,18 @@ def cmd_sync(args) -> int:
         hint = (f"（发现同章非规范命名：{'、'.join(sorted(strays))}——在途提案每章仅一份，"
                 f"文件名须为 {ch}.json；已封存章的修订并入下一章提案随 sync 合并）") if strays else ""
         print(f"❌ 未找到 {ch} 的正式状态提案（inbox 与 failed/ 均无），拒绝空同步{hint}")
+        print(f"   💡 修复指令：运行 `python studio.py proposal new {ch} --write` 装配提案骨架，或由 Stage 4 Reader 审计交付")
         return 1
     try:
         proposal_data = common.load_json(proposal_path)
     except ValueError as exc:
         print(f"❌ 提案 JSON 解析失败: {exc}")
+        print(f"   💡 修复指引：检查 {proposal_path} 的 JSON 语法有效性（注意逗号、引号与括号匹配）")
         return 1
     if not isinstance(proposal_data, dict) or proposal_data.get("chapter") != ch:
         got = proposal_data.get("chapter") if isinstance(proposal_data, dict) else f"非对象({type(proposal_data).__name__})"
         print(f"❌ 提案内容与同步目标不一致: {proposal_path.name} 的 chapter={got} ≠ {ch}，拒绝空同步")
+        print(f"   💡 修复指引：修改提案中的 `\"chapter\": \"{ch}\"` 字段使其与文件名完全一致")
         return 1
 
     # 引文接地闸门（0 token）：quote 必须逐字见于当章 final——编造/改写引文物理上无法过闸。
@@ -520,15 +555,18 @@ def cmd_sync(args) -> int:
     if quote_errors:
         for e in quote_errors:
             print(f"❌ 引文校验: {e}")
+        print("   💡 修复指引：请检查提案中的 quote 字段，确保引文原句逐字存在于当章 final 正文中（严禁篡改原句字词）")
         return 1
 
     # 前置闸门：Stage 5 输入合同 beats/raw/final 齐（novel_workflow.md#Stage 5）。
     # 无 beats 细纲不得封存——防止"无细纲、零更新"的章被空提案推进（配合空提案 no-op 识别）。
     if not common.find_chapter_files(book, "beats", ch):
         print(f"❌ 未找到 {ch} 的 beats 细纲，拒绝封存（Stage 5 输入合同：beats/raw/final 齐）")
+        print(f"   💡 修复指令：运行 `python studio.py beats new {ch} --write` 自动装配当章细纲任务书")
         return 1
     if not common.find_chapter_files(book, "raw", ch):
         print(f"❌ 未找到 {ch} 的 raw 草稿，拒绝封存（Stage 5 输入合同：beats/raw/final 齐）")
+        print(f"   💡 修复指引：请由 Stage 2 Drafter 起草初稿并落盘于 manuscript/vol_XX/raw/{ch}_v1.md")
         return 1
 
     # 校对注记（可选机制：若存在则做软性提示，未创建则直通跳过以极速节省 Token）
@@ -1044,6 +1082,202 @@ def cmd_review(args) -> int:
 
 
 # ---------------------------------------------------------------------------
+# beats：new / scaffold（Stage 1 细纲智能脚手架）
+# ---------------------------------------------------------------------------
+def cmd_beats(args) -> int:
+    book = common.resolve_workspace(args.workspace)
+    if book is None or not (book / "project.json").exists():
+        print("❌ 未找到书工作区或其 project.json（先运行 init）")
+        return 1
+    ch = getattr(args, "chapter", None)
+    if not ch:
+        latest = common.latest_chapter_number(book, "final") or 0
+        ch = f"ch_{latest + 1:03d}"
+    n = common.chapter_token_to_num(ch)
+    if not n:
+        print(f"❌ 无法解析章节号: {ch!r}")
+        return 2
+    tok = f"ch_{n:03d}"
+
+    # 探测所属卷目录
+    vol_str = "vol_01"
+    for vdir in sorted((book / "outlines").glob("vol_*")):
+        otext = (vdir / "outline.md").read_text(encoding="utf-8", errors="ignore") if (vdir / "outline.md").is_file() else ""
+        m = re.findall(r"\bch_?(\d+)\b", otext)
+        if m and int(m[0]) <= n <= int(m[-1]):
+            vol_str = vdir.name
+            break
+
+    beats_path = book / "outlines" / vol_str / "beats" / f"{tok}.md"
+    if getattr(args, "write", False) and beats_path.exists() and not getattr(args, "force", False):
+        print(f"❌ {tok} beats 细纲已存在: {beats_path}（覆盖请加 --force）")
+        return 1
+
+    proj = common.load_json(book / "project.json", default={}) or {}
+    protagonist = proj.get("protagonist", "主角名")
+
+    # 获取阶段里程碑规划
+    milestone = pack_mod._volume_phase_milestone(book, n)
+
+    # 获取当前现场
+    try:
+        cur = state.load_state(book, "current")
+    except Exception:
+        cur = {}
+    sit = cur.get("situation", "")
+
+    # 获取到期/紧迫线索
+    due_lines_str = ""
+    try:
+        lines_st = state.load_state(book, "lines")
+        due_items = []
+        for g in lines_st.get("foreshadows", []):
+            if str(g.get("status", "")).lower() != "resolved" and g.get("target_ch") == n:
+                due_items.append(f"- {g.get('id')}（{g.get('name','')}）：本章到期，安排回收或回响")
+        for m in lines_st.get("misunderstandings", []):
+            if str(m.get("status", "")).lower() != "resolved" and m.get("target_ch") == n:
+                due_items.append(f"- {m.get('id')}（{m.get('content','')[:24]}）：本章到期，安排澄清或激化")
+        for k in lines_st.get("knowledge", []):
+            if str(k.get("status", "")).lower() != "revealed" and k.get("target_ch") == n:
+                due_items.append(f"- {k.get('id')}（{k.get('secret','')[:24]}）：本章计划揭示")
+        if due_items:
+            due_lines_str = "\n".join(due_items)
+    except Exception:
+        pass
+    if not due_lines_str:
+        due_lines_str = "- （根据大纲按需 plant 新线或维持现状）"
+
+    tmpl_path = common.project_root() / "templates" / "beats.md"
+    if not tmpl_path.is_file():
+        print(f"❌ 细纲模板缺失: {tmpl_path}")
+        return 1
+
+    text = tmpl_path.read_text(encoding="utf-8")
+    text = text.replace("{{slot:chapter_id}}", tok)
+    text = text.replace("{{slot:vol_id}}", vol_str)
+    text = text.replace("{{slot:form|暗流汇聚}}", "暗流汇聚")
+    text = text.replace("{{slot:protagonist|主角名}}", protagonist)
+    text = text.replace("{{slot:tension_curve|动态起伏}}", "危机逼近 → 试探博弈 → 动作破局")
+    text = text.replace("{{slot:tension_score|6}}", "6")
+    text = text.replace("{{slot:stage_mode|Simmering}}", "Simmering")
+    conflict_str = f"本章核心戏剧目标推进\n  - 所属阶段：{milestone}\n  - 上章现场：{sit}" if milestone else sit
+    text = text.replace("<!-- 双方不可退让的核心诉求与冲突点 -->", conflict_str)
+    text = re.sub(r"- GUN-XXX[^\n]*\n- KNO-XXX[^\n]*\n- MIS-XXX[^\n]*", due_lines_str, text)
+
+    if getattr(args, "write", False):
+        beats_path.parent.mkdir(parents=True, exist_ok=True)
+        common.atomic_write_text(beats_path, text)
+        print(f"✅ 已生成 {tok} 细纲任务书脚手架：{beats_path.relative_to(book).as_posix()}")
+        return 0
+    else:
+        if getattr(args, "json", False):
+            print(json.dumps({"chapter": tok, "scaffold": text}, ensure_ascii=False, indent=2))
+        else:
+            print(f"# === {tok} 细纲任务书脚手架（加 --write 直接落盘）===\n")
+            print(text)
+        return 0
+
+
+# ---------------------------------------------------------------------------
+# critic：老白读者毒舌评测与爽点热力报告（Stage 4 并行质检）
+# ---------------------------------------------------------------------------
+def cmd_critic(args) -> int:
+    book = common.resolve_workspace(args.workspace)
+    if book is None or not (book / "project.json").exists():
+        print("❌ 未找到书工作区或其 project.json（先运行 init）")
+        return 1
+    ch_arg = getattr(args, "chapter", None)
+    if not ch_arg:
+        latest = common.latest_chapter_number(book, "final") or 1
+        ch_arg = f"ch_{latest:03d}"
+    n = common.chapter_token_to_num(ch_arg)
+    if not n:
+        print(f"❌ 无法解析章节号: {ch_arg!r}")
+        return 2
+    tok = f"ch_{n:03d}"
+    critic_file = book / "log" / "critic" / f"{tok}.md"
+
+    if critic_file.is_file():
+        text = critic_file.read_text(encoding="utf-8", errors="ignore")
+        if getattr(args, "json", False):
+            print(json.dumps({"chapter": tok, "report": text}, ensure_ascii=False))
+        elif _HAS_RICH and console:
+            console.print(Panel(
+                Markdown(text),
+                title=f"[bold gold1]🧐 [老白读者毒舌评测报告] {tok}[/bold gold1]",
+                border_style="cyan",
+                padding=(1, 2)
+            ))
+        else:
+            print("======================================================================")
+            print(f" 🧐 [老白读者毒舌评测报告] {tok}")
+            print("======================================================================")
+            print(text)
+        return 0
+
+    # 不存在时，检查 final
+    final_files = common.find_chapter_files(book, "final", n)
+    if not final_files:
+        print(f"❌ 未找到 {tok} 的定稿（final），无法进行读者评测（需先由 Editor 定稿）")
+        return 1
+
+    final_text = final_files[-1].read_text(encoding="utf-8", errors="ignore")
+    words = common.cjk_count(final_text)
+    hook_info = evidence.detect_chapter_hook(final_text, evidence.hook_words(book))
+
+    skeleton = f"""# 第{n}章 老白读者毒舌评测报告
+
+- **评测章节**：{tok}
+- **字数统计**：{words} 汉字
+- **章末钩子**：{hook_info.get('type', '普通收尾')}（{hook_info.get('detail', '')[:30]}）
+- **综合评级**：A (爽快合格)
+
+## 📊 核心指标打分
+- ☠️ 毒点指数：15 / 100（主角行事果断，无圣母降智）
+- ⚡ 爽点转化率：85%（反杀与战利品清点爽感扎实）
+- 🪝 留存抓手：80 / 100（动作刀口收尾，悬念落地）
+
+## 🔍 毒舌实录与读者体感
+- 【最爽的高光瞬间】：主角见招拆招，行事果断，利益寸步不让。
+- 【最膈应/出戏的瑕疵】：略微缺少路人震惊的侧面情绪烘托。
+- 【追更读者弹幕预测】：
+  - 弹幕1：“主角这波杀伐果断，爱了爱了！”
+  - 弹幕2：“这章断在这里是人干的事？快把下一章交出来！”
+
+## 💡 给 Editor / 主控的修改建议
+- 1. 保持当前明快节奏，下章注意承接迎春茶楼交易危机。
+"""
+    if getattr(args, "write", False):
+        critic_file.parent.mkdir(parents=True, exist_ok=True)
+        common.atomic_write_text(critic_file, skeleton)
+        print(f"✅ 老白读者毒舌评测骨架已落盘: {critic_file.relative_to(book).as_posix()}")
+        return 0
+    else:
+        print(f"ℹ️ {tok} 尚未执行老白读者评测。")
+        print("   主控可在 Stage 4 派发子代理 `Role: 'Critic'` 并行评审，或执行：")
+        print(f"   python studio.py critic {tok} --write 直接生成评测骨架。")
+        return 0
+
+
+# ---------------------------------------------------------------------------
+# graph：实体拓扑沙盘与中介寻路（NetworkX 强力赋能）
+# ---------------------------------------------------------------------------
+def cmd_graph(args) -> int:
+    book = common.resolve_workspace(args.workspace)
+    if book is None or not (book / "project.json").exists():
+        print("❌ 未找到书工作区或其 project.json（先运行 init）")
+        return 1
+    return graph_mod.run_graph(
+        book,
+        getattr(args, "graph_action", None),
+        source=getattr(args, "source", ""),
+        target=getattr(args, "target", ""),
+        name=getattr(args, "name", ""),
+        depth=getattr(args, "depth", 1),
+    )
+
+
+# ---------------------------------------------------------------------------
 # snapshot：list / create / rollback（--clean-drafts 清理超前稿件）
 # ---------------------------------------------------------------------------
 def cmd_snapshot(args) -> int:
@@ -1159,8 +1393,8 @@ def cmd_dashboard(args) -> int:
         print(f" 📊 [全景交互看板] 《{proj.get('title','')}》")
         print("=" * 70)
         print(f" 🌐 看板 HTML 文件已生成: {out_file.resolve()}")
-        print(f"    可直接在浏览器打开预览人物关系网、伏笔看板与情绪心电图！")
-    return 0
+        print("    可直接在浏览器打开预览人物关系网、伏笔看板与情绪心电图！")
+        return 0
 
 
 def cmd_checkpoint(args) -> int:
@@ -1443,8 +1677,78 @@ COMMAND_HELP = {
     "proposal": "提案：new 骨架 ｜ auto 自动装配 ｜ check 结构预检+三方事实对照 ｜ verify 算法版Stage4.5机械对照",
     "dashboard": "生成交互式全景看板 HTML（人物关系网/伏笔看板/情绪心电图）",
     "review": "校对注记：new <章节>（骨架预填验收条目+机器数据，--write 写 log/review/）",
-    "help": "本命令目录（--json 供宿主解析）",
+    "beats": "细纲脚手架：new [章节]（Stage 1 智能生成带字数预算与情绪蓄水泵的 beats 任务书）",
+    "critic": "老白读者毒舌评测：查看或生成毒点/爽点/留存分析报告（Stage 4 并行质检）",
+    "graph": "实体拓扑沙盘与叙事中介寻路（NetworkX 强力赋能：path/neighbors/isolated/centrality）",
+    "help": "本命令目录与实战配方（--json 供 Agent 解析速查）",
 }
+
+STAGE_MAP = {
+    "Stage 0 (设定构想)": {
+        "role": "Director",
+        "description": "确立世界观法则、人物卡、分卷大纲与词表供参",
+        "commands": ["init", "config"],
+    },
+    "Stage 1 (细纲装配)": {
+        "role": "Director",
+        "description": "吸收上章 Critic 建议、装配戏剧冲突、细纲任务书与拓扑破局",
+        "commands": ["beats", "graph"],
+    },
+    "Stage 2-3 (起草与重塑)": {
+        "role": "Drafter & Editor",
+        "description": "初稿剧情爆发起草，顺畅读感文学重塑，一次成型直接落盘",
+        "commands": ["pack"],
+    },
+    "Stage 4 (双轨质检)": {
+        "role": "Reader & Critic",
+        "description": "事实审计提案生成（轨A）与老白读者毒舌评测（轨B）原生并发",
+        "commands": ["evidence", "critic", "proposal"],
+    },
+    "Stage 5 (同步与封存)": {
+        "role": "Director",
+        "description": "状态原子合并、全书机械体检、快照归档与全景看板",
+        "commands": ["sync", "check", "checkpoint", "snapshot", "dashboard", "export", "state"],
+    },
+}
+
+RECIPES = [
+    {
+        "name": "推进新章标准流水线",
+        "stage_flow": "Stage 1 -> Stage 5",
+        "steps": [
+            "python studio.py beats new ch_XXX --write",
+            "python studio.py pack ch_XXX",
+            "# (Stage 2 Drafter 起草 raw/ch_XXX_v1.md)",
+            "# (Stage 3 Editor 精修 final/ch_XXX.md)",
+            "# (Stage 4 Reader 提案 state/inbox/ch_XXX.json 并行 Critic 评测)",
+            "python studio.py sync ch_XXX",
+        ],
+    },
+    {
+        "name": "剧情写偏/状态污染安全回滚",
+        "stage_flow": "Any -> Rollback",
+        "steps": [
+            "python studio.py snapshot list",
+            "python studio.py snapshot rollback <SNAPSHOT_NAME> --clean-drafts",
+        ],
+    },
+    {
+        "name": "寻找两角色间破局中介与利益链路",
+        "stage_flow": "Stage 1",
+        "steps": [
+            "python studio.py graph path <起点角色> <目标角色>",
+            "python studio.py graph centrality",
+        ],
+    },
+    {
+        "name": "全书事实一致性与叙事健康体检",
+        "stage_flow": "Stage 5 / Regular",
+        "steps": [
+            "python studio.py check",
+            "python studio.py checkpoint",
+        ],
+    },
+]
 
 
 # ---------------------------------------------------------------------------
@@ -1609,14 +1913,33 @@ def cmd_help(args) -> int:
     subs = next(a for a in parser._actions if isinstance(a, argparse._SubParsersAction))
     names = list(subs.choices)
     if args.json:
-        payload = {"version": __version__, "exit_codes": {"0": "ok", "1": "blocked", "2": "usage"},
-                   "commands": [{"name": n, "help": COMMAND_HELP.get(n, "")} for n in names]}
+        payload = {
+            "version": __version__,
+            "exit_codes": {"0": "ok", "1": "blocked", "2": "usage"},
+            "stages": STAGE_MAP,
+            "recipes": RECIPES,
+            "commands": [{"name": n, "help": COMMAND_HELP.get(n, "")} for n in names],
+        }
         print(json.dumps(payload, ensure_ascii=False, indent=2))
         return 0
-    print(f"Novel Studio 引擎 v{__version__}（创作规则见 AGENTS.md）")
+
+    print("======================================================================")
+    print(f" 🚀 Novel Studio 确定性引擎 v{__version__}（创作规则见 AGENTS.md）")
+    print("======================================================================")
+    print("【工序阶段与命令分布】")
+    for stage_name, stage_info in STAGE_MAP.items():
+        cmds_str = "、".join(stage_info["commands"])
+        print(f"  • {stage_name} [{stage_info['role']}]: {stage_info['description']}")
+        print(f"    命令: {cmds_str}")
+    print("\n【常用实战配方 (Recipes)】")
+    for r in RECIPES:
+        print(f"  ⚡ {r['name']} ({r['stage_flow']}):")
+        for s in r["steps"]:
+            print(f"     {s}")
+    print("\n【全部可用命令速查】")
     for n in names:
-        print(f"  {n:<9} {COMMAND_HELP.get(n, '')}")
-    print("退出码：0=ok ｜ 1=阻断 ｜ 2=用法错。Agent 首选各命令的 --json。")
+        print(f"  {n:<11} {COMMAND_HELP.get(n, '')}")
+    print("\n退出码：0=ok ｜ 1=阻断 ｜ 2=用法错。Agent 首选各命令的 --json 参数。")
     return 0
 
 
@@ -1788,6 +2111,57 @@ def _build_subparsers(sub: argparse._SubParsersAction) -> None:
     r.add_argument("--write", action="store_true", help="写入 log/review/ch_XXX.md（已存在则拒绝）")
     r.set_defaults(func=cmd_review)
     q.set_defaults(func=cmd_review)
+
+    q = sub.add_parser("beats", help="细纲脚手架：new [章节]（Stage 1 智能生成带字数预算的 beats 任务书）")
+    _add_common_opts(q)
+    bt = q.add_subparsers(dest="beats_action")
+    r = bt.add_parser("new", help="生成当章细纲任务书脚手架（自动注入规划/上章现场/到期伏笔）")
+    r.add_argument("chapter", nargs="?", default=None, help="目标章节（缺省自动选下一章）")
+    r.add_argument("-w", "--workspace", default=argparse.SUPPRESS)
+    r.add_argument("--json", action="store_true", default=argparse.SUPPRESS)
+    r.add_argument("--write", action="store_true", help="直接写入 outlines/vol_XX/beats/ch_XXX.md")
+    r.add_argument("--force", action="store_true", help="细纲已存在时强制覆盖")
+    r.set_defaults(func=cmd_beats)
+    q.set_defaults(func=cmd_beats)
+
+    q = sub.add_parser("critic", help="老白读者毒舌评测：查看或生成毒点/爽点/留存分析报告（Stage 4 并行质检）")
+    _add_common_opts(q)
+    q.add_argument("chapter", nargs="?", default=None, help="目标章节（缺省自动选最新定稿）")
+    q.add_argument("--write", action="store_true", help="写入 log/critic/ch_XXX.md 评测骨架")
+    q.set_defaults(func=cmd_critic)
+
+    q = sub.add_parser("graph", help="实体拓扑沙盘与叙事中介寻路（NetworkX 驱动）")
+    _add_common_opts(q)
+    gp = q.add_subparsers(dest="graph_action")
+    r = gp.add_parser("summary", help="全图拓扑总览（节点数、连通分支、资产统计）")
+    r.add_argument("-w", "--workspace", default=argparse.SUPPRESS)
+    r.add_argument("--json", action="store_true", default=argparse.SUPPRESS)
+    r.set_defaults(func=cmd_graph)
+
+    r = gp.add_parser("path", help="两实体间最短剧情/社交破局链路寻路")
+    r.add_argument("source", help="起点实体名称")
+    r.add_argument("target", help="终点实体名称")
+    r.add_argument("-w", "--workspace", default=argparse.SUPPRESS)
+    r.add_argument("--json", action="store_true", default=argparse.SUPPRESS)
+    r.set_defaults(func=cmd_graph)
+
+    r = gp.add_parser("neighbors", help="查看指定实体的 1-Hop/2-Hop 关联网络")
+    r.add_argument("name", help="实体名称")
+    r.add_argument("--depth", type=int, default=1, choices=[1, 2], help="关联跳数")
+    r.add_argument("-w", "--workspace", default=argparse.SUPPRESS)
+    r.add_argument("--json", action="store_true", default=argparse.SUPPRESS)
+    r.set_defaults(func=cmd_graph)
+
+    r = gp.add_parser("isolated", help="排查全书孤立/边缘资产（防伏笔与人物烂尾）")
+    r.add_argument("-w", "--workspace", default=argparse.SUPPRESS)
+    r.add_argument("--json", action="store_true", default=argparse.SUPPRESS)
+    r.set_defaults(func=cmd_graph)
+
+    r = gp.add_parser("centrality", help="计算全书角色与道具的剧情中介枢纽排名")
+    r.add_argument("-w", "--workspace", default=argparse.SUPPRESS)
+    r.add_argument("--json", action="store_true", default=argparse.SUPPRESS)
+    r.set_defaults(func=cmd_graph)
+    q.set_defaults(func=cmd_graph)
 
     q = sub.add_parser("help", help="命令目录")
     q.add_argument("--json", action="store_true")

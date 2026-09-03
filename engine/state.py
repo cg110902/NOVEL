@@ -16,7 +16,7 @@ import json
 import re
 from pathlib import Path
 
-from . import common, validator
+from . import common, validator, models
 
 MUTATION_SCHEMA = "novel-studio.state-mutation/v2"
 STATE_DIR_NAME = "state"
@@ -40,7 +40,7 @@ _LINE_KIND_SPEC = {
                    "plant_need": ("name",), "update_str": ("name", "plan"),
                    "update_fields": {"status", "target_ch", "plan", "name", "weight"}},
     "misunderstanding": {"id_re": MIS_ID_RE, "prefix": "MIS",
-                         "statuses": ("Active", "Resolved"), "resolved": "Resolved",
+                         "statuses": ("Active", "Escalated", "Resolved"), "resolved": "Resolved",
                          "plant_fields": {"parties", "content", "truth", "level", "target_ch"},
                          "plant_need": ("parties", "content"),
                          "update_str": ("content", "truth", "parties"),
@@ -147,8 +147,8 @@ status 只许 active/retired（越界整案回滚进 failed/）；"现状/近况
 引文接地（强烈建议）：各条目（entities/lines/ledger.transactions/timeline.events/timeline.clocks/synopsis）
   可携带 "quote": "逐字摘自本章 final 的支撑句"——sync 前引擎机械校验引文必须是当章 final 的子串，
   编造或改写引文将整案拒绝；未携带引文的条目由 `proposal verify` 提示。
-填完六区先 `python studio.py proposal check ch_XXX`（结构预检+三方事实对照，不落盘），
-再 `sync ch_XXX --dry-run` 预演。
+注：提案写入后由 Stage 5 主控统一运行 `python studio.py sync ch_XXX` 校验并合并（支持 --dry-run 预演）。
+Stage 4 Reader 仅需落盘本 JSON 即可交付，严禁在子沙箱盲跑测试命令。
 """
 
 
@@ -260,6 +260,11 @@ def validate_proposal(proposal, expected_chapter: str | None = None) -> tuple[li
         return ["提案必须是 JSON 对象"], plan
 
     errors.extend(validator.validate(proposal, _schema("proposal")))
+    # Pydantic V2 强类型领域模型深度校验（方案 B 接入）
+    pydantic_errors = models.validate_with_model("proposal", proposal)
+    for pe in pydantic_errors:
+        if pe not in errors:
+            errors.append(pe)
     for k in proposal:
         if k.startswith("candidate_"):
             errors.append(f"{k}: 候选字段仅供复核，禁止直接进入合并")
@@ -345,8 +350,11 @@ def validate_proposal(proposal, expected_chapter: str | None = None) -> tuple[li
                     errors.append(f"lines[{i}].action 非法: {action}（knowledge 支持 plant/update/resolve，"
                                   f"揭不揭由你判断——引擎只记账）")
                     continue
-            elif action not in ("plant", "update", "remind", "resolve"):
+            elif action not in ("plant", "update", "remind", "resolve", "escalate"):
                 errors.append(f"lines[{i}].action 非法: {action}")
+                continue
+            if action == "escalate" and kind != "misunderstanding":
+                errors.append(f"lines[{i}]: escalate 只适用于 misunderstanding（误会加深/激化）")
                 continue
             base_keys = {"kind", "action", "id", "quote"}
             if action == "plant":
@@ -374,7 +382,7 @@ def validate_proposal(proposal, expected_chapter: str | None = None) -> tuple[li
                 if pc is not None and (not isinstance(pc, int) or isinstance(pc, bool) or pc < 1):
                     errors.append(f"lines[{i}].plant_ch 必须为正整数")
             else:
-                if action in ("remind", "resolve"):
+                if action in ("remind", "resolve", "escalate"):
                     allowed = base_keys | spec["plant_fields"] | spec["update_fields"]
                     for k in g:
                         if k not in allowed:
@@ -662,6 +670,19 @@ def _merge_lines(state: dict, items: list[dict], ch_num: int, rep: dict) -> None
         elif action == "remind":
             ent["status"] = "Reminded"
             rep["updated"].append(f"🔔 {gid} 已回唤")
+        elif action == "escalate":
+            ent["status"] = "Escalated"
+            if "level" in g and isinstance(g["level"], int):
+                ent["level"] = g["level"]
+            elif isinstance(ent.get("level"), int):
+                ent["level"] += 1
+            if "content" in g and isinstance(g["content"], str):
+                ent["content"] = g["content"]
+            if "target_ch" in g:
+                tgt, _ = _norm_target(g["target_ch"])
+                if tgt:
+                    ent["target_ch"] = tgt
+            rep["updated"].append(f"⚡ {gid} 误会激化（强度等级 {ent.get('level', 1)}）")
         else:  # update
             for k, v in g.items():
                 if k in ("kind", "action", "id", "quote"):
@@ -1073,6 +1094,13 @@ def verify_data(data: dict[str, dict]) -> list[str]:
     """在内存/磁盘的六表副本上跑机械体检：账本重算、唯一性、实体闭合。
     与 verify_state 同口径，但接受任意 data 副本（apply_proposal 在落盘前用它预检）。"""
     errors: list[str] = []
+    # 0. Pydantic V2 五大核心领域模型强类型与未知键深度体检（方案 B 深度接入）
+    for sec in ("current", "entities", "lines", "timeline", "ledger"):
+        if sec in data and isinstance(data[sec], dict):
+            p_errors = models.validate_with_model(sec, data[sec], prefix=sec)
+            for pe in p_errors:
+                if pe not in errors:
+                    errors.append(pe)
 
     led = data["ledger"]
     running = {k: v.get("initial", 0) for k, v in led.get("pools", {}).items()}
@@ -1113,16 +1141,17 @@ def verify_data(data: dict[str, dict]) -> list[str]:
     for name in data["current"].get("present_characters", []):
         if str(name).strip() and str(name) not in known:
             errors.append(f"current.present_characters 引用未登记实体「{name}」"
-                          "（先在 entities 提案注册，名字须与卡一致）")
+                          f"（💡 修复指引：在提案 entities 列表中补充登记：{{\"action\":\"upsert\",\"name\":\"{name}\",\"type\":\"person\",\"summary\":\"...\"}}）")
         elif str(name) in deceased_names:
-            errors.append(f"current.present_characters 引用已离世/战死实体「{name}」（life_status=deceased）")
+            errors.append(f"current.present_characters 引用已离世/战死实体「{name}」（life_status=deceased）"
+                          "（💡 修复指引：若非回忆/补叙闪回场景，请将该角色从 present_characters 移除，或修改其 life_status）")
 
     # 闭合性：item 实体的 holder 必须已注册（人名/别名）——持有关系不许悬空
     for e in data["entities"].get("entries", []):
         holder = str(e.get("holder", "")).strip()
         if holder and holder not in known:
             errors.append(f"实体「{e.get('name','')}」的 holder「{holder}」未登记"
-                          "（先注册持有者；holder 必须是已注册实体名）")
+                          f"（💡 修复指引：持有者 holder 必须是已注册实体，请在提案 entities 补充注册「{holder}」）")
 
     # 危机时钟校验
     for i, clk in enumerate(data["timeline"].get("clocks", []), 1):

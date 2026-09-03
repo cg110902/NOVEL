@@ -4,8 +4,15 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "novel-studio"
-description = "Antigravity 原生多智能体小说创作流水线：协议文档 + 确定性引擎（纯 stdlib）"
+description = "Antigravity 原生多智能体小说创作流水线：全题材协议规范 + 确定性状态引擎"
 requires-python = ">=3.10"
+dependencies = [
+    "pydantic>=2.5.0",
+    "jieba>=0.42.1",
+    "networkx>=3.0",
+    "rich>=13.0",
+    "rapidfuzz>=3.0",
+]
 dynamic = ["version"]
 
 [tool.setuptools.dynamic]

@@ -1,6 +1,4 @@
 from html import escape as html_escape
-import json
-import re
 from pathlib import Path
 
 from . import common, evidence, state
@@ -31,9 +29,9 @@ def generate_dashboard_html(book: Path) -> str:
         })
     
     # 3. 伏笔与暗线状态清洗
-    active_guns = [g for g in gaps_data.get("foreshadows", []) if g.get("status") != "Resolved" and not g.get("overdue")]
-    active_mis = [m for m in gaps_data.get("misunderstandings", []) if m.get("status") != "Resolved" and not m.get("overdue")]
-    active_kno = [k for k in gaps_data.get("knowledge", []) if k.get("status") != "Revealed" and not k.get("overdue")]
+    active_guns = [g for g in gaps_data.get("foreshadows", []) if str(g.get("status", "")).lower() != "resolved" and not g.get("overdue")]
+    active_mis = [m for m in gaps_data.get("misunderstandings", []) if str(m.get("status", "")).lower() != "resolved" and not m.get("overdue")]
+    active_kno = [k for k in gaps_data.get("knowledge", []) if str(k.get("status", "")).lower() != "revealed" and not k.get("overdue")]
     
     overdue_items = []
     for g in gaps_data.get("foreshadows", []):
@@ -134,7 +132,7 @@ def generate_dashboard_html(book: Path) -> str:
         <!-- 主角实时状态面板 -->
         <div class="card col-4">
             <div class="card-header">
-                <div class="card-title">⚡ 主角现场状态（{esc(str(cur.get('time', '未知时间')))}</div>
+                <div class="card-title">⚡ 主角现场状态（{esc(str(cur.get('time', '未知时间')))}）</div>
             </div>
             <div class="status-badge-group">
                 {f'<div class="status-badge">🗺️ {esc(str(cur["region"]))}</div>' if cur.get('region') else ''}
@@ -213,7 +211,7 @@ def generate_dashboard_html(book: Path) -> str:
         <!-- 人物与关键实体 -->
         <div class="card col-6">
             <div class="card-header">
-                <div class="card-title">👥 出场人物与关键实体网络</div>
+                <div class="card-title">👥 出场人物与关键实体网络（已登记 {len(ents)} 个）</div>
             </div>
             <div class="entity-grid">
                 {"".join(f'''<div class="entity-card {e.get('type', 'person')} {'retired' if e.get('status') == 'retired' else ''}">
@@ -222,7 +220,7 @@ def generate_dashboard_html(book: Path) -> str:
                         <span style="font-size: 11px; color: var(--text-muted); font-weight: normal;">{esc(str(e.get('realm') or e.get('attitude') or (f"余{e['charges']}次" if e.get('charges') is not None else e.get('type', 'person'))))}{' · 已退役' if e.get('status') == 'retired' else ''}</span>
                     </div>
                     <div class="entity-summary">{esc(str(e.get('summary', ''))[:60])}</div>
-                </div>''' for e in ents[:12]) or '<div style="color: var(--text-muted); font-size: 12px; grid-column: 1/-1;">暂未登记实体</div>'}
+                </div>''' for e in ents[:24]) or '<div style="color: var(--text-muted); font-size: 12px; grid-column: 1/-1;">暂未登记实体</div>'}
             </div>
         </div>
     </div>

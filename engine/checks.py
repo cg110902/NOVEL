@@ -15,6 +15,12 @@ from pathlib import Path
 
 from . import common, evidence, state
 
+try:
+    from rapidfuzz import fuzz
+    _HAS_RAPIDFUZZ = True
+except ImportError:
+    _HAS_RAPIDFUZZ = False
+
 SLOT_RE = re.compile(r"\{\{\s*slot:")
 CANDIDATE_RE = re.compile(r"candidate_[0-9A-Za-z_*]")
 FORM_SHARE_LIMIT = 0.40
@@ -51,18 +57,37 @@ def _norm_quote_ws(s: str) -> str:
     return re.sub(r"\s+", " ", s or "").strip()
 
 
+def _norm_quote_punct(s: str) -> str:
+    """归一化常见标点与空白，用于引文在严格匹配失败后的安全等价容错比对。
+    涵盖中英文引号、破折号、省略号，并剥离首尾句读，防止截取边界标点微差导致假阳性拦截。"""
+    if not s:
+        return ""
+    # 折叠空白
+    t = re.sub(r"\s+", "", s)
+    # 归一化各类单双引号与角引号
+    t = re.sub(r"[「」『』“”‘’\"']", "\"", t)
+    # 归一化破折号
+    t = re.sub(r"[—–―─\-]{2,}", "——", t)
+    # 归一化省略号
+    t = re.sub(r"[…]{1,}|\.{3,}|。{3,}", "……", t)
+    # 剥离首尾常见停顿与句读标点
+    return t.strip("，。！？；：、,.;:!?\"")
+
+
 def validate_quotes(book: Path, ch: str, proposal: dict) -> list[str]:
     """引文机械校验（0 token）：提案条目可选 quote 必须逐字出现在当章 final 中。
 
     final 缺失 → 返回空（sync 的输入合同另有闸门）；quote 非串/空白/不在 final → 逐条报错，
     编造或改写引文在物理上无法过闸。这是"引文先行"纪律的引擎侧牙齿。
-    （包含空白/换行折叠容错，防止因 Markdown 自动折行产生假阳性拦截）。
+    （三级容错：严格字面匹配 → 空白/折行折叠比对 → Unicode 标点与边界等价归一化，
+     彻底防范 Gemini 系列模型 标点规整或排版差异导致的整案拒绝假阳性）。
     """
     finals = common.find_chapter_files(book, "final", ch)
     if not finals:
         return []
     text = finals[-1].read_text(encoding="utf-8", errors="replace")
     norm_text = _norm_quote_ws(text)
+    norm_punct_text = _norm_quote_punct(text)
     errors: list[str] = []
     for where, item in _iter_quote_items(proposal):
         q = item.get("quote")
@@ -78,6 +103,15 @@ def validate_quotes(book: Path, ch: str, proposal: dict) -> list[str]:
         norm_q = _norm_quote_ws(q)
         if norm_q and norm_q in norm_text:
             continue
+        # 3. Unicode 标点等价与首尾边界容错三次命中（需保持至少4个有效字符的语义支撑度）
+        norm_p_q = _norm_quote_punct(q)
+        if norm_p_q and len(norm_p_q) >= 4 and norm_p_q in norm_punct_text:
+            continue
+        # 4. RapidFuzz 局部相似度容错命中（需 >= 8 汉字且 partial_ratio >= 90.0%，防漏抄语气助词假阳性）
+        if _HAS_RAPIDFUZZ and norm_p_q and len(norm_p_q) >= 8:
+            score = fuzz.partial_ratio(norm_p_q, norm_punct_text)
+            if score >= 90.0:
+                continue
         frag = q if len(q) <= 32 else q[:32] + "…"
         errors.append(f"{where}.quote 未逐字见于当章 final（引文必须原样摘录，含标点）: 「{frag}」")
     return errors
@@ -248,13 +282,16 @@ def verify_candidates(book: Path, ch: str, proposal: dict) -> dict:
         cur_state = state.load_state(book, "current")
     except (ValueError, FileNotFoundError):
         cur_state = {}
+    prop_cur = (proposal.get("current") or {}) if isinstance(proposal.get("current"), dict) else {}
     for field, terms in (proj.get("state_watch") or {}).items():
         if not isinstance(terms, list):
             continue
+        # 优先比对本次待审提案已更新的字段值；若提案未修改该字段，则比对当前磁盘状态
+        active_val = str(prop_cur[field]) if field in prop_cur else str(cur_state.get(field, ""))
         for term in terms:
-            if isinstance(term, str) and term in text and term not in str(cur_state.get(field, "")):
+            if isinstance(term, str) and term in text and term not in active_val:
                 add("warn", "state_watch_hit",
-                    f"正文出现「{term}」但 current.{field} 未提及——疑似状态刷新遗漏（修辞/闪回情形忽略）")
+                    f"正文出现「{term}」但提案/现场 current.{field} 未提及——疑似状态刷新遗漏（修辞/闪回情形忽略）")
 
     # 7. 候选新实体（实验性：正文高频 2~4 字串，非注册、非停用词）
     known = [str(x).lower() for names in lookup.values() for x in names]
@@ -295,7 +332,7 @@ def verify_candidates(book: Path, ch: str, proposal: dict) -> dict:
         for kind, arr in (("foreshadow", "foreshadows"), ("misunderstanding", "misunderstandings"),
                           ("knowledge", "knowledge")):
             for g in lines.get(arr, []):
-                if g.get("status") == resolved[kind] or g.get("id") in ops_ids:
+                if str(g.get("status", "")).strip().lower() == resolved[kind].lower() or g.get("id") in ops_ids:
                     continue
                 t = g.get("target_ch")
                 if isinstance(t, int) and t <= n:
@@ -309,8 +346,8 @@ def verify_candidates(book: Path, ch: str, proposal: dict) -> dict:
         lcap = proj.get("lines_cap") or {}
         act_cap = lcap.get("active_foreshadows", 8)
         long_cap = lcap.get("longline_foreshadows", 5)
-        open_act = [g for g in lines.get("foreshadows", []) if g.get("status") != "Resolved" and isinstance(g.get("target_ch"), int)]
-        open_long = [g for g in lines.get("foreshadows", []) if g.get("status") != "Resolved" and g.get("target_ch") == "longline"]
+        open_act = [g for g in lines.get("foreshadows", []) if str(g.get("status", "")).strip().lower() != "resolved" and isinstance(g.get("target_ch"), int)]
+        open_long = [g for g in lines.get("foreshadows", []) if str(g.get("status", "")).strip().lower() != "resolved" and g.get("target_ch") == "longline"]
         for g in (proposal.get("lines") or []):
             if isinstance(g, dict) and g.get("kind") == "foreshadow" and g.get("action", "plant") == "plant":
                 tgt = g.get("target_ch")
@@ -357,7 +394,8 @@ def _err(code: str, msg: str) -> dict:
 
 
 _BEATS_FM_KEYS = {"chapter", "vol", "form", "pov", "words", "style_notes", "form_reason",
-                  "guard_extra", "editor_extra", "tension_curve"}
+                  "guard_extra", "editor_extra", "tension_curve", "tension_score",
+                  "stage_mode", "suppression_factors", "release_trigger"}
 
 # 主控供参参数表（引擎零题材词表契约）：词表的语义内容属书级局部设定，由主控按题材生成并注入
 # project.json（推荐经 `studio.py config` 手术刀命令），引擎只声明"收什么/什么形状"并机械消费。
@@ -495,7 +533,7 @@ _WORDS_BAND_RE = re.compile(r"(\d+)\s*[-–—~～]\s*(\d+)")
 
 
 def _words_band(s: str) -> tuple[int | None, int | None]:
-    """'2400-3500' → (2400, 3500)；解析不出 → (None, None)。"""
+    """'2200-3200' → (2200, 3200)；解析不出 → (None, None)。"""
     m = _WORDS_BAND_RE.search(s or "")
     return (int(m.group(1)), int(m.group(2))) if m else (None, None)
 
@@ -637,7 +675,7 @@ def proposal_cross_facts(book: Path, ch: str, proposal: dict) -> dict:
                           ("knowledge", "Revealed")):
         for g in lines.get(arr, []):
             t = g.get("target_ch")
-            if g.get("status") != resolved and isinstance(t, int) and t <= n:
+            if str(g.get("status", "")).strip().lower() != resolved.lower() and isinstance(t, int) and t <= n:
                 due.append({"id": g["id"], "target_ch": t})
     facts["due_lines"] = due
     ops = sorted({str(g.get("id")) for g in (proposal.get("lines") or [])
@@ -759,7 +797,23 @@ def run_checks(book: Path) -> dict:
     for (vol, n) in per_ch:
         vol_nums.setdefault(vol, []).append(n)
     for vol, nums in sorted(vol_nums.items()):
-        start = 1 if vol == "vol_01" else min(nums)
+        # 规划起始章检测：若大纲 outlines/{vol}/outline.md 明确规划了更小的起始章，则以规划起始章为起点，防止分卷跳写漏检
+        plan_start = None
+        vol_outline = book / "outlines" / vol / "outline.md"
+        if vol_outline.is_file():
+            try:
+                otext = vol_outline.read_text(encoding="utf-8", errors="ignore")
+                ch_hits = [int(m) for m in re.findall(r"\b(?:ch_?|第\s*)(\d{1,4})\b", otext)]
+                if ch_hits:
+                    plan_start = min(ch_hits)
+            except OSError:
+                pass
+        if vol == "vol_01":
+            start = 1
+        elif plan_start is not None and plan_start < min(nums):
+            start = plan_start
+        else:
+            start = min(nums)
         missing = sorted(set(range(start, max(nums) + 1)) - set(nums))
         if missing:
             errors.append(_err("final_gap_chapters",
@@ -803,10 +857,18 @@ def run_checks(book: Path) -> dict:
                 _gid = str(_g.get("id", ""))
                 if _gid:
                     ledger_line_ids.add(_gid)
-                if _g.get("status") != _resolved and isinstance(_g.get("target_ch"), int):
+                if str(_g.get("status", "")).strip().lower() != _resolved.lower() and isinstance(_g.get("target_ch"), int):
                     open_due.append((_g["target_ch"], _gid))
     except (ValueError, FileNotFoundError):
         pass  # lines 不可读已在 state_inconsistent 报 error；线对照降级为不跑
+
+    # ---- 伏笔与暗线饥饿断言（Plotline Starvation：超期 ≥2 章未解决）----
+    latest_final = max((n for _, n in per_ch.keys()), default=0)
+    for tch, gid in open_due:
+        if latest_final >= tch + 2:
+            warnings.append(_err("plotline_starvation",
+                                 f"伏笔/暗线 {gid} 预定 ch_{tch:03d} 解决，当前已连载至 ch_{latest_final:03d}（严重饥饿，请尽快安排回响或闭环）"))
+
     # 空判据词表 = 主控供参 project.json.empty_criteria_words（缺席/关闭时本档自然零触发）
     empty_words = [w for w in (proj.get("empty_criteria_words") or [])
                    if isinstance(w, str) and w.strip()]
@@ -931,8 +993,8 @@ def run_checks(book: Path) -> dict:
         lcap = proj.get("lines_cap") or {}
         act_cap = lcap.get("active_foreshadows", 8)
         long_cap = lcap.get("longline_foreshadows", 5)
-        open_act = [g for g in lines_st.get("foreshadows", []) if g.get("status") != "Resolved" and isinstance(g.get("target_ch"), int)]
-        open_long = [g for g in lines_st.get("foreshadows", []) if g.get("status") != "Resolved" and g.get("target_ch") == "longline"]
+        open_act = [g for g in lines_st.get("foreshadows", []) if str(g.get("status", "")).strip().lower() != "resolved" and isinstance(g.get("target_ch"), int)]
+        open_long = [g for g in lines_st.get("foreshadows", []) if str(g.get("status", "")).strip().lower() != "resolved" and g.get("target_ch") == "longline"]
         if len(open_act) > act_cap:
             warnings.append(_err("line_quota_exceeded",
                                  f"未结活动伏笔 {len(open_act)} 条 > 上限 {act_cap} 条（建议在后续章节优先回收 resolve，防僵尸伏笔堆积）"))
@@ -994,6 +1056,71 @@ def run_checks(book: Path) -> dict:
                         warnings.append(_err("beats_scene_abstract",
                                              f"{vol_dir.name}/{bf.name}: 细纲中出现假大空抽象词「{phr}」——建议细化为具体的物理标的、利益死结或破局动作！"))
                         break
+            except OSError:
+                continue
+
+    # ---- 叙事健康雷达：主角出场失焦检测（连续 2 章主角登场段落率 < 15% 警报） ----
+    protagonist = str(proj.get("protagonist", "")).strip()
+    if protagonist:
+        protagonist_names = {protagonist}
+        try:
+            ents = state.load_state(book, "entities").get("entries", [])
+            for e in ents:
+                if e.get("name") == protagonist:
+                    protagonist_names.update(str(a) for a in e.get("aliases", []) if a)
+        except Exception:
+            pass
+
+        finals = list(evidence.final_chapters(book))
+        if len(finals) >= 2:
+            low_streak = []
+            for tok, path, text in finals[-3:]:
+                paras = [p.strip() for p in text.split("\n") if len(p.strip()) > 10]
+                if not paras:
+                    continue
+                hit = sum(1 for p in paras if any(name in p for name in protagonist_names))
+                ratio = hit / len(paras)
+                if ratio < 0.15:
+                    low_streak.append((tok, ratio))
+                else:
+                    low_streak = []
+            if len(low_streak) >= 2:
+                chs_desc = "、".join(f"{t}（{r:.0%}）" for t, r in low_streak)
+                warnings.append(_err("protagonist_pov_drift",
+                                     f"主角视角失焦警报：最近连续 {len(low_streak)} 章 {chs_desc} 主角「{protagonist}」登场段落率低于 15%，疑似配角戏份喧宾夺主！建议在下一章强化主角的主动破局与核心对白！"))
+
+    # ---- 叙事健康雷达：张力心律不齐检测（连续低迷平淡 / 连续高压窒息） ----
+    for vol_dir in sorted((book / "outlines").glob("vol_*")):
+        beats_files = sorted(vol_dir.glob("beats/ch_*.md"))
+        flatline_streak = []
+        burnout_streak = []
+        for bf in beats_files:
+            try:
+                fm = common.parse_front_matter(bf.read_text(encoding="utf-8", errors="replace"))
+                raw_score = fm.get("tension_score")
+                t_score = None
+                if raw_score is not None:
+                    try:
+                        t_score = float(str(raw_score).strip())
+                    except ValueError:
+                        pass
+                if t_score is not None:
+                    ch_tok = bf.stem
+                    if t_score <= 3:
+                        flatline_streak.append(ch_tok)
+                        burnout_streak = []
+                        if len(flatline_streak) == 3:
+                            warnings.append(_err("tension_flatline",
+                                                 f"{vol_dir.name}: {flatline_streak[0]}—{flatline_streak[-1]} 连续 {len(flatline_streak)} 章张力评分 ≤ 3（情绪低迷平淡），读者极易产生枯燥感并弃更！建议在下一章制造外部危机打破僵局！"))
+                    elif t_score >= 8:
+                        burnout_streak.append(ch_tok)
+                        flatline_streak = []
+                        if len(burnout_streak) == 4:
+                            warnings.append(_err("tension_burnout",
+                                                 f"{vol_dir.name}: {burnout_streak[0]}—{burnout_streak[-1]} 连续 {len(burnout_streak)} 章张力评分 ≥ 8（超高压紧绷），建议在下一章安排「战后清点/爽感兑现」章型消化战利品，防止读者情绪疲劳！"))
+                    else:
+                        flatline_streak = []
+                        burnout_streak = []
             except OSError:
                 continue
 
