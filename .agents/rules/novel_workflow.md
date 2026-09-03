@@ -10,7 +10,7 @@
 |---|---|---|---|---|
 | **Stage 0<br/>设定构想** | **主控<br/>(Director)** | • 书名、题材、核心脑洞与作者创意<br/>• 模板库 `templates/` | 初始化工作区；确立核心法则、语言定调、核心人物卡、分卷大纲；播种状态机真值与初始主角实体。 | • `bible/project_bible.md`<br/>• `characters/*.md`<br/>• `outlines/main_plot.md`<br/>• `outlines/vol_XX/outline.md`<br/>• `state/*.json` (初始状态底座) |
 | **Stage 1<br/>细纲装配** | **主控<br/>(Director)** | • 实时状态 `state/current.json`<br/>• 伏笔台账 `state/lines.json`<br/>• 分卷大纲 `vol_XX/outline.md`<br/>• 上章事实与 Critic 建议<br/>• 细纲模板 `templates/beats.md` | 梳理戏剧冲突、叙事比重、物理标的、利益死结与伏笔动作，生成结构化细纲任务书。 | • 当章细纲任务书：<br/>`outlines/vol_XX/beats/ch_XXX.md` |
-| **Stage 2<br/>初稿起草** | **起草员<br/>(Drafter)** | • 当章细纲 `beats/ch_XXX.md`<br/>• 上章情境与梗概 (`pack`)<br/>• 章初状态与人物性格 (`pack`)<br/>• 起草指南 `craft_drafter.md` | 承接前章现场，以动作化推进和机锋对白展开冲突，篇幅自由舒展（2000~6000+ 汉字），产出初稿毛坯。 | • 初稿文件：<br/>`manuscript/vol_XX/raw/ch_XXX_v1.md`<br/>• 核心看点简要汇报 |
+| **Stage 2<br/>初稿起草** | **起草员<br/>(Drafter)** | • 当章细纲 `beats/ch_XXX.md`<br/>• 上章情境与梗概 (`pack`)<br/>• 章初状态与人物性格 (`pack`)<br/>• 起草指南 `craft_drafter.md` | 承接前章现场，以动作化推进和机锋对白展开冲突，篇幅自由舒展（2000~3000+ 汉字），产出初稿毛坯。 | • 初稿文件：<br/>`manuscript/vol_XX/raw/ch_XXX_v1.md`<br/>• 核心看点简要汇报 |
 | **Stage 3<br/>文学重塑** | **精修师<br/>(Editor)** | • 当章细纲 `beats/ch_XXX.md`<br/>• 初稿毛坯 `raw/ch_XXX_v1.md`<br/>• 定稿指南 `craft_editor.md` | 以顺畅读感为唯一导向；全力保留黄金细节，剔除工业废话与心理独白；执行物理刀口收尾，一次精修成型。 | • 纯净定稿文件：<br/>`manuscript/vol_XX/final/ch_XXX.md`<br/>(首行为章题标题行，后为100%纯正文) |
 | **Stage 4A<br/>事实审计** | **审计员<br/>(Reader)** | • 定稿正文 `final/ch_XXX.md`<br/>• 当章细纲 `beats/ch_XXX.md`<br/>• 审计规范 `craft_reader.md` | 客观排查 5 大事实变动（角色、时空、道具资源、伏笔动线、新增实体），装配内嵌逐字引文（quote）的增量提案。 | • 标准增量提案文件：<br/>`state/inbox/ch_XXX.json`<br/>(符合 Schema 规范) |
 | **Stage 4B<br/>毒舌评测** | **评测员<br/>(Critic)** | • 定稿正文 `final/ch_XXX.md`<br/>• 评测标准 `craft_critic.md` | 模拟十年老白读者，测算毒点、爽点、留存三大指标，输出紧凑评分卡，作为 Director 风控闸门与下章 Drafter 建议。 | • 评测报告文件：<br/>`log/critic/ch_XXX.md`<br/>(300~500 汉字紧凑卡) |
@@ -22,7 +22,7 @@
 
 ### Stage 0: 设定构想与立项（主控）
 - **初始化工程**：`python studio.py init -w workspace/<slug> -t "书名" -g "题材" -p "主角名"`；
-  - 引擎会自动将主角注册进 `state/entities.json`，并将默认字数带设置为 `[2000, 6000]`。
+  - 引擎会自动将主角注册进 `state/entities.json`，并将默认字数带设置为 `[2000, 3000]`。
 - **法定实体契约（全题材通用）**：
   - **法定类型**：`['person', 'item', 'faction', 'place', 'other']`；
   - **法定字段**：`name` (唯一标识), `type`, `status` (`'active'`|`'retired'`), `summary` (简介，禁止用 description/bio), `aliases`, `realm` (或职级/代差), `faction`, `holder`, `location`, `condition`, `charges`, `max_charges`, `attitude`, `life_status`, `dossier` (与主角的羁绊备忘), `card` (人物卡相对路径)；
@@ -44,7 +44,7 @@
 - **调度方式**：`invoke_subagent(TypeName="self", Role="Drafter", Model="inherit", Prompt="...")`；
 - **执行规范**：
   - 承接前章现场，以行动和对白拉开冲突，严禁原地长篇自问自答；
-  - **篇幅彻底放飞**：字数在 **2000~6000+ 汉字**区间完全自由舒展，重在情节饱满；
+  - **篇幅彻底放飞**：字数在 **2000~3000+ 汉字**区间完全自由舒展，重在情节饱满；
   - **Tool Budget ≤ 3 次**：读材料 1~2 次 → 原生写 `raw/ch_XXX_v1.md` 1 次 → 汇报 1 次；严禁在终端编写任何指标统计脚本；
 - **接力流转**：完稿后主控立即触发 Stage 3，中间不向人类汇报。
 

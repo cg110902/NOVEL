@@ -36,7 +36,7 @@ description: Universal commercial webnovel editor and final prose sculptor for N
 
 ## 📤 输出清单与落盘规范 (Outputs)
 1. **纯净定稿正文（彻底破除字数枷锁，一次成型）**：
-   - **字数完全自由舒展**：彻底取消死板字数上限！本工程唯一标准是“写得好、读感顺畅、黄金细节饱满”。2000~6000+ 汉字均完全合格，写到尽兴为止，字数绝不是问题；
+   - **字数完全自由舒展**：彻底取消死板字数上限！本工程唯一标准是“写得好、读感顺畅、黄金细节饱满”。2000~3000+ 汉字均完全合格，写到尽兴为止，字数绝不是问题；
    - **🚫 严禁字数死循环与反复修剪**：严格执行【一次精修成型直接落盘】！严禁重写超过 1 次；严禁在终端编写 Python 脚本统计汉字数、修剪段落或排查词频；
    - **🚫 环境兼容与原生落盘**：当前为 Windows PowerShell 环境，严禁使用 Linux bash 语法（如 `cat << 'EOF'`）；落盘一律使用原生 `write_to_file` 工具覆盖写入 `manuscript/vol_XX/final/ch_XXX.md`（设置 `Overwrite: true`）；
    - **首行必须是章题标题行** `# 第N章 标题`（Reader 逐字拷贝登记 synopsis.title）；

@@ -33,7 +33,7 @@ description: Universal director and orchestrator for Novel Studio. Coordinates w
   - **`style_notes`**：建议根据当章核心矛盾与焦点定制风格旋钮，禁止跨章无脑复制相同字符串（避免 `style_notes_copy` 警告）；
   - **情绪流体力学**：配置 `tension_score` (1-10) 与 `stage_mode` (`Suppression` 蓄水 | `Simmering` 试探 | `Eruption` 爆发 | `Harvest` 清点)；
   - **感官分配预算**：遵循环境 20% + 心理 25% + 动作 35% + 余波 20% 比例；
-  - **分场景叙事比重（彻底放飞，写得好第一）**：按宏观比重分配（如场景一约30%铺垫、场景二约40%拉扯、场景三约30%破局），字数在 **2000~6000+ 汉字**完全自由舒展，彻底破除死板字数上限，严禁死卡字数牺牲文学流动感与对白机锋；
+  - **分场景叙事比重（彻底放飞，写得好第一）**：按宏观比重分配（如场景一约30%铺垫、场景二约40%拉扯、场景三约30%破局），字数在 **2000~3000+ 汉字**完全自由舒展，彻底破除死板字数上限，严禁死卡字数牺牲文学流动感与对白机锋；
   - **明确不可调和的利益冲突**：明确双方无法退让的诉求，防止剧情温和软化；
   - **伏笔与线索动作**：明确当章涉及的 `GUN-*` / `KNO-*` / `MIS-*` 动作（支持 plant/remind/update/escalate/resolve）；
   - **物理收尾锚点**：预定章末卡在具体的物理动作瞬间，坚决杜绝事后说教升华。
@@ -46,7 +46,7 @@ description: Universal director and orchestrator for Novel Studio. Coordinates w
 ### 4. 流水线流转合并与 Stage 4 双轨并发极速质检
 - **流转合并（一步到位，防循环防死锁）**：主控收到指令后，自 Stage 1 细纲落盘起，自动连续调度 Stage 2 Drafter (`inherit`) → Stage 3 Editor (`inherit`) → Stage 4 Reader/Critic 并发，中间无需暂停向人类汇报，直至 Stage 5 快照封存后一次性交付！
 - **派发提示词规范（Tool Budget 铁律）**：
-  - **Drafter 派发**：注入当章 beats 任务书与上章结尾原文，明确要求“**Tool Budget ≤ 3次**（读细纲与上章结尾 → 原生写 raw → 汇报）；字数完全自由（2000~6000+）；**严禁在终端运行任何测试命令或写测试脚本**”；
+  - **Drafter 派发**：注入当章 beats 任务书与上章结尾原文，明确要求“**Tool Budget ≤ 3次**（读细纲与上章结尾 → 原生写 raw → 汇报）；字数完全自由（2000~3000+）；**严禁在终端运行任何测试命令或写测试脚本**”；
   - **Editor 派发**：注入 raw 路径与 beats 路径，明确要求“**Tool Budget ≤ 3次**（读 raw 与细纲 → 原生写 final → 汇报）；字数完全自由，一次成型直接落盘；**严禁运行任何终端测试或修剪命令**”；
   - **Reader 派发**：注入 final 路径与 beats 路径，明确要求“**Tool Budget ≤ 4次**（读 final 与 current.json → 原生写 inbox JSON → 汇报）；**严禁在子沙箱跑 verify 或 dry-run 测试命令**”；
   - **Critic 派发**：注入 final 路径，明确要求“**Tool Budget ≤ 3次**（读 final → 原生写 critic md → 汇报）”。

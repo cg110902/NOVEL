@@ -25,7 +25,7 @@
 | `form` | 章型（生死博弈/战后清点/暗流汇聚/危机逼近）；连章同 form 必须给 `form_reason` |
 | `form_reason` | 与上一章同 form 的理由声明 |
 | `pov` | 视角角色 |
-| `words` | 本章自报字数带（如 `2000-4000`，在 `2000-6000+` 自由舒展）；与上一章带差 <400 会触发 `words_band_crowded` 警告 |
+| `words` | 本章自报字数带（如 `2000-2500`，在 `2000-3000+` 自由舒展）；与上一章带差 <400 会触发 `words_band_crowded` 警告 |
 | `style_notes` | 风格旋钮（竖线分隔）；禁止与上一章全同（`style_notes_copy` 警告） |
 | `guard_extra` | 章级禁忌词表（竖线/逗号分隔）；被 `evidence file/style` 并入机械计数 |
 | `editor_extra` | 传递给 Editor 的附加约束 |

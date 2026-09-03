@@ -163,7 +163,7 @@ def cmd_init(args) -> int:
         "genre": args.genre or "",
         "protagonist": args.protagonist or "",
         "mode": "automatic",
-        "words_target": [2000, 6000],
+        "words_target": [2000, 3000],
         "lines_cap": {
             "active_foreshadows": 8,
             "longline_foreshadows": 5,
