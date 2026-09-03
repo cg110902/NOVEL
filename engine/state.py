@@ -179,6 +179,14 @@ def load_state(book: Path, key: str) -> dict:
     p = state_dir(book) / f"{key}.json"
     if not p.exists():
         raise ValueError(f"状态文件缺失: {p.name}（先运行 studio init）")
+    # 加固：拒绝 symlink 状态文件
+    if p.is_symlink():
+        raise ValueError(f"状态文件 {p.name} 为符号链接，拒绝读取（防外部注入）")
+    try:
+        if p.resolve() != state_dir(book) / f"{key}.json" and state_dir(book).resolve() not in p.resolve().parents:
+            raise ValueError(f"状态文件 {p.name} 越界")
+    except OSError:
+        pass
     data = common.load_json(p)
     data = _fill_missing_required(key, data)
     errors = validator.validate(data, _schema(key))
@@ -198,6 +206,8 @@ def _load_marker(book: Path) -> dict:
     p = state_dir(book) / MARKER_NAME
     if not p.exists():
         return {}
+    if p.is_symlink():
+        raise ValueError(f"{MARKER_NAME} 为符号链接，拒绝读取")
     marker = common.load_json(p)
     if not isinstance(marker, dict):
         raise ValueError(f"{MARKER_NAME} 必须是对象，实际 {type(marker).__name__}")
@@ -989,11 +999,21 @@ def apply_proposal(book: Path, proposal: dict, expected_chapter: str | None = No
 def _gather(inbox: Path) -> list[Path]:
     if not inbox.exists():
         return []
-    return sorted(p for p in inbox.glob("*.json") if not p.name.endswith(NO_MERGE_SUFFIXES))
+    out = []
+    for p in inbox.glob("*.json"):
+        if p.is_symlink():
+            continue
+        if p.name.endswith(NO_MERGE_SUFFIXES):
+            continue
+        out.append(p)
+    return sorted(out)
 
 
 def _archive(pf: Path, dst: Path) -> Path:
     dst.mkdir(parents=True, exist_ok=True)
+    # 加固：pf 必须在 inbox 内且非 symlink
+    if pf.is_symlink():
+        raise ValueError(f"提案文件 {pf.name} 为符号链接，拒绝归档")
     try:
         target = dst / pf.name
         if not target.exists():
@@ -1028,9 +1048,11 @@ def apply_inbox(book: Path, expect_chapter: str | None = None, dry_run: bool = F
             return []
         cands: list[Path] = []
         exact = fdir / f"{expect_chapter}.json"
-        if exact.is_file() and not exact.name.endswith(NO_MERGE_SUFFIXES):
+        if exact.is_file() and not exact.is_symlink() and not exact.name.endswith(NO_MERGE_SUFFIXES):
             cands.append(exact)
         for p in fdir.glob(f"{expect_chapter}.*.json"):
+            if p.is_symlink():
+                continue
             if p.name.endswith(NO_MERGE_SUFFIXES):
                 continue
             if common.chapter_number_from_name(p.name) == common.chapter_token_to_num(expect_chapter):

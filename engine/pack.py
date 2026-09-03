@@ -348,7 +348,12 @@ def build_pack(book: Path, ch: str, lean: bool = False, full: bool = False) -> d
             p = book / rel
             targets = [p] if p.is_file() else sorted(p.rglob("*.md")) if p.is_dir() else []
             for f in targets[:80]:
+                if f.is_symlink():
+                    continue
                 try:
+                    # 越界检查
+                    if f.resolve() != book and book.resolve() not in f.resolve().parents:
+                        continue
                     p2["file_index"].append({"path": str(f.relative_to(book)),
                                              "tokens": common.est_tokens(
                                                  f.read_text(encoding="utf-8", errors="replace")),

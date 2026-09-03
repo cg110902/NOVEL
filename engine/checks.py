@@ -740,7 +740,12 @@ def run_checks(book: Path) -> dict:
 
     slot_hits = []
     for md in sorted(book.rglob("*.md")):
+        if md.is_symlink():
+            continue
         try:
+            # 防越界：resolve 后仍需在 book 内
+            if md.resolve() != book and book.resolve() not in md.resolve().parents:
+                continue
             if SLOT_RE.search(md.read_text(encoding="utf-8", errors="ignore")):
                 slot_hits.append(md.relative_to(book).as_posix())
         except OSError:
@@ -751,7 +756,11 @@ def run_checks(book: Path) -> dict:
     ms = book / "manuscript"
     if ms.is_dir():
         for md in sorted(ms.rglob("*.md")):
+            if md.is_symlink():
+                continue
             try:
+                if md.resolve() != book and book.resolve() not in md.resolve().parents:
+                    continue
                 if CANDIDATE_RE.search(md.read_text(encoding="utf-8", errors="ignore")):
                     errors.append(_err("candidate_leak",
                         f"{md.relative_to(book).as_posix()} 含 candidate_* 工程痕迹（AGENTS 防污染原则：稿件严禁工程标记）"))

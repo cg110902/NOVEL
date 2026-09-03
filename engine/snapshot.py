@@ -29,11 +29,17 @@ def _state_files(book: Path) -> list[Path]:
     sd = state.state_dir(book)
     out = []
     for p in sorted(sd.iterdir()):
-        if not p.is_file():
+        if not p.is_file() or p.is_symlink():
             continue
         if p.name in {".state.lock", ".engine.lock", MANIFEST_NAME}:
             continue
         if p.suffix in (".json", ".md") and (not p.name.startswith(".") or p.name == state.MARKER_NAME):
+            # 加固：确保解析后仍在 state 目录内
+            try:
+                if p.resolve() != sd and sd.resolve() not in p.resolve().parents:
+                    continue
+            except OSError:
+                continue
             out.append(p)
     return out
 

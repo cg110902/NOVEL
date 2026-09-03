@@ -187,13 +187,26 @@ def natural_chapter_sort_key(path: Path) -> tuple[int, int, int, str]:
 
 
 def find_chapter_files(book_dir: Path, area: str = "final", target: object = None) -> list[Path]:
-    """扫描 ch_*.md。area ∈ {final, raw, beats}。"""
-    book_dir = Path(book_dir)
+    """扫描 ch_*.md。area ∈ {final, raw, beats}。加固：跳过 symlink、越界解析。"""
+    book_dir = Path(book_dir).resolve()
     if area == "beats":
         base, pattern = book_dir / "outlines", "*/beats/ch_*.md"
     else:
         base, pattern = book_dir / "manuscript", f"*/{area}/ch_*.md"
-    files = [f for f in base.glob(pattern) if not f.name.startswith(".")]
+    raw_files = [f for f in base.glob(pattern) if not f.name.startswith(".")]
+    files: list[Path] = []
+    for f in raw_files:
+        # 跳过符号链接，防止外部文件注入
+        if f.is_symlink():
+            continue
+        try:
+            resolved = f.resolve()
+            # 必须仍在 book_dir 内
+            if resolved != book_dir and book_dir not in resolved.parents:
+                continue
+        except OSError:
+            continue
+        files.append(f)
     if target is not None:
         files = [f for f in files if file_matches_chapter(f, target)]
     return sorted(files, key=natural_chapter_sort_key)
@@ -282,9 +295,18 @@ def atomic_write_text(path: Path | str, text: str, encoding: str = "utf-8") -> N
 
 
 def load_json(path: Path | str, default=None):
-    """读 JSON。文件缺失：有 default 则返回之，否则抛 ValueError；**内容损坏必抛，绝不静默兜底**。"""
+    """读 JSON。文件缺失：有 default 则返回之，否则抛 ValueError；**内容损坏必抛，绝不静默兜底**。
+    加固：超大文件（>10MB）拒绝解析，防 JSON 炸弹。"""
     p = Path(path)
     try:
+        # 防炸弹：先检查文件大小
+        try:
+            if p.stat().st_size > 10 * 1024 * 1024:
+                raise ValueError(f"JSON 文件过大（>{10}MB），拒绝解析: {p.name}")
+        except FileNotFoundError:
+            raise
+        except OSError:
+            pass
         return json.loads(p.read_text(encoding="utf-8-sig"))
     except FileNotFoundError:
         if default is not None:
