@@ -32,6 +32,7 @@ class Foreshadow(BaseModel):
     target_ch: Optional[Union[int, Literal["longline"]]] = Field(None, description="预定回收章号或长线")
     weight: int = Field(default=1, ge=1, description="权重分级")
     plan: Optional[str] = Field(None, description="预定回收方案")
+    requires: list[str] = Field(default_factory=list, description="前置依赖线索ID列表，如 ['GUN-001']")
 
 
 class Misunderstanding(BaseModel):
@@ -44,6 +45,7 @@ class Misunderstanding(BaseModel):
     level: int = Field(default=1, ge=1, description="误会强度等级")
     target_ch: Optional[Union[int, Literal["longline"]]] = Field(None, description="预定澄清章号或长线")
     status: MisunderstandingStatus = Field(default=MisunderstandingStatus.ACTIVE, description="误会状态")
+    requires: list[str] = Field(default_factory=list, description="前置依赖线索ID列表")
 
 
 class Knowledge(BaseModel):
@@ -56,6 +58,7 @@ class Knowledge(BaseModel):
     target_ch: Optional[Union[int, Literal["longline"]]] = Field(None, description="预定揭示章号")
     weight: int = Field(default=1, ge=1, description="重要度权重")
     note: Optional[str] = Field(None, description="谁不得知晓或揭示约束")
+    requires: list[str] = Field(default_factory=list, description="前置依赖线索ID列表")
 
 
 class LinesState(BaseModel):

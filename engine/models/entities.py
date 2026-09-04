@@ -31,6 +31,14 @@ class FactionAttitude(str, Enum):
     ALLIED = "allied"
 
 
+class EntityRelation(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True, str_strip_whitespace=True)
+
+    target: str = Field(..., description="目标实体名称")
+    type: str = Field(..., description="张力关系类型，如 debt, rival, ally, subordinate, distrust 等")
+    desc: Optional[str] = Field(None, description="张力细节说明")
+
+
 class EntityEntry(BaseModel):
     model_config = ConfigDict(extra="forbid", populate_by_name=True, str_strip_whitespace=True)
 
@@ -50,6 +58,9 @@ class EntityEntry(BaseModel):
     charges: Optional[int] = Field(None, ge=0, description="道具剩余使用次数/充能")
     max_charges: Optional[int] = Field(None, ge=1, description="道具最大使用次数/上限")
     dossier: Optional[str] = Field(None, description="恩怨羁绊、历史过节与交互备忘")
+    scope: Optional[str] = Field(None, description="所属分卷生命周期（如 vol_01；省略表示全书通用）")
+    golden_quote: Optional[str] = Field(None, description="首次高光定稿切片（100~200字物象细节）")
+    relations: list[EntityRelation] = Field(default_factory=list, description="与特定角色的动态张力关系")
 
 
 class EntitiesState(BaseModel):

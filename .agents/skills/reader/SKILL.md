@@ -48,8 +48,8 @@ description: Universal factual auditor and state proposal generator for Novel St
 | 核心提取板块 | 对应 JSON 分区 | 明确提取要点（只记关键，不瞎编） |
 |---|---|---|
 | **1. 现场与主角状态** | `current` | • `present_characters`：章末确凿在场存活名单；<br/>• `location`, `time`：章末具体物理地点与当前时间；<br/>• 主角质变：位阶突破 (`power_level`)、重伤或痊愈 (`injury`)；无变动则维持原样。 |
-| **2. 重要新实体** | `entities` | • 新登场核心角色 (`person`)、重要道具/法宝 (`item`)、新势力 (`faction`)；杂兵路人等背景板不建实体；若无新实体直接保持 `[]`。 |
-| **3. 核心主线伏笔** | `lines` | • 登记主线重要伏笔（`GUN-*`）、秘密（`KNO-*`）、重大误会（`MIS-*`）；动作：`plant` (初设)、`remind` (回响)、`resolve` (回收)；若无变动直接保持 `[]`。 |
+| **2. 重要新实体** | `entities` | • 新登场核心角色 (`person`)、重要道具/法宝 (`item`)、新势力 (`faction`)；杂兵路人等背景板不建实体；若无新实体直接保持 `[]`；<br/>• **进阶锚定（选填）**：S级信物/誓言可附带 `golden_quote`（100字原著细节）；重大恩怨转变可登记 `relations`；分卷专属配角可登记 `scope`。 |
+| **3. 核心主线伏笔** | `lines` | • 登记主线重要伏笔（`GUN-*`）、秘密（`KNO-*`）、重大误会（`MIS-*`）；动作：`plant` (初设)、`remind` (回响)、`resolve` (回收)；若无变动直接保持 `[]`；<br/>• **因果前置（选填）**：若某线索有明确前置条件，可标注 `requires: ["GUN-001"]`。 |
 | **4. 大额收支与梗概** | `ledger` & `synopsis` | • `ledger.transactions`：只记大笔资金或重大法宝交易（日常开销不记，无交易直接 `[]`）；<br/>• `synopsis.title`：**逐字拷贝 final 首行标题**；<br/>• `synopsis.text`：1~2 句话写清当章核心剧情。 |
 
 ### 2. 标准增量提案交付格式 (`state/inbox/ch_XXX.json`)
@@ -64,7 +64,9 @@ description: Universal factual auditor and state proposal generator for Novel St
     "time": "当前时间锚点",
     "power_level": "最新境界/无变动维持原样",
     "injury": "完好 或 具体伤势描述",
-    "situation": "章末局势一句话速写"
+    "situation": "章末局势一句话速写",
+    "aftershock": "选填，留给下一章开篇首段承接的强烈余波事件",
+    "active_pressures": ["选填，悬在头顶的即时压迫或倒计时事件"]
   },
   "entities": [],
   "lines": [],

@@ -57,6 +57,11 @@
           },
           "plan": {
             "type": "string"
+          },
+          "requires": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "前置依赖线索ID列表（如 ['GUN-001']）"
           }
         }
       }
@@ -110,6 +115,11 @@
               "Escalated",
               "Resolved"
             ]
+          },
+          "requires": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "前置依赖线索ID列表（如 ['GUN-001']）"
           }
         }
       }
@@ -166,6 +176,11 @@
           "note": {
             "type": "string",
             "description": "可选：谁不得知道 / 揭示约束（一句话）"
+          },
+          "requires": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "前置依赖线索ID列表（如 ['GUN-001']）"
           }
         }
       }

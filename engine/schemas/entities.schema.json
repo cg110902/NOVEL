@@ -93,6 +93,28 @@
           "dossier": {
             "type": "string",
             "description": "（person/faction 用）与主角的恩怨羁绊、历史过节与交互备忘（如'ch_002 曾被主角暗算，怀恨在心'）"
+          },
+          "scope": {
+            "type": "string",
+            "description": "所属分卷生命周期（如 vol_01；省略表示全书通用）"
+          },
+          "golden_quote": {
+            "type": "string",
+            "description": "首次高光定稿切片（100~200字物象细节）"
+          },
+          "relations": {
+            "type": "array",
+            "description": "与特定角色的动态张力关系清单",
+            "items": {
+              "type": "object",
+              "required": ["target", "type"],
+              "additionalProperties": false,
+              "properties": {
+                "target": { "type": "string" },
+                "type": { "type": "string" },
+                "desc": { "type": "string" }
+              }
+            }
           }
         }
       }

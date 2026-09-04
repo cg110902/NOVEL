@@ -21,6 +21,19 @@ description: Universal director and orchestrator for Novel Studio. Coordinates w
 ### 1.5 叙事拓扑图辅助决策（NetworkX）
 - 主控在构思细纲、设计冲突跳板或宏观复盘时，可直接调用原生命令 `python studio.py graph path/neighbors/isolated/centrality`。
 
+### 1.8 态势驾驶舱与开工第一反射动作（Cockpit & First Reflex）
+- **开工第一反射动作（Entry Reflex ）**：
+  只要主控收到人类指令（如“继续下一章”、“推进剧情”或“写第X章”），**第 1 个 Tool Call 必须是 `run_command` 执行 `python studio.py cockpit --json`**。
+  驾驶舱由确定性 Python 引擎在 0.1 秒内聚合输出：
+  1. **工作流导航**：引擎直接算好当前处于哪一步、下一个该调度哪个 Subagent、目标产出文件是什么；主控严禁猜测工序，直接执行 `next_action.command`；
+  2. **戏剧动力学**：自动提炼开篇承接余震（aftershock）、悬顶危机倒计时（active_pressures）、现场信息差机锋（dramatic_irony）与人物张力；
+  3. **老白读者催更雷达**：直接集成上一章读者体感反馈、高光期待与避坑警示，主控构思细纲时无需手动翻读 `log/critic/`；
+  4. **伏笔暗线分类雷达 (Lines Radar)**：自动分类全书伏笔暗线（🔥 即时短线/临界收束、🎯 卷内主干中线、🌌 跨卷史诗长线、💤 沉寂未提预警），监控活跃伏笔（上限8）与长线（上限5）配额；
+  5. **自愈处方舱**：全书体检并自动计算可执行的修复方案（Remedies）。
+- **自主修复与死锁仲裁**：
+  若存在报错或警告，主控一律优先按 `remedy` 或 `action_command` 自主纠偏修复，保持流水线高速运转；**仅当出现不可自愈的系统死锁（is_deadlock=True）时，方可向人类求助**。
+
+
 ### 2. 细纲构思与创意反套路设计（Stage 1 · 创意最强大脑）
 > 💡 **主控核心价值**：读者看小说看的是**意料之外、情理之中的惊喜与爽感**！主控绝非机械填空的机器人，而是全书故事灵魂的缔造者。
 - **输入材料 (Inputs)**：
@@ -28,10 +41,11 @@ description: Universal director and orchestrator for Novel Studio. Coordinates w
   2. `outlines/vol_XX/outline.md`（分卷主线目标）；
   3. **上一章老白催更便签**：`log/critic/ch_{前一章}.md`（第 1 章无此输入；第 2 章起**必须主动调用 `view_file` 读取**）。
 - **标准执行流程 (Actions)**：
-  1. **生成脚手架**：运行 `python studio.py beats new [章节] --write`，引擎自动填入上章现场、到期伏笔与情绪曲线；
-  2. **注入读者期待**：主控调用 `view_file` 查看上一章的 `log/critic/ch_{前一章}.md`，提取读者最想看的 1~2 个爽点期待与避坑警示；
-  3. **创意灵魂重塑**：主控将自身独家设计的反套路笑点、戏剧冲突死结与反转底牌等写入当章 `outlines/vol_XX/beats/ch_XXX.md`；
-  4. **核准并落盘**：细纲保存于 `outlines/vol_XX/beats/ch_XXX.md`。
+  1. **生成脚手架**：运行 `python studio.py beats new [章节] --write`，引擎自动填入上章现场、到期伏笔、因果依赖阻塞提示与情绪曲线；
+  2. **因果依赖与视界对齐**：关注脚手架中的硬提醒，若提示前置因果未达成，严禁强行回收该线索，应先安排前置动作；专注当卷里程碑，无需分神其他分卷细节；
+  3. **注入读者期待**：主控调用 `view_file` 查看上一章的 `log/critic/ch_{前一章}.md`，提取读者最想看的 1~2 个爽点期待与避坑警示；
+  4. **创意灵魂重塑**：主控将自身独家设计的反套路笑点、戏剧冲突死结与反转底牌等写入当章 `outlines/vol_XX/beats/ch_XXX.md`；
+  5. **核准并落盘**：细纲保存于 `outlines/vol_XX/beats/ch_XXX.md`。
 
 ### 3. 主控大幅减负：标准双向极简工序协议（Stage 2-4）
 

@@ -1,7 +1,6 @@
 # Novel Studio (Antigravity Edition)
 
-专为 **Google Antigravity** 深度定制的现代化小说创作多智能体流水线框架（通用于玄幻、都市、悬疑、科幻、言情、武侠、无限流等全题材）。
-全面适配 Gemini  Flash 系列模型 认知特性，发挥算力与长上下文优势，打造高创意、强张力、流畅好读的商业级优质作品。
+专为 **Google Antigravity** 深度定制的现代化小说创作多智能体流水线框架（适配全题材），打造高创意、强张力、流畅好读的商业级优质作品。
 
 > 📖 **核心宪法指引**：`AGENTS.md`  
 > 🛠️ **自完备技能体系**：`.agents/skills/`（Director, Drafter, Editor, Reader, Critic 单 SKILL 强内聚）

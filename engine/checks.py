@@ -347,8 +347,56 @@ def verify_candidates(book: Path, ch: str, proposal: dict) -> dict:
     return out
 
 
-def _err(code: str, msg: str) -> dict:
-    return {"code": code, "msg": msg}
+DEFAULT_REMEDIES: dict[str, str] = {
+    "project_missing": "运行 python studio.py init <书名> 初始化项目工作区。",
+    "project_corrupt": "检查 project.json 的 JSON 语法并修正，或从 snapshots 快照目录恢复。",
+    "project_field_empty": "在 project.json 中补齐缺失的字段设定（如 title, genre, protagonist 等）。",
+    "project_field_type": "将 project.json 中的 words_target 修正为二元整数数组 [min, max]。",
+    "wordlist_unconfigured": "运行 python studio.py config suggest 获取推荐词表并根据需要配置。",
+    "param_shape_invalid": "检查 project.json 配置项格式，确保符合规范规范要求。",
+    "state_inconsistent": "运行 python studio.py ledger recompute 重新核对账本，或手动平账。",
+    "unregistered_character": "运行 python studio.py entity add <实体名> 将登场人物登记入 state/entities.json，或修正正文/细纲中的拼写。",
+    "retired_entity_on_stage": "该实体已标记退场/阵亡；若重新出场请先在 entities.json 中更新状态或更名。",
+    "state_unreadable": "检查 state 目录下的 JSON 文件语法并修复，或从快照回滚。",
+    "duplicate_final": "清理重复的 final 文件，保持同章唯一的单一真理源。",
+    "final_gap_chapters": "检查分卷目录下的章号顺序，补齐遗漏章节或修正文件名。",
+    "unfilled_slot": "修改 beats 细纲或世界观文件，将 {{slot:...}} 占位符替换为具体剧情或设定内容。",
+    "candidate_leak": "将未定命名 candidate_* 替换为具体的角色名或地名。",
+    "plotline_starvation": "该线索长期未推进，请在当章或后续章节 beats 中安排线索推进（advancement）或提及（remind）。",
+    "prerequisite_missing": "在 state/lines.json 中补齐前置线索定义，或修正该线索的 requires 依赖项。",
+    "prerequisite_unmet": "该线索依赖的前置线索尚未达成！请将当章 action 改为 remind，或先推进前置线索，待前置线索达成后方可收网/揭晓。",
+    "prerequisite_cycle": "检查并解除线索依赖闭环，破除循环 requires 拓扑。",
+    "beats_fm_extra_keys": "移除 beats 文件 front-matter 中的非标准字段。",
+    "beats_missing_form": "在 beats 细纲的 front-matter 中补充 form 字段（如 form: 危机建构 / 生死博弈等）。",
+    "beats_form_repeat_without_reason": "更改当章 form 章型，避免连续同章型疲劳；若确需连续，需在 front-matter 补充 form_reason 说明原因。",
+    "style_notes_copy": "针对本章特色编写独有的 style_notes，避免完全复制模板文本。",
+    "words_band_crowded": "调整细纲中的预计字数区间，避免与整体规划脱节。",
+    "acceptance_empty_criterion": "细纲验收标准（acceptance）必须包含具体的剧情动作或事实信息点，避免假大空。",
+    "line_action_orphan": "细纲中声明了线索动作但未在 lines.json 找到对应线索，请核对线索 ID 或在 lines 中登记。",
+    "line_action_missing": "细纲中声明的线索动作类型缺失，请明确为 plant/advance/remind/reveal/resolve 之一。",
+    "final_without_raw": "流程完整性建议：运行工序时留存 raw 草稿毛坯记录以备审计。",
+    "final_without_beats": "流程完整性建议：运行 python studio.py beats new ch_XXX 补充细纲。",
+    "word_band_deviation": "字数偏离目标带，精修师 Editor 在润色时可精简冗余或扩充细节交锋。",
+    "encoding_replacement_chars": "检测到编码替换字符（如 \\ufffd），请使用 utf-8 重新保存受影响的文件。",
+    "line_quota_exceeded": "当前活跃线索过多，建议在后续章节逐步收网已成熟的伏笔，保持主线清爽。",
+    "longline_quota_exceeded": "跨卷长线伏笔超出上限，建议精简或收束部分跨卷暗线。",
+    "style_guard_hit": "正文命中被禁用的文风词或 AI 构造词，Editor 精修时进行替换或删减。",
+    "form_share_over_limit": "该章型在全书中占比超过 40%，建议在后续章节丰富其他类型的叙事章型。",
+    "high_tension_fatigue": "连续高压章型导致情绪疲劳，下一章建议安排松弛缓冲型章型。",
+    "beats_scene_abstract": "细纲中包含假大空短语，请用具体的动作、对白或冲突置换抽象描述。",
+    "protagonist_pov_drift": "主角视角失焦，下一章强化主角出场比重与核心破局动作。",
+    "tension_flatline": "连续低张力章节，下一章建议引入突发危机或外部强冲突打破平淡。",
+    "tension_burnout": "连续极高张力章节，下一章建议安排战后清点或战利品兑现，让读者情绪适度舒缓释放。",
+}
+
+
+def _err(code: str, msg: str, remedy: str = "", can_auto_heal: bool = True) -> dict:
+    item = {"code": code, "msg": msg}
+    resolved_remedy = remedy or DEFAULT_REMEDIES.get(code, "")
+    if resolved_remedy:
+        item["remedy"] = resolved_remedy
+    item["can_auto_heal"] = can_auto_heal
+    return item
 
 
 _BEATS_FM_KEYS = {"chapter", "vol", "form", "pov", "words", "style_notes", "form_reason",
@@ -791,6 +839,57 @@ def run_checks(book: Path) -> dict:
             warnings.append(_err("plotline_starvation",
                                  f"伏笔/暗线 {gid} 预定 ch_{tch:03d} 解决，当前已连载至 ch_{latest_final:03d}（严重饥饿，请尽快安排回响或闭环）"))
 
+    # 因果依赖图校验 (Prerequisite DAG Check)
+    all_lines_map: dict[str, dict] = {}
+    try:
+        _lines_state = state.load_state(book, "lines")
+        for _arr, _resolved_status in (("foreshadows", "Resolved"), ("misunderstandings", "Resolved"), ("knowledge", "Revealed")):
+            for _item in _lines_state.get(_arr, []):
+                if _item.get("id"):
+                    all_lines_map[str(_item["id"])] = {
+                        "kind": _arr,
+                        "status": str(_item.get("status", "")),
+                        "resolved_status": _resolved_status,
+                        "requires": list(_item.get("requires") or [])
+                    }
+        for lid, info in all_lines_map.items():
+            is_resolved = info["status"].lower() == info["resolved_status"].lower()
+            for req_id in info["requires"]:
+                if req_id not in all_lines_map:
+                    warnings.append(_err("prerequisite_missing", f"线索 {lid} 依赖的前置线索 {req_id} 未在 lines 账本中注册"))
+                elif is_resolved:
+                    req_info = all_lines_map[req_id]
+                    req_resolved = req_info["status"].lower() == req_info["resolved_status"].lower()
+                    if not req_resolved:
+                        errors.append(_err("prerequisite_unmet",
+                                           f"因果逻辑冲突：线索 {lid} 已标记完成({info['status']})，但其前置依赖 {req_id} 仍未完成({req_info['status']})！",
+                                           remedy=f"在 lines 账本中先推进并达成前置线索 {req_id}，或暂缓收束 {lid} 并将其状态退回 Active/Planted。"))
+
+        # 检测循环依赖 (Cyclic Dependency Detection)
+        def _has_cycle(start_id: str, visited: set[str], stack: set[str]) -> bool:
+            visited.add(start_id)
+            stack.add(start_id)
+            for neighbor in all_lines_map.get(start_id, {}).get("requires", []):
+                if neighbor in all_lines_map:
+                    if neighbor not in visited:
+                        if _has_cycle(neighbor, visited, stack):
+                            return True
+                    elif neighbor in stack:
+                        return True
+            stack.remove(start_id)
+            return False
+
+        visited_nodes: set[str] = set()
+        for lid in all_lines_map:
+            if lid not in visited_nodes:
+                if _has_cycle(lid, visited_nodes, set()):
+                    errors.append(_err("prerequisite_cycle",
+                                       f"因果逻辑冲突：线索 {lid} 存在循环前置依赖！",
+                                       remedy=f"检查并解除线索 {lid} 的前置依赖闭环，破除循环 requires 拓扑。"))
+                    break
+    except Exception:
+        pass
+
     empty_words = [w for w in (proj.get("empty_criteria_words") or [])
                    if isinstance(w, str) and w.strip()]
     prev_by_vol: dict[str, dict] = {}
@@ -1036,3 +1135,45 @@ def run_checks(book: Path) -> dict:
     stats["infos"] = len(infos)
     return {"schema": "novel-studio.check/v1", "ok": not errors,
             "errors": errors, "warnings": warnings, "infos": infos, "stats": stats}
+
+
+def get_self_healing_remedies(book: Path, ch: str | None = None) -> list[dict]:
+    """运行全书体检，并按章节或全书提取可供 AI 自愈的可执行处方。"""
+    report = run_checks(book)
+    out: list[dict] = []
+    for e in report.get("errors", []):
+        code = e.get("code", "unknown")
+        rem = e.get("remedy") or DEFAULT_REMEDIES.get(code, "请根据错误信息核实并修改相应设定文件。")
+        item = {
+            "level": "error",
+            "code": code,
+            "msg": e.get("msg", ""),
+            "remedy": rem,
+            "can_auto_heal": e.get("can_auto_heal", True),
+        }
+        if "recompute" in rem or "ledger" in code:
+            item["action_command"] = "python studio.py ledger recompute"
+        elif "entity add" in rem and "运行 " in rem:
+            cmd_part = rem.split("运行 ")[-1].split(" 将")[0].strip()
+            item["action_command"] = cmd_part
+        out.append(item)
+
+    for w in report.get("warnings", []):
+        code = w.get("code", "unknown")
+        rem = w.get("remedy") or DEFAULT_REMEDIES.get(code, "")
+        item = {
+            "level": "warning",
+            "code": code,
+            "msg": w.get("msg", ""),
+            "remedy": rem,
+            "can_auto_heal": w.get("can_auto_heal", True),
+        }
+        out.append(item)
+
+    if ch:
+        ch_num = common.chapter_token_to_num(ch)
+        ch_tok = f"ch_{ch_num:03d}" if ch_num else str(ch)
+        out.sort(key=lambda x: (0 if ch_tok in x["msg"] else 1, 0 if x["level"] == "error" else 1))
+
+    return out
+

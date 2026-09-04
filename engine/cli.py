@@ -352,6 +352,21 @@ def cmd_status(args) -> int:
     return 0
 
 
+def cmd_cockpit(args) -> int:
+    book = _resolve_and_validate(args.workspace)
+    if book is None or not (book / "project.json").exists():
+        print("❌ 未找到书工作区或其 project.json（先运行 init）")
+        return 1
+    ch = _norm_ch(args.chapter) if getattr(args, "chapter", None) else None
+    from . import cockpit
+    briefing = cockpit.build_cockpit_briefing(book, ch)
+    if args.json:
+        print(json.dumps(briefing, ensure_ascii=False, indent=2))
+    else:
+        cockpit.render_cockpit_terminal(briefing)
+    return 0
+
+
 def _status_debts(book) -> None:
     notes: list[str] = []
     n_fail = len(list((book / "state" / "inbox" / "failed").glob("*.json"))) \
@@ -495,8 +510,12 @@ def cmd_check(args) -> int:
         print("=" * 70)
         for e in report["errors"]:
             print(f" ❌ [{e['code']}] {e['msg']}")
+            if e.get("remedy"):
+                print(f"    💡 [自愈方案] {e['remedy']}")
         for w in report["warnings"]:
             print(f" ⚠️ [{w['code']}] {w['msg']}")
+            if w.get("remedy"):
+                print(f"    💡 [建议处理] {w['remedy']}")
         for i in report.get("infos", []):
             print(f" ℹ️ [{i['code']}] {i['msg']}")
         if not report["errors"] and not report["warnings"]:
@@ -1926,6 +1945,11 @@ def _build_subparsers(sub: argparse._SubParsersAction) -> None:
     q = sub.add_parser("status", help="进度总览 + 逐章流水线 + 下一步指向")
     _add_common_opts(q)
     q.set_defaults(func=cmd_status)
+
+    q = sub.add_parser("cockpit", help="主控态势驾驶舱：工作流导航 + 戏剧动力学 + 自愈处方 + 催更雷达")
+    _add_common_opts(q)
+    q.add_argument("chapter", nargs="?", help="目标章节（如 2 或 ch_002，缺省自动推断活跃章）")
+    q.set_defaults(func=cmd_cockpit)
 
     q = sub.add_parser("init", help="创建/清理书工作区（脚手架+状态播种+模板槽位实例化）")
     _add_common_opts(q, json_flag=False)

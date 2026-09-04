@@ -35,20 +35,20 @@ _SCHEMA_CACHE: dict[str, dict] = {}
 _LINE_KIND_SPEC = {
     "foreshadow": {"id_re": GUN_ID_RE, "prefix": "GUN",
                    "statuses": ("Planted", "Reminded", "Resolved"), "resolved": "Resolved",
-                   "plant_fields": {"name", "target_ch", "plant_ch", "plan", "weight"},
+                   "plant_fields": {"name", "target_ch", "plant_ch", "plan", "weight", "requires"},
                    "plant_need": ("name",), "update_str": ("name", "plan"),
-                   "update_fields": {"status", "target_ch", "plan", "name", "weight"}},
+                   "update_fields": {"status", "target_ch", "plan", "name", "weight", "requires"}},
     "misunderstanding": {"id_re": MIS_ID_RE, "prefix": "MIS",
                          "statuses": ("Active", "Escalated", "Resolved"), "resolved": "Resolved",
-                         "plant_fields": {"parties", "content", "truth", "level", "target_ch"},
+                         "plant_fields": {"parties", "content", "truth", "level", "target_ch", "requires"},
                          "plant_need": ("parties", "content"),
                          "update_str": ("content", "truth", "parties"),
-                         "update_fields": {"status", "target_ch", "content", "truth", "level", "parties"}},
+                         "update_fields": {"status", "target_ch", "content", "truth", "level", "parties", "requires"}},
     "knowledge": {"id_re": KNO_ID_RE, "prefix": "KNO",
                   "statuses": ("Concealed", "Revealed"), "resolved": "Revealed",
-                  "plant_fields": {"secret", "target_ch", "plant_ch", "note", "weight"},
+                  "plant_fields": {"secret", "target_ch", "plant_ch", "note", "weight", "requires"},
                   "plant_need": ("secret",), "update_str": ("secret", "note"),
-                  "update_fields": {"status", "target_ch", "secret", "note", "weight"}},
+                  "update_fields": {"status", "target_ch", "secret", "note", "weight", "requires"}},
 }
 
 
@@ -75,7 +75,8 @@ def defaults_for(key: str) -> dict:
     if key == "current":
         return {"time": "", "region": "", "location": "", "power_level": "", "abilities": "",
                 "injury": "", "equipment": "", "assets": "", "situation": "", "mood": "",
-                "goal": "", "key_relationships": "", "present_characters": []}
+                "goal": "", "key_relationships": "", "present_characters": [],
+                "aftershock": "", "active_pressures": []}
     if key == "entities":
         return {"entries": []}
     if key == "lines":
@@ -251,6 +252,12 @@ def validate_proposal(proposal, expected_chapter: str | None = None) -> tuple[li
         pcs = cur.get("present_characters")
         if pcs is not None and (not isinstance(pcs, list) or any(not isinstance(x, str) for x in pcs)):
             errors.append("current.present_characters 必须是字符串数组")
+        if "active_pressures" in cur:
+            ap = cur["active_pressures"]
+            if not isinstance(ap, list) or any(not isinstance(x, str) for x in ap):
+                errors.append("current.active_pressures 必须是字符串数组")
+        if "aftershock" in cur and not isinstance(cur["aftershock"], str):
+            errors.append("current.aftershock 必须是字符串")
 
     ents = proposal.get("entities")
     if isinstance(ents, list):
@@ -258,7 +265,7 @@ def validate_proposal(proposal, expected_chapter: str | None = None) -> tuple[li
         allowed_entity_keys = {"action", "name", "type", "card", "summary", "status", "aliases",
                                "holder", "location", "condition", "quote",
                                "realm", "faction", "life_status", "attitude", "charges", "max_charges",
-                               "dossier"}
+                               "dossier", "scope", "golden_quote", "relations"}
         for i, e in enumerate(ents):
             if not isinstance(e, dict):
                 errors.append(f"entities[{i}] 必须为对象")
@@ -288,7 +295,7 @@ def validate_proposal(proposal, expected_chapter: str | None = None) -> tuple[li
                     pass
             if "type" in e and e["type"] not in _ENTITY_TYPES:
                 errors.append(f"entities[{i}].type 非法: {e['type']!r}（合法：{'/'.join(sorted(_ENTITY_TYPES))}）")
-            for f in ("card", "summary", "holder", "location", "condition", "realm", "faction", "quote", "dossier"):
+            for f in ("card", "summary", "holder", "location", "condition", "realm", "faction", "quote", "dossier", "scope", "golden_quote"):
                 if f in e and not isinstance(e[f], str):
                     errors.append(f"entities[{i}].{f} 必须为字符串")
             if "aliases" in e:
@@ -296,6 +303,20 @@ def validate_proposal(proposal, expected_chapter: str | None = None) -> tuple[li
                     errors.append(f"entities[{i}].aliases 必须为字符串数组（收到 {type(e['aliases']).__name__}）")
                 elif any(not isinstance(a, str) for a in e["aliases"]):
                     errors.append(f"entities[{i}].aliases 的元素必须为字符串")
+            if "relations" in e:
+                if not isinstance(e["relations"], list):
+                    errors.append(f"entities[{i}].relations 必须为数组（收到 {type(e['relations']).__name__}）")
+                else:
+                    for r_idx, rel in enumerate(e["relations"]):
+                        if not isinstance(rel, dict):
+                            errors.append(f"entities[{i}].relations[{r_idx}] 必须为对象")
+                            continue
+                        if not rel.get("target") or not isinstance(rel["target"], str):
+                            errors.append(f"entities[{i}].relations[{r_idx}].target 必填且为字符串")
+                        if not rel.get("type") or not isinstance(rel["type"], str):
+                            errors.append(f"entities[{i}].relations[{r_idx}].type 必填且为字符串")
+                        if "desc" in rel and not isinstance(rel["desc"], str):
+                            errors.append(f"entities[{i}].relations[{r_idx}].desc 必须为字符串")
 
     lines = proposal.get("lines")
     if isinstance(lines, list):
@@ -345,11 +366,21 @@ def validate_proposal(proposal, expected_chapter: str | None = None) -> tuple[li
                 pc = g.get("plant_ch")
                 if pc is not None and (not isinstance(pc, int) or isinstance(pc, bool) or pc < 1):
                     errors.append(f"lines[{i}].plant_ch 必须为正整数")
+                if "requires" in g:
+                    if not isinstance(g["requires"], list):
+                        errors.append(f"lines[{i}].requires 必须为字符串数组")
+                    elif any(not isinstance(r, str) for r in g["requires"]):
+                        errors.append(f"lines[{i}].requires 的元素必须为字符串")
             else:
                 if "target_ch" in g:
                     _, terr = _norm_target(g["target_ch"])
                     if terr:
                         errors.append(f"lines[{i}]: {terr}")
+                if "requires" in g:
+                    if not isinstance(g["requires"], list):
+                        errors.append(f"lines[{i}].requires 必须为字符串数组")
+                    elif any(not isinstance(r, str) for r in g["requires"]):
+                        errors.append(f"lines[{i}].requires 的元素必须为字符串")
                 if not g.get("id"):
                     errors.append(f"lines[{i}]（{action}）必须提供 id")
                 if action == "remind" and kind != "foreshadow":
@@ -517,6 +548,11 @@ def _merge_current(state: dict, patch: dict, rep: dict) -> None:
             cur_ld = state.get("loadout") or {}
             cur_ld.update(v)
             state["loadout"] = cur_ld
+        elif k == "active_pressures":
+            if not isinstance(v, list):
+                rep["errors"].append("current.active_pressures 必须为字符串数组")
+                continue
+            state["active_pressures"] = [str(x) for x in v if str(x).strip()]
         elif isinstance(v, str):
             if not v:
                 rep["warnings"].append(f"current.{k} 为空字符串，按未提供处理")
@@ -570,13 +606,23 @@ def _merge_entities(state: dict, items: list[dict], rep: dict) -> None:
             state["entries"].append(ent)
             idx[name] = ent
         for f in ("type", "card", "summary", "holder", "location", "condition",
-                  "realm", "faction", "life_status", "attitude", "charges", "max_charges", "dossier"):
+                  "realm", "faction", "life_status", "attitude", "charges", "max_charges", "dossier",
+                  "scope", "golden_quote"):
             if f in e:
                 ent[f] = e[f]
         if "status" in e:
             ent["status"] = e["status"]
         if "aliases" in e:
             ent["aliases"] = sorted(set(ent.get("aliases", [])) | {str(a) for a in e["aliases"]})
+        if "relations" in e and isinstance(e["relations"], list):
+            existing_rels = ent.setdefault("relations", [])
+            for new_r in e["relations"]:
+                tgt = new_r.get("target")
+                found = next((r for r in existing_rels if r.get("target") == tgt), None)
+                if found:
+                    found.update(new_r)
+                else:
+                    existing_rels.append(new_r)
         rep["updated"].append(f"🗂️ 实体登记/更新：{name}")
 
 
@@ -604,19 +650,22 @@ def _merge_lines(state: dict, items: list[dict], ch_num: int, rep: dict) -> None
                     rep["warnings"].append(f"卷内活动伏笔池已达上限（{open_act_count}/8），新伏笔 {gid} 已入库")
                 if target == "longline" and open_long_count >= 5:
                     rep["warnings"].append(f"全书长线已达上限（{open_long_count}/5），新长线 {gid} 已入库")
+                reqs = [str(r) for r in g.get("requires", []) if str(r).strip()]
                 arr.append({"id": gid, "name": g["name"], "plant_ch": g.get("plant_ch") or ch_num,
                             "status": "Planted", "target_ch": target, "weight": g.get("weight", 1),
-                            "plan": g.get("plan", "")})
+                            "plan": g.get("plan", ""), "requires": reqs})
                 rep["updated"].append(f"🕸️ 埋设伏笔 {gid}《{g['name']}》→ target {target}")
             elif kind == "misunderstanding":
+                reqs = [str(r) for r in g.get("requires", []) if str(r).strip()]
                 arr.append({"id": gid, "parties": g["parties"], "content": g["content"],
                             "truth": g.get("truth", ""), "level": g.get("level", 1),
-                            "target_ch": target, "status": "Active"})
+                            "target_ch": target, "status": "Active", "requires": reqs})
                 rep["updated"].append(f"🎭 新误会 {gid}：{g['content'][:30]}")
             else:
+                reqs = [str(r) for r in g.get("requires", []) if str(r).strip()]
                 arr.append({"id": gid, "secret": g["secret"], "plant_ch": g.get("plant_ch") or ch_num,
                             "status": "Concealed", "target_ch": target,
-                            "weight": g.get("weight", 1), "note": g.get("note", "")})
+                            "weight": g.get("weight", 1), "note": g.get("note", ""), "requires": reqs})
                 rep["updated"].append(f"🔒 知识线登记 {gid}《{g['secret'][:24]}》→ 计划揭示 {target}")
             idx[gid] = arr[-1]
             continue
@@ -670,6 +719,8 @@ def _merge_lines(state: dict, items: list[dict], ch_num: int, rep: dict) -> None
                     if v not in spec["statuses"]:
                         rep["errors"].append(f"update {gid}: status 必须 ∈ {sorted(spec['statuses'])}")
                         continue
+                if k == "requires":
+                    v = [str(r) for r in v if str(r).strip()]
                 ent[k] = v
             rep["updated"].append(f"🔁 {gid} 已更新")
 

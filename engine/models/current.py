@@ -31,3 +31,5 @@ class CurrentState(BaseModel):
     key_relationships: Optional[str] = Field(None, description="当前核心关系速写")
     present_characters: list[str] = Field(default_factory=list, description="章末在场角色名单")
     loadout: Optional[Loadout] = Field(None, description="主角常驻作战体系")
+    aftershock: Optional[str] = Field(None, description="上章戏剧余震与未平残局（下章开篇必接动作）")
+    active_pressures: list[str] = Field(default_factory=list, description="当前悬在主角头上的核心危机与倒计时")

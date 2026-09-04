@@ -179,6 +179,16 @@ def _hard_reminders(book: Path, ch: str, ch_num: int) -> list[str]:
     except ValueError:
         lines = {"foreshadows": [], "misunderstandings": [], "knowledge": []}
 
+    open_lines_map: dict[str, dict] = {}
+    for arr, res_st in (("foreshadows", "Resolved"), ("misunderstandings", "Resolved"), ("knowledge", "Revealed")):
+        for item in lines.get(arr, []):
+            iid = str(item.get("id", ""))
+            if iid:
+                open_lines_map[iid] = {
+                    "resolved": str(item.get("status", "")).strip().lower() == res_st.lower(),
+                    "name": item.get("name") or item.get("secret") or item.get("parties") or iid
+                }
+
     line_msgs: list[tuple] = []
     for g in lines.get("foreshadows", []):
         if g.get("status") == "Resolved":
@@ -191,6 +201,12 @@ def _hard_reminders(book: Path, ch: str, ch_num: int) -> list[str]:
         idle = (ch_num - plant_ch) if plant_ch else 0
         sk = evidence.line_sort_key(g, "foreshadow")[1]
         gid, gname = g.get("id"), g.get("name", "")
+        reqs = [str(r) for r in g.get("requires", []) if str(r).strip()]
+        unmet = [r for r in reqs if r in open_lines_map and not open_lines_map[r]["resolved"]]
+        if unmet and isinstance(t, int) and t <= ch_num + 2:
+            unmet_str = "、".join(f"{r}《{open_lines_map[r]['name']}》" for r in unmet)
+            line_msgs.append((-1, sk, f"⚠️【因果前置未达成】伏笔 {gid}《{gname}》依赖的前置 {unmet_str} 尚未闭环！细纲严禁强行回收，请先推进前置。"))
+
         if isinstance(t, int) and t <= ch_num:
             tag = "🔥【本章引爆】" if t == ch_num else f"🚨【已逾期 {ch_num - t} 章】"
             line_msgs.append((0, sk, f"{tag} 伏笔 {gid}《{gname}》（target ch_{t:03d}，状态 {g.get('status')}）"))
@@ -205,6 +221,11 @@ def _hard_reminders(book: Path, ch: str, ch_num: int) -> list[str]:
         if m.get("status") != "Resolved":
             t = m.get("target_ch")
             sk = evidence.line_sort_key(m, "misunderstanding")[1]
+            reqs = [str(r) for r in m.get("requires", []) if str(r).strip()]
+            unmet = [r for r in reqs if r in open_lines_map and not open_lines_map[r]["resolved"]]
+            if unmet and isinstance(t, int) and t <= ch_num + 2:
+                unmet_str = "、".join(f"{r}《{open_lines_map[r]['name']}》" for r in unmet)
+                line_msgs.append((-1, sk, f"⚠️【因果前置未达成】误会 {m['id']} 依赖的前置 {unmet_str} 尚未澄清！不可强行化解。"))
             if isinstance(t, int) and t <= ch_num:
                 tag = "🔥【本章澄清】" if t == ch_num else f"🚨【已逾期 {ch_num - t} 章】"
                 line_msgs.append((0, sk, f"{tag} 误会 {m['id']} 未澄清：{m.get('parties','')}（{m.get('content','')[:30]}）"))
@@ -221,6 +242,11 @@ def _hard_reminders(book: Path, ch: str, ch_num: int) -> list[str]:
             idle = (ch_num - plant_ch) if plant_ch else 0
             sk = evidence.line_sort_key(k, "knowledge")[1]
             kid, ksecret = k.get("id"), str(k.get("secret", ""))[:24]
+            reqs = [str(r) for r in k.get("requires", []) if str(r).strip()]
+            unmet = [r for r in reqs if r in open_lines_map and not open_lines_map[r]["resolved"]]
+            if unmet and isinstance(t, int) and t <= ch_num + 2:
+                unmet_str = "、".join(f"{r}《{open_lines_map[r]['name']}》" for r in unmet)
+                line_msgs.append((-1, sk, f"⚠️【因果前置未达成】知识线 {kid} 依赖的前置 {unmet_str} 尚未公开！"))
             if isinstance(t, int) and t <= ch_num:
                 tag = "🔥【本章揭示】" if t == ch_num else f"🚨【已逾期 {ch_num - t} 章】"
                 line_msgs.append((0, sk, f"{tag} 知识线 {kid}《{ksecret}》（target ch_{t:03d}，状态 {k.get('status')}）"))
@@ -271,7 +297,7 @@ def _entity_block(book: Path, name: str, cur: dict, lines: dict, full: bool) -> 
             touched.append(f"{gid}({gst}{desc_str})")
     if touched:
         block["lines"] = touched
-    for f in ("holder", "location", "condition", "dossier"):
+    for f in ("holder", "location", "condition", "dossier", "golden_quote"):
         if e.get(f):
             block[f] = e[f]
     carried = []
@@ -306,6 +332,33 @@ def build_pack(book: Path, ch: str, lean: bool = False, full: bool = False) -> d
     beats = _beats_text(book, ch)
     cur = {key: state.load_state(book, key) for key in ("current", "entities", "lines", "synopsis", "timeline")}
 
+    # 推断当前章节所属分卷（用于分卷视界隔离 Volume Scoping）
+    cur_vol = None
+    beats_files = common.find_chapter_files(book, "beats", ch)
+    if beats_files:
+        try:
+            rel_parts = beats_files[-1].relative_to(book / "outlines").parts
+            if rel_parts and rel_parts[0].startswith("vol_"):
+                cur_vol = rel_parts[0]
+        except Exception:
+            pass
+    if not cur_vol:
+        cur_vol = f"vol_{(ch_num - 1) // 50 + 1:02d}"
+
+    aftershock = cur["current"].get("aftershock") or cur["current"].get("situation")
+    active_pressures = list(cur["current"].get("active_pressures") or [])
+    for clock in cur["timeline"].get("clocks", []):
+        if str(clock.get("status", "")).lower() == "active":
+            target = clock.get("target_ch")
+            cname = clock.get("name", "危机")
+            cdesc = clock.get("desc", "")
+            if isinstance(target, int):
+                diff = target - ch_num
+                if diff <= 0:
+                    active_pressures.append(f"🚨【危机已逾期 {abs(diff)} 章】「{cname}」（目标 ch_{target:03d}）：{cdesc}")
+                elif diff <= 5:
+                    active_pressures.append(f"⏳【危机倒计时仅剩 {diff} 章】「{cname}」（爆发目标 ch_{target:03d}）：{cdesc}")
+
     p0 = {
         "current": {k: v for k, v in cur["current"].items() if v not in ("", [], None)},
         "volume_phase": _volume_phase_milestone(book, ch_num),
@@ -314,6 +367,10 @@ def build_pack(book: Path, ch: str, lean: bool = False, full: bool = False) -> d
         "prev_tail": _prev_final_tail(book, ch_num),
         "hard_reminders": _hard_reminders(book, ch, ch_num),
     }
+    if aftershock:
+        p0["aftershock"] = aftershock
+    if active_pressures:
+        p0["active_pressures"] = active_pressures
     payload: dict = {"chapter": ch, "lean": lean, "full": full, "p0": p0, "p1": None, "p2": None}
 
     lookup = evidence.entity_lookup(book, safe_aliases=True)
@@ -327,13 +384,21 @@ def build_pack(book: Path, ch: str, lean: bool = False, full: bool = False) -> d
                 recent_entity_mentions.add(name)
 
     present_set = set(cur["current"].get("present_characters", []))
+    entries_map = {e.get("name"): e for e in cur["entities"].get("entries", []) if e.get("name")}
     raw_hits = []
     seen_names = set()
     for name, aliases in lookup.items():
+        ent_data = entries_map.get(name, {})
+        ent_scope = ent_data.get("scope")
         counts = evidence.count_aliases(beats, aliases)
         total_c = sum(counts.values())
         is_present = name in present_set
         primary_hit = counts.get(name, 0) > 0
+
+        # 分卷视界隔离 (Volume Scoping)：若实体指定了其他分卷生命周期，且未在细纲直接提及，也不在现场在场，则休眠冷备
+        if ent_scope and ent_scope != cur_vol and not is_present and not primary_hit:
+            continue
+
         if total_c > 0:
             if ch_num > 5 and name not in recent_entity_mentions and not is_present and not primary_hit:
                 continue
@@ -356,6 +421,28 @@ def build_pack(book: Path, ch: str, lean: bool = False, full: bool = False) -> d
 
     raw_hits.sort(key=lambda x: (not x[0], not x[1], -x[2], x[3]))
     hits = [name for _, _, _, name in raw_hits[:MAX_P1_ENTITIES]]
+
+    scene_chars = list(dict.fromkeys([p for p in (cur["current"].get("present_characters", []) + hits) if p]))
+
+    # 计算现场人际张力拓扑（AI专用）并注入 P0
+    if _HAS_NX:
+        from . import graph as graph_mod
+        try:
+            full_G = graph_mod.build_narrative_graph(book)
+            tensions = graph_mod.extract_scene_tensions(full_G, scene_chars)
+            if tensions:
+                p0["scene_tensions"] = tensions
+        except Exception:
+            pass
+
+    # 提取现场信息差机锋（AI专用）
+    try:
+        from . import cockpit as cockpit_mod
+        irony = cockpit_mod._extract_dramatic_irony(cur["lines"], scene_chars)
+        if irony:
+            p0["dramatic_irony"] = irony
+    except Exception:
+        pass
 
     p1: dict = {"entities": [], "indirect": [], "spine": []}
     if not lean:
@@ -500,6 +587,14 @@ def render_layer(name: str, obj, full: bool = False) -> str:
             lines += ["", "=== 本卷阶段航标 ===", f"- {obj['volume_phase']}"]
         if obj.get("world_anchors"):
             lines += ["", "=== 世界底层与战力标尺 ===", obj["world_anchors"]]
+        if obj.get("aftershock"):
+            lines += ["", "=== 戏剧余震与开篇承接（首段必咬住） ===", f"- {obj['aftershock']}"]
+        if obj.get("active_pressures"):
+            lines += ["", "=== 悬顶危机倒计时（即时压迫） ==="] + [f"- {p}" for p in obj["active_pressures"]]
+        if obj.get("scene_tensions"):
+            lines += ["", "=== 现场人际张力拓扑（AI专用） ==="] + [f"- {t}" for t in obj["scene_tensions"]]
+        if obj.get("dramatic_irony"):
+            lines += ["", "=== 现场信息差机锋（AI写对手戏必用） ==="] + [f"- {di}" for di in obj["dramatic_irony"]]
         lines += ["", "=== beats ===", obj["beats"], "", "=== 上章余温 ===", obj["prev_tail"],
                   "", "=== 硬提醒 ==="] + [f"- {m}" for m in obj["hard_reminders"]]
         return "\n".join(lines)
@@ -525,6 +620,8 @@ def render_layer(name: str, obj, full: bool = False) -> str:
                 lines.append(f"  挂线: {', '.join(b['lines'])}")
             if b.get("dossier"):
                 lines.append(f"  恩怨羁绊: {b['dossier']}")
+            if b.get("golden_quote"):
+                lines.append(f"  高光物象细节（定稿原貌）: 「{b['golden_quote']}」")
             if b.get("card_text"):
                 card = b["card_text"] if full else b["card_text"][:400]
                 lines.append(f"  卡全文: {card}")

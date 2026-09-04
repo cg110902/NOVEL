@@ -5,7 +5,7 @@ vol: {{slot:vol_id}}
 form: {{slot:form|暗流汇聚}}
 # form_reason: <!-- 若连续章节采用相同 form（如连续生死博弈），必须在此声明原因；否则可省略 -->
 pov: {{slot:protagonist|主角名}}·视角
-words: 2000-3000
+words: 2000-3000+
 tension_curve: {{slot:tension_curve|动态起伏}}
 # 情绪流体力学（蓄水泵）：1-10 张力值；Suppression(蓄水) | Simmering(试探) | Eruption(爆发) | Harvest(清点)
 tension_score: {{slot:tension_score|6}}
@@ -13,7 +13,7 @@ stage_mode: {{slot:stage_mode|Simmering}}
 # suppression_factors: <!-- 若为 Suppression 必填：敌方压迫或隐忍限制，严禁秒杀反派 -->
 # release_trigger: <!-- 若为 Eruption 必填：掀开底牌反杀瞬间 -->
 # style_notes 请根据当章核心看点量身定制，禁止与上章完全相同（避免 style_notes_copy 警告）
-style_notes: 通俗大白话 | 拒绝冷峻逼仄 | 动作化推进 | 物理刀口截断
+style_notes: 通俗大白话 | 拒绝冷峻逼仄 | 动作/对白推进 | 物理刀口截断
 # guard_extra: <!-- 章级禁忌词表（竖线或逗号分隔，如：冷笑|森然|仿佛），机械计数监督 -->
 editor_extra: 
 ---
@@ -24,10 +24,10 @@ editor_extra:
 
 - **本章核心矛盾死结**：<!-- 双方不可退让的核心诉求与冲突点 -->
 
-- **感官分配预算（Sensory Budget Allocation 防干瘪分镜）**：
+- **感官分配预算（Sensory Budget Allocation 防干瘪分镜，以下仅为示例，需根据不同的题材切换）**：
   - 🌫️ **环境压迫 (约20%)**：光影/气味/风吹草动/环境异变，以直白描写烘托现场压迫感；
   - 🧠 **心理博弈与对白拉扯 (约25%)**：利益算计、眼神对峙、言语机锋互探底细；
-  - ⚔️ **实感动作招式 (约35%)**：利索近身过招、见招拆招、招招见肉（坚决封杀力学角度说明书词汇）；
+  - ⚔️ **实感动作招式 (约35%)**：利索近身过招、见招拆招、招招见肉；
   - 💥 **余波与留白反馈 (约20%)**：路人震惊侧写、战后喘息平复、动作瞬间定格。
 
 - **分场景叙事比重（篇幅彻底放飞，写得好第一）**：

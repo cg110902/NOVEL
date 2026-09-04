@@ -49,6 +49,9 @@ def build_narrative_graph(ws_path: Path) -> nx.Graph:
                     location=ent.get("location", ""),
                     status=ent.get("status", "active"),
                     summary=ent.get("summary", ""),
+                    scope=ent.get("scope", ""),
+                    golden_quote=ent.get("golden_quote", ""),
+                    dossier=ent.get("dossier", ""),
                 )
 
             for ent in entries:
@@ -66,10 +69,16 @@ def build_narrative_graph(ws_path: Path) -> nx.Graph:
                     for node in list(G.nodes):
                         if G.nodes[node].get("entity_type") == "place" and node in loc and node != name:
                             G.add_edge(name, node, relation="located_in", label="位于")
+                for rel in ent.get("relations", []):
+                    target = rel.get("target")
+                    if target and target in G:
+                        rtype = rel.get("type", "tension")
+                        rdesc = rel.get("desc", "")
+                        G.add_edge(name, target, relation=rtype, label=rdesc)
         except Exception:
             pass
 
-    # 2. 伏笔/误会/秘密线索关联加载（M1 修复：补上 knowledge 线）
+    # 2. 伏笔/误会/秘密线索关联加载
     lines_file = state_dir / "lines.json"
     if lines_file.is_file():
         try:
@@ -77,7 +86,7 @@ def build_narrative_graph(ws_path: Path) -> nx.Graph:
             for mis in ldata.get("misunderstandings", []):
                 parties = mis.get("parties", "")
                 mis_id = mis.get("id", "MIS")
-                G.add_node(mis_id, node_type="line", line_type="misunderstanding", content=mis.get("content", ""))
+                G.add_node(mis_id, node_type="line", line_type="misunderstanding", content=mis.get("content", ""), requires=mis.get("requires", []))
                 for node in list(G.nodes):
                     if node in parties and node != mis_id:
                         G.add_edge(node, mis_id, relation="misunderstanding", label="认知差牵涉")
@@ -86,24 +95,67 @@ def build_narrative_graph(ws_path: Path) -> nx.Graph:
                 gun_id = gun.get("id", "GUN")
                 gun_name = gun.get("name", "")
                 plan = gun.get("plan", "")
-                G.add_node(gun_id, node_type="line", line_type="foreshadow", name=gun_name, plan=plan)
+                G.add_node(gun_id, node_type="line", line_type="foreshadow", name=gun_name, plan=plan, requires=gun.get("requires", []))
                 for node in list(G.nodes):
                     if (node in gun_name or (plan and node in plan)) and node != gun_id:
                         G.add_edge(node, gun_id, relation="foreshadow", label="伏笔关联")
 
-            # 修复 M1：知识线 previously missing
             for kno in ldata.get("knowledge", []):
                 kno_id = kno.get("id", "KNO")
                 secret = kno.get("secret", "")
                 note = kno.get("note", "")
-                G.add_node(kno_id, node_type="line", line_type="knowledge", secret=secret, note=note)
+                G.add_node(kno_id, node_type="line", line_type="knowledge", secret=secret, note=note, requires=kno.get("requires", []))
                 for node in list(G.nodes):
                     if (node in secret or (note and node in note)) and node != kno_id:
                         G.add_edge(node, kno_id, relation="knowledge", label="秘密关联")
+
+            for item in (ldata.get("foreshadows", []) + ldata.get("misunderstandings", []) + ldata.get("knowledge", [])):
+                lid = item.get("id")
+                if lid and lid in G:
+                    for req in item.get("requires", []):
+                        if req in G:
+                            G.add_edge(lid, req, relation="requires", label="前置因果依赖")
         except Exception:
             pass
 
     return G
+
+
+def extract_scene_tensions(G: nx.Graph, present_entities: list[str]) -> list[str]:
+    """计算当前场景中实体两两之间的张力、恩怨与利益博弈切片（AI专用）。"""
+    if not _HAS_NX or not G:
+        return []
+    valid = [e for e in present_entities if e in G]
+    if len(valid) < 2:
+        return []
+
+    tensions = []
+    seen_pairs = set()
+    for i in range(len(valid)):
+        for j in range(i + 1, len(valid)):
+            u, v = valid[i], valid[j]
+            pair_key = tuple(sorted((u, v)))
+            if pair_key in seen_pairs:
+                continue
+            seen_pairs.add(pair_key)
+
+            if G.has_edge(u, v):
+                edge_data = G.get_edge_data(u, v, default={})
+                rel = edge_data.get("relation", "")
+                label = edge_data.get("label", "")
+                if rel in ("debt", "rival", "ally", "distrust", "subordinate", "tension", "hostile", "friend") or label:
+                    detail = f"：{label}" if label else ""
+                    tensions.append(f"{u} ➔ {v}【{rel}】{detail}")
+            else:
+                # 检查 dossier 中是否存在对方的备忘
+                u_dossier = G.nodes[u].get("dossier", "")
+                v_dossier = G.nodes[v].get("dossier", "")
+                if u_dossier and v in u_dossier:
+                    tensions.append(f"{u} 对 {v}【历史备忘】：{u_dossier[:40]}")
+                elif v_dossier and u in v_dossier:
+                    tensions.append(f"{v} 对 {u}【历史备忘】：{v_dossier[:40]}")
+
+    return tensions[:4]
 
 
 def cmd_summary(G: nx.Graph) -> None:

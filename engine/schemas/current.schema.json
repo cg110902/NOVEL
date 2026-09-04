@@ -68,6 +68,17 @@
         "trump_card": {"type": "string"},
         "equipped_items": {"type": "array", "items": {"type": "string"}}
       }
+    },
+    "aftershock": {
+      "type": "string",
+      "description": "上章戏剧余震与未平残局（给下一章开篇必接戏动作）"
+    },
+    "active_pressures": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "当前悬在主角头上的核心危机与倒计时"
     }
   }
 }
