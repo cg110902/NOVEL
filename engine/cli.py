@@ -15,6 +15,7 @@ from pathlib import Path
 from . import __version__, checks, common, evidence, snapshot, state, dashboard
 from . import pack as pack_mod
 from . import graph as graph_mod
+from . import cockpit as cockpit_mod
 
 try:
     from rich.console import Console
@@ -1162,6 +1163,20 @@ def cmd_beats(args) -> int:
     conflict_str = f"本章核心戏剧目标推进\n  - 所属阶段：{milestone}\n  - 上章现场：{sit}" if milestone else sit
     text = text.replace("<!-- 双方不可退让的核心诉求与冲突点 -->", conflict_str)
     text = re.sub(r"- GUN-XXX[^\n]*\n- KNO-XXX[^\n]*\n- MIS-XXX[^\n]*", due_lines_str, text)
+
+    algo_str = ""
+    try:
+        algo_items = cockpit_mod.get_algorithmic_guidance(book, n)
+        if algo_items:
+            algo_str = "<!-- ⚙️ [确定性算法引擎动态制导胶囊]\n" + "\n".join(f"     - {item}" for item in algo_items) + "\n-->\n\n"
+        else:
+            algo_str = "<!-- ⚙️ [确定性算法制导] 角色登场密度均衡，张力波浪处于健康区间。 -->\n\n"
+    except Exception:
+        algo_str = ""
+
+    if algo_str:
+        target_marker = "<!-- 明确本章核心事件与矛盾推进，全篇采用直白好懂的大白话推进 -->"
+        text = text.replace(target_marker, f"{algo_str}{target_marker}")
 
     if getattr(args, "write", False):
         beats_path.parent.mkdir(parents=True, exist_ok=True)

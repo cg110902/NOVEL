@@ -218,18 +218,133 @@ def _extract_lines_radar(lines: dict, ch_num: int) -> dict[str, Any]:
                 # 未指定 target_ch 的，默认按卷内中线观察
                 volume_mid.append(f"[{lid}] 🎯【未定收束章】：{detail}")
 
+    stats = {
+        "active_foreshadows_count": total_active_foreshadows,
+        "longline_foreshadows_count": total_longline_foreshadows,
+        "imminent_count": len(imminent),
+        "dormant_count": len(dormant_warnings),
+    }
+
     return {
         "imminent": imminent,
         "volume_mid": volume_mid,
         "epic_longline": epic_longline,
         "dormant_warnings": dormant_warnings,
-        "stats": {
-            "active_foreshadows_count": total_active_foreshadows,
-            "longline_foreshadows_count": total_longline_foreshadows,
-            "imminent_count": len(imminent),
-            "dormant_count": len(dormant_warnings),
-        }
+        "stats": stats,
     }
+
+
+def _compute_character_dormancy(book: Path, current_ch: int) -> list[str]:
+    """滑动窗口计算核心角色沉寂预警（>=3章未露面或未登场）。"""
+    alerts = []
+    if current_ch <= 2:
+        return alerts
+
+    char_files = list((book / "characters").glob("*.md"))
+    char_names = [f.stem for f in char_files if not f.stem.startswith(".")]
+
+    try:
+        entries = state.load_state(book, "entities").get("entries", [])
+        for edata in entries:
+            if edata.get("type") == "person":
+                cname = edata.get("name")
+                if cname and cname not in char_names:
+                    char_names.append(cname)
+    except Exception:
+        pass
+
+    char_last_seen = {c: 0 for c in char_names}
+
+    for ch_idx in range(1, current_ch):
+        ch_tok = f"ch_{ch_idx:03d}"
+        final_files = list((book / "manuscript").glob(f"*/final/{ch_tok}.md"))
+        if not final_files:
+            continue
+        text = final_files[0].read_text(encoding="utf-8", errors="ignore")
+        for c in char_names:
+            if c in text:
+                char_last_seen[c] = ch_idx
+
+    proj = common.load_json(book / "project.json", default={}) or {}
+    protagonist = proj.get("protagonist", "主角名")
+
+    for c, last_ch in char_last_seen.items():
+        if c in (protagonist, "protagonist"):
+            continue
+        if last_ch > 0:
+            dormant_count = current_ch - 1 - last_ch
+            if dormant_count >= 3:
+                alerts.append(f"👤 [角色沉寂预警] 「{c}」已连续 {dormant_count} 章未露面(上次登场: ch_{last_ch:03d})，建议当章考虑安排其出场、互动或侧面传讯。")
+        elif current_ch >= 4:
+            alerts.append(f"👤 [角色登场提醒] 「{c}」已在人物卡中设定，但在前 {current_ch - 1} 章正文中尚未正式登场/被提及，若为当卷重要角色，建议尽早在适当场景引出。")
+
+    return alerts
+
+
+def _compute_tension_rhythm(book: Path, current_ch: int) -> list[str]:
+    """正弦张力潮汐波峰分析（防连续高潮导致多巴胺疲劳，防连续平缓导致弃书）。"""
+    alerts = []
+    if current_ch <= 2:
+        return alerts
+
+    recent_scores = []
+    recent_modes = []
+    for ch_idx in range(max(1, current_ch - 3), current_ch):
+        ch_tok = f"ch_{ch_idx:03d}"
+        beats_files = list((book / "outlines").glob(f"*/beats/{ch_tok}.md"))
+        if not beats_files:
+            continue
+        text = beats_files[0].read_text(encoding="utf-8", errors="ignore")
+        m_score = re.search(r"^tension_score:\s*(\d+)", text, re.MULTILINE)
+        m_mode = re.search(r"^stage_mode:\s*(\w+)", text, re.MULTILINE)
+        if m_score:
+            recent_scores.append(int(m_score.group(1)))
+        if m_mode:
+            recent_modes.append(m_mode.group(1))
+
+    if len(recent_scores) >= 2 and all(s >= 8 for s in recent_scores[-2:]):
+        alerts.append("🌊 [张力正弦律建议] 近期连续处于高位张力博弈(张力>=8)，为防读者多巴胺疲劳，建议当章选用 Harvest(清点) 或 Simmering(试探) 适度缓冲。")
+    elif len(recent_scores) >= 3 and all(s <= 5 for s in recent_scores[-3:]):
+        alerts.append("⚡ [张力正弦律建议] 近期连续平缓(张力<=5)，建议当章拉升冲突对抗，安排矛盾激化点与高潮爆发。")
+
+    return alerts
+
+
+def _compute_dead_inventory(book: Path, current_ch: int) -> list[str]:
+    """背包资产周转与沉睡道具/词条雷达。"""
+    alerts = []
+    if current_ch <= 3:
+        return alerts
+
+    try:
+        entries = state.load_state(book, "entities").get("entries", [])
+        for edata in entries:
+            if edata.get("type") == "item":
+                iname = edata.get("name")
+                if iname and iname not in ("我悟了，你随意",):
+                    last_seen_ch = 0
+                    for ch_idx in range(1, current_ch):
+                        ch_tok = f"ch_{ch_idx:03d}"
+                        final_files = list((book / "manuscript").glob(f"*/final/{ch_tok}.md"))
+                        if final_files:
+                            text = final_files[0].read_text(encoding="utf-8", errors="ignore")
+                            if iname in text:
+                                last_seen_ch = ch_idx
+                    if last_seen_ch > 0 and (current_ch - 1 - last_seen_ch) >= 3:
+                        alerts.append(f"🎒 [沉睡道具提醒] 道具/词条「{iname}」已连续 {current_ch - 1 - last_seen_ch} 章未登场(上次使用: ch_{last_seen_ch:03d})，可考虑在后续战力推演、融合升华或剧情破局时调用。")
+    except Exception:
+        pass
+
+    return alerts
+
+
+def get_algorithmic_guidance(book: Path, current_ch: int) -> list[str]:
+    """聚合所有确定性算法制导胶囊。"""
+    guidance = []
+    guidance.extend(_compute_character_dormancy(book, current_ch))
+    guidance.extend(_compute_tension_rhythm(book, current_ch))
+    guidance.extend(_compute_dead_inventory(book, current_ch))
+    return guidance
 
 
 def build_cockpit_briefing(book: Path, ch: str | None = None) -> dict[str, Any]:
@@ -397,6 +512,9 @@ def build_cockpit_briefing(book: Path, ch: str | None = None) -> dict[str, Any]:
     # 4. 伏笔暗线分类雷达 (Lines Radar)
     lines_radar = _extract_lines_radar(cur["lines"], ch_num)
 
+    # 4.5 确定性算法制导胶囊 (Algorithmic Guidance)
+    algorithmic_guidance = get_algorithmic_guidance(book, ch_num)
+
     # 5. 健康度与自愈处方 (Health & Remedies)
     remedies = checks.get_self_healing_remedies(book, ch_tok)
     errors = [r for r in remedies if r["level"] == "error"]
@@ -425,6 +543,7 @@ def build_cockpit_briefing(book: Path, ch: str | None = None) -> dict[str, Any]:
             "dramatic_irony": dramatic_irony,
             "scene_tensions": scene_tensions
         },
+        "algorithmic_guidance": algorithmic_guidance,
         "critic_radar": critic_radar,
         "lines_radar": lines_radar,
         "health_and_remedies": {
@@ -534,6 +653,12 @@ def render_cockpit_terminal(briefing: dict[str, Any]) -> None:
                     lr_lines.append(f"  • {item}")
 
             console.print(Panel("\n".join(lr_lines), title="🕸️ [bold]伏笔暗线分类雷达 (Lines Radar)[/bold]", border_style="blue"))
+
+        # 4.5 确定性算法制导胶囊
+        ag = briefing.get("algorithmic_guidance", [])
+        if ag:
+            ag_text = "\n".join(f"  • {item}" for item in ag)
+            console.print(Panel(ag_text, title="⚙️ [bold]确定性算法制导胶囊 (Algorithmic Guidance)[/bold]", border_style="cyan"))
 
         # 5. 健康度与自愈处方
         if hr["ok"] and not hr["warnings_count"]:
