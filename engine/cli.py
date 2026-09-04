@@ -177,7 +177,6 @@ def cmd_init(args) -> int:
             "active_knowledge": 5,
             "active_misunderstandings": 4
         },
-        "style_guards": [],
         "state_watch": {},
         "created_at": datetime.date.today().isoformat(),
     }

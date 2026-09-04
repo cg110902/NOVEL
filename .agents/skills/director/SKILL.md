@@ -21,9 +21,15 @@ description: Universal director and orchestrator for Novel Studio. Coordinates w
 ### 1.5 叙事拓扑图辅助决策（NetworkX）
 - 主控在构思细纲、设计冲突跳板或宏观复盘时，可直接调用原生命令 `python studio.py graph path/neighbors/isolated/centrality`。
 
-### 1.8 态势驾驶舱与开工第一反射动作（Cockpit & First Reflex）
-- **开工第一反射动作（Entry Reflex ）**：
-  只要主控收到人类指令（如“继续下一章”、“推进剧情”或“写第X章”），**第 1 个 Tool Call 必须是 `run_command` 执行 `python studio.py cockpit --json`**。
+### 1.8 底座认知与态势驾驶舱（冷启动校准 vs 热启动直通）
+- **开工认知协议（冷启动读且仅读 1 次，热启动直通 cockpit）**：
+  1. **❄️ 新窗口冷启动 (Cold Start)**：
+     每个会话窗口收到人类创作指令的第一次交互，必须按顺序执行：
+     - **Tool Call 1~3 (`view_file`)**：通读三大核心底座文档（`README.md`、`AGENTS.md`、`.agents/skills/director/SKILL.md`），完成架构认知与角色心法校准；
+     - **Tool Call 4 (`run_command`)**：执行 `python studio.py cockpit --json` 唤醒实时战况。
+  2. **🔥 同会话热启动 (Hot Start)**：
+     若当前会话中此前已阅读过三大底座，**严禁重复调用 `view_file` 冗余回读**；直接执行第一反射动作 `python studio.py cockpit --json` 瞬时同步。
+
   驾驶舱由确定性 Python 引擎在 0.1 秒内聚合输出：
   1. **工作流导航**：引擎直接算好当前处于哪一步、下一个该调度哪个 Subagent、目标产出文件是什么；主控严禁猜测工序，直接执行 `next_action.command`；
   2. **戏剧动力学**：自动提炼开篇承接余震（aftershock）、悬顶危机倒计时（active_pressures）、现场信息差机锋（dramatic_irony）与人物张力；
@@ -36,16 +42,17 @@ description: Universal director and orchestrator for Novel Studio. Coordinates w
 
 ### 2. 细纲构思与创意反套路设计（Stage 1 · 创意最强大脑）
 > 💡 **主控核心价值**：读者看小说看的是**意料之外、情理之中的惊喜与爽感**！主控绝非机械填空的机器人，而是全书故事灵魂的缔造者。
-- **输入材料 (Inputs)**：
-  1. `state/current.json`（章初实时状态）；
-  2. `outlines/vol_XX/outline.md`（分卷主线目标）；
-  3. **上一章老白催更便签**：`log/critic/ch_{前一章}.md`（第 1 章无此输入；第 2 章起**必须主动调用 `view_file` 读取**）。
+- **输入材料 (Inputs)**（均位于 `workspace/<书名>/` 下）：
+  1. `workspace/<书名>/state/current.json`（章初实时状态）；
+  2. `workspace/<书名>/outlines/vol_XX/outline.md`（分卷主线目标）；
+  3. **上一章老白催更便签**：`workspace/<书名>/log/critic/ch_{前一章}.md`（第 1 章无此输入；第 2 章起**调用 `view_file` 读取**）。
 - **标准执行流程 (Actions)**：
   1. **生成脚手架**：运行 `python studio.py beats new [章节] --write`，引擎自动填入上章现场、到期伏笔、因果依赖阻塞提示与情绪曲线；
-  2. **因果依赖与视界对齐**：关注脚手架中的硬提醒，若提示前置因果未达成，严禁强行回收该线索，应先安排前置动作；专注当卷里程碑，无需分神其他分卷细节；
-  3. **注入读者期待**：主控调用 `view_file` 查看上一章的 `log/critic/ch_{前一章}.md`，提取读者最想看的 1~2 个爽点期待与避坑警示；
-  4. **创意灵魂重塑**：主控将自身独家设计的反套路笑点、戏剧冲突死结与反转底牌等写入当章 `outlines/vol_XX/beats/ch_XXX.md`；
-  5. **核准并落盘**：细纲保存于 `outlines/vol_XX/beats/ch_XXX.md`。
+  2. **章型与潮汐选择**：注意 `form`（生死博弈/战后清点/暗流汇聚/危机逼近）；若连续章节使用相同 `form`，必须在 front-matter 补充 `form_reason` 说明原因，避免 check 报错；
+  3. **因果依赖与视界对齐**：关注脚手架中的硬提醒，若提示前置因果未达成，严禁强行回收该线索，应先安排前置动作；专注当卷里程碑，无需分神其他分卷细节；
+  4. **注入读者期待**：主控提取读者最想看的 1~2 个爽点期待与避坑警示；
+  5. **创意灵魂重塑**：主控将自身独家设计的反套路笑点、戏剧冲突死结与反转底牌等写入当章 `workspace/<书名>/outlines/vol_XX/beats/ch_XXX.md`；
+  6. **核准并落盘**：细纲保存于 `workspace/<书名>/outlines/vol_XX/beats/ch_XXX.md`。
 
 ### 3. 主控大幅减负：标准双向极简工序协议（Stage 2-4）
 

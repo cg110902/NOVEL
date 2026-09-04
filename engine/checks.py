@@ -380,7 +380,6 @@ DEFAULT_REMEDIES: dict[str, str] = {
     "encoding_replacement_chars": "检测到编码替换字符（如 \\ufffd），请使用 utf-8 重新保存受影响的文件。",
     "line_quota_exceeded": "当前活跃线索过多，建议在后续章节逐步收网已成熟的伏笔，保持主线清爽。",
     "longline_quota_exceeded": "跨卷长线伏笔超出上限，建议精简或收束部分跨卷暗线。",
-    "style_guard_hit": "正文命中被禁用的文风词或 AI 构造词，Editor 精修时进行替换或删减。",
     "form_share_over_limit": "该章型在全书中占比超过 40%，建议在后续章节丰富其他类型的叙事章型。",
     "high_tension_fatigue": "连续高压章型导致情绪疲劳，下一章建议安排松弛缓冲型章型。",
     "beats_scene_abstract": "细纲中包含假大空短语，请用具体的动作、对白或冲突置换抽象描述。",
@@ -400,7 +399,7 @@ def _err(code: str, msg: str, remedy: str = "", can_auto_heal: bool = True) -> d
 
 
 _BEATS_FM_KEYS = {"chapter", "vol", "form", "pov", "words", "style_notes", "form_reason",
-                  "guard_extra", "editor_extra", "tension_curve", "tension_score",
+                  "editor_extra", "tension_curve", "tension_score",
                   "stage_mode", "suppression_factors", "release_trigger"}
 
 PARAM_SPEC: dict[str, dict] = {
@@ -425,9 +424,6 @@ PARAM_SPEC: dict[str, dict] = {
     "candidate_stopwords": {"shape": "str_list", "gap": False,
         "desc": "候选新实体追加降噪词（verify 候选清单过滤，追加到语言功能词底表；可选增配，不配不提示）",
         "example": ["心头", "眼底"]},
-    "style_guards": {"shape": "str_list", "gap": False,
-        "desc": "文风禁忌词计数（evidence style / pack 红线展示），书级追加 AI_CONSTRUCTIONS 固定清单",
-        "example": ["极"]},
     "state_watch": {"shape": "str_map", "gap": False,
         "desc": "current 字段关键词守望（verify state_watch 档）：{字段: [词表]}",
         "example": {"power_level": ["突破", "晋升"]}},
@@ -1015,15 +1011,6 @@ def run_checks(book: Path) -> dict:
                                  f"未结全书长线 {len(open_long)} 条 > 上限 {long_cap} 条（长线过多分散主线焦点）"))
     except (ValueError, FileNotFoundError):
         pass
-
-    guards = [x for x in (proj.get("style_guards") or []) if isinstance(x, str) and x]
-    if guards:
-        for tok, _, text in evidence.final_chapters(book):
-            for gtxt in guards:
-                c = text.count(gtxt)
-                if c:
-                    warnings.append(_err("style_guard_hit",
-                                         f"{tok}: 「{gtxt}」出现 {c} 次"))
 
     for vol, rec in evidence.form_distribution(book).items():
         if rec.get("count", 0) < 5:

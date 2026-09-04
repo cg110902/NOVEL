@@ -153,7 +153,7 @@ def _form_notice(book: Path, ch: str, ch_num: int) -> list[str]:
 
 
 def _hard_reminders(book: Path, ch: str, ch_num: int) -> list[str]:
-    """纯算术事实：到期/过期/闲置线、未澄清误会、style_guards、偏离清单、form 同款提示。"""
+    """纯算术事实：到期/过期/闲置线、未澄清误会、偏离清单、form 同款提示。"""
     out: list[str] = []
     try:
         tl = state.load_state(book, "timeline")
@@ -258,9 +258,6 @@ def _hard_reminders(book: Path, ch: str, ch_num: int) -> list[str]:
     line_msgs.sort(key=lambda x: (x[0], x[1]))
     out.extend(msg for _, _, msg in line_msgs)
     proj = common.load_json(book / "project.json", default={}) or {}
-    guards = [x for x in (proj.get("style_guards") or []) if isinstance(x, str) and x]
-    if guards:
-        out.append("style_guards 红线：" + "、".join(guards))
     out.extend(f"本书偏离：{d}" for d in _deviation_lines(book))
     out.extend(_form_notice(book, ch, ch_num))
     return out

@@ -12,7 +12,7 @@
 | `main_plot.md` | init 自动 | `outlines/main_plot.md` | Stage 0 | 主控 | 全书主线脊柱、开局/中继/终局设定 |
 | `volume_outline.md` | init 自动（仅 vol_01） | `outlines/vol_XX/outline.md` | Stage 0 / 开新卷 | 主控 | 开新卷时**手工复制改名**（模板已适配 `{{slot:vol_id}}`） |
 | `character_card.md` | init 自动（仅主角） | `characters/protagonist.md` | Stage 0 起 | 主控 | 后续角色**手工复制改名**（如 `characters/林编辑.md`——按本书角色自定）；人设卡（Want/Fear、性格与说话风格） |
-| `beats.md` | `studio.py beats new [章节] --write` 自动生成 | `outlines/vol_XX/beats/ch_XXX.md` | Stage 1 | 主控 | 单章细纲任务书（自动注入阶段目标、现场情境、到期线索、情绪蓄水泵、感官分配预算、新面孔速写插槽与交付契约） |
+| `beats.md` | `studio.py beats new [章节] --write` 自动生成 | `outlines/vol_XX/beats/ch_XXX.md` | Stage 1 | 主控 | 单章细纲任务书（自动注入阶段目标、现场情境、到期线索、情绪蓄水泵、通用场景脉络、新面孔速写插槽与交付契约） |
 | `reader_review.md` | 手工参考 | 状态提案骨架，落盘为 `state/inbox/ch_XXX.json` | Stage 4 | Reader | **标准增量状态提案骨架 (Proposal Skeleton)**：Reader 客观审计事实后装配为纯 JSON 提案（注：本文件为 .md 承载的 JSON 结构，落盘须存为 .json；勿与 Stage 5 的 `log/review/` 校对注记混淆） |
 
 ---
@@ -27,7 +27,6 @@
 | `pov` | 视角角色 |
 | `words` | 本章自报字数带（如 `2000-2500`，在 `2000-3000+` 自由舒展）；与上一章带差 <400 会触发 `words_band_crowded` 警告 |
 | `style_notes` | 风格旋钮（竖线分隔）；禁止与上一章全同（`style_notes_copy` 警告） |
-| `guard_extra` | 章级禁忌词表（竖线/逗号分隔）；被 `evidence file/style` 并入机械计数 |
 | `editor_extra` | 传递给 Editor 的附加约束 |
 | `tension_curve` | 张力曲线宏观描述 |
 | `tension_score` | 冲突张力分值（1~10） |
@@ -40,7 +39,7 @@
 ## 填写与生命周期规范
 
 1. **槽位填充**：模板中的 `{{slot:xxx}}` 为初始化占位符，完成 Stage 0 设定后填实。`python studio.py check` 会自动检查未填槽位。
-2. **细纲智能生成**：Stage 1 推荐直接执行 `python studio.py beats new [章节] --write`，引擎会自动提取大纲规划、上章现场、到期线索并填充感官分配预算与情绪蓄水模式。
+2. **细纲智能生成**：Stage 1 推荐直接执行 `python studio.py beats new [章节] --write`，引擎会自动提取大纲规划、上章现场、到期线索并填充通用场景脉络与情绪蓄水模式。
 3. **人物卡与实体分级建立机制**：
    - **主要/核心角色**：在 `characters/<角色名>.md` 建立独立人物卡，并在 `state/entities.json` 注册；
    - **次要/临时实体（杂兵/临时道具/背景地点）**：无需手工建卡，由 Stage 4 Reader 自动装配进 `state/inbox/ch_XXX.json`，Stage 5 主控审定后执行 `studio.py sync` 即可自动注册进 `state/entities.json`。

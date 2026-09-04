@@ -37,8 +37,8 @@ description: Universal factual auditor and state proposal generator for Novel St
 
 1. **章题逐字拷贝（铁律）**：`synopsis.title` 必须从 `final/ch_XXX.md` 首行标题（去除 `# ` 标记）逐字精准拷贝，严禁主观篡改、缩略或拼写错漏！
 2. **在场与存活真实性**：`current.present_characters` 只记录章末确凿存活且在场的角色（**已阵亡或已离开现场的角色严禁在场**），准确记录地点与时间；
-3. **实体纯净化（严禁路人甲、纯背景板建实体）**：`entities` 仅记录有姓名、有实质剧情作用的新登场核心角色、新获法宝道具或新势力；**路人甲、无名狱卒、传令兵杂兵等坚决不建实体**！若无核心新实体，直接保持 `entities: []`；
-4. **主线伏笔与真实收支**：只登记主线重大线索动作（`plant / remind / resolve`）与大额资金/宝物收支；日常碎银买茶水等琐事严禁记入账本。
+3. **实体纯净化（严禁路人甲、纯背景板建实体）**：`entities` 仅记录有姓名、有实质剧情作用的新登场核心角色、新获核心道具/重要物品/关键资产或新势力；**路人甲、无名狱卒、传令兵杂兵等坚决不建实体**！若无核心新实体，直接保持 `entities: []`；
+4. **主线伏笔与真实收支**：只登记主线重大线索动作（`plant / remind / resolve`）与大额资金/重要资产收支；日常碎银买茶水等琐事严禁记入账本。
 
 ---
 
@@ -47,12 +47,23 @@ description: Universal factual auditor and state proposal generator for Novel St
 ### 1. 4 大核心事实提取清单
 | 核心提取板块 | 对应 JSON 分区 | 明确提取要点（只记关键，不瞎编） |
 |---|---|---|
-| **1. 现场与主角状态** | `current` | • `present_characters`：章末确凿在场存活名单；<br/>• `location`, `time`：章末具体物理地点与当前时间；<br/>• 主角质变：位阶突破 (`power_level`)、重伤或痊愈 (`injury`)；无变动则维持原样。 |
-| **2. 重要新实体** | `entities` | • 新登场核心角色 (`person`)、重要道具/法宝 (`item`)、新势力 (`faction`)；杂兵路人等背景板不建实体；若无新实体直接保持 `[]`；<br/>• **进阶锚定（选填）**：S级信物/誓言可附带 `golden_quote`（100字原著细节）；重大恩怨转变可登记 `relations`；分卷专属配角可登记 `scope`。 |
+| **1. 现场与主角状态** | `current` | • `present_characters`：章末确凿在场存活名单；<br/>• `location`, `time`：章末具体物理地点与当前时间；<br/>• 主角质变：位阶/职级/战力突破 (`power_level`)、重伤或痊愈 (`injury`)；无变动则维持原样。 |
+| **2. 重要新实体** | `entities` | • 新登场核心角色 (`person`)、核心道具/关键物品 (`item`)、新势力/机构 (`faction`)；杂兵路人等背景板不建实体；若无新实体直接保持 `[]`；<br/>• **进阶锚定（选填）**：S级信物/誓言可附带 `golden_quote`（100字原著细节）；重大恩怨转变可登记 `relations`；分卷专属配角可登记 `scope`。 |
 | **3. 核心主线伏笔** | `lines` | • 登记主线重要伏笔（`GUN-*`）、秘密（`KNO-*`）、重大误会（`MIS-*`）；动作：`plant` (初设)、`remind` (回响)、`resolve` (回收)；若无变动直接保持 `[]`；<br/>• **因果前置（选填）**：若某线索有明确前置条件，可标注 `requires: ["GUN-001"]`。 |
-| **4. 大额收支与梗概** | `ledger` & `synopsis` | • `ledger.transactions`：只记大笔资金或重大法宝交易（日常开销不记，无交易直接 `[]`）；<br/>• `synopsis.title`：**逐字拷贝 final 首行标题**；<br/>• `synopsis.text`：1~2 句话写清当章核心剧情。 |
+| **4. 大额收支与梗概** | `ledger` & `synopsis` | • `ledger.transactions`：只记大笔资金或重大资产交易（日常开销不记，无交易直接 `[]`）；<br/>• `synopsis.title`：**逐字拷贝 final 首行标题**；<br/>• `synopsis.text`：1~2 句话写清当章核心剧情。 |
 
-### 2. 标准增量提案交付格式 (`state/inbox/ch_XXX.json`)
+### 2. 标准增量提案交付格式与严格 Schema 契约 (`state/inbox/ch_XXX.json`)
+> ⚠️ **严格 Schema 契约（违反将导致引擎 sync 校验直接熔断拒收）**：
+> - **`entities` 字段契约**：
+>   - 仅限合法字段：`name` (名称), `type` (`"person"`/`"item"`/`"faction"`/`"place"`/`"other"`), `summary` (简介), `faction` (可选所属阵营)；
+>   - ❌ **严禁非法未知字段**：绝对禁止使用 `category`（必须用 `type`）、绝对禁止使用 `description`（必须用 `summary`）、绝对禁止使用 `power_level`！
+> - **`lines` 字段与动作契约**：
+>   - `kind` 必须为小写枚举：`"foreshadow"` (伏笔GUN) / `"knowledge"` (秘密KNO) / `"misunderstanding"` (误会MIS)；
+>   - `action` 必须严格对应分类允许的动作：
+>     - `"foreshadow"` (GUN)：仅支持 `"plant"` / `"remind"` / `"resolve"`
+>     - `"knowledge"` (KNO)：仅支持 `"plant"` / `"update"` / `"resolve"`（❌ 严禁使用 remind！）
+>     - `"misunderstanding"` (MIS)：仅支持 `"plant"` / `"escalate"` / `"resolve"`（❌ 严禁使用 remind！）
+
 ```json
 {
   "schema": "novel-studio.state-mutation/v2",
@@ -68,8 +79,31 @@ description: Universal factual auditor and state proposal generator for Novel St
     "aftershock": "选填，留给下一章开篇首段承接的强烈余波事件",
     "active_pressures": ["选填，悬在头顶的即时压迫或倒计时事件"]
   },
-  "entities": [],
-  "lines": [],
+  "entities": [
+    {
+      "name": "新实体名称",
+      "type": "person",
+      "summary": "1句话核心速写与身份地位",
+      "faction": "所属势力/阵营"
+    }
+  ],
+  "lines": [
+    {
+      "id": "GUN-001",
+      "kind": "foreshadow",
+      "action": "remind"
+    },
+    {
+      "id": "KNO-001",
+      "kind": "knowledge",
+      "action": "update"
+    },
+    {
+      "id": "MIS-001",
+      "kind": "misunderstanding",
+      "action": "escalate"
+    }
+  ],
   "ledger": {
     "transactions": []
   },

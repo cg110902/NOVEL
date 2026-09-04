@@ -24,20 +24,6 @@ QUOTE_LINE_RE = re.compile(r"^\s*[「“\"『]")
 SHINGLE_N = 12
 REP_MIN = 8
 
-AI_CONSTRUCTIONS: list[tuple[str, str]] = [
-    ("不是…而是…", r"不是[^。！？]{1,15}[，,]?\s*而是"),
-    ("仿佛…一般", r"仿佛[^。！？]{0,15}(?:一般|般)"),
-    ("宛如…一般", r"宛如[^。！？]{0,15}(?:一般|般)"),
-    ("空气凝固/凝重", r"空气[^。！？]{0,8}(?:凝固|凝重|仿佛凝固)"),
-    ("嘴角勾起/上扬", r"嘴角[^。！？]{0,6}(?:勾起|上扬|勾起一抹)"),
-    ("眼底闪过", r"眼底[^。！？]{0,4}闪过"),
-    ("心中一凛/一紧/暗道", r"心中[^。！？]{0,6}(?:一凛|一紧|暗道|一惊)"),
-    ("眼神微凝/微眯/一缩", r"眼神[^。！？]{0,4}(?:微凝|一凝|微眯|猛地一缩)"),
-    ("深吸一口气", r"深吸了一?口气|长舒了一?口气"),
-    ("不由自主/不由得", r"不由自主地?|不由得"),
-]
-
-
 # --------------------------------------------------------------------------- 公共小件
 def final_chapters(book: Path) -> list[tuple[str, int, str]]:
     """按 (卷, 章号) 升序的 [(ch_token, num, text)]，一章多文件时取版本号最大者（v10 > v2）。
@@ -464,7 +450,7 @@ def prev_contrast(book: Path, ch: str) -> dict:
         must = [ln.strip().lstrip("-*· ").strip() for ln in common.md_section(text, r"^##\s*(?:必须保留|.*契约)")]
         return {"form": fm.get("form", ""), "form_reason": fm.get("form_reason", ""),
                 "style_notes": fm.get("style_notes", ""), "pov": fm.get("pov", ""),
-                "words": fm.get("words", ""), "guard_extra": fm.get("guard_extra", ""),
+                "words": fm.get("words", ""),
                 "tension_curve": fm.get("tension_curve", ""),
                 "must_keep": [s for s in must if s and not s.startswith(("<", "#"))]}
 
@@ -586,7 +572,7 @@ def dup(book: Path, ch: str | None = None) -> dict:
             "within": within, "adjacent_pairs": pairs}
 
 
-def _stats_one(text: str, guard_words: list) -> dict:
+def _stats_one(text: str) -> dict:
     sents = _sentences(text)
     lens = [len(re.sub(r"\s+", "", s)) for s in sents] or [0]
     mean = sum(lens) / len(lens)
@@ -596,15 +582,13 @@ def _stats_one(text: str, guard_words: list) -> dict:
     heads = [re.sub(r"^[^\u4e00-\u9fffA-Za-z0-9]+", "", p)[:2] for p in paras]
     lines = [ln for ln in text.splitlines() if ln.strip()]
     dialogue_lines = sum(1 for ln in lines if QUOTE_LINE_RE.match(ln))
-    cons = {name: len(re.findall(pat, text)) for name, pat in AI_CONSTRUCTIONS}
-    guards = {g: text.count(g) for g in guard_words if isinstance(g, str) and g}
     top_tags = jieba.analyse.extract_tags(text, topK=8) if _HAS_JIEBA else []
     return {"cjk": common.cjk_count(text), "sentences": len(lens),
             "len_mean": round(mean, 1), "len_stdev": round(math.sqrt(var), 1),
             "max_share": round(max(lens) / total_chars, 3),
             "dialogue_line_ratio": round(dialogue_lines / max(1, len(lines)), 3),
             "para_head_repeat": len(heads) - len(set(heads)), "para_count": len(paras),
-            "ai_constructions": cons, "style_guards_hits": guards, "top_keywords": top_tags}
+            "top_keywords": top_tags}
 
 
 def file_stats(book: Path, rel: str, ch: str | None = None) -> dict:
@@ -616,26 +600,9 @@ def file_stats(book: Path, rel: str, ch: str | None = None) -> dict:
         return {"error": f"路径越界或不存在: {exc}"}
     if not path.is_file():
         return {"error": f"工作区内找不到文件: {rel}"}
-    proj = common.load_json(book / "project.json", default={}) or {}
-    guards = list(proj.get("style_guards", []) or [])
     out: dict = {"kind": "file", "path": rel}
-    if ch is not None:
-        num = common.chapter_token_to_num(ch)
-        extra = [w for w in _beats_guard_extra(book, num) if w and w not in guards]
-        guards += extra
-        if extra:
-            out["guard_extra_scoped"] = extra
     text = path.read_text(encoding="utf-8", errors="replace")
-    return {**out, **_stats_one(text, guards)}
-
-
-def _beats_guard_extra(book: Path, num: int) -> list[str]:
-    for f in common.find_chapter_files(book, "beats"):
-        if common.chapter_number_from_name(f.name) == num:
-            fm = common.parse_front_matter(f.read_text(encoding="utf-8", errors="replace"))
-            raw = fm.get("guard_extra", "")
-            return [w.strip() for w in re.split(r"[|｜，,]", raw) if w.strip()]
-    return []
+    return {**out, **_stats_one(text)}
 
 
 def style(book: Path, ch: str | None = None) -> dict:
@@ -643,12 +610,7 @@ def style(book: Path, ch: str | None = None) -> dict:
     for tok, num, text in final_chapters(book):
         if ch is not None and num != common.chapter_token_to_num(ch):
             continue
-        proj = common.load_json(book / "project.json", default={}) or {}
-        guard_words = list(proj.get("style_guards", []) or [])
-        extra = [w for w in _beats_guard_extra(book, num) if w not in guard_words]
-        stats = _stats_one(text, guard_words + extra)
-        if extra:
-            stats["guard_extra_scoped"] = extra
+        stats = _stats_one(text)
         chapters.append({"chapter": tok, **stats})
     forms = form_distribution(book)
     return {"kind": "style", "chapters": chapters, "form_distribution": forms}
