@@ -101,37 +101,7 @@ INBOX_README = """# state/inbox — 提案收件箱（Stage 4 Reader 交付 / St
 正式提案必须带 operation_id（建议 `<ch>.<角色>.<时间戳/序号>`，如 ch_007.director.0829a、
 ch_007.reader.0901_2125）；`*.draft.json`/`*.template.json`/`*.sample.json` 不参与合并，
 可放这里当草稿。entities.action 支持 upsert/register/retire（register 为 upsert 别名）。
-最小样例（各分区都给了最短合法形状）：
-
-```json
-{
-  "schema": "novel-studio.state-mutation/v2",
-  "chapter": "ch_007",
-  "operation_id": "ch_007.director.0829a",
-  "current": {"location": "青石镇·祠堂", "present_characters": ["沈拓", "村长"],
-              "mood": "强压着怒意，面上赔笑", "goal": "查清公册下落，先稳住村长"},
-  "entities": [{"action": "upsert", "name": "村长", "type": "person",
-               "summary": "青石镇村长，玉佩旧案的知情人", "aliases": ["老丈"]},
-              {"action": "upsert", "name": "祠堂", "type": "place",
-               "summary": "册墙藏十年公册。现状：钥匙轮值周——'现状'写进 summary；status 是枚举"},
-              {"action": "upsert", "name": "玉佩", "type": "item",
-               "summary": "沈家遗物，认主", "holder": "沈拓", "location": "怀中", "condition": "完整"}],
-  "lines": [
-    {"kind": "foreshadow", "action": "plant", "name": "祠堂牌位下的匣子", "target_ch": 12,
-     "weight": 3},
-    {"kind": "foreshadow", "action": "resolve", "id": "GUN-003"},
-    {"kind": "misunderstanding", "action": "plant", "parties": "沈拓与村长", "content": "村长误以为沈拓来夺公册",
-     "level": 1, "target_ch": 10},
-    {"kind": "knowledge", "action": "plant", "secret": "村长认得沈家旧印", "target_ch": 9,
-     "note": "沈拓 ch_9 前不得知道", "weight": 2},
-    {"kind": "knowledge", "action": "resolve", "id": "KNO-001"}
-  ],
-  "timeline": {"events": [{"time": "次日清晨", "event": "开祠堂"}]},
-  "ledger": {"transactions": [{"pool": "standard_currency", "delta": -30,
-                  "subject": "香火钱", "counterparty": "祠堂"}]},
-  "synopsis": {"title": "祠堂", "text": "沈拓借赔罪进祠堂，瞥见牌位下露出半角匣子。"}
-}
-```
+ 
 
 写提案的纪律：只写增量；事实必须能在本章 final 正文找到出处；不确定就不上账。
 current 只写要刷新的字段：缺省/空值＝不修改（引擎跳过空串与空数组，不当作清档）。

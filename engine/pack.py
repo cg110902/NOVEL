@@ -71,6 +71,43 @@ def _deviation_lines(book: Path) -> list[str]:
     return out
 
 
+def _bible_core_anchors(book: Path) -> str:
+    """提取 bible/project_bible.md 中的世界规则、战力标尺与核心势力分布（恒常注入 P0）。"""
+    p = book / "bible" / "project_bible.md"
+    if not p.is_file():
+        return ""
+    text = p.read_text(encoding="utf-8", errors="replace")
+    sections = []
+    current_title = None
+    current_lines = []
+    target_keywords = ("世界与规则", "境界", "标尺", "power scale", "势力与地理", "世界底层", "战力")
+
+    for line in text.splitlines():
+        m = re.match(r"^(#{1,3})\s+(.*)$", line)
+        if m:
+            if current_title and current_lines:
+                content = "\n".join(current_lines).strip()
+                if content:
+                    sections.append(f"### {current_title}\n{content}")
+            title = m.group(2).strip()
+            if any(kw in title.lower() for kw in target_keywords) and "偏离" not in title:
+                current_title = title
+                current_lines = []
+            else:
+                current_title = None
+                current_lines = []
+        elif current_title is not None:
+            current_lines.append(line)
+
+    if current_title and current_lines:
+        content = "\n".join(current_lines).strip()
+        if content:
+            sections.append(f"### {current_title}\n{content}")
+
+    return "\n\n".join(sections)
+
+
+
 def _volume_phase_milestone(book: Path, ch_num: int) -> str:
     """从 outlines/vol_XX/outline.md 自动提取当前章所属阶段的里程碑与阶段功能（P0 恒常注入）。"""
     outlines = sorted((book / "outlines").glob("*/outline.md"))
@@ -227,7 +264,11 @@ def _entity_block(book: Path, name: str, cur: dict, lines: dict, full: bool) -> 
         blob = " ".join(str(g.get(k, "")) for k in
                         ("name", "content", "plan", "parties", "truth", "secret", "note"))
         if any(a and a in blob for a in alias):
-            touched.append(f"{g['id']}({g.get('status')})")
+            gid = g.get("id", "LINE")
+            gst = g.get("status", "")
+            desc = g.get("name") or g.get("secret") or g.get("content") or ""
+            desc_str = f"：{str(desc)[:28]}" if desc else ""
+            touched.append(f"{gid}({gst}{desc_str})")
     if touched:
         block["lines"] = touched
     for f in ("holder", "location", "condition", "dossier"):
@@ -268,6 +309,7 @@ def build_pack(book: Path, ch: str, lean: bool = False, full: bool = False) -> d
     p0 = {
         "current": {k: v for k, v in cur["current"].items() if v not in ("", [], None)},
         "volume_phase": _volume_phase_milestone(book, ch_num),
+        "world_anchors": _bible_core_anchors(book),
         "beats": beats,
         "prev_tail": _prev_final_tail(book, ch_num),
         "hard_reminders": _hard_reminders(book, ch, ch_num),
@@ -286,15 +328,31 @@ def build_pack(book: Path, ch: str, lean: bool = False, full: bool = False) -> d
 
     present_set = set(cur["current"].get("present_characters", []))
     raw_hits = []
+    seen_names = set()
     for name, aliases in lookup.items():
         counts = evidence.count_aliases(beats, aliases)
         total_c = sum(counts.values())
+        is_present = name in present_set
+        primary_hit = counts.get(name, 0) > 0
         if total_c > 0:
-            is_present = name in present_set
-            primary_hit = counts.get(name, 0) > 0
             if ch_num > 5 and name not in recent_entity_mentions and not is_present and not primary_hit:
                 continue
             raw_hits.append((is_present, primary_hit, total_c, name))
+            seen_names.add(name)
+        elif is_present:
+            # 强化：现场在场角色即便细纲未显式点名，也强制保底装配人物卡
+            raw_hits.append((True, False, 1, name))
+            seen_names.add(name)
+
+    # 场景地点强保底：若当前地点包含某注册地点实体，也加入装配
+    loc_str = str(cur["current"].get("location", ""))
+    if loc_str:
+        for name, aliases in lookup.items():
+            if name not in seen_names and any(a in loc_str for a in aliases):
+                ent = next((e for e in cur["entities"].get("entries", []) if e.get("name") == name), None)
+                if ent and ent.get("type") == "place":
+                    raw_hits.append((False, True, 1, name))
+                    seen_names.add(name)
 
     raw_hits.sort(key=lambda x: (not x[0], not x[1], -x[2], x[3]))
     hits = [name for _, _, _, name in raw_hits[:MAX_P1_ENTITIES]]
@@ -440,6 +498,8 @@ def render_layer(name: str, obj, full: bool = False) -> str:
                 lines.append(f"{k}: {v}")
         if obj.get("volume_phase"):
             lines += ["", "=== 本卷阶段航标 ===", f"- {obj['volume_phase']}"]
+        if obj.get("world_anchors"):
+            lines += ["", "=== 世界底层与战力标尺 ===", obj["world_anchors"]]
         lines += ["", "=== beats ===", obj["beats"], "", "=== 上章余温 ===", obj["prev_tail"],
                   "", "=== 硬提醒 ==="] + [f"- {m}" for m in obj["hard_reminders"]]
         return "\n".join(lines)

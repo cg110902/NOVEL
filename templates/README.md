@@ -8,11 +8,11 @@
 
 | 模板文件 | 实例化方式 | 目标路径 | 填写阶段 | 负责角色 | 说明 |
 |---|---|---|---|---|---|
-| `project_bible.md` | init 自动 | `bible/project_bible.md` | Stage 0 | 主控 | 世界观背景、势力、核心法则设定 |
+| `project_bible.md` | init 自动 | `bible/project_bible.md` | Stage 0 | 主控 | 世界观背景、核心规则与战力实物标尺（其中核心规则、地理与境界标尺会被 pack 自动恒常注入 P0 时空胶囊） |
 | `main_plot.md` | init 自动 | `outlines/main_plot.md` | Stage 0 | 主控 | 全书主线脊柱、开局/中继/终局设定 |
 | `volume_outline.md` | init 自动（仅 vol_01） | `outlines/vol_XX/outline.md` | Stage 0 / 开新卷 | 主控 | 开新卷时**手工复制改名**（模板已适配 `{{slot:vol_id}}`） |
 | `character_card.md` | init 自动（仅主角） | `characters/protagonist.md` | Stage 0 起 | 主控 | 后续角色**手工复制改名**（如 `characters/林编辑.md`——按本书角色自定）；人设卡（Want/Fear、性格与说话风格） |
-| `beats.md` | `studio.py beats new [章节] --write` 自动生成 | `outlines/vol_XX/beats/ch_XXX.md` | Stage 1 | 主控 | 单章细纲任务书（自动注入阶段目标、现场情境、到期线索、情绪蓄水泵、感官分配预算与交付契约） |
+| `beats.md` | `studio.py beats new [章节] --write` 自动生成 | `outlines/vol_XX/beats/ch_XXX.md` | Stage 1 | 主控 | 单章细纲任务书（自动注入阶段目标、现场情境、到期线索、情绪蓄水泵、感官分配预算、新面孔速写插槽与交付契约） |
 | `reader_review.md` | 手工参考 | 状态提案骨架，落盘为 `state/inbox/ch_XXX.json` | Stage 4 | Reader | **标准增量状态提案骨架 (Proposal Skeleton)**：Reader 客观审计事实后装配为纯 JSON 提案（注：本文件为 .md 承载的 JSON 结构，落盘须存为 .json；勿与 Stage 5 的 `log/review/` 校对注记混淆） |
 
 ---
