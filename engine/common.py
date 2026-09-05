@@ -95,8 +95,19 @@ def norm_path_key(p: Path | str) -> str:
 # 工作区解析
 # ---------------------------------------------------------------------------
 def workspace_root(root: Path | None = None) -> Path:
-    """所有书工作区的父目录：<repo>/workspace（见仓库 .gitignore）。"""
-    return (root or project_root()) / "workspace"
+    """所有书工作区的父目录：<repo>/workspace（见仓库 .gitignore）。
+
+    QA：NOVEL_STUDIO_WORKSPACE_ROOT 可把根重定向到别处，供测试隔离使用。
+    没有它，测试自建的书会与开发者 workspace/ 下的真书混在同一个 list_books()
+    结果里，于是「多书歧义 → exit 2」「仅一本书 → 自动选中」这类断言会随开发者
+    手上有几本书而变绿变红，测试等于在测环境而不是测代码。
+    """
+    if root is not None:
+        return root / "workspace"
+    override = os.environ.get("NOVEL_STUDIO_WORKSPACE_ROOT", "").strip()
+    if override:
+        return Path(override).expanduser().resolve()
+    return project_root() / "workspace"
 
 
 def list_books(root: Path | None = None) -> list[Path]:
