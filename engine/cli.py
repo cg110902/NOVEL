@@ -36,8 +36,8 @@ COMMAND_HELP = {
     "evidence": "机械证据：all|mentions|gaps|names|dup|style|words|file|candidates|prev（纯 JSON，零裁决）",
     "check": "结构/schema/算术体检（errors 只允许事实级；有 errors 退出码 1；新书 Stage 0 待办不阻断）",
     "checkpoint": "宏观航向校准点（每5章复盘分卷四分位里程碑与主线偏航）",
-    "state": "状态速查与手术刀单字段纠偏（show/get/set current/entities，防真值幻觉）",
-    "config": "书级词表参数手术刀：list|guide|suggest|get|set[--merge]|unset（主控供参通道，project.json）",
+    "state": "状态速查与手术刀纠偏：state show ｜ get <表.字段> ｜ set <表.字段> <值>（如 state get current.time；防真值幻觉）",
+    "config": "书级参数手术刀：list|guide|suggest|get|set[--merge]|unset（主控供参通道，project.json；含 words_target/lines_cap 等项目级键）",
     "sync": "提案合并 → 状态体检 → 快照（Stage 5 闭环，可 --dry-run）",
     "ledger": "账本手术刀：recompute（余额与 balance_after 按流水全量重算修复）",
     "snapshot": "快照 list / create NAME / rollback NAME [--clean-drafts]",
@@ -240,7 +240,7 @@ def _build_subparsers(sub: argparse._SubParsersAction) -> None:
     q.add_argument("chapter", nargs="?", help="复盘目标章节（默认最新定稿/细纲章）")
     q.set_defaults(func=cmd_checkpoint)
 
-    q = sub.add_parser("state", help="状态速查与手术刀单字段纠偏（show/get/set current/entities）")
+    q = sub.add_parser("state", help="状态速查与手术刀纠偏：show ｜ get <表.字段> ｜ set <表.字段> <值>")
     _add_common_opts(q)
     st_sub = q.add_subparsers(dest="state_action")
     r = st_sub.add_parser("show", help="速览当前现场状态 (current.json)")
@@ -260,7 +260,7 @@ def _build_subparsers(sub: argparse._SubParsersAction) -> None:
     r.set_defaults(func=cmd_state)
     q.set_defaults(func=cmd_state)
 
-    q = sub.add_parser("config", help="书级词表参数手术刀：list(默认)|guide|get|set|unset（主控供参通道）")
+    q = sub.add_parser("config", help="书级参数手术刀：list(默认)|guide|suggest|get|set|unset（主控供参通道，含 words_target/lines_cap）")
     _add_common_opts(q)
     cf_sub = q.add_subparsers(dest="config_action")
     for _name, _hlp, _extra in (

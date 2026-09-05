@@ -193,28 +193,29 @@ def cmd_summary(G: nx.Graph, as_json: bool = False) -> None:
     print("=" * 65)
 
 
-def cmd_path(G: nx.Graph, source: str, target: str, as_json: bool = False) -> None:
+def cmd_path(G: nx.Graph, source: str, target: str, as_json: bool = False) -> int:
+    # QA P13：节点缺失/无路径返回非零退出码（advisory 命令放宽为 1）
     if as_json:
         if source not in G or target not in G:
             reason = "source_missing" if source not in G else "target_missing"
             print(json.dumps({"source": source, "target": target, "found": False,
                               "reason": reason}, ensure_ascii=False))
-            return
+            return 1
         if not nx.has_path(G, source, target):
             print(json.dumps({"source": source, "target": target, "found": False,
                               "reason": "disconnected"}, ensure_ascii=False))
-            return
+            return 1
     else:
         print(f" 🔍 寻找从 [{source}] 到 [{target}] 的破局跳板/叙事路径...")
         if source not in G:
             print(f"❌ 未找到起点节点: {source}")
-            return
+            return 1
         if target not in G:
             print(f"❌ 未找到终点节点: {target}")
-            return
+            return 1
         if not nx.has_path(G, source, target):
             print(f"⚠️ [{source}] 与 [{target}] 在当前拓扑中暂无连通路径（二者完全孤立或尚未产生交集）！")
-            return
+            return 1
 
     shortest = nx.shortest_path(G, source, target)
     print(f"\n ⭐ 【最短破局链路】 (距离: {len(shortest) - 1} 跳):")
@@ -240,20 +241,22 @@ def cmd_path(G: nx.Graph, source: str, target: str, as_json: bool = False) -> No
             "distance": len(shortest) - 1, "path": shortest, "edges": edges,
             "alternatives": [list(p) for p in all_paths[1:4]],
         }, ensure_ascii=False, indent=2))
-        return
+        return 0
     if len(all_paths) > 1:
         print(f"\n 💡 备选叙事跳板路径 (前 {min(len(all_paths), 3)} 条):")
         for idx, p in enumerate(all_paths[:3], 1):
             print(f"   {idx}. {' -> '.join(p)}")
+    return 0
 
 
-def cmd_neighbors(G: nx.Graph, node: str, depth: int = 1, as_json: bool = False) -> None:
+def cmd_neighbors(G: nx.Graph, node: str, depth: int = 1, as_json: bool = False) -> int:
+    # QA P13：节点缺失返回非零退出码（advisory 命令放宽为 1）
     if node not in G:
         if as_json:
             print(json.dumps({"node": node, "found": False}, ensure_ascii=False))
-            return
+            return 1
         print(f"❌ 未找到节点: {node}")
-        return
+        return 1
     if as_json:
         neighbor_items = []
         for n in G.neighbors(node):
@@ -273,13 +276,13 @@ def cmd_neighbors(G: nx.Graph, node: str, depth: int = 1, as_json: bool = False)
                     sub_nodes.add(nn)
             payload["sub_nodes"] = sorted(sub_nodes)
         print(json.dumps(payload, ensure_ascii=False, indent=2))
-        return
+        return 0
     print(f" 🕸️ 实体 [{node}] 的 {depth}-Hop 关联子网:")
     if depth == 1:
         neighbors = list(G.neighbors(node))
         if not neighbors:
             print("   （当前无直接关联节点）")
-            return
+            return 0
         for n in neighbors:
             edge = G.get_edge_data(node, n, default={})
             rel = edge.get("label", edge.get("relation", "关联"))
@@ -293,6 +296,7 @@ def cmd_neighbors(G: nx.Graph, node: str, depth: int = 1, as_json: bool = False)
             for nn in G.neighbors(n):
                 sub_nodes.add(nn)
         print(f"   共涵盖 {len(sub_nodes)} 个节点: {', '.join(sorted(sub_nodes))}")
+    return 0
 
 
 def cmd_isolated(G: nx.Graph, as_json: bool = False) -> None:
@@ -372,9 +376,9 @@ def run_graph(book: Path, action: str | None, as_json: bool = False, **kwargs) -
     if act == "summary":
         cmd_summary(G, as_json=as_json)
     elif act == "path":
-        cmd_path(G, kwargs.get("source", ""), kwargs.get("target", ""), as_json=as_json)
+        return cmd_path(G, kwargs.get("source", ""), kwargs.get("target", ""), as_json=as_json)
     elif act == "neighbors":
-        cmd_neighbors(G, kwargs.get("name", ""), kwargs.get("depth", 1), as_json=as_json)
+        return cmd_neighbors(G, kwargs.get("name", ""), kwargs.get("depth", 1), as_json=as_json)
     elif act == "isolated":
         cmd_isolated(G, as_json=as_json)
     elif act == "centrality":

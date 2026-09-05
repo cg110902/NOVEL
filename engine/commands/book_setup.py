@@ -8,7 +8,7 @@ from pathlib import Path
 
 from .. import checks, common, errcodes, evidence, snapshot, state
 
-from ._shared import SLOT_RE, _norm_ch, _resolve_and_validate, print_ws_not_found
+from ._shared import (SLOT_RE, _norm_ch, _resolve_and_validate, resolve_note_shown, ws_gate)
 
 
 # ---------------------------------------------------------------------------
@@ -269,13 +269,15 @@ def _next_actions(brief: dict | None) -> list[str]:
 
 
 def cmd_status(args) -> int:
-    book = _resolve_and_validate(args.workspace)
+    # QA P5：--json 模式解析层不打文本（stdout 只出 JSON 信封）
+    js = bool(getattr(args, "json", False))
+    book = _resolve_and_validate(args.workspace, suppress_text=js)
     # 若显式指定 -w 但解析失败（越界或不存在），_resolve_and_validate 已打印越界错误；补充不存在提示
     if args.workspace:
         raw = common.resolve_workspace(args.workspace)
         if raw is not None and not raw.exists():
             books = common.list_books()
-            if getattr(args, "json", False):
+            if js:
                 print(json.dumps({"exists": False, "reason": "workspace_not_found",
                                   "workspace": str(raw), "books": [str(b) for b in books]},
                                  ensure_ascii=False))
@@ -289,7 +291,7 @@ def cmd_status(args) -> int:
             return 1
     if book is None or not book.exists():
         books = common.list_books()
-        if args.json:
+        if js:
             hint = ("存在多本书，请 -w 指定" if len(books) > 1
                     else 'python studio.py init -w workspace/<slug> -t "书名"')
             reason = "multiple_books" if len(books) > 1 else "no_books"
@@ -298,9 +300,11 @@ def cmd_status(args) -> int:
                              ensure_ascii=False, indent=2))
         else:
             if len(books) > 1:
-                print("📚 存在多本书，请用 -w 指定其一：")
-                for b in books:
-                    print(f"   - {b}")
+                # QA P12：解析层已打印过多书清单时不再二次打印
+                if not resolve_note_shown():
+                    print("📚 存在多本书，请用 -w 指定其一：")
+                    for b in books:
+                        print(f"   - {b}")
             else:
                 print("（工作区还没有书。开局第一步见下一步提示。）")
                 print('👉 python studio.py init -w workspace/<slug> -t "书名" -g "题材"')
@@ -335,9 +339,8 @@ def cmd_status(args) -> int:
 
 
 def cmd_cockpit(args) -> int:
-    book = _resolve_and_validate(args.workspace)
-    if book is None or not (book / "project.json").exists():
-        print_ws_not_found()
+    book = ws_gate(args)  # QA P5：--json 错误路径也出 JSON 信封
+    if book is None:
         return 1
     ch = None
     if getattr(args, "chapter", None):
@@ -367,13 +370,22 @@ def _status_debts(book) -> None:
         cur = g.get("max_final_chapter") or 0
         soon = [x for x in g["foreshadows"] + g["misunderstandings"] + g.get("knowledge", [])
                 if isinstance(x.get("target_ch"), int) and x.get("status") not in ("Resolved", "Revealed")
-                and 0 <= x["target_ch"] - cur <= 2]
+                # 上界 2 = 倒计时展示窗口；不设下界——逾期线（target < cur）必须全部入列，
+                # 逾期越久越是最高优先级债务（此前 0 <= diff 会把逾期 ≥2 章的线整个吞掉）
+                and x["target_ch"] - cur <= 2]
         soon.sort(key=lambda x: (-int(x.get("weight") or x.get("level") or 1),
                                  x["target_ch"] - cur, str(x.get("id", ""))))
         for x in soon[:2]:
             nid = x.get("id", "?")
-            left = x["target_ch"] - cur
-            notes.append(f"⏳ {nid} 距到期 {left} 章（target ch_{x['target_ch']:03d}）")
+            # QA P16：复用 cockpit 雷达口径——基准取「下一章」（已定稿章数+1），
+            # 逾期/本章引爆/倒计时三分措辞，不再出现「距到期 0 章」的含糊表述
+            left = x["target_ch"] - (cur + 1)
+            if left < 0:
+                notes.append(f"🚨 {nid} 已逾期 {-left} 章待收束（target ch_{x['target_ch']:03d}）")
+            elif left == 0:
+                notes.append(f"🔥 {nid} 下一章预定引爆（target ch_{x['target_ch']:03d}）")
+            else:
+                notes.append(f"⏳ {nid} 距引爆 {left} 章（target ch_{x['target_ch']:03d}）")
         if len(soon) > 2:
             notes.append(f"   （另有 {len(soon) - 2} 条同量级，见 evidence gaps）")
     except Exception:
@@ -409,9 +421,8 @@ def _merge_param_value(shape: str, old, new):
 
 
 def cmd_config(args) -> int:
-    book = _resolve_and_validate(args.workspace)
-    if book is None or not (book / "project.json").exists():
-        print_ws_not_found()
+    book = ws_gate(args)  # QA P5：--json 错误路径也出 JSON 信封
+    if book is None:
         return 1
     proj_path = book / "project.json"
     try:
@@ -480,10 +491,18 @@ def cmd_config(args) -> int:
 
     key = getattr(args, "key", None)
     if not key:
-        print("❌ 请指定参数键（合法键见 `python studio.py config guide`）")
+        if js:
+            print(json.dumps({"ok": False, "code": "usage", "hint": "请指定参数键（合法键见 config guide）"},
+                             ensure_ascii=False))
+        else:
+            print("❌ 请指定参数键（合法键见 `python studio.py config guide`）")
         return 2
     if key not in spec:
-        print(f"❌ 未知参数键「{key}」（合法键 {sorted(spec)}）")
+        if js:
+            print(json.dumps({"ok": False, "code": "unknown_param_key", "key": key,
+                              "valid_keys": sorted(spec)}, ensure_ascii=False))
+        else:
+            print(f"❌ 未知参数键「{key}」（合法键 {sorted(spec)}）")
         return 2
 
     if act == "get":
@@ -505,9 +524,16 @@ def cmd_config(args) -> int:
             return 2
         try:
             val = json.loads(raw)
-        except json.JSONDecodeError as exc:
-            print(f"❌ 值必须是合法 JSON 字面量: {exc}")
-            return 2
+        except json.JSONDecodeError:
+            # QA P24：区间类键容忍裸字符串 "2000,3000"（避免让主控先学 JSON 语法再谈形状）
+            val = None
+            if spec[key]["shape"] == "int_pair":
+                parts = [x for x in re.split(r"[,，\s]+", raw.strip()) if x]
+                if len(parts) == 2 and all(p.lstrip("-").isdigit() for p in parts):
+                    val = [int(parts[0]), int(parts[1])]
+            if val is None:
+                print(f"❌ 值必须是合法 JSON 字面量（区间类键如 words_target 也可裸写 \"2000,3000\"）")
+                return 2
         if getattr(args, "merge", False):
             # QA P1-6：合并前先校验新值形状——此前标量进 merge 会被逐字拆分静默落盘，
             # 且 dict 形状键收到标量会触发裸 TypeError/AttributeError

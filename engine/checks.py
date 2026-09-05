@@ -94,23 +94,29 @@ def validate_quotes(book: Path, ch: str, proposal: dict) -> list[str]:
             notes.append(f"🟡 {where}.quote 非空字符串（请填正文原句或删除该字段）: {q!r}")
             continue
         if q in text:
+            common.debug(f"quote {where}: exact hit")
             continue
         norm_q = _norm_quote_ws(q)
         if norm_q and norm_q in norm_text:
+            common.debug(f"quote {where}: whitespace-normalized hit")
             continue
         norm_p_q = _norm_quote_punct(q)
         if norm_p_q and len(norm_p_q) >= 4 and norm_p_q in norm_punct_text:
+            common.debug(f"quote {where}: punct-normalized hit")
             continue
         score = -1.0
         if _HAS_RAPIDFUZZ and norm_p_q and len(norm_p_q) >= 8:
             score = fuzz.partial_ratio(norm_p_q, norm_punct_text)
         if score >= QUOTE_PASS_RATIO:
+            common.debug(f"quote {where}: fuzzy hit (score={score:.1f} ≥ {QUOTE_PASS_RATIO})")
             continue
         frag = q if len(q) <= 32 else q[:32] + "…"
         if score >= QUOTE_NEAR_RATIO:
+            common.debug(f"quote {where}: near miss (score={score:.1f}, [{QUOTE_NEAR_RATIO}, {QUOTE_PASS_RATIO}))")
             notes.append(f"🟡 {where}.quote 近似命中（相似度 {score:.0f}%，与原文存在字词偏差）"
                          f"——凭印象摘录的预期现象，仅供主控参考: 「{frag}」")
         else:
+            common.debug(f"quote {where}: MISS (score={score:.1f} < {QUOTE_NEAR_RATIO})")
             notes.append(f"🟡 {where}.quote 未命中当章 final（存疑引文，不阻断）"
                          f"——主控复核是否编造或版本漂移: 「{frag}」")
     for e in (proposal.get("entities") or []):
@@ -286,7 +292,9 @@ def verify_candidates(book: Path, ch: str, proposal: dict) -> dict:
             _persons = set()
         for name, c in sorted(per.items(), key=lambda x: -x[1]):
             if c >= 2 and name not in cur_prop and (not _persons or name in _persons):
-                add("warn", "mention_not_present", f"「{name}」本章提及 {c} 次但未列入在场名单（漏报或早退，归主控判）")
+                # QA P10：提及 2~3 次多为「中段退场」场景常态 → info；≥4 次才大概率真在场 → warn
+                add("info" if c < 4 else "warn", "mention_not_present",
+                    f"「{name}」本章提及 {c} 次但未列入在场名单（漏报或早退，归主控判）")
                 break
 
     proj = common.load_json(book / "project.json", default={}) or {}
@@ -321,8 +329,9 @@ def verify_candidates(book: Path, ch: str, proposal: dict) -> dict:
                               if isinstance(w, str) and w.strip()}
     segs = [s for s in re.split(r"[^\u4e00-\u9fff]+", text) if len(s) >= 2]
     grams: dict[str, int] = {}
+    # QA P3：候选最小长度 3（2 字碎片「了半/樵把/的声」纯语法噪声，不再上报）
     for seg in segs:
-        for L in (2, 3, 4):
+        for L in (3, 4):
             for i in range(len(seg) - L + 1):
                 g = seg[i:i + L]
                 grams[g] = grams.get(g, 0) + 1
@@ -331,6 +340,11 @@ def verify_candidates(book: Path, ch: str, proposal: dict) -> dict:
         _pools = state.load_state(book, "ledger").get("pools", {})
     except (ValueError, FileNotFoundError):
         _pools = {}
+    # QA P3：账本池名/单位并入已知词——「灵通」类池名片段不再当候选（如 灵通石→灵通）
+    for p in _pools.values():
+        for t in (p.get("name"), p.get("unit")):
+            if t:
+                known.append(str(t).lower())
     for g, c in grams.items():
         if c < 3 or g in cand_stop or any(s in g for s in cand_stop):
             continue
@@ -448,8 +462,16 @@ PARAM_SPEC: dict[str, dict] = {
         "desc": "候选新实体追加降噪词（verify 候选清单过滤，追加到语言功能词底表；可选增配，不配不提示）",
         "example": ["心头", "眼底"]},
     "state_watch": {"shape": "str_map", "gap": False,
-        "desc": "current 字段关键词守望（verify state_watch 档）：{字段: [词表]}",
+        "desc": "current 字段关键词守望（verify state_watch 档）：{字段: [词表]}。"
+                "注意：守望按纯字符串命中、无上下文消歧——同词多义（如境界名与道具名同字）请拆分词表或限定词形，防误报。",
         "example": {"power_level": ["突破", "晋升"]}},
+    "words_target": {"shape": "int_pair", "gap": False,
+        "desc": "定稿字数目标带 [下限, 上限]（check word_band_deviation / word_band_breach 判定依据）",
+        "example": [2000, 3000]},
+    "lines_cap": {"shape": "cap_map", "gap": False,
+        "desc": "活跃线索配额 {active_foreshadows, longline_foreshadows, active_knowledge, active_misunderstandings}",
+        "example": {"active_foreshadows": 8, "longline_foreshadows": 5,
+                    "active_knowledge": 5, "active_misunderstandings": 4}},
 }
 WORDLIST_SPEC = {k: v["desc"] for k, v in PARAM_SPEC.items() if v.get("gap")}
 
@@ -486,10 +508,16 @@ def param_suggestions(book: Path, top: int = 12) -> dict:
         _sugg_pools = state.load_state(book, "ledger").get("pools", {})
     except (ValueError, FileNotFoundError):
         _sugg_pools = {}
+    # QA P3：账本池名/单位并入已知词（与 verify_candidates 同口径，防「灵通」类片段误报）
+    for p in _sugg_pools.values():
+        for t in (p.get("name"), p.get("unit")):
+            if t:
+                known.append(str(t))
     grams: dict[str, int] = {}
+    # QA P3：候选最小长度 3（2 字碎片「了一 ×35」类语法噪声不再进入候选）
     for seg in re.split(r"[^\u4e00-\u9fff]+", full):
         if len(seg) >= 2:
-            for L in (2, 3, 4):
+            for L in (3, 4):
                 for i in range(len(seg) - L + 1):
                     g = seg[i:i + L]
                     grams[g] = grams.get(g, 0) + 1
@@ -535,6 +563,27 @@ def validate_param_value(key: str, value) -> str | None:
                 or any(not isinstance(k, str) or not isinstance(v, list)
                        or any(not isinstance(w, str) for w in v) for k, v in value.items())):
             return f"「{key}」必须是 字段名→字符串数组 的对象（形状示例：{eg}）"
+    elif shape == "int_pair":
+        # 亦容忍字符串形态："[2000, 3000]"（JSON）或 "2000,3000" / "2000 3000"（逗号/空格，中文逗号亦容忍）
+        if isinstance(value, str):
+            s = value.strip()
+            try:
+                value = json.loads(s) if s.startswith("[") else [int(p) for p in re.split(r"[,，\s]+", s) if p]
+            except (ValueError, TypeError):
+                value = None
+        if (not isinstance(value, list) or len(value) != 2
+                or any(not isinstance(x, int) or isinstance(x, bool) or x < 1 for x in value)):
+            return f"「{key}」必须是 [下限, 上限] 正整数对（形状示例：{eg} 或字符串 \"2000,3000\"）"
+        if value[0] > value[1]:
+            return f"「{key}」下限不能大于上限：{value}"
+    elif shape == "cap_map":
+        allowed_keys = {"active_foreshadows", "longline_foreshadows", "active_knowledge",
+                        "active_misunderstandings"}
+        if (not isinstance(value, dict) or not value
+                or any(not isinstance(k, str) or k not in allowed_keys
+                       or not isinstance(v, int) or isinstance(v, bool) or v < 1
+                       for k, v in value.items())):
+            return f"「{key}」必须是 配额键→正整数 的对象（合法键 {sorted(allowed_keys)}，形状示例：{eg}）"
     return None
 
 _WORDS_BAND_RE = re.compile(r"(\d+)\s*[-–—~～]\s*(\d+)")
@@ -1029,8 +1078,13 @@ def run_checks(book: Path) -> dict:
         lo, hi = band
         for tok, _, text in evidence.final_chapters(book):
             c = common.cjk_count(text)
-            if c < lo or c > hi:
-                warnings.append(_err("word_band_deviation", f"{tok}: 字数 {c} 在目标带 [{lo}, {hi}] 之外"))
+            # QA P4：字数带双层判定——出带 15% 容差内 = info（软约束），
+            # 显著出带（<下限 85% 或 >上限 115%）= warning（beats 硬合同口径）
+            if c < lo * 0.85 or c > hi * 1.15:
+                warnings.append(_err("word_band_breach",
+                                     f"{tok}: 字数 {c} 显著偏离目标带 [{lo}, {hi}]（超出 15% 容差）"))
+            elif c < lo or c > hi:
+                infos.append(_err("word_band_deviation", f"{tok}: 字数 {c} 在目标带 [{lo}, {hi}] 之外"))
 
     for f in common.find_chapter_files(book, "final"):
         try:
@@ -1186,6 +1240,29 @@ def run_checks(book: Path) -> dict:
             except OSError:
                 continue
 
+    # final 定稿漂移检查（QA P2）：sync 封存时盖章的 final 哈希 vs 当前内容——
+    # 封后再改 final 不再静默漂移，check 必报（有意修订走提案修订通道重封）
+    try:
+        fhp = book / "state" / "inbox" / "processed" / "final_hashes.json"
+        if fhp.is_file():
+            sealed = common.load_json(fhp, default={}) or {}
+            for tok_rec in sorted(sealed):
+                rec = sealed[tok_rec]
+                if not isinstance(rec, dict):
+                    continue
+                want_sha = str(rec.get("sha256", ""))
+                finals = common.find_chapter_files(book, "final", tok_rec)
+                if not finals:
+                    warnings.append(_err("final_drift",
+                                         f"{tok_rec}: 封存定稿文件已不存在（sync 后 final 被删除？建议 snapshot rollback 恢复）"))
+                    continue
+                cur_sha = hashlib.sha256(finals[-1].read_bytes()).hexdigest()
+                if want_sha and cur_sha != want_sha:
+                    warnings.append(_err("final_drift",
+                                         f"{tok_rec}: final 内容在封存后已改动（封存 {want_sha[:12]}… / 当前 {cur_sha[:12]}…）"))
+    except (ValueError, OSError):
+        pass
+
     # bible 版本盖章对照（info）：世界圣经在封存后又被改动 → 新旧章适用的世界规则可能不同
     try:
         jpath = book / "state" / "bible_log.jsonl"
@@ -1246,9 +1323,8 @@ def get_self_healing_remedies(book: Path, ch: str | None = None) -> list[dict]:
         }
         if "recompute" in rem or "ledger" in code:
             item["action_command"] = "python studio.py ledger recompute"
-        elif "entity add" in rem and "运行 " in rem:
-            cmd_part = rem.split("运行 ")[-1].split(" 将")[0].strip()
-            item["action_command"] = cmd_part
+        # QA P1：旧 remedy 曾指向不存在的 `entity add` 命令，自愈指令解析分支一并移除；
+        # 实体登记的唯一通道是 Reader 提案（remedy 文案已在 errcodes 更正）。
         out.append(item)
 
     for w in report.get("warnings", []):

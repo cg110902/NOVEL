@@ -89,6 +89,23 @@ def create_snapshot(book: Path, snapshot_name: str) -> tuple[bool, str]:
                 shutil.copy2(f, folder / f.name)
                 copied.append(f.name)
             manifest = _manifest_of(folder)
+            # QA P2：manifest 不再只有状态六表——记录快照时刻全部 final 定稿的内容哈希，
+            # 回滚核对与「定稿是否在封存后被改过」的追溯有了机械依据
+            finals: dict[str, str] = {}
+            for f in common.find_chapter_files(book, "final"):
+                n = common.chapter_number_from_name(f.name)
+                if n is None:
+                    continue
+                try:
+                    vol = f.relative_to(book / "manuscript").parts[0]
+                except ValueError:
+                    vol = ""
+                try:
+                    finals[f"{vol}/ch_{n:03d}"] = hashlib.sha256(f.read_bytes()).hexdigest()
+                except OSError:
+                    continue
+            if finals:
+                manifest["final_hashes"] = finals
             common.dump_json(folder / MANIFEST_NAME, manifest)
         except BaseException as exc:
             # 盲区深读修复：复制中途失败必须清掉残缺快照目录——否则"缺 manifest

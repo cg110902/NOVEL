@@ -71,6 +71,17 @@ def reconfigure_utf8() -> None:
                 stream.reconfigure(encoding="utf-8")
 
 
+def debug_enabled() -> bool:
+    """NOVEL_STUDIO_DEBUG=1 调试模式（QA G1）：闸门逐层 trace / 引文相似度分值 /
+    幂等哈希比对 / 账本重算明细 / cockpit 分节耗时，全部走 stderr，不污染 --json stdout。"""
+    return os.environ.get("NOVEL_STUDIO_DEBUG", "").strip() not in ("", "0")
+
+
+def debug(msg: str) -> None:
+    if debug_enabled():
+        print(f"[DEBUG] {msg}", file=sys.stderr)
+
+
 def project_root() -> Path:
     return Path(__file__).resolve().parent.parent
 
@@ -196,12 +207,16 @@ def natural_chapter_sort_key(path: Path) -> tuple[int, int, int, str]:
 
 
 def find_chapter_files(book_dir: Path, area: str = "final", target: object = None) -> list[Path]:
-    """扫描 ch_*.md。area ∈ {final, raw, beats}。加固：跳过 symlink、越界解析。"""
-    book_dir = Path(book_dir).resolve()
-    if area == "beats":
-        base, pattern = book_dir / "outlines", "*/beats/ch_*.md"
-    else:
-        base, pattern = book_dir / "manuscript", f"*/{area}/ch_*.md"
+    """扫描 ch_*.md。area ∈ {final, raw, beats}。加固：跳过 symlink、越界解析。
+
+    返回路径与传入 book_dir 保持同一路径风格（绝对/相对），安全检查在 resolved 上进行——
+    调用方 `f.relative_to(book / ...)` 不因绝对/相对混用抛 ValueError（QA 回归修复）。
+    """
+    base_in = Path(book_dir)
+    resolved = base_in.resolve()
+    rel_base = "outlines" if area == "beats" else "manuscript"
+    pattern = "*/beats/ch_*.md" if area == "beats" else f"*/{area}/ch_*.md"
+    base = resolved / rel_base
     raw_files = [f for f in base.glob(pattern) if not f.name.startswith(".")]
     files: list[Path] = []
     for f in raw_files:
@@ -209,13 +224,13 @@ def find_chapter_files(book_dir: Path, area: str = "final", target: object = Non
         if f.is_symlink():
             continue
         try:
-            resolved = f.resolve()
+            r = f.resolve()
             # 必须仍在 book_dir 内
-            if resolved != book_dir and book_dir not in resolved.parents:
+            if r != resolved and resolved not in r.parents:
                 continue
         except OSError:
             continue
-        files.append(f)
+        files.append(base_in / f.relative_to(resolved))
     if target is not None:
         files = [f for f in files if file_matches_chapter(f, target)]
     return sorted(files, key=natural_chapter_sort_key)
