@@ -219,6 +219,41 @@
    历史 8 次触发的成因，并给出「这句话在 final 里能找到出处吗」的自查动作。
 4. **`state_watch` 单字引导危险** → 随 P2-6 一并修复（写入端拒收 + 检查端降级 + `config guide` 文案与示例修正）。
 
+### 回归复跑中追加发现的缺陷（P0-3，已修）
+
+**P0-3 `ledger.pools` 不校验字段名也不校验必填，与同分区 `transactions` 的严格度不一致**
+
+> 发现方式：修完 28 项后复跑故障注入套件 `fi_b.py`，其中一条 `ledger_新池缺initial` 长期判 DIFF。
+> 追查这条 DIFF 时顺带探了「键名打错」的情形，才发现真正的问题比脚本原先预期的更严重。
+
+`ledger.transactions` 对未知键一律拒收（实测 `delt` 打错 → `含未知字段: delt` + `delta 必须为整数`），
+但 `ledger.pools` 只校验「字段类型」，既不校验「字段名」也不校验「必填与否」。后果实测：
+
+| 探针 | 写法 | 修复前 | 修复后 |
+|---|---|---|---|
+| E | `{"name":"QA池","unit":"个","intial":247}` | **exit 0 静默放行**，起始余额默默落为 0 | exit 1 `含未知字段: intial` + `initial 必填` |
+| A | 缺 `initial` | exit 0 放行（当成 0） | exit 1 `initial 必填` |
+| C | 缺 `name` | exit 0 放行 | exit 1 `name 必填` |
+| F | 带未知键 `power_level` | exit 0 放行 | exit 1 `含未知字段: power_level` |
+| B/H | 合法（`initial` 为 0 / 247） | exit 0 | exit 0 ✅ 未误伤 |
+| D | 声明 `current` | exit 1（原硬闸） | exit 1 ✅ 未被破坏 |
+
+**为什么这是 P0 而不是 P3**：资源池的 `initial` 是整本书账本的**初始条件**。把 `initial` 打成 `intial`
+不会报任何错，起始余额会静默变成 0——而欠账类资源池（本书 `lamp_debt` 期初 247）恰恰不是从 0 开始的。
+一处键名笔误就等于悄悄改掉全书余额基准，且后续所有流水重算都会基于这个错误的基准得出「自洽」的结果，
+`ledger recompute` 也查不出来（它只校验余额与流水是否吻合，不校验期初是否写错）。这与 P0-1 同域，
+是同一个「账本可信性」问题的另一半。
+
+**落点**：
+- `engine/state.py` `validate_proposal()`：`ledger.pools` 增未知键拒收 + `name/unit/initial` 三项必填校验
+- `engine/cli.py`：`ledger pool add --initial` 由 `default=0` 改为 `required=True`
+- `engine/commands/state_sync.py`：删掉与自身文档字符串矛盾的 `or 0` 静默兜底
+- `engine/state.py` `INBOX_README`：原文案写的是「initial 必须是整数（缺省按 0）」，与新规则直接矛盾。
+  这份文档是给写提案的 AI 看的契约，不同步就等于教它写出必被拒的提案——已改为三项必填 + 未知键拒收
+
+**CLI 端退出码实测**（省略 `--initial` → 2；`--initial 0` → 0；`--initial 247` → 0；重复 ID → 1；
+非法 ID → 2；缺 `--name` → 2；`ledger recompute` → 0 仍自洽）。
+
 ### 修复过程中自查出的三个自身缺陷（已修）
 
 - `config suggest` 文本模式曾因新增的 `alias_suggestions` 不是 `PARAM_SPEC` 键而 `KeyError` 崩溃（exit 1）——

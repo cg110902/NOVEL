@@ -124,7 +124,10 @@ lines 字段口径：
 ledger.pools 资源池口径（QA P3-1：此前全部 AI 向文档零说明，池只能读源码试出来）：
   ⚠️ Stage 0 就应声明本书的资源池（灵石/银两/寿元/功勋…），不要等写到有账目才补。
   新建池：{"pools": {"my_pool": {"name": "灵石", "unit": "块", "initial": 0}}}
-    · name/unit 必须是字符串；initial 必须是整数（缺省按 0）；
+    · name/unit/initial 三项均必填：name/unit 为非空字符串，initial 为整数。
+      省略 initial 即整案拒收——期初余额是账本的基准，省略会被当成 0，
+      而欠账/存量类资源池恰恰不是从 0 开始的（键名打错如 intial 同样拒收）；
+    · 池对象只接受 name/unit/initial 三键，多出任何键即「含未知字段」拒收；
     · ❌ 严禁声明 "current"——余额一律由流水重算，声明即整案拒收；
     · 既有池禁止修改 initial（改动 = 拒收）；对既有池声明 name/unit 只出「声明已修订」提示；
     · 流水 transactions[].pool 引用未声明的池 → `sync` 合并期拒收（「流水引用未声明资源池」），
@@ -621,13 +624,28 @@ def validate_proposal(proposal, expected_chapter: str | None = None) -> tuple[li
                     if not isinstance(p, dict):
                         errors.append(f"ledger.pools[{pid}] 必须为对象")
                         continue
+                    # QA P0-3：资源池此前只校验「字段类型」，不校验「字段名」也不校验
+                    # 「必填与否」，与同一分区内 transactions 的严格度不一致——后者对未知键
+                    # 一律拒收。后果实测：把 initial 打成 intial（探针 E）会被静默接受，
+                    # 起始余额默默落为 0，账本从源头被污染且全程无任何提示。
+                    # 池是账本的初始条件，写错一个键名即等于悄悄改掉整本书的余额基准。
+                    for k in p:
+                        if k not in ("name", "unit", "initial"):
+                            errors.append(f"ledger.pools[{pid}] 含未知字段: {k}")
                     if "current" in p:
                         errors.append(f"ledger.pools[{pid}].current 不接受声明（余额一律由流水重算）")
-                    if "initial" in p and (not isinstance(p["initial"], int) or isinstance(p["initial"], bool)):
+                    # 新池必须显式给出起始余额：省略等同于声明「从 0 开始」，
+                    # 而绝大多数资源池（欠账、存量）恰恰不是从 0 开始的。
+                    if "initial" not in p:
+                        errors.append(f"ledger.pools[{pid}].initial 必填（新池须显式声明起始余额，"
+                                      f"省略会被当成 0 从而污染账本基准）")
+                    elif not isinstance(p["initial"], int) or isinstance(p["initial"], bool):
                         errors.append(f"ledger.pools[{pid}].initial 必须为整数")
                     for f in ("name", "unit"):
-                        if f in p and not isinstance(p[f], str):
-                            errors.append(f"ledger.pools[{pid}].{f} 必须为字符串")
+                        if f not in p:
+                            errors.append(f"ledger.pools[{pid}].{f} 必填")
+                        elif not isinstance(p[f], str) or not str(p[f]).strip():
+                            errors.append(f"ledger.pools[{pid}].{f} 必须为非空字符串")
         for i, t in enumerate(txs):
             if not isinstance(t, dict):
                 errors.append(f"ledger.transactions[{i}] 必须为对象")

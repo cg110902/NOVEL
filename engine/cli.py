@@ -330,7 +330,8 @@ def _build_subparsers(sub: argparse._SubParsersAction) -> None:
     padd.add_argument("pool_id", help="池 ID（英文小写下划线，如 lamp_ash）")
     padd.add_argument("--name", required=True, help="显示名（如 灯烬）")
     padd.add_argument("--unit", required=True, help="计量单位（如 盏）")
-    padd.add_argument("--initial", type=int, default=0, help="期初值（整数，默认 0）")
+    padd.add_argument("--initial", type=int, required=True,
+                      help="期初值（整数，必填——省略会被当成 0 从而污染账本基准）")
     padd.add_argument("-w", "--workspace", default=argparse.SUPPRESS)
     padd.add_argument("--json", action="store_true", default=argparse.SUPPRESS)
     pa.set_defaults(func=cmd_ledger)

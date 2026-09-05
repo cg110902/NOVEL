@@ -981,7 +981,14 @@ def _ledger_pool(book, args) -> int:
     pid = str(getattr(args, "pool_id", "") or "").strip()
     name = str(getattr(args, "name", "") or "").strip()
     unit = str(getattr(args, "unit", "") or "").strip()
-    initial = int(getattr(args, "initial", 0) or 0)
+    # QA P0-3：口径与提案端一致——期初必填。原先这里 `or 0` 静默兜底，与本函数
+    # 文档字符串自述的「initial 必填整数」相矛盾，也与提案端新规则不一致。
+    _raw_initial = getattr(args, "initial", None)
+    if _raw_initial is None:
+        msg = "池的 --initial 为必填（期初余额；省略会被当成 0 从而污染账本基准）"
+        print(json.dumps({"ok": False, "error": msg}, ensure_ascii=False) if js else f"❌ {msg}")
+        return 2
+    initial = int(_raw_initial)
     if not _POOL_ID_RE.match(pid):
         msg = f"池 ID {pid!r} 非法：须为 2~32 位小写字母/数字/下划线，且以字母开头（如 lamp_ash）"
         print(json.dumps({"ok": False, "error": msg}, ensure_ascii=False) if js else f"❌ {msg}")
