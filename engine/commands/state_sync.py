@@ -494,7 +494,7 @@ def _cmd_proposal_auto(book: Path, ch: str, args) -> int:
         s = ln.strip().lstrip("-*· ").strip()
         if not s or s.startswith(("#", "<")):
             continue
-        if s.startswith("**内容**") or s.startswith("**场景**") or s.startswith("**收束**") :
+        if s.startswith("**内容") or s.startswith("**场景") or s.startswith("**收束") :
             continue
         cleaned = re.sub(r"^(?:章末物理刀口|[-·*]*\s*📍\s*\**章末物理刀口卡点\**)[:：]\s*", "", s).strip()
         if cleaned and not cleaned.startswith(("<", "<!--")):
