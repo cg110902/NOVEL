@@ -238,11 +238,17 @@ def ensure_state_version(book: Path) -> dict:
 
         for k, d in raw.items():
             state_mod.save_state(book, k, d)
-        common.dump_json(version_path(book), {
+        # QA P3-7：原实现整表重写版本戳，迁移前 {created_at, version} 里的 created_at
+        # 被丢掉，变成 {from_version, migrated_at, version}——建档时间这个不可再生的
+        # 事实就此消失。现保留既有键，只更新版本相关字段。
+        _prev_stamp = common.load_json(version_path(book), default={}) or {}
+        _stamp = dict(_prev_stamp)
+        _stamp.update({
             "version": CURRENT_STATE_VERSION,
             "migrated_at": datetime.datetime.now().isoformat(timespec="seconds"),
             "from_version": v,
         })
+        common.dump_json(version_path(book), _stamp)
         _log(book, {"ts": datetime.datetime.now().isoformat(timespec="seconds"),
                     "from": v, "to": CURRENT_STATE_VERSION,
                     "snapshot": snap_name, "notes": notes})

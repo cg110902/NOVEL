@@ -20,7 +20,7 @@ except ImportError:
     _HAS_RICH = False
     console = None
 
-from ._shared import _norm_ch, ws_gate
+from ._shared import _norm_ch, ws_gate, ws_gate_code
 
 
 # ---------------------------------------------------------------------------
@@ -29,7 +29,7 @@ from ._shared import _norm_ch, ws_gate
 def cmd_pack(args) -> int:
     book = ws_gate(args)  # QA P5：--json 错误路径也出 JSON 信封
     if book is None:
-        return 1
+        return ws_gate_code()
     ch = None
     if args.chapter:
         ch = _norm_ch(args.chapter)
@@ -42,7 +42,17 @@ def cmd_pack(args) -> int:
             return 2
         payload = pack_mod.build_pack(book, ch, lean=args.lean, full=args.full) if ch else {"chapter": None}
         if args.open_path:
-            payload["opened"] = pack_mod.open_file(book, args.open_path)
+            payload["opened"] = pack_mod.open_file(book, args.open_path,
+                                                   role=getattr(args, "as_role", "drafter"))
+    except PermissionError as exc:
+        # QA P0-2：禁读网关拦截——不是业务失败，是越权，单列退出码语义仍归 1（阻断）
+        if getattr(args, "json", False):
+            print(json.dumps({"error": "forbidden", "path": args.open_path,
+                              "as": getattr(args, "as_role", "drafter"),
+                              "detail": str(exc)}, ensure_ascii=False, indent=2))
+        else:
+            print(f"⛔ {exc}")
+        return 1
     except ValueError as exc:
         print(f"❌ {exc}")
         return 1
@@ -64,7 +74,7 @@ def cmd_pack(args) -> int:
 def cmd_evidence(args) -> int:
     book = ws_gate(args)  # QA P5：--json 错误路径也出 JSON 信封
     if book is None:
-        return 1
+        return ws_gate_code()
     kind, rest = args.kind, list(args.args or [])
     if kind == "all":
         if rest:
@@ -134,7 +144,7 @@ def cmd_evidence(args) -> int:
 def cmd_check(args) -> int:
     book = ws_gate(args)  # QA P5：--json 错误路径也出 JSON 信封
     if book is None:
-        return 1
+        return ws_gate_code()
     report = checks.run_checks(book)
     if args.json:
         print(json.dumps(report, ensure_ascii=False, indent=2))
@@ -215,7 +225,7 @@ def _render_review_md(d: dict) -> str:
 def cmd_review(args) -> int:
     book = ws_gate(args)  # QA P5：--json 错误路径也出 JSON 信封
     if book is None:
-        return 1
+        return ws_gate_code()
     if getattr(args, "rev_action", None) != "new":
         print("❌ review 需要 new 子命令，如: python studio.py review new ch_007")
         return 2
@@ -294,7 +304,14 @@ def _consistency_section(book, n: int, cur: dict, ents: list[dict], lines_st: di
             if str(g.get("status", "")).strip().lower() in ("resolved", "revealed"):
                 continue
             t = g.get("target_ch")
-            if not (isinstance(t, int) and t <= n + 3):
+            # QA P2-2：原过滤只收 `isinstance(t, int) and t <= n+3`，于是 `target_ch:
+            # "longline"` 的全书级线索被整条剔除——那往往正是本书最重要的道具/主线
+            # （实测《沧澜拾灯》的「无主空灯」规范名根本没进名册）。不跑 pack 的 Drafter
+            # 只读 beats + 上章 final，就拿不到道具规范名，只能自己造词。
+            # 现改为：近章（int 且 ≤ n+3）与全书级（longline / 非整数 target）都收。
+            t_num = t if isinstance(t, int) else common.chapter_token_to_num(t)
+            is_longline = not isinstance(t_num, int)
+            if not (is_longline or t_num <= n + 3):
                 continue
             blob = " ".join(str(g.get(k, "")) for k in
                             ("name", "content", "plan", "parties", "secret", "note"))
@@ -344,16 +361,21 @@ def _clip(s: str, n: int) -> str:
 def cmd_beats(args) -> int:
     book = ws_gate(args)  # QA P5：--json 错误路径也出 JSON 信封
     if book is None:
-        return 1
+        return ws_gate_code()
     ch = getattr(args, "chapter", None)
     if not ch:
         latest = common.latest_chapter_number(book, "final") or 0
         ch = f"ch_{latest + 1:03d}"
-    n = common.chapter_token_to_num(ch)
-    if not n:
+    # QA P3-3：归一化不再静默——`ch_7` 会被改写成 `ch_007` 并明确告知，
+    # 避免与提案端（`target_ch` 必须是规范 ch_NNN）的严格度形成无声落差。
+    tok, _rewrote = common.normalize_chapter_arg(ch)
+    if not tok:
         print(f"❌ 无法解析章节号: {ch!r}")
         return 2
-    tok = f"ch_{n:03d}"
+    if _rewrote:
+        print(f"ℹ️ 章号 {str(ch).strip()!r} 已归一为规范写法 {tok}"
+              "（提案 target_ch 等账本字段只接受规范 ch_NNN）")
+    n = common.chapter_token_to_num(tok)
 
     vol_str = "vol_01"
     for vdir in sorted((book / "outlines").glob("vol_*")):
@@ -511,7 +533,7 @@ def cmd_beats(args) -> int:
 def cmd_critic(args) -> int:
     book = ws_gate(args)  # QA P5：--json 错误路径也出 JSON 信封
     if book is None:
-        return 1
+        return ws_gate_code()
     ch_arg = getattr(args, "chapter", None)
     if not ch_arg:
         latest = common.latest_chapter_number(book, "final") or 1
@@ -628,7 +650,7 @@ def cmd_critic(args) -> int:
 def cmd_graph(args) -> int:
     book = ws_gate(args)  # QA P5：--json 错误路径也出 JSON 信封
     if book is None:
-        return 1
+        return ws_gate_code()
     return graph_mod.run_graph(
         book,
         getattr(args, "graph_action", None),
@@ -648,7 +670,7 @@ def cmd_graph(args) -> int:
 def cmd_export(args) -> int:
     book = ws_gate(args)  # QA P5：--json 错误路径也出 JSON 信封
     if book is None:
-        return 1
+        return ws_gate_code()
     if not args.txt and not args.views:
         args.txt = args.views = True
     written = []
@@ -672,7 +694,7 @@ def cmd_export(args) -> int:
 def cmd_dashboard(args) -> int:
     book = ws_gate(args)  # QA P5：--json 错误路径也出 JSON 信封
     if book is None:
-        return 1
+        return ws_gate_code()
     try:
         out_file = dashboard.export_dashboard(book)
     except Exception as exc:
@@ -696,7 +718,7 @@ def cmd_dashboard(args) -> int:
 def cmd_ask(args) -> int:
     book = ws_gate(args)  # QA P5：--json 错误路径也出 JSON 信封
     if book is None:
-        return 1
+        return ws_gate_code()
     query = str(getattr(args, "query", "") or "").strip()
     payload = evidence.ask(book, query)
     print(json.dumps(payload, ensure_ascii=False, indent=2))
@@ -706,7 +728,7 @@ def cmd_ask(args) -> int:
 def cmd_pov(args) -> int:
     book = ws_gate(args)  # QA P5：--json 错误路径也出 JSON 信封
     if book is None:
-        return 1
+        return ws_gate_code()
     payload = evidence.pov(book, str(getattr(args, "name", "") or ""))
     print(json.dumps(payload, ensure_ascii=False, indent=2))
     return 2 if payload.get("error") else 0
@@ -776,7 +798,7 @@ def _calendar_payload(book, span: int) -> dict:
 def cmd_calendar(args) -> int:
     book = ws_gate(args)  # QA P5：--json 错误路径也出 JSON 信封
     if book is None:
-        return 1
+        return ws_gate_code()
     try:
         span = int(getattr(args, "span", None) or 5)
     except (TypeError, ValueError):

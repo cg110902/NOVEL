@@ -163,3 +163,79 @@
 3. **顺手**：P2-5（模板自伤）、P2-2（longline 名册）、P2-3（阈值对齐）、P3-1/P3-2（文档缺口，成本最低收益最直接）
 
 **复现材料**：调试模式全部 stderr trace 与各命令输出保存在 `/home/user/nsqa/logs/`；被污染的靶场书副本在 `/home/user/nsqa/QA靶场_污染样本/`（含注入后的 ledger.json 原样）。正式书《沧澜拾灯》三章定稿 + 六表 + 3 份快照位于 `workspace/沧澜拾灯/`（`workspace/` 已被 `.gitignore` 排除）。
+
+---
+
+## 修复记录（2026-09-05 追加）
+
+上列 **28 项问题 + 4 个工艺问题全部已修复并逐项实测验证**。改动集中在 `engine/`（15 个文件）、
+`.agents/skills/`（editor / reader 两张卡）与 `engine/state.py` 的 `INBOX_README`。
+错误码总数 47 → **52**（新增 `ledger_tx_order`、`ledger_arith_broken`、`amount_arith_unverified`、
+`latin_residue`、`beats_words_unmet`、`beats_words_drift`）。
+
+| 编号 | 修复做法（落点） | 验证结果 |
+|---|---|---|
+| P0-1 | 提案端拒收 `transactions[*].chapter ≠ proposal.chapter`（`state.py`）；`recompute` 先按章号稳定排序再重算（`state_sync.py`）；新增 `ledger_tx_order` 检查与错误码 | 注入被拒；`check` 报新码；`recompute` 重排后回到 0 errors |
+| P0-2 | `pack --open` 增加 `--as {director,drafter,editor,reader,critic}` 角色网关，`pack.py` 加 `ROLE_DENY`/`ROLE_DENY_SEGMENT`/`ROLE_ALLOW_EXTRA` 与 `deny_reason()`，越权抛 `PermissionError` → exit 1 | 15 例角色矩阵全部符合设计；非法角色 argparse exit 2 |
+| P1-1 | `power_level_shift` 与存量 `current.power_level` 比对：同值 skip+debug、变值报「旧」→「新」、无存量报首次登记 | 同值不报 / 变值报 / 首次登记三分支均正确 |
+| P1-2 | `_amount_scan` 增 `all_values`（全量）与 `values_capped`；比对一律用 `all_values`，展示仍截断但缺省列 5 个 + 「等 N 个」 | 旧口径静默丢掉的 24/100 已纳入比对 |
+| P1-3 | `pov` 的 `lived_events` 拆为「事件文本点到该角色」与新增 `same_chapter_events`（仅同章、不保证亲历） | 瘸子刘从 8 条「应知」降为 1 条真亲历 + 7 条同章 |
+| P1-4 | `_infer_active_chapter` 改为「锚点=max(最后定稿, 最后封存)，取 [1,锚点+1] 内第一个未封存章」，与 `status` 同口径；游离超前工件另列 `stray_ahead_artifacts` 只提示不改指针 | 注入游离 ch_007 beats 后 cockpit 仍指 ch_004，并显式告警 |
+| P1-5 | `ask` 增加「实体 → 关联线」反向索引（holders 知情圈 + 线所触章节正文共现），带 `via` 说明；`text_hits` 每章上限 1 → 3、总量 8 → 12 | `ask 陆沉舟` 现召回 GUN-003（原漏）；每章 3 句 |
+| P2-1 | 新增合法豁免写法 `skip/hold/defer/不涉及/不推进/顺延 GUN-XXX`，并更新错误码 remedy | 无豁免仍报，四种豁免写法均消警 |
+| P2-2 | beats 名册过滤改为「近章(int ≤ n+3) 与全书级(longline/非整数) 都收」 | `无主空灯`（GUN-001 longline）现进名册 |
+| P2-3 | 两工具共用 `NAME_SCAN_MIN_COUNT`；`config suggest` 新增 `alias_suggestions`（复用 `evidence.names`）；称谓类变体（周叔↔老周头）新增共享字判定 | `周叔 → 周大年/老周头` 两入口一致给出，并附真实可执行手势 |
+| P2-4 | `mention_not_present` 改按「章末尾段是否仍出现」定档：尾段在场未报=warn，尾段已无踪影=info（早退属常态）；并修掉「每章只报第一条」的 break | 早退三章全降 info；注入尾段在场仍报 warn |
+| P2-5 | 扫描验收/目标前先剥 HTML 注释与列表记号 | 未改写模板不再报警；真·空判据仍报 |
+| P2-6 | 新增 `param_write_guard`：`config set` 写入端拒收单字守望词（exit 2）；检查端对存量单字降 info 并提示改词形；`config guide` 文案与示例明确禁止单字 | 单字拒收 exit 2、双字放行；存量配置降 info |
+| P2-7 | 抽出共享 `evidence.quote_balance()`，补 ASCII 引号计数、奇偶配对、全角配对与 `ascii_residue`；`checks.review_skeleton` 改为复用同一函数（原两处重复实现） | ch_003 的 160 个 ASCII `"` 现被计数，`ascii_residue=True` |
+| P2-8 | 本章既无流水、提案也未带账目时，`amount_unmatched` 由 warn 降 info 并说明无可对账对象 | 无账目章 → info，有流水章 → warn |
+| P2-9 | `words_band_crowded` 阈值由「Δ<400」改为「Δ < max(50, 上一章下限×5%)」 | 2200→2400 放行；2200→2250/2300 仍报抖动 |
+| P2-10 | `evidence prev` 的 `must_keep` 增加 `_clean()`：剥注释、剥列表记号、剥成对强调记号 | `核心看点**：` 类残留已清除 |
+| P3-1 | `INBOX_README` 补完整 `ledger.pools` 契约（Stage 0 就该声明、`initial` 必填整数、`current` 严禁声明、既有池禁改 initial、先建池再记流水）；新增 CLI 通道 `ledger pool add <id> --name --unit --initial` | 新书 README 含新章节；`pool add` 成功/重复/非法 ID/缺参四路径退出码 0/1/2/2 |
+| P3-2 | `INBOX_README` 补 `timeline.clocks` 五字段契约与枚举取值，明确无 `id`、无 `deadline_ch`、`target_ch` 只收 int | 8 条契约逐条实测吻合（含 `ch_012`/`第12章`/`id`/`deadline_ch` 均被拒） |
+| P3-3 | 新增 `common.normalize_chapter_arg()`；`beats` 归一化时显式打印「已归一为 ch_NNN」，不再静默；提案端严格度保持不变 | `beats new ch_7` 现打印归一提示；提案 `target_ch:"ch_7"` 仍明确拒收 |
+| P3-4 | 新增 `ws_gate_code()`：多书歧义（用法错误）统一 exit 2、其余 exit 1；20 处调用方与 `cmd_status` 一并改口径 | `status`/`check`/`cockpit`/`sync` 四者统一返 2；指定 `-w` 后返 0 |
+| P3-5 | `config set` 形状非法的退出码 1 → 2，与同函数内其余用法错误一致 | `words_target '[2000]'` → exit 2 |
+| P3-6 | `lines_ops_in_proposal` 拆为 `lines_non_plant_ops_in_proposal` + `lines_plant_ops_in_proposal`（保留旧键兼容）；`sync` 输出分两行列出 | 「只 plant 新线」不再显示成「（无）」 |
+| P3-7 | 迁移重写版本戳改为「读旧表 + update」，保留 `created_at` | v1→v2 迁移后 `created_at` 保留 |
+| P3-8 | `cockpit` 的 `k.get("note","保密中")` 改为 `or "保密中"`，与 beats 口径统一 | `note:""` 现渲染为「保密中」，不再留空尾巴 |
+| P3-9 | 新增 `latin_residue` 检查与错误码；扫描前剥注释与 front-matter；白名单走新参数 `latin_allowlist` | 注入 `harder`/`approach` 被检出；白名单放行 `OK` 后只剩 `harder` |
+| P3-10 | `is_candidate_noise` 增 `known_names` 参数与六类机械噪声形态（实体名片段+尾随动词、数字+量词、律条序号、时间短语、指示词+量词、叠字开头） | 三章候选 3/7/10 → 0/2/1；注入真实新实体「苏九娘」仍能召回（无过度过滤） |
+| P3-11 | 新增两层算术闸门：`ledger_arith_broken`（balance_after 链 + `current` 与流水重算闭合，error）与 `amount_arith_unverified`（正文「由 X 变为 Y」与本章该池净变动比对，warning，支持中文数字） | 247→234 被检出（正确为 217）；247→217 放行；改错 `current`/`balance_after` 均报 error |
+
+### 工艺问题修复
+
+1. **Editor 系统性欠字** → `.agents/skills/editor/SKILL.md`：剪枝推演蓝图新增**第 0 步「字数硬合同」**
+   （下限取 `words_target` 与细纲自报带的较大者）并前置于剪枝决策；新增**第 2 步「回补决策」**
+   （砍掉的必须用更具体的动作/对白/物证等量补回，且不得换说法重写）；交付步骤 1 要求先抄下两个下限、
+   步骤 4 要求回执自报预估字数与合同下限。
+2. **beats 自报字数带无强制力** → 引擎补真实闸门：`check` 现将细纲 `words` 带与定稿实际 CJK 数比对，
+   超 15% 容差报 `beats_words_unmet`(warning)，容差内报 `beats_words_drift`(info)。
+   **副作用（如实记录）**：《沧澜拾灯》基线由 0/0/0 变为 0/0/**3 infos**——三章定稿（2046/2188/2166）
+   确实低于自报带 [2200, 2800]。这是新闸门如实报出的既有偏差，不是回归。
+3. **`beats_overlap` 高频触发** → `.agents/skills/reader/SKILL.md`：不可妥协底线由 4 条增至 5 条，
+   新增**第 0 条「提案文字的唯一合法来源是 final 正文」**，明确点名 `beats_overlap` 闸门、
+   历史 8 次触发的成因，并给出「这句话在 final 里能找到出处吗」的自查动作。
+4. **`state_watch` 单字引导危险** → 随 P2-6 一并修复（写入端拒收 + 检查端降级 + `config guide` 文案与示例修正）。
+
+### 修复过程中自查出的两个自身缺陷（已修）
+
+- `config suggest` 文本模式曾因新增的 `alias_suggestions` 不是 `PARAM_SPEC` 键而 `KeyError` 崩溃（exit 1）——
+  渲染器已改为派生建议单独渲染。
+- `ledger pool` 子解析器最初漏声明 `-w/--json`，导致 `-w <书>` 的值被 argparse 当成 `pool_action`
+  正向参数吃掉——已补声明。
+
+### 最终回归结果
+
+```
+python studio.py check --json -w workspace/沧澜拾灯
+  → ok=True  errors=0  warnings=0  infos=3（均为工艺问题 2 新闸门报出的既有字数偏差）
+python studio.py errcodes --json → total=52
+命令面 20 条书级命令抽查（status/cockpit/check/pack/ask/pov/calendar/graph/dashboard/
+  ledger recompute/snapshot list/config guide/config suggest/evidence ×5/review new/beats new）
+  全部 exit 0；proposal check ch_003 返 exit 1 属既有正确行为（该章已封存、无在途提案）；
+  errcodes 为全局命令不接受 -w，不带 -w 时 exit 0
+「工作正常、不必改」的闸门复验：unfilled_slot / candidate_leak / beats_fm_extra_keys /
+  beats_form_repeat_without_reason / final_drift 全部仍按预期触发
+```

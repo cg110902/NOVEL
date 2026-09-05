@@ -648,7 +648,59 @@ def render_pack(payload: dict) -> str:
     return "\n".join(out)
 
 
-def open_file(book: Path, rel: str) -> dict:
+# QA P0-2：`pack --open` 的角色禁读网关。
+# 原先 --open 只防越出工作区根，任何被授权跑 pack 的子代理都能一条命令读到
+# state/*、log/critic/*、bible/*、characters/* 与他章正文——AGENTS 第四节的
+# 「铁血准读/禁读清单」在机械层面等于零防护。现按 AGENTS 禁读清单逐角色落地：
+# 默认取最严格的 drafter，越权读取必须显式 --as <角色> 才可，且留 debug 痕迹。
+# 键 = 禁读前缀（相对书工作区，正斜杠）；值为 None 表示按特例单独判定。
+ROLE_DENY: dict[str, tuple[str, ...]] = {
+    # 主控：AGENTS 只禁 engine/*（本就在书工作区之外，safe_child_path 已拦）
+    "director": (),
+    # 起草员：禁 state/*、bible/*、characters/*、log/*（含 log/critic/*）
+    "drafter": ("state/", "bible/", "characters/", "log/"),
+    # 精修师：禁 bible/*、characters/*、state/*、log/*
+    "editor": ("state/", "bible/", "characters/", "log/"),
+    # 审计员：禁 raw/*、bible/*、characters/*、state/*
+    "reader": ("state/", "bible/", "characters/"),
+    # 催更员：禁 outlines/*、raw/*、bible/*、characters/*、log/*；state 仅 current.json
+    "critic": ("outlines/", "bible/", "characters/", "state/", "log/"),
+}
+# 路径「段」级禁读（前缀表达不了的，如 manuscript/vol_XX/raw/*）
+ROLE_DENY_SEGMENT: dict[str, tuple[str, ...]] = {
+    "reader": ("/raw/",),
+    "critic": ("/raw/",),
+}
+# critic 的唯一 state 例外（前情记忆）
+ROLE_ALLOW_EXTRA: dict[str, tuple[str, ...]] = {
+    "critic": ("state/current.json",),
+}
+
+
+def deny_reason(book: Path, rel: str, role: str) -> str | None:
+    """返回禁读理由；None 表示该角色可读。未知角色一律按最严格处理。"""
+    norm = rel.replace("\\", "/").lstrip("/")
+    if role not in ROLE_DENY:
+        return f"未知角色「{role}」（合法: {'/'.join(sorted(ROLE_DENY))}）"
+    if any(norm == a or norm.startswith(a) for a in ROLE_ALLOW_EXTRA.get(role, ())):
+        return None
+    for pre in ROLE_DENY.get(role, ()):
+        if norm == pre.rstrip("/") or norm.startswith(pre):
+            return f"角色「{role}」禁读 `{pre}`（AGENTS 第四节禁读清单）"
+    for seg in ROLE_DENY_SEGMENT.get(role, ()):
+        if seg in f"/{norm}":
+            return f"角色「{role}」禁读 `*{seg}*`（AGENTS 第四节禁读清单）"
+    return None
+
+
+def open_file(book: Path, rel: str, role: str = "drafter") -> dict:
+    reason = deny_reason(book, rel, role)
+    if reason:
+        common.debug(f"pack --open 网关拦截: {rel} as={role}（{reason}）")
+        raise PermissionError(
+            f"{reason}：{rel}\n"
+            f"   确需越权读取请显式声明角色：pack --open {rel} --as director"
+            "（仅主控有全量准读权；子代理不得自行提权）")
     p = common.safe_child_path(book, rel)
     if not p.is_file():
         raise ValueError(f"--open 目标不存在: {rel}")

@@ -86,7 +86,7 @@ def ws_gate(args) -> Path | None:
 
     解析失败 / project.json 缺失时：--json 模式输出结构化错误信封（stdout 可解析，
     不混文本）；文本模式保持人话提示；两种模式均只打印一次说明（QA P12 去重）。
-    返回 None 时调用方直接 return 1。
+    返回 None 时调用方 `return ws_gate_code()`（QA P3-4：按原因区分 1/2）。
     """
     js = bool(getattr(args, "json", False))
     book = _resolve_and_validate(args.workspace, suppress_text=js)
@@ -107,3 +107,15 @@ def ws_gate(args) -> Path | None:
             print_ws_not_found()
         return None
     return book
+
+
+def ws_gate_code() -> int:
+    """`ws_gate` 返回 None 时调用方应使用的退出码。
+
+    QA P3-4：多书歧义时 `status` 返 0、`check`/`cockpit`/`sync` 返 1，三者互不一致，
+    且都违反 engine/README.md 自述的「1=业务阻断 / 2=用法错误」——多本书没带 `-w`
+    是**调用方式不完整**，属用法错误，应为 2。按退出码判读的 Agent 原先会把 `status`
+    的「什么都没做」当成功。现统一：multiple_books → 2，其余（未初始化/越界/缺
+    project.json）→ 1。
+    """
+    return 2 if _RESOLVE_REASON == "multiple_books" else 1

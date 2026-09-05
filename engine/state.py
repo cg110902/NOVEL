@@ -121,6 +121,28 @@ lines 字段口径：
   字符串数字（"21"）与无补零章号（ch_7）均拒收。plant 必填 target_ch。
   knowledge（秘密线）plant 可携带选填 "holders": ["实体名/别名", …] 声明知情圈——
   pov 推导对知情圈内角色不再误标「不应知情」（防吃书）；缺省 = 除正文另行交代外全员不知情。
+ledger.pools 资源池口径（QA P3-1：此前全部 AI 向文档零说明，池只能读源码试出来）：
+  ⚠️ Stage 0 就应声明本书的资源池（灵石/银两/寿元/功勋…），不要等写到有账目才补。
+  新建池：{"pools": {"my_pool": {"name": "灵石", "unit": "块", "initial": 0}}}
+    · name/unit 必须是字符串；initial 必须是整数（缺省按 0）；
+    · ❌ 严禁声明 "current"——余额一律由流水重算，声明即整案拒收；
+    · 既有池禁止修改 initial（改动 = 拒收）；对既有池声明 name/unit 只出「声明已修订」提示；
+    · 流水 transactions[].pool 引用未声明的池 → `sync` 合并期拒收（「流水引用未声明资源池」），
+      所以**先建池、再记流水**；注意提案校验期不拦这一条，别以为 proposal check 过了就能合并；
+    · standard_currency（主通货）为引擎内置池，无需声明即可直接用。
+  记流水：{"ledger": {"transactions": [{"chapter": "ch_007", "pool": "my_pool", "delta": -30,
+           "type": "expense", "subject": "发生了什么", "counterparty": "对手方(选填)",
+           "note": "备注(选填)", "quote": "本章 final 支撑句(选填)"}]}}
+    · chapter 必须等于提案自身的 chapter（跨章写账 = 整案拒收，见 ledger_tx_order）；
+    · delta 用带符号整数（收入正、支出负）；balance_after 由引擎重算，不必手写。
+timeline.clocks 危机时钟口径（QA P3-2：此前字段契约完全未文档化，按常识写 id/deadline_ch 必被拒）：
+  合法字段仅五个，多一个即「含未知字段」整案拒收：
+    · name（字符串，必填）：时钟名，如「灯债半年滚利」；
+    · target_ch（整数，必填，≥1）：目标爆发/结算章号——⚠️ 只收 int，不收 "ch_012"/"第12章"/"longline"；
+    · urgency（选填）：low | medium | high | critical；
+    · desc（选填，字符串）：危机内容与超时后果；
+    · status（选填，默认 "Active"）：Active | Triggered | Defused | Expired（首字母大写）。
+  ❌ 没有 id 字段，也没有 deadline_ch——时钟按 name 去重，改名等于新建。
 引文柔性接地（建议携带，绝不阻断）：各条目（entities/lines/ledger.transactions/timeline.events/timeline.clocks/synopsis）
   可携带 "quote": "凭印象摘录的本章 final 支撑句"——引擎模糊接地：相似度 ≥85% 视为命中；
   60~85% 提示「近似命中」；更低仅提示「存疑」。全程只出提示、绝不阻断 sync，
@@ -634,6 +656,14 @@ def validate_proposal(proposal, expected_chapter: str | None = None) -> tuple[li
                     errors.append(f"ledger.transactions[{i}]: type=expense 但 delta={delta}（支出必须为负数）")
             if t.get("chapter") is not None and not re.fullmatch(r"ch_\d{3,}", str(t["chapter"])):
                 errors.append(f"ledger.transactions[{i}].chapter 须匹配 ch_NNN")
+            # QA P0-1：跨章账本注入闸——流水只能记在提案所属章，禁止改写其他章的账。
+            # 既有流水的修订走 ledger recompute / 显式修订通道，不走新提案追加。
+            if (t.get("chapter") is not None and expected_chapter
+                    and re.fullmatch(r"ch_\d{3,}", str(t["chapter"]))
+                    and str(t["chapter"]) != expected_chapter):
+                errors.append(
+                    f"ledger.transactions[{i}].chapter={t['chapter']} ≠ 提案所属章 {expected_chapter}"
+                    "（流水只能记在本章；跨章修正请走 `ledger recompute` 或新章提案，禁止改写他章账目）")
             for f in ("counterparty", "note", "quote"):
                 if f in t and not isinstance(t[f], str):
                     errors.append(f"ledger.transactions[{i}].{f} 必须为字符串")
