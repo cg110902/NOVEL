@@ -10,7 +10,7 @@ from pathlib import Path
 
 from .. import checks, common, evidence, snapshot, state
 
-from ._shared import _norm_ch, ws_gate
+from ._shared import _norm_ch, ws_gate, ws_gate_code
 
 
 # ---------------------------------------------------------------------------
@@ -63,7 +63,7 @@ def _append_bible_journal(book: Path, ch: str) -> None:
 def cmd_sync(args) -> int:
     book = ws_gate(args)  # QA P5：--json 错误路径也出 JSON 信封
     if book is None:
-        return 1
+        return ws_gate_code()
     ch = _norm_ch(args.chapter)
     if ch is None:
         print(f"❌ 无法解析章节编号: {args.chapter!r}（示例: 6 或 ch_006）")
@@ -285,8 +285,11 @@ def _cmd_proposal_check(book: Path, ch: str, args) -> int:
         if facts.get("due_lines"):
             dl = "、".join(f"{d['id']}(target ch_{d['target_ch']:03d})" for d in facts["due_lines"])
             print(f"   到期未结线: {dl}")
-            ops = facts.get("lines_ops_in_proposal") or []
-            print(f"   提案 lines 区操作: {'、'.join(ops) if ops else '（无）'}")
+            # QA P3-6：分列「推进/收束」与「新建」，避免把「本章只 plant 新线」显示成「（无）」
+            ops = facts.get("lines_non_plant_ops_in_proposal") or []
+            plants = facts.get("lines_plant_ops_in_proposal") or []
+            print(f"   提案 lines 区操作（推进/收束）: {'、'.join(ops) if ops else '（无）'}")
+            print(f"   提案 lines 区操作（新建 plant）: {'、'.join(plants) if plants else '（无）'}")
         else:
             print("   到期未结线: 无")
         if facts.get("kno_reveal_timing"):
@@ -494,7 +497,23 @@ def _cmd_proposal_auto(book: Path, ch: str, args) -> int:
         s = ln.strip().lstrip("-*· ").strip()
         if not s or s.startswith(("#", "<")):
             continue
-        if s.startswith("**内容") or s.startswith("**场景") or s.startswith("**收束") :
+        # QA P2-12：上面这行的 lstrip("-*· ") 会把行首的 `**` 一并吃掉
+        # （"- **内容**：x" → "内容**：x"），于是紧随其后的 s.startswith("**内容")
+        # 永远不可能命中——五种写法实测全部 False，该分支自始即是死代码
+        # （把 **内容** 放宽成 **内容 也同样不命中）。
+        # 死代码的真实后果只有一个：残留的尾部 ** 漏进状态字段——proposal auto
+        # 实跑产出过 current.situation = "本章核心戏剧目标**：把「无主空灯」…"。
+        # 另有一个连带缺口：空标签行（如 "- **场景脉络**："，冒号后无内容）
+        # 会被当成正文收进来，在 situation 尾部留下 "；场景脉络：" 碎片。
+        #
+        # 这里刻意只做两件明确正确的事，不扩大过滤范围：
+        #   ① 剥掉成对 ** 粗体标记（与 P2-10 的 _clean() 同一口径）；
+        #   ② 跳过「冒号后无内容」的空标签行。
+        # 不去按「内容/场景/收束」前缀整行跳过——细纲里 "- 🎬 **内容**：天刚亮，
+        # 陆沉舟进屋蹲在灶台前…" 恰恰是真正的场景正文，把死代码复活成会删正文的
+        # 行为变更既无人要求，也会让 situation 丢掉实际内容。
+        s = re.sub(r"\*\*", "", s).strip()
+        if re.match(r"^[^：:]{1,12}[：:]\s*$", s):
             continue
         cleaned = re.sub(r"^(?:章末物理刀口|[-·*]*\s*📍\s*\**章末物理刀口卡点\**)[:：]\s*", "", s).strip()
         if cleaned and not cleaned.startswith(("<", "<!--")):
@@ -546,7 +565,7 @@ def _cmd_proposal_auto(book: Path, ch: str, args) -> int:
 def cmd_proposal(args) -> int:
     book = ws_gate(args)  # QA P5：--json 错误路径也出 JSON 信封
     if book is None:
-        return 1
+        return ws_gate_code()
     action = getattr(args, "pp_action", None)
     if action not in ("new", "check", "auto", "verify"):
         print("❌ proposal 需要 new/auto/check/verify 子命令，如: python studio.py proposal verify ch_003")
@@ -601,7 +620,7 @@ def cmd_proposal(args) -> int:
 def cmd_snapshot(args) -> int:
     book = ws_gate(args)  # QA P5：--json 错误路径也出 JSON 信封
     if book is None:
-        return 1
+        return ws_gate_code()
     action = getattr(args, "snap_action", None)
     if action in (None, "list"):
         names = snapshot.list_snapshots(book)
@@ -693,7 +712,7 @@ def cmd_snapshot(args) -> int:
 def cmd_checkpoint(args) -> int:
     book = ws_gate(args)  # QA P5：--json 错误路径也出 JSON 信封
     if book is None:
-        return 1
+        return ws_gate_code()
 
     ch_arg = getattr(args, "chapter", None)
     if ch_arg:
@@ -823,7 +842,7 @@ def cmd_checkpoint(args) -> int:
 def cmd_state(args) -> int:
     book = ws_gate(args)  # QA P5：--json 错误路径也出 JSON 信封
     if book is None:
-        return 1
+        return ws_gate_code()
 
     action = getattr(args, "state_action", "show")
     if not action:
@@ -959,13 +978,77 @@ def cmd_state(args) -> int:
 # ---------------------------------------------------------------------------
 # ledger（账本手术刀：recompute）
 # ---------------------------------------------------------------------------
+_POOL_ID_RE = re.compile(r"^[a-z][a-z0-9_]{1,31}$")
+
+
+def _ledger_pool(book, args) -> int:
+    """QA P3-1：Stage 0 声明资源池的 CLI 通道。
+
+    此前资源池在全部 AI 向文档里只有一行示例，且没有任何 CLI 通道可声明——
+    `config guide` 不含池键、`state set` 禁登新事实，池只能靠 Stage 5 提案或读源码试出来。
+    本命令只做「新建池」，口径与提案端一致：`initial` 必填整数、`current` 由流水重算、
+    既有池不可在此改动（改期初请走 recompute/人工修订）。
+    """
+    js = bool(getattr(args, "json", False))
+    if getattr(args, "pool_action", None) != "add":
+        msg = "未知 pool 动作（合法: add）"
+        print(json.dumps({"ok": False, "error": msg}, ensure_ascii=False) if js else f"❌ {msg}")
+        return 2
+    pid = str(getattr(args, "pool_id", "") or "").strip()
+    name = str(getattr(args, "name", "") or "").strip()
+    unit = str(getattr(args, "unit", "") or "").strip()
+    # QA P0-3：口径与提案端一致——期初必填。原先这里 `or 0` 静默兜底，与本函数
+    # 文档字符串自述的「initial 必填整数」相矛盾，也与提案端新规则不一致。
+    _raw_initial = getattr(args, "initial", None)
+    if _raw_initial is None:
+        msg = "池的 --initial 为必填（期初余额；省略会被当成 0 从而污染账本基准）"
+        print(json.dumps({"ok": False, "error": msg}, ensure_ascii=False) if js else f"❌ {msg}")
+        return 2
+    initial = int(_raw_initial)
+    if not _POOL_ID_RE.match(pid):
+        msg = f"池 ID {pid!r} 非法：须为 2~32 位小写字母/数字/下划线，且以字母开头（如 lamp_ash）"
+        print(json.dumps({"ok": False, "error": msg}, ensure_ascii=False) if js else f"❌ {msg}")
+        return 2
+    if not name or not unit:
+        msg = "池的 --name 与 --unit 均为必填（显示名与计量单位）"
+        print(json.dumps({"ok": False, "error": msg}, ensure_ascii=False) if js else f"❌ {msg}")
+        return 2
+    try:
+        led = state.load_state(book, "ledger")
+    except ValueError as exc:
+        print(f"❌ 账本不可读: {exc}")
+        return 1
+    pools = led.setdefault("pools", {})
+    if pid in pools:
+        msg = (f"资源池 {pid} 已存在（{pools[pid].get('name')}）——本命令只新建池，"
+               "既有池的期初/名称请走提案或 ledger recompute 修订")
+        print(json.dumps({"ok": False, "error": msg}, ensure_ascii=False) if js else f"❌ {msg}")
+        return 1
+    pools[pid] = {"name": name, "unit": unit, "initial": initial, "current": initial}
+    try:
+        state.save_state(book, "ledger", led)
+    except ValueError as exc:
+        print(f"❌ 写入被结构闸门拒绝: {exc}")
+        return 1
+    payload = {"ok": True, "pool_id": pid, "name": name, "unit": unit, "initial": initial,
+               "note": "余额（current）此后一律由流水重算；记账走 ledger.transactions（提案）"}
+    if js:
+        print(json.dumps(payload, ensure_ascii=False))
+    else:
+        print(f"💱 已声明资源池 {pid}（{name}，单位「{unit}」，期初 {initial}）")
+        print("   余额此后由流水重算；记账请走提案的 ledger.transactions。")
+    return 0
+
+
 def cmd_ledger(args) -> int:
     book = ws_gate(args)  # QA P5：--json 错误路径也出 JSON 信封
     if book is None:
-        return 1
+        return ws_gate_code()
     action = getattr(args, "ledger_action", None) or "recompute"
+    if action == "pool":
+        return _ledger_pool(book, args)
     if action != "recompute":
-        print(f"❌ 未知 ledger 动作: {action}（合法: recompute）")
+        print(f"❌ 未知 ledger 动作: {action}（合法: recompute / pool add）")
         return 2
     js = bool(getattr(args, "json", False))
     try:
@@ -982,7 +1065,18 @@ def cmd_ledger(args) -> int:
                 running[pid] = int(p.get("initial", 0))
             except (TypeError, ValueError):
                 return [], [], f"资源池 {pid} initial 非整数，拒绝重算（先用 state set 修复 initial）"
-        tx_fixed: list[str] = []
+        # QA P0-1：重算按「章号」排序（同章内保持原有先后），否则后追加的他章流水
+        # 会排在时间序之后，balance_after 与章节编年史互相矛盾却仍被判定「自洽」。
+        txs = led.get("transactions") or []
+        order = sorted(range(len(txs)), key=lambda i: (common.chapter_token_to_num(
+            str(txs[i].get("chapter", ""))) or 0, i))
+        if order != list(range(len(txs))):
+            led["transactions"] = [txs[i] for i in order]
+            txs = led["transactions"]
+            tx_fixed_pre = [f"流水已按章号重排（{len(order)} 笔，原顺序与编年史不一致）"]
+        else:
+            tx_fixed_pre = []
+        tx_fixed: list[str] = tx_fixed_pre
         for i, t in enumerate(led.get("transactions") or [], 1):
             pool = t.get("pool")
             if pool not in running:

@@ -31,6 +31,9 @@ SENT_SPLIT_RE = re.compile(r"[。！？!?…；\n]+")
 QUOTE_LINE_RE = re.compile(r"^\s*[「“\"『]")
 SHINGLE_N = 12
 REP_MIN = 8
+# QA P2-3：专名扫描的入选下限，evidence.names 与 checks.param_suggestions 共用同一常量，
+# 避免两个工具阈值互不相交（实测 names 门槛 3 / suggest 门槛 6，输出零重叠，无可采纳项）。
+NAME_SCAN_MIN_COUNT = 3
 
 # --------------------------------------------------------------------------- 公共小件
 def final_chapters(book: Path) -> list[tuple[str, int, str]]:
@@ -258,8 +261,28 @@ def is_generic_locutive_noise(g: str) -> bool:
     return False
 
 
-def is_candidate_noise(g: str, ledger_pools: dict | None = None) -> bool:
-    """候选新实体/泛词的机械毛刺过滤（改进：账本池名仅精确匹配才过滤，避免‘灵石’误杀‘灵石矿’）。"""
+_NUM_CHARS = "零一二两三四五六七八九十百千半"
+_MEASURE_CHARS = "个只盏枚条张块份人日天年月次趟遍回桩件颗粒道本卷盒段片层批群堆串束成倍分厘"
+_LEAD_VERBS = "笞打骂问答笑哭走跑坐站看听说讲想念算数拿提搬推拉拆装找等送收买卖借还赔抵拘罚跪拜刨挖捡拾"
+_TIME_HEADS = ("去年", "今年", "明年", "前年", "上季", "下季", "昨", "今早", "今儿", "明儿")
+# 时间词（子串命中，兼容 n-gram 切片如「年冬天」）
+_TIME_WORDS = ("冬天", "夏天", "春天", "秋天", "开春", "入冬", "年关", "月底", "年初", "年尾")
+
+
+def is_candidate_noise(g: str, ledger_pools: dict | None = None,
+                       known_names: list[str] | None = None) -> bool:
+    """候选新实体/泛词的机械毛刺过滤（改进：账本池名仅精确匹配才过滤，避免‘灵石’误杀‘灵石矿’）。
+
+    QA P3-10：原先 `candidate_new_entity` 信噪比接近 0（实测 ch_002 七条、ch_003 十条
+    全是噪声：沉舟说 / 沉舟把 / 笞二十 / 半个饼 / 那十个 / 第十一条 / 去年冬天 / 这片滩 …）。
+    每章十几条纯噪声会稀释真正的告警。现补六类**纯机械**可判定的噪声形态：
+    ① 已知实体名的片段 + 尾随动词/介词（沉舟说、沉舟把）；
+    ② 数字 + 量词（笞二十、半个饼、那十个、拘三日）；
+    ③ 律条/序号引用（第十一条、第七条、司律第）；
+    ④ 时间短语（去年冬天）；
+    ⑤ 指示词 + 量词开头（这片滩）；
+    ⑥ 叠字开头（年年刨）。
+    """
     if not g:
         return True
     head = g[0]
@@ -270,6 +293,29 @@ def is_candidate_noise(g: str, ledger_pools: dict | None = None) -> bool:
     if head in "我你他她它咱您":
         return True
     if is_generic_locutive_noise(g):
+        return True
+    # ① 已知实体名片段 + 尾随单字（多为动词/介词）：沉舟说 / 沉舟把
+    if known_names and len(g) >= 3:
+        stem = g[:-1]
+        if any(len(nm) >= 2 and stem in nm for nm in known_names):
+            return True
+    # ② 数字 + 量词：笞二十 / 半个饼 / 那十个 / 拘三日
+    if any(c in _NUM_CHARS for c in g) and any(c in _MEASURE_CHARS for c in g):
+        return True
+    # ③ 律条/序号：第十一条 / 第七条 / 司律第 / 到第十
+    if "第" in g:
+        return True
+    # ④ 时间短语：去年冬天（含被 n-gram 切出的片段「年冬天」）
+    if any(t in g for t in _TIME_HEADS) or any(t in g for t in _TIME_WORDS):
+        return True
+    # ⑤ 指示词 + 量词开头：这片滩 / 那些盏
+    if head in "这那每" and len(g) >= 2 and g[1] in _MEASURE_CHARS:
+        return True
+    # ⑥ 叠字开头：年年刨 / 天天走（叠字本身即语法形态，不是专名）
+    if len(g) >= 3 and g[0] == g[1]:
+        return True
+    # 前置动词 + 数字：笞二十 / 拘三日（已被 ② 覆盖时不重复判定）
+    if head in _LEAD_VERBS and any(c in _NUM_CHARS for c in g[1:]):
         return True
     for p in (ledger_pools or {}).values():
         for term in (p.get("name"), p.get("unit")):
@@ -332,8 +378,15 @@ def _amount_scan(text: str, pools: dict) -> list[dict]:
                 sample = f"{m}{unit or name}"
                 if sample not in samples:
                     samples.append(sample)
+            # QA P1-2：原实现是 sorted(distinct)[:8]——静默丢掉最大的金额，而大额恰恰是
+            # 金额对照最该看的。改为「最小 4 + 最大 4」保序展示，并显式给出截断标记与
+            # 全量集合（checks 的 amount_unmatched / amount_by_quote 一律用全量比对）。
+            distinct = sorted({v for v, _ in recs})
+            capped = len(distinct) > 8
+            shown = distinct if not capped else sorted(set(distinct[:4]) | set(distinct[-4:]))
             out.append({"pool": pid, "unit": unit or name, "count": len(recs),
-                        "values": sorted({v for v, _ in recs})[:8], "samples": samples[:3]})
+                        "values": shown, "all_values": distinct, "values_capped": capped,
+                        "samples": samples[:3]})
     return out
 
 
@@ -367,6 +420,37 @@ def line_sort_key(g: dict, kind: str) -> tuple:
     prio = int(prio) if isinstance(prio, int) and not isinstance(prio, bool) and prio >= 1 else 1
     t = g.get("target_ch")
     return (0 if isinstance(t, int) else 1, -prio, t if isinstance(t, int) else 0, str(g.get("id", "")))
+
+
+def quote_balance(text: str) -> dict:
+    """引号收支：全角 + ASCII 计数、配对判定。
+
+    QA P2-7：原实现只数 `「」“”『』`，对 ASCII 引号全盲——实测三章定稿共用 96 个
+    ASCII `"`，quote_balance 全 0，既没提示中文稿应改用全角引号，也没检查 ASCII 引号
+    是否配对。现补 ASCII 计数 + 奇偶配对判定 + 全角引号自身配对判定。
+    原先 `evidence.candidates` 与 `checks.review_skeleton` 各有一份重复实现，现共用本函数。
+    """
+    ascii_dq = text.count('"')
+    ascii_sq = text.count("'")
+    pairs = {q: text.count(q) for q in "「」“”『』"}
+    unbalanced: list[str] = []
+    for a, b in (("「", "」"), ("“", "”"), ("『", "』")):
+        if pairs[a] != pairs[b]:
+            unbalanced.append(f"{a}{b} {pairs[a]}/{pairs[b]}")
+    if ascii_dq % 2:
+        unbalanced.append(f'ASCII " 共 {ascii_dq} 个（奇数，必有一处未闭合）')
+    if ascii_sq % 2:
+        unbalanced.append(f"ASCII ' 共 {ascii_sq} 个（奇数）")
+    return {
+        **pairs,
+        '"': ascii_dq,
+        "'": ascii_sq,
+        "ascii_quote_total": ascii_dq + ascii_sq,
+        "unbalanced": unbalanced,
+        "ascii_residue": bool(ascii_dq or ascii_sq),
+        "note": ("中文稿应使用全角引号；ascii_residue=true 表示正文仍残留 ASCII 引号，"
+                 "unbalanced 非空表示有引号未成对。"),
+    }
 
 
 def candidates(book: Path, ch: str) -> dict:
@@ -463,7 +547,7 @@ def candidates(book: Path, ch: str) -> dict:
     cur = state.load_state(book, "current")
     out["state_digest"] = {k: v for k, v in cur.items() if v not in ("", [], None)}
 
-    out["quote_balance"] = {q: text.count(q) for q in "「」“”『』"}
+    out["quote_balance"] = quote_balance(text)
     out["residue"] = {"slot": len(re.findall(r"\{\{\s*slot:", text)),
                       "candidate": len(re.findall(r"candidate_", text))}
     return out
@@ -478,12 +562,25 @@ def prev_contrast(book: Path, ch: str) -> dict:
     def _fields(path: Path) -> dict:
         text = path.read_text(encoding="utf-8", errors="replace")
         fm = common.parse_front_matter(text)
-        must = [ln.strip().lstrip("-*· ").strip() for ln in common.md_section(text, r"^##\s*(?:必须保留|.*契约)")]
+
+        def _clean(ln: str) -> str:
+            # QA P2-10：原实现只 lstrip("-*· ")，只吃掉行首记号，粗体的**闭合** `**`
+            # 会残留（`- **核心看点**：…` → `核心看点**：…`），把 markdown 记号当正文
+            # 喂给下游。现剥注释、剥列表记号、剥成对强调记号。
+            s = re.sub(r"<!--.*?-->", "", ln, flags=re.S)
+            s = re.sub(r"^[\s>*+\-·]+", "", s)
+            s = re.sub(r"\*\*(.+?)\*\*", r"\1", s)
+            s = re.sub(r"__(.+?)__", r"\1", s)
+            s = s.replace("**", "").replace("__", "")
+            s = re.sub(r"(?<!\w)\*([^*]+?)\*(?!\w)", r"\1", s)
+            return s.strip()
+
+        must = [_clean(ln) for ln in common.md_section(text, r"^##\s*(?:必须保留|.*契约)")]
         return {"form": fm.get("form", ""), "form_reason": fm.get("form_reason", ""),
                 "style_notes": fm.get("style_notes", ""), "pov": fm.get("pov", ""),
                 "words": fm.get("words", ""),
                 "tension_curve": fm.get("tension_curve", ""),
-                "must_keep": [s for s in must if s and not s.startswith(("<", "#"))]}
+                "must_keep": [s for s in must if s and not s.startswith(("#", "<"))]}
 
     out: dict = {"kind": "prev", "chapter": tok}
     prev_files = common.find_chapter_files(book, "beats", n - 1) if n > 1 else []
@@ -706,24 +803,74 @@ def ask(book: Path, query: str) -> dict:
     if ent_hits:
         out["entities"] = ent_hits[:8]
 
-    # 2) 线索命中（ID 精确 或 名称/内容词命中）
+    # 2) 线索命中
+    # QA P1-5：原实现只对 name/plan/secret/parties/... 做字面子串匹配，于是主角的
+    # 全书驱动力线（如 GUN-003「娘的半缕残魂」——name 与 plan 里都没有主角名字）
+    # 在 `ask 陆沉舟` 时整条漏掉；而 SKILL 的取证纪律是「凡要落笔一个旧数字且它不在
+    # 眼前 → 必须先 ask」，漏召回直接导致主控凭印象编数。现补一层反向索引：
+    #   a) holders 知情圈命中；
+    #   b) 线所触章节（plant/update/escalate/remind/resolve/target）的定稿正文里
+    #      出现过该实体名或别名 → 记为「同章在场」关联。
+    # 直接字面命中仍排在前面，间接命中带 via 说明，主控可自行判断权重。
     try:
         lines = state.load_state(book, "lines")
     except (ValueError, FileNotFoundError):
         lines = {}
-    line_hits = []
+    # 逐章在场实体（名字/别名），供反向索引使用
+    ch_entities: dict[int, set[str]] = {}
+    try:
+        _ent_names = [nm for nms in lookup.values() for nm in nms if nm and len(nm) >= 2]
+    except Exception:
+        _ent_names = []
+    if _ent_names:
+        for tok, _num, text in final_chapters(book):
+            n = common.chapter_token_to_num(tok)
+            if n:
+                ch_entities[n] = {nm for nm in _ent_names if nm in text}
+
+    def _touched_chapters(g: dict) -> set[int]:
+        nums: set[int] = set()
+        for k in ("plant_ch", "update_ch", "escalate_ch", "remind_ch", "resolve_ch", "target_ch"):
+            v = g.get(k)
+            if isinstance(v, list):
+                nums.update(n for n in (common.chapter_token_to_num(x) for x in v) if n)
+            else:
+                n = common.chapter_token_to_num(v)
+                if n:
+                    nums.add(n)
+        return nums
+
+    direct: list[dict] = []
+    indirect: list[dict] = []
     for arr, kind in (("foreshadows", "foreshadow"), ("misunderstandings", "misunderstanding"),
                       ("knowledge", "knowledge")):
         for g in lines.get(arr, []):
             gid = str(g.get("id", ""))
             blob = " ".join(str(g.get(k, "")) for k in
                             ("id", "name", "plan", "content", "parties", "truth", "secret", "note"))
+            rec = {"id": gid, "kind": kind, "status": g.get("status"),
+                   "target_ch": g.get("target_ch"),
+                   "desc": str(g.get("name") or g.get("secret") or g.get("content") or "")[:60]}
             if q == gid or any(t in blob for t in terms):
-                line_hits.append({"id": gid, "kind": kind, "status": g.get("status"),
-                                  "target_ch": g.get("target_ch"),
-                                  "desc": str(g.get("name") or g.get("secret") or g.get("content") or "")[:60]})
+                direct.append(rec)
+                continue
+            # 反向索引
+            via = []
+            holders = [str(h).strip() for h in (g.get("holders") or []) if str(h).strip()]
+            if holders and any(nm and len(nm) >= 2 and any(nm in h or h in nm for h in holders)
+                               for nm in terms):
+                via.append("holders 知情圈")
+            co = sorted(n for n in _touched_chapters(g)
+                        if any(t in ch_entities.get(n, set()) for t in terms if len(t) >= 2))
+            if co:
+                via.append("同章在场 " + "/".join(f"ch_{n:03d}" for n in co[:3]))
+            if via:
+                indirect.append({**rec, "via": "；".join(via)})
+    line_hits = direct + indirect
     if line_hits:
-        out["lines"] = line_hits[:10]
+        out["lines"] = line_hits[:12]
+        if indirect:
+            out["lines_via_reverse_index"] = [r["id"] for r in indirect]
 
     # 3) 账本命中
     try:
@@ -784,17 +931,22 @@ def ask(book: Path, query: str) -> dict:
         out["current"] = {k: v for k, v in cur.items() if v not in ("", [], None)}
 
     # 6) 正文原句证据（近章优先，仅用 ≥2 字词匹配）
+    # QA P1-5：原实现每章只取第一句命中就 break，实测 ch_001 提及 18 次只回 1 句，
+    # 主控拿到的证据面过窄。改为每章最多 3 句、总量 12 句。
     usable = [t for t in dict.fromkeys(terms) if len(t) >= 2]
     text_hits = []
     if usable:
         for tok, _, text in reversed(final_chapters(book)):
+            per_ch = 0
             for sent in _sentences(text):
                 hit_terms = [t for t in usable if t in sent]
                 if hit_terms:
                     text_hits.append({"chapter": tok, "terms": hit_terms[:3],
                                       "quote": sent.strip()[:90]})
-                    break
-            if len(text_hits) >= 8:
+                    per_ch += 1
+                    if per_ch >= 3:
+                        break
+            if len(text_hits) >= 12:
                 break
     if text_hits:
         out["text_hits"] = text_hits
@@ -876,17 +1028,27 @@ def pov(book: Path, name: str) -> dict:
         tl = state.load_state(book, "timeline")
     except (ValueError, FileNotFoundError):
         tl = {}
-    knows = {"public_knowledge": [], "lived_events": []}
+    knows = {"public_knowledge": [], "lived_events": [], "same_chapter_events": []}
     for k in lines.get("knowledge", []):
         if str(k.get("status", "")).strip().lower() == "revealed":
             knows["public_knowledge"].append({"id": k.get("id"), "secret": str(k.get("secret", ""))[:50]})
     knows["public_knowledge"] = knows["public_knowledge"][-8:]
+    # QA P1-3：原实现把「该角色登场章节的全部编年史」一律算作他「应知」，于是主角独自
+    # 在家的私密场景也会被标给同章出场过的配角——正好把知情差喂反。现按事件文本是否
+    # 点到该角色（名字/别名）分两档：lived_events = 事件里有他，可当亲历；
+    # same_chapter_events = 仅同章发生，明确不保证亲历。
     for ev in tl.get("events") or []:
         ch_num = common.chapter_token_to_num(ev.get("chapter")) or 0
-        if ch_num and ch_num in seen_chapters:
-            knows["lived_events"].append({"chapter": ev.get("chapter"),
-                                          "event": str(ev.get("event", ""))[:50]})
+        if not (ch_num and ch_num in seen_chapters):
+            continue
+        ev_text = str(ev.get("event", ""))
+        rec = {"chapter": ev.get("chapter"), "event": ev_text[:50]}
+        if any(nm and nm in ev_text for nm in names if len(str(nm)) >= 2):
+            knows["lived_events"].append(rec)
+        else:
+            knows["same_chapter_events"].append(rec)
     knows["lived_events"] = knows["lived_events"][-8:]
+    knows["same_chapter_events"] = knows["same_chapter_events"][-8:]
     out["knows"] = knows
     # QA P17：holders 知情圈——秘密线的知情方角色不再被误标「不应知情」
     def _in_holders(k: dict) -> bool:
@@ -919,7 +1081,11 @@ def pov(book: Path, name: str) -> dict:
                                    "desc": str(g.get("name") or g.get("content") or g.get("secret") or "")[:40]})
     if open_lines:
         out["open_lines"] = open_lines[:10]
-    out["notes"] = ["本命令由现有账本推导（advisory）；语义与写法裁决归主控/起草员。"]
+    out["notes"] = [
+        "本命令由现有账本推导（advisory）；语义与写法裁决归主控/起草员。",
+        "knows.lived_events = 事件文本点到该角色，可当亲历；"
+        "knows.same_chapter_events = 仅同章发生，不保证亲历（写对手戏严禁当作他知道）。",
+    ]
     return out
 
 
@@ -941,6 +1107,14 @@ def names(book: Path) -> dict:
     known: set[str] = {str(proj.get("protagonist", "")).strip()}
     for names_list in lookup.values():
         known.update(nm for nm in names_list if nm)
+    # QA P2-3：别名 → 规范实体名反查表。`known` 混装规范名与别名，命中别名时必须
+    # 解析回规范名，否则给出的 `state set 'entities.<别名>.aliases'` 手势执行即失败。
+    _canonical: dict[str, str] = {}
+    for primary, names_list in lookup.items():
+        _canonical[primary] = primary
+        for a in names_list:
+            if a:
+                _canonical.setdefault(a, primary)
     try:
         pools = state.load_state(book, "ledger").get("pools", {})
     except (ValueError, FileNotFoundError):
@@ -973,15 +1147,36 @@ def names(book: Path) -> dict:
     raw_cands = []
     for w, chs in per.items():
         total = sum(chs.values())
-        if total < 3 or w in known or is_candidate_noise(w, pools):
+        if total < NAME_SCAN_MIN_COUNT or w in known or is_candidate_noise(w, pools):
             continue
         raw_cands.append((w, total, sorted(chs)))
 
     known_variants, unregistered = [], []
+    # QA P2-3：称谓类变体（周叔 ↔ 老周头、陈嫂 ↔ 陈家的）既不互相包含、首字也不同，
+    # 旧 host 判定三条全部落空 → 掉进 unregistered，于是「周叔 = 老周头别名」这条唯一
+    # 可执行的建议两边都不给。补一条：共享一个非通用汉字 + 候选是 2~3 字称谓词。
+    _APPELLATION_TAIL = "叔伯婆嫂爷娘哥姐师公姑婶舅姨"
+    _GENERIC_CHARS = set("的了一是个人在中有大这上不为和与到说就把被从向他她它")
+
+    def _appellation_host(w: str) -> list[str]:
+        if not (2 <= len(w) <= 3) or w[-1] not in _APPELLATION_TAIL:
+            return []
+        core = {c for c in w if c not in _GENERIC_CHARS and c not in _APPELLATION_TAIL}
+        if not core:
+            return []
+        return sorted({k for k in known if len(k) >= 2 and k != w
+                       and any(c in k for c in core)})
+
     for w, total, chs in raw_cands:
         hosts = sorted({k for k in known if len(k) >= 2 and
                         (k in w or w in k or
                          (k[0] == w[0] and difflib.SequenceMatcher(None, w, k).ratio() >= 0.5))})
+        hosts = sorted(set(hosts) | set(_appellation_host(w)))
+        # QA P2-3 修正：`known` 混装了规范实体名与别名，于是 host 可能落到**别名**上
+        # （实测「周叔」被判给「周大年」，而 周大年 只是 老周头 的别名）。据此给出的
+        # `state set 'entities.周大年.aliases'` 手势执行即失败（「实体不存在，拒绝猜测」），
+        # 等于给出一条跑不通的建议。现统一解析回规范实体名。
+        hosts = sorted({_canonical.get(h, h) for h in hosts})
         if hosts:
             known_variants.append({"name": w, "count": total, "chapters": chs[-5:], "of": hosts[:3]})
         else:

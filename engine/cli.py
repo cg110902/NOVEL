@@ -206,7 +206,11 @@ def _build_subparsers(sub: argparse._SubParsersAction) -> None:
     q.add_argument("chapter", nargs="?", help="目标章节（如 7 或 ch_007）")
     q.add_argument("--lean", action="store_true", help="只给 P0")
     q.add_argument("--full", action="store_true", help="P1 命中实体附卡全文")
-    q.add_argument("--open", dest="open_path", help="取工作区内任一文件原文（相对路径）")
+    q.add_argument("--open", dest="open_path",
+                   help="取工作区内文件原文（相对路径）；受角色禁读网关约束，默认 --as drafter")
+    q.add_argument("--as", dest="as_role", default="drafter",
+                   choices=("director", "drafter", "editor", "reader", "critic"),
+                   help="--open 的准读角色（默认 drafter=最严格；主控用 director 才有全量准读权）")
     q.set_defaults(func=cmd_pack)
 
     q = sub.add_parser("ask", help="全书事实检索机（只读取证：六表+final 原句双域，带章节出处）")
@@ -307,13 +311,31 @@ def _build_subparsers(sub: argparse._SubParsersAction) -> None:
     r.set_defaults(func=cmd_snapshot)
     q.set_defaults(func=cmd_snapshot)
 
-    q = sub.add_parser("ledger", help="账本手术刀：recompute（余额按流水全量重算修复）")
+    q = sub.add_parser("ledger", help="账本手术刀：recompute（余额按流水全量重算修复）/ pool add（Stage 0 声明资源池）")
     _add_common_opts(q)
     lg = q.add_subparsers(dest="ledger_action")
     r = lg.add_parser("recompute", help="余额与 balance_after 按流水全量重算并修复")
     r.add_argument("-w", "--workspace", default=argparse.SUPPRESS)
     r.add_argument("--json", action="store_true", default=argparse.SUPPRESS)
     r.set_defaults(func=cmd_ledger)
+    # QA P3-1：Stage 0 原先没有任何 CLI 通道声明资源池（config guide 不含池键、
+    # state set 禁登新事实），池只能靠 Stage 5 提案或读源码试出来。
+    pa = lg.add_parser("pool", help="资源池管理")
+    # QA P3-1：pool 子解析器必须自带 -w/--json，否则 `-w <书>` 的值会被 argparse
+    # 当成 pool_action 正向参数吃掉（实测 invalid choice: 'workspace/probe'）。
+    pa.add_argument("-w", "--workspace", default=argparse.SUPPRESS)
+    pa.add_argument("--json", action="store_true", default=argparse.SUPPRESS)
+    pa_sub = pa.add_subparsers(dest="pool_action")
+    padd = pa_sub.add_parser("add", help="声明一个新资源池（Stage 0 用；余额由流水重算，不接受 current）")
+    padd.add_argument("pool_id", help="池 ID（英文小写下划线，如 lamp_ash）")
+    padd.add_argument("--name", required=True, help="显示名（如 灯烬）")
+    padd.add_argument("--unit", required=True, help="计量单位（如 盏）")
+    padd.add_argument("--initial", type=int, required=True,
+                      help="期初值（整数，必填——省略会被当成 0 从而污染账本基准）")
+    padd.add_argument("-w", "--workspace", default=argparse.SUPPRESS)
+    padd.add_argument("--json", action="store_true", default=argparse.SUPPRESS)
+    pa.set_defaults(func=cmd_ledger)
+    padd.set_defaults(func=cmd_ledger)
     q.set_defaults(func=cmd_ledger)
 
     q = sub.add_parser("export", help="全书编译：--txt 拼接正文，--views 渲染状态视图")

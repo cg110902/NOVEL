@@ -164,6 +164,21 @@ def chapter_number_from_name(name: str) -> int | None:
     return int(m.group(1)) if m else None
 
 
+def normalize_chapter_arg(raw: object) -> tuple[str | None, bool]:
+    """把任意章号写法归一为规范 `ch_NNN`，并回报**是否发生了改写**。
+
+    QA P3-3：`beats new ch_7` 会静默建出 ch_007 的文件，而提案 `target_ch:"ch_7"`
+    被明确拒收——同一个写法在两个入口严格度相反，且 CLI 侧完全不吭声。提案端的严格
+    是账本契约（必须 `^ch_\\d{3,}$`），不该放松；该修的是 CLI 的**静默**。
+    返回 (规范 token 或 None, 是否被改写)。
+    """
+    n = chapter_token_to_num(raw)
+    if not n:
+        return None, False
+    tok = f"ch_{n:03d}"
+    return tok, str(raw).strip() != tok
+
+
 def file_matches_chapter(path: Path | str, target: object) -> bool:
     """ch_007 / ch_007_v2 / chapter7_* 等命名都能对上目标章号；支持 vol_01/ch_007 跨卷精准过滤；target=None 全通过。"""
     if target is None:

@@ -17,19 +17,27 @@ from . import checks, common, graph, state
 
 
 def _infer_active_chapter(book: Path) -> str:
-    """自动推断当前最需要推进或处理的章节编号。"""
-    ch_nums = set()
+    """自动推断当前最需要推进或处理的章节编号。
+
+    QA P1-4：口径与 `status` 的「下一章」统一——**连续推进，绝不跳章**。
+    原实现取 beats/raw/final/inbox/synopsis 里出现过的最大章号，于是一份游离的
+    未来章 beats（如手滑 `beats new ch_7`）会把工序指针劫持到 ch_007，而 `status`
+    仍说 ch_005；主控按 SKILL「严禁猜测工序，直接执行 next_action.command」就会跳过
+    中间章。现改为：锚点 = max(最后定稿章, 最后封存章)，指针 = [1, 锚点+1] 里第一个
+    尚未封存的章号。
+    """
+    nums_with_artifact: set[int] = set()
     for area in ("beats", "raw", "final"):
         for f in common.find_chapter_files(book, area):
             num = common.chapter_number_from_name(f.name)
             if num:
-                ch_nums.add(num)
+                nums_with_artifact.add(num)
     inbox = book / "state" / "inbox"
     if inbox.is_dir():
         for p in inbox.glob("ch_*.json"):
             num = common.chapter_number_from_name(p.name)
             if num:
-                ch_nums.add(num)
+                nums_with_artifact.add(num)
 
     synopsis = state.load_state(book, "synopsis")
     syn = synopsis.get("chapters", {})
@@ -40,21 +48,28 @@ def _infer_active_chapter(book: Path) -> str:
     else:
         synced_chapters = set()
 
-    for sc in synced_chapters:
-        num = common.chapter_token_to_num(sc)
-        if num:
-            ch_nums.add(num)
+    synced_nums = {n for n in (common.chapter_token_to_num(sc) for sc in synced_chapters) if n}
+    final_nums = {common.chapter_number_from_name(f.name) or 0
+                  for f in common.find_chapter_files(book, "final")}
+    final_nums.discard(0)
 
-    if not ch_nums:
-        return "ch_001"
+    anchor = max([0, *synced_nums, *final_nums])
+    for n in range(1, anchor + 2):
+        if n not in synced_nums:
+            return f"ch_{n:03d}"
+    return f"ch_{anchor + 1:03d}"
 
-    max_ch = max(ch_nums)
-    ch_tok = f"ch_{max_ch:03d}"
 
-    if ch_tok in synced_chapters:
-        # 已定稿封存，推进下一章
-        return f"ch_{max_ch + 1:03d}"
-    return ch_tok
+def stray_artifacts(book: Path, active_ch: str) -> list[str]:
+    """QA P1-4：超前于工序指针的游离工件（只提示，不改变指针）。"""
+    n_active = common.chapter_token_to_num(active_ch) or 0
+    out: list[str] = []
+    for area in ("beats", "raw", "final"):
+        for f in common.find_chapter_files(book, area):
+            num = common.chapter_number_from_name(f.name)
+            if num and num > n_active:
+                out.append(f"{area}/{f.name}")
+    return sorted(out)
 
 
 def _find_chapter_vol(book: Path, ch: str) -> str:
@@ -239,7 +254,10 @@ def _extract_dramatic_irony(lines: dict, scene_chars: list[str]) -> list[str]:
             continue
         kid = k.get("id", "KNO")
         secret = str(k.get("secret", ""))
-        note = str(k.get("note", "保密中"))
+        # QA P3-8：原写法 k.get("note", "保密中") 对**空串**失效——state.py 落盘时写的
+        # 是 "note": ""，于是默认值取不到，dramatic_irony 输出留下空尾巴「知情边界：」。
+        # beats 里同一信息用 `or "保密中"` 显示正常，两处口径现统一。
+        note = str(k.get("note") or "保密中")
         if any(c in secret or c in note for c in char_set) or not scene_chars:
             irony_list.append(f"[{kid} 秘密差] 核心秘密：{secret} ｜ 知情边界：{note}")
 
@@ -482,6 +500,10 @@ def build_cockpit_briefing(book: Path, ch: str | None = None) -> dict[str, Any]:
     ch_num = common.chapter_token_to_num(target_ch) or 1
     ch_tok = f"ch_{ch_num:03d}"
     vol = _find_chapter_vol(book, ch_tok)
+    # QA P1-4：游离的超前工件只提示，不参与指针推断
+    stray = stray_artifacts(book, ch_tok)
+    if stray:
+        common.debug(f"cockpit: 工序指针 {ch_tok}；游离超前工件 {stray}")
 
     cur = {key: state.load_state(book, key) for key in ("current", "entities", "lines", "synopsis", "timeline")}
     timings["state_load_ms"] = round((_time.perf_counter() - t_start) * 1000, 1)
@@ -681,7 +703,8 @@ def build_cockpit_briefing(book: Path, ch: str | None = None) -> dict[str, Any]:
             "vol": vol,
             "current_stage": curr_stage,
             "status": status,
-            "next_action": next_action
+            "next_action": next_action,
+            "stray_ahead_artifacts": stray
         },
         "dramatic_momentum": {
             "aftershock": aftershock,
@@ -744,6 +767,11 @@ def render_cockpit_terminal(briefing: dict[str, Any]) -> None:
             f"[bold green]👉 下一步执行指令：[/bold green][bold white]{act['instruction']}[/bold white]\n"
             f"[dim]   建议操作/命令：{act['command']} ｜ 交付目标：{act['target_file']}[/dim]"
         )
+        # QA P1-4：游离的超前工件显式提示，避免主控误以为指针跳章
+        if wf.get("stray_ahead_artifacts"):
+            wf_text += ("\n\n[bold yellow]⚠️ 游离超前工件（不参与指针推断）：[/bold yellow]"
+                        + "、".join(wf["stray_ahead_artifacts"][:6])
+                        + "\n[dim]   工序按「连续推进，绝不跳章」定位；如为误建请删除或补齐中间章。[/dim]")
         console.print(Panel(wf_text, title=f"🎯 [bold]工作流导航 ({briefing['target_chapter']})[/bold]", border_style="cyan"))
 
         # 2. 戏剧动力学看板

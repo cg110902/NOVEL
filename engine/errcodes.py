@@ -45,6 +45,17 @@ REGISTRY: dict[str, ErrCode] = {c.code: c for c in (
     # ---- 状态机 ----
     _reg("state_inconsistent", "error", "状态数据不一致（如账本余额与流水对不上）",
          "运行 python studio.py ledger recompute 重新核对账本，或手动平账。"),
+    _reg("ledger_tx_order", "error", "账本流水的章节顺序错乱（他章流水插在本章之后），"
+                                    "balance_after 已与编年史矛盾",
+         "运行 python studio.py ledger recompute——重算会先按章号重排流水再重算余额与 "
+         "balance_after；重排后仍有倒序说明存在非法跨章流水，请核对是哪一章的提案写错了 chapter。"),
+    _reg("ledger_arith_broken", "error", "账本算术不闭合（balance_after 与 initial+累计流水矛盾，"
+                                        "或 pools.current 与全部流水重算结果不符）",
+         "运行 python studio.py ledger recompute 按流水重算余额与 balance_after；"
+         "若重算后仍不闭合，说明某笔 delta 本身写错，请核对该章提案的金额。"),
+    _reg("amount_arith_unverified", "warning", "正文声称的余额变动与账本本章净变动不闭合",
+         "正文里的「由 X 变为 Y」必须与本章该资源池的流水净变动一致；"
+         "请改正文数字，或补一条 ledger 流水，使跨文档算术闭合。"),
     _reg("state_unreadable", "error", "状态文件缺失或损坏无法读取",
          "检查 state 目录下的 JSON 文件语法并修复，或从快照回滚。"),
     _reg("unregistered_character", "error", "登场人物未在实体注册表登记（吃书风险）",
@@ -68,6 +79,9 @@ REGISTRY: dict[str, ErrCode] = {c.code: c for c in (
     # ---- 提案与候选 ----
     _reg("candidate_leak", "error", "candidate_* 候选字段泄漏进正式数据",
          "将未定命名 candidate_* 替换为具体的角色名或地名。"),
+    _reg("latin_residue", "warning", "中文稿正文含拉丁字母残留（起草夹带的英文词）",
+         "把正文里的英文词改写成中文；若确属外文专名、品牌或缩写等合法情形，"
+         "请用 python studio.py config set latin_allowlist --merge '[\"词\"]' 声明白名单。"),
     # ---- 伏笔暗线 ----
     _reg("plotline_starvation", "warning", "线索长期未推进（伏笔饥饿）",
          "该线索长期未推进，请在当章或后续章节 beats 中安排线索推进（advancement）或提及（remind）。"),
@@ -78,8 +92,9 @@ REGISTRY: dict[str, ErrCode] = {c.code: c for c in (
     _reg("prerequisite_cycle", "error", "线索依赖关系形成闭环",
          "检查并解除线索依赖闭环，破除循环 requires 拓扑。"),
     _reg("line_action_orphan", "warning", "细纲声明了线索动作但台账中无对应线索",
-         "细纲中声明了线索动作但未在 lines.json 找到对应线索，请核对线索 ID 或在 lines 中登记"
-         "（计划本章 plant 的新线请写「plant GUN-XXX」格式，可豁免本告警）。"),
+         "细纲中声明了线索动作但未在 lines.json 找到对应线索，请核对线索 ID 或在 lines 中登记。"
+         "两种豁免写法：计划本章 plant 的新线写「plant GUN-XXX」；本章明确不推进的未登记线写"
+         "「skip GUN-XXX」（也接受 hold / defer / 不涉及 / 不推进 / 顺延）。"),
     _reg("lines_state_unreadable", "warning", "lines 账本不可读，因果依赖守卫降级",
          "检查 state/lines.json 的 JSON 语法并修复，修复后重跑 python studio.py check。"),
     _reg("alias_conflict", "warning", "同一别名被多个实体共享（在场推断/提及统计将产生歧义）",
@@ -117,6 +132,11 @@ REGISTRY: dict[str, ErrCode] = {c.code: c for c in (
          "口径说明：字数按剥离首行章题的正文计 CJK，压线章请多留 5~10 字余量。"),
     _reg("word_band_breach", "warning", "定稿字数显著偏离目标带（低于下限 85% 或高于上限 115%）",
          "定稿字数显著出带：低于下限 15% 以上请扩写核心场景（beats 硬合同口径），高于上限 15% 以上请精简冗余支线。"),
+    _reg("beats_words_unmet", "warning", "定稿字数显著偏离**细纲自报**的 words 带（超出 15% 容差）",
+         "细纲 front-matter 的 words 带是 Stage 1 对 Stage 2/3 的硬合同：低于下限请扩写核心场景，"
+         "高于上限请精简支线；若确属自报带定错，请回 Stage 1 修订自报带并在 form_reason/验收要点写明理由。"),
+    _reg("beats_words_drift", "info", "定稿字数落在细纲自报 words 带之外，但在 15% 容差内",
+         "轻微出带属正常波动；若持续同向偏离，请核对自报带是否定得不合实际篇幅。"),
     _reg("form_share_over_limit", "warning", "单一章型全书占比超限（>40%；统计自该卷第 5 章起，小样本不计数）",
          "该章型在全书中占比超过 40%（≥5 章样本才参与统计），建议在后续章节丰富其他类型的叙事章型。"),
     _reg("final_drift", "warning", "已封存章节的 final 定稿在 sync 后被改动（内容哈希漂移）",

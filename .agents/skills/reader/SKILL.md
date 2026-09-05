@@ -33,8 +33,16 @@ description: Universal factual auditor and state proposal generator for Novel St
 
 ---
 
-## 🚫 三、 防偷懒 4 大不可妥协底线 (Anti-Laziness Standards)
+## 🚫 三、 防偷懒 5 大不可妥协底线 (Anti-Laziness Standards)
 
+0. **提案文字的唯一合法来源是 final 正文（工艺问题 3）**：`synopsis.text`、`lines.*.plan/content/truth/secret/note`、
+   `timeline.events[].event` 等所有叙述性字段，**必须以 `final/ch_XXX.md` 的原句为源改写**，
+   **严禁照抄细纲 `beats` 的任务书措辞**（核心看点、验收要点、线动作栏的原文）。
+   引擎对此有机械闸门 `beats_overlap`：提案文字与 `synopsis.text` / `lines.plan` / `lines.content` /
+   `lines.truth` / `timeline.events` 的既有措辞高度重合即判「疑似照抄任务书」——
+   历史实测三章累计触发 8 次（ch_003 一章就 6 次），全部源于直接搬运细纲句。
+   正确做法：先读 final，用正文里**真实发生过的动作与说法**重述；细纲只用于核对"该发生的是否发生了"，
+   不是文案素材库。**写完自查一遍：这句话在 final 里能找到出处吗？找不到就是照抄。**
 1. **章题逐字拷贝（铁律）**：`synopsis.title` 必须从 `final/ch_XXX.md` 首行标题（去除 `# ` 标记）逐字精准拷贝，严禁主观篡改、缩略或拼写错漏！
 2. **在场与存活真实性**：`current.present_characters` 只记录章末确凿存活且在场的角色（**已阵亡或已离开现场的角色严禁在场**），准确记录地点与时间；
 3. **实体纯净化（严禁路人甲、纯背景板建实体）**：`entities` 仅记录有姓名、有实质剧情作用的新登场核心角色、新获核心道具/重要物品/关键资产或新势力；**路人甲、无名狱卒、传令兵杂兵等坚决不建实体**！若无核心新实体，直接保持 `entities: []`；

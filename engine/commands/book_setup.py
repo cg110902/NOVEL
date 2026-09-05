@@ -8,7 +8,8 @@ from pathlib import Path
 
 from .. import checks, common, errcodes, evidence, snapshot, state
 
-from ._shared import (SLOT_RE, _norm_ch, _resolve_and_validate, resolve_note_shown, ws_gate)
+from ._shared import (SLOT_RE, _norm_ch, _resolve_and_validate, resolve_note_shown, ws_gate,
+                      ws_gate_code)
 
 
 # ---------------------------------------------------------------------------
@@ -308,7 +309,10 @@ def cmd_status(args) -> int:
             else:
                 print("（工作区还没有书。开局第一步见下一步提示。）")
                 print('👉 python studio.py init -w workspace/<slug> -t "书名" -g "题材"')
-        return 0
+        # QA P3-4：此处原为 `return 0`，与 check/cockpit/sync 的 1 互相矛盾，且违反
+        # engine/README.md 自述的退出码契约——按退出码判读的 Agent 会把「什么都没做」
+        # 当成功。现统一：多书歧义（调用缺 -w，属用法错误）→ 2；未初始化 → 1。
+        return 2 if len(books) > 1 else 1
     brief = _book_brief(book)
     brief["next_actions"] = _next_actions(brief)
     if args.json:
@@ -341,7 +345,7 @@ def cmd_status(args) -> int:
 def cmd_cockpit(args) -> int:
     book = ws_gate(args)  # QA P5：--json 错误路径也出 JSON 信封
     if book is None:
-        return 1
+        return ws_gate_code()
     ch = None
     if getattr(args, "chapter", None):
         # QA P3-10：显式传入非法章号直接报用法错（此前被静默吞掉自动推断，
@@ -423,7 +427,7 @@ def _merge_param_value(shape: str, old, new):
 def cmd_config(args) -> int:
     book = ws_gate(args)  # QA P5：--json 错误路径也出 JSON 信封
     if book is None:
-        return 1
+        return ws_gate_code()
     proj_path = book / "project.json"
     try:
         proj = common.load_json(proj_path)
@@ -478,7 +482,11 @@ def cmd_config(args) -> int:
             print("=" * 74)
             print(f" 🧮 供参候选工作单（机械计数 {payload['final_chapters_scanned']} 章定稿；采纳与否归主控裁决）")
             print("=" * 74)
+            # QA P2-3：alias_suggestions 是派生建议、不是 PARAM_SPEC 里的配置键，
+            # 直接 spec[k] 会 KeyError（实测崩在文本渲染路径）。分开渲染。
             for k, items in payload["suggestions"].items():
+                if k not in spec:
+                    continue
                 print(f" • {k}（{spec[k]['desc']}）")
                 if items:
                     for it in items:
@@ -486,6 +494,15 @@ def cmd_config(args) -> int:
                         print(f"     {it['word']} ×{it['count']}{extra}")
                 else:
                     print("     （暂无候选）")
+            _aliases = payload["suggestions"].get("alias_suggestions") or []
+            print(" • alias_suggestions（高频写法疑似既有实体的别名——挂别名还是建新实体归主控裁决）")
+            if _aliases:
+                for it in _aliases:
+                    tgt = it.get("suggest_alias_of")
+                    print(f"     {it['word']} ×{it['count']} → "
+                          + (f"建议挂到「{tgt}」" if tgt else "无法自动归属，请人工判断"))
+            else:
+                print("     （暂无候选）")
             print(f"\n{payload['adopt']}")
         return 0
 
@@ -544,8 +561,16 @@ def cmd_config(args) -> int:
             val = _merge_param_value(spec[key]["shape"], proj.get(key), val)
         shape_err = checks.validate_param_value(key, val)
         if shape_err:
+            # QA P3-5：形状非法是**用法错误**，不是被闸门阻断的作业。同一函数里
+            # 「值必须是合法 JSON」与 --merge 前置校验都返 2，只有这里返 1，
+            # 与 README 自述的「1=阻断 / 2=用法错」矛盾，按退出码判读的 Agent 会误判。
             print(f"❌ 参数形状非法：project.json.{shape_err}")
-            return 1
+            return 2
+        # QA P2-6：写入入口的质量守卫（单字守望词等）。只拦新写入，不影响存量配置体检。
+        guard_err = checks.param_write_guard(key, val)
+        if guard_err:
+            print(f"❌ 参数值不可用：project.json.{guard_err}")
+            return 2
         proj[key] = val
         common.dump_json(proj_path, proj)
         note = "（空表 = 明确关闭该档）" if val in ([], {}) else ""
