@@ -68,8 +68,11 @@ description: Universal factual auditor and state proposal generator for Novel St
 >     - GUN（foreshadow）plant 必填：`name`（线索短名，如「半枚灯芯」）；
 >     - KNO（knowledge）plant 必填：`secret`（秘密内容一句话）；
 >     - MIS（misunderstanding）plant 必填：`parties`（涉及主体，**字符串**，如 `"周奎与陆沉"`，不是数组）+ `content`（误会内容）；
->     - ⚠️ **`target_ch` 字段规则**：`plant` **必填**（声明预计回收/揭示章）；`remind` 建议携带（用于顺延或改期回收计划）；其余动作可省略。取值：正整数章号、`ch_NNN`、`"第N章"` 或 `"longline"`（跨卷长线）四选一；
+>     - ⚠️ **`target_ch` 字段规则**：`plant` **必填**（声明预计回收/揭示章）；`remind` 建议携带（用于顺延或改期回收计划）；其余动作可省略。取值四选一：**int 章号**（如 `21`；字符串数字 `"21"` **不接受**）、**`ch_NNN`**（三位补零，如 `ch_007`；无补零的 `ch_7` 不接受）、**`"第N章"`**（如 `"第29章"`）、**`"longline"`**（跨卷长线）；
 >       ❗ plant 不写不会默认成卷内线，而是**直接拒收**——显式声明是防止长线配额（上限 5 条）被短线静默挤占。
+>     - ⚠️ **KNO（knowledge）plant 可选 `holders`**：知情圈——知情方实体名/别名数组（如 `["赵七星"]`）。
+>       写了则 `pov` 推导对圈内角色**不再**把该秘密标为「不应知情」（防起草员让知情方说出「我不知道自家目的」的吃书）；
+>       缺省 = 除正文另行交代外全员不知情。**跨章梗概修订**（`synopsis.chapters`）只对已登记章节生效，指向未注册章会整案拒收（不静默 no-op）。
 > - **`operation_id` 幂等与重提契约**：
 >   - 同 operation_id + 同内容 → 引擎幂等跳过（重复 sync 安全）；
 >   - 同 operation_id + 异内容 → 整案拒收（防身份冒用）；
@@ -119,6 +122,7 @@ description: Universal factual auditor and state proposal generator for Novel St
       "kind": "knowledge",
       "action": "plant",
       "secret": "秘密内容一句话",
+      "holders": ["知情方实体名（选填；不写=除正文交代外全员不知情）"],
       "target_ch": 12
     },
     {

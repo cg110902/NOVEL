@@ -48,7 +48,8 @@ REGISTRY: dict[str, ErrCode] = {c.code: c for c in (
     _reg("state_unreadable", "error", "状态文件缺失或损坏无法读取",
          "检查 state 目录下的 JSON 文件语法并修复，或从快照回滚。"),
     _reg("unregistered_character", "error", "登场人物未在实体注册表登记（吃书风险）",
-         "运行 python studio.py entity add <实体名> 将登场人物登记入 state/entities.json，或修正正文/细纲中的拼写。"),
+         "由 Reader 提案登记新实体（Stage 4 提案 entities 段，action=upsert，见 state/inbox/README.md），"
+         "或修正提案 present_characters/正文中的拼写。严禁手改 state/entities.json——提案是唯一写入口。"),
     _reg("retired_entity_on_stage", "warning", "已退场/离世的实体再次登场",
          "该实体已标记退场/阵亡；若重新出场请先在 entities.json 中更新状态或更名。"),
     # ---- 章节文件结构 ----
@@ -89,6 +90,10 @@ REGISTRY: dict[str, ErrCode] = {c.code: c for c in (
          "细纲中声明的线索动作类型缺失，请明确为 plant/advance/remind/reveal/resolve 之一。"),
     _reg("line_quota_exceeded", "warning", "活跃线索数量超出配额（主线被稀释）",
          "当前活跃线索过多，建议在后续章节逐步收网已成熟的伏笔，保持主线清爽。"),
+    _reg("line_overdue", "warning", "线索已逾期（target_ch 小于已定稿章数，仍未收束）",
+         "在当章或下一章 beats 线动作栏安排回收/回响（resolve/remind），或正式顺延 target_ch 并写明理由。"),
+    _reg("stage0_onboarding", "info", "新书 Stage 0 待办：模板槽位未填（暂不阻断，开写后恢复硬闸门）",
+         "按 Stage 0 流程填实 bible/characters/outlines 中的 {{slot:}} 后，check 自动转绿。"),
     _reg("longline_quota_exceeded", "warning", "跨卷长线伏笔超出上限",
          "跨卷长线伏笔超出上限，建议精简或收束部分跨卷暗线。"),
     # ---- 细纲（beats）----
@@ -107,10 +112,16 @@ REGISTRY: dict[str, ErrCode] = {c.code: c for c in (
     # ---- 节奏与字数 ----
     _reg("words_band_crowded", "info", "预计字数区间与整体规划脱节",
          "调整细纲中的预计字数区间，避免与整体规划脱节。"),
-    _reg("word_band_deviation", "info", "定稿字数偏离目标字数带",
-         "字数偏离目标带，精修师 Editor 在润色时可精简冗余或扩充细节。"),
-    _reg("form_share_over_limit", "warning", "单一章型全书占比超限（>40%）",
-         "该章型在全书中占比超过 40%，建议在后续章节丰富其他类型的叙事章型。"),
+    _reg("word_band_deviation", "info", "定稿字数偏离目标字数带（轻度）",
+         "字数偏离目标带，精修师 Editor 在润色时可精简冗余或扩充细节。"
+         "口径说明：字数按剥离首行章题的正文计 CJK，压线章请多留 5~10 字余量。"),
+    _reg("word_band_breach", "warning", "定稿字数显著偏离目标带（低于下限 85% 或高于上限 115%）",
+         "定稿字数显著出带：低于下限 15% 以上请扩写核心场景（beats 硬合同口径），高于上限 15% 以上请精简冗余支线。"),
+    _reg("form_share_over_limit", "warning", "单一章型全书占比超限（>40%；统计自该卷第 5 章起，小样本不计数）",
+         "该章型在全书中占比超过 40%（≥5 章样本才参与统计），建议在后续章节丰富其他类型的叙事章型。"),
+    _reg("final_drift", "warning", "已封存章节的 final 定稿在 sync 后被改动（内容哈希漂移）",
+         "final 是事实唯一源头但状态台账已按旧版封存：有意修订请走提案修订通道（synopsis/timeline）后重跑 sync 重封，"
+         "无意改动请用 snapshot rollback 恢复到封存时点。"),
     _reg("high_tension_fatigue", "warning", "连续高压章型导致读者情绪疲劳",
          "连续高压章型导致情绪疲劳，下一章建议安排松弛缓冲型章型。"),
     _reg("tension_flatline", "warning", "连续低张力章节（情绪平淡）",

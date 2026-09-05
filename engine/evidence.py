@@ -236,6 +236,27 @@ def _cn_num_to_int(s: str) -> int | None:
 
 _GENERIC_UNITS = {"块", "枚", "张", "个", "粒", "颗", "只", "道", "本", "卷", "盒", "条", "段"}
 
+# QA P3/P18：候选噪声增强——
+# 语法碎片字符（专名/实体名中几乎不可能出现，出现即碎片）
+_GRAMMAR_NOISE_CHARS = set("的了着过")
+# 通用地貌/方位词作词头的「普通名词」（山脚/水口/石边…），不当专名候选
+_GENERIC_HEAD_CHARS = set("山水江河湖海溪谷岭崖峰岩石沙林田路街巷桥塔楼院村镇国门墙")
+# 短词（≤3 字）以通用方位/位置后缀结尾 → 普通名词（山脚/河口/路边；黑风镇/落星谷不受影响）
+_GENERIC_TAIL_CHARS = set("脚口边旁里外沿顶底下上")
+
+
+def is_generic_locutive_noise(g: str) -> bool:
+    """普通地名/方位词噪声判定（山脚、水口、石边一类），供候选与专名扫描共用。"""
+    if not g:
+        return False
+    if any(c in _GRAMMAR_NOISE_CHARS for c in g):
+        return True
+    if g[0] in _GENERIC_HEAD_CHARS:
+        return True
+    if len(g) <= 3 and g[-1] in _GENERIC_TAIL_CHARS:
+        return True
+    return False
+
 
 def is_candidate_noise(g: str, ledger_pools: dict | None = None) -> bool:
     """候选新实体/泛词的机械毛刺过滤（改进：账本池名仅精确匹配才过滤，避免‘灵石’误杀‘灵石矿’）。"""
@@ -247,6 +268,8 @@ def is_candidate_noise(g: str, ledger_pools: dict | None = None) -> bool:
     if head in "把将被在":
         return True
     if head in "我你他她它咱您":
+        return True
+    if is_generic_locutive_noise(g):
         return True
     for p in (ledger_pools or {}).values():
         for term in (p.get("name"), p.get("unit")):
@@ -865,12 +888,22 @@ def pov(book: Path, name: str) -> dict:
                                           "event": str(ev.get("event", ""))[:50]})
     knows["lived_events"] = knows["lived_events"][-8:]
     out["knows"] = knows
+    # QA P17：holders 知情圈——秘密线的知情方角色不再被误标「不应知情」
+    def _in_holders(k: dict) -> bool:
+        holders = [str(h).strip() for h in (k.get("holders") or []) if str(h).strip()]
+        if not holders:
+            return False
+        return any(nm and (nm in holders or any(nm in h or h in nm for h in holders))
+                   for nm in names if len(str(nm)) >= 2)
+
     out["unknown_to_char"] = {
         "items": [{"id": k.get("id"), "secret": str(k.get("secret", ""))[:50],
-                   "note": str(k.get("note", "") or "")[:40]}
+                   "note": str(k.get("note", "") or "")[:40],
+                   **({"holders": [str(h) for h in k.get("holders")]} if k.get("holders") else {})}
                   for k in lines.get("knowledge", [])
-                  if str(k.get("status", "")).strip().lower() != "revealed"][-8:],
-        "note": "按账本未揭示 = 该角色不应知情；若正文已另行交代，以正文为准。"}
+                  if str(k.get("status", "")).strip().lower() != "revealed"
+                  and not _in_holders(k)][-8:],
+        "note": "按账本未揭示 = 该角色不应知情（holders 知情圈内的角色已剔除）；若正文已另行交代，以正文为准。"}
 
     open_lines = []
     for arr, kind in (("foreshadows", "foreshadow"), ("misunderstandings", "misunderstanding"),
@@ -928,9 +961,10 @@ def names(book: Path) -> dict:
     else:
         for tok, _, text in finals:
             for seg in re.split(r"[^\u4e00-\u9fff]+", text):
-                if len(seg) < 2:
+                if len(seg) < 3:
                     continue
-                for L in (2, 3, 4):
+                # QA P3/P18：n-gram 退化路径同样最小长度 3（2 字碎片不再入候选）
+                for L in (3, 4):
                     for i in range(len(seg) - L + 1):
                         g = seg[i:i + L]
                         per.setdefault(g, {}).setdefault(tok, 0)

@@ -10,12 +10,39 @@ from pathlib import Path
 
 from .. import checks, common, evidence, snapshot, state
 
-from ._shared import _norm_ch, _resolve_and_validate, print_ws_not_found
+from ._shared import _norm_ch, ws_gate
 
 
 # ---------------------------------------------------------------------------
 # sync
 # ---------------------------------------------------------------------------
+def _stamp_final_hash(book: Path, ch: str) -> None:
+    """QA P2：封存时对当章 final 定稿盖章 SHA-256 → processed/final_hashes.json。
+
+    封后再改 final 不再静默漂移：check 的 final_drift 档比对当前内容哈希；
+    manifest 同步记录快照时刻全部 final 哈希（snapshot.create_snapshot）。
+    """
+    finals = common.find_chapter_files(book, "final", ch)
+    if not finals:
+        return
+    f = finals[-1]
+    try:
+        sha = hashlib.sha256(f.read_bytes()).hexdigest()
+    except OSError:
+        return
+    path = book / "state" / "inbox" / "processed" / "final_hashes.json"
+    rec: dict = {}
+    if path.is_file():
+        try:
+            rec = common.load_json(path, default={}) or {}
+        except (ValueError, OSError):
+            rec = {}
+    rec[ch] = {"sha256": sha, "file": f.name,
+               "ts": datetime.datetime.now().isoformat(timespec="seconds")}
+    common.dump_json(path, rec)
+    common.debug(f"final-stamp: {ch} → {f.name} sha256={sha[:16]}…（check 的 final_drift 档自此覆盖）")
+
+
 def _append_bible_journal(book: Path, ch: str) -> None:
     """bible 版本盖章：每次成功封存向 state/bible_log.jsonl 追加一条 project_bible.md 哈希。
 
@@ -34,9 +61,8 @@ def _append_bible_journal(book: Path, ch: str) -> None:
 
 
 def cmd_sync(args) -> int:
-    book = _resolve_and_validate(args.workspace)
-    if book is None or not (book / "project.json").exists():
-        print_ws_not_found()
+    book = ws_gate(args)  # QA P5：--json 错误路径也出 JSON 信封
+    if book is None:
         return 1
     ch = _norm_ch(args.chapter)
     if ch is None:
@@ -115,7 +141,11 @@ def cmd_sync(args) -> int:
             for g in gate:
                 print(f"ℹ️ 校对注记提示：{g}")
 
+    common.debug(f"sync {ch}: dry_run={args.dry_run} final={has_manuscript} proposal={proposal_path.name if proposal_path else '无'}")
     overall = state.apply_inbox(book, expect_chapter=ch, dry_run=args.dry_run)
+    common.debug(f"apply_inbox: applied={overall.get('applied')} failed={overall.get('failed')} "
+                 f"duplicates={overall.get('duplicates')} skipped={overall.get('skipped')} "
+                 f"picked_up={overall.get('picked_up')}")
     verify_errors: list[str] = []
     snap_msg, snap_ok = "", True
     applied_now = overall.get("applied", 0)
@@ -127,11 +157,16 @@ def cmd_sync(args) -> int:
                      apply=overall)
     if not args.dry_run and overall["failed"] == 0 and applied_now > 0:
         verify_errors = state.verify_state(book)
+        common.debug(f"verify_state（状态体检，含前置因果闸门）: {len(verify_errors)} 错误"
+                     + (f"（{verify_errors[0]}）" if verify_errors else ""))
         if not verify_errors:
+            # QA P2：封存时刻对当章 final 盖章（漂移检测的事实基线）
+            _stamp_final_hash(book, ch)
             try:
                 snap_ok, snap_msg = snapshot.create_snapshot(book, f"{ch}_done")
             except Exception as exc:
                 snap_ok, snap_msg = False, f"快照创建异常（状态已合并，可用 snapshot create 手动补拍）：{exc}"
+            common.debug(f"snapshot: ok={snap_ok} {snap_msg}")
             _append_bible_journal(book, ch)
 
     payload = {"chapter": ch, "dry_run": args.dry_run, "apply": overall,
@@ -165,8 +200,10 @@ def cmd_sync(args) -> int:
                 print(f"    📦 归档 → {Path(r['archived_to']).parent.name}/{Path(r['archived_to']).name}")
         if overall["picked_up"]:
             print(" ↩️ 已从 failed/ 捡回本章提案重试")
+        # 「留置」语义明示：提案章节 ≠ 同步目标（或空提案）时跳过、不归档不报错，等其所属章 sync 时处理
         print(f" 汇总：合并 {overall['applied']} ｜ 重复跳过 {overall['duplicates']} ｜ "
-              f"失败 {overall['failed']} ｜ 留置 {overall['skipped']}")
+              f"失败 {overall['failed']} ｜ 留置 {overall['skipped']}"
+              f"{'（留置 = 非本章提案/空提案，未处理；将由其所属章 sync 时合并）' if overall['skipped'] else ''}")
         if verify_errors:
             print(" ❌ 状态体检未通过（未封存快照）：")
             for e in verify_errors:
@@ -507,9 +544,8 @@ def _cmd_proposal_auto(book: Path, ch: str, args) -> int:
 
 
 def cmd_proposal(args) -> int:
-    book = _resolve_and_validate(args.workspace)
-    if book is None or not (book / "state").is_dir():
-        print_ws_not_found("❌ 未找到书工作区状态目录（先运行 init）")
+    book = ws_gate(args)  # QA P5：--json 错误路径也出 JSON 信封
+    if book is None:
         return 1
     action = getattr(args, "pp_action", None)
     if action not in ("new", "check", "auto", "verify"):
@@ -563,9 +599,8 @@ def cmd_proposal(args) -> int:
 # snapshot
 # ---------------------------------------------------------------------------
 def cmd_snapshot(args) -> int:
-    book = _resolve_and_validate(args.workspace)
-    if book is None or not (book / "state").is_dir():
-        print_ws_not_found("❌ 未找到书工作区状态目录（先运行 init）")
+    book = ws_gate(args)  # QA P5：--json 错误路径也出 JSON 信封
+    if book is None:
         return 1
     action = getattr(args, "snap_action", None)
     if action in (None, "list"):
@@ -656,9 +691,8 @@ def cmd_snapshot(args) -> int:
 
 
 def cmd_checkpoint(args) -> int:
-    book = _resolve_and_validate(args.workspace)
-    if book is None or not (book / "project.json").exists():
-        print_ws_not_found()
+    book = ws_gate(args)  # QA P5：--json 错误路径也出 JSON 信封
+    if book is None:
         return 1
 
     ch_arg = getattr(args, "chapter", None)
@@ -787,9 +821,8 @@ def cmd_checkpoint(args) -> int:
 
 
 def cmd_state(args) -> int:
-    book = _resolve_and_validate(args.workspace)
-    if book is None or not (book / "project.json").exists():
-        print_ws_not_found()
+    book = ws_gate(args)  # QA P5：--json 错误路径也出 JSON 信封
+    if book is None:
         return 1
 
     action = getattr(args, "state_action", "show")
@@ -927,9 +960,8 @@ def cmd_state(args) -> int:
 # ledger（账本手术刀：recompute）
 # ---------------------------------------------------------------------------
 def cmd_ledger(args) -> int:
-    book = _resolve_and_validate(args.workspace)
-    if book is None or not (book / "state").is_dir():
-        print_ws_not_found("❌ 未找到书工作区状态目录（先运行 init）")
+    book = ws_gate(args)  # QA P5：--json 错误路径也出 JSON 信封
+    if book is None:
         return 1
     action = getattr(args, "ledger_action", None) or "recompute"
     if action != "recompute":
@@ -959,6 +991,8 @@ def cmd_ledger(args) -> int:
                 running[pool] += int(t.get("delta", 0))
             except (TypeError, ValueError):
                 return [], [], f"流水 #{i} delta 非整数，拒绝重算（先用 state set 修复）"
+            common.debug(f"ledger recompute tx #{i}: pool={pool} delta={t.get('delta')} "
+                         f"running={running[pool]} 记录 balance_after={t.get('balance_after')}")
             if t.get("balance_after") != running[pool]:
                 tx_fixed.append(f"#{i}「{str(t.get('subject', ''))[:12]}」 balance_after "
                                 f"{t.get('balance_after')} → {running[pool]}")

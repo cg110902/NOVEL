@@ -216,6 +216,14 @@
             },
             "title": "Requires",
             "type": "array"
+          },
+          "holders": {
+            "description": "知情圈（知情方实体名/别名，选填）：pov 推导对圈内角色不再误标「不应知情」；缺省 = 除正文另行交代外全员不知情",
+            "items": {
+              "type": "string"
+            },
+            "title": "Holders",
+            "type": "array"
           }
         },
         "required": [

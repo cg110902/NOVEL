@@ -135,6 +135,18 @@ def _get_critic_radar(book: Path, ch_num: int) -> dict[str, str]:
                 return kw
         return ""
 
+    # QA P6：每字段关键词变体容错（最长优先）——Critic 子代理的标签写法漂移
+    # （如「体感」vs「本章体感」）不再静默丢失该维度
+    _FIELD_KWS = (
+        ("vibe", ("本章体感", "阅读体感", "体感")),
+        ("continuity", ("连续性红旗", "连续性", "红旗")),
+        ("fatigue", ("阅读疲劳度", "疲劳度", "疲劳")),
+        ("foreshadow_info", ("伏笔与信息差", "信息差")),
+        ("protagonist_liveliness", ("主角活人感", "活人感")),
+        ("character_sympathy", ("角色路人缘", "路人缘")),
+    )
+    _ANTICIPATION_KWS = ("最想看", "迫切期待")
+
     section = None  # 标题开启的分区（anticipation/taboos），供列表项回填
     try:
         text = critic_path.read_text(encoding="utf-8", errors="replace")
@@ -144,9 +156,10 @@ def _get_critic_radar(book: Path, ch_num: int) -> dict[str, str]:
                 continue
             if s.startswith("#"):
                 section = None
-                if "最想看" in s:
+                hit_ant = next((kw for kw in _ANTICIPATION_KWS if kw in s), None)
+                if hit_ant:
                     section = "anticipation"
-                    _put("anticipation", _clean_value(_after_keyword(s, "最想看")))
+                    _put("anticipation", _clean_value(_after_keyword(s, hit_ant)))
                 else:
                     kw = _taboo_kw(s)
                     if kw:
@@ -156,41 +169,50 @@ def _get_critic_radar(book: Path, ch_num: int) -> dict[str, str]:
                     section = None  # 标题行已自带内容，无需列表回填
                 continue
             matched = False
-            if "本章体感" in s:
-                _put("vibe", _clean_value(_after_keyword(s, "本章体感")))
+            for field, kws in _FIELD_KWS:
+                hit = next((kw for kw in kws if kw in s), None)
+                if not hit:
+                    continue
+                v = _clean_value(_after_keyword(s, hit))
+                if field == "continuity":
+                    if v and v != "无":
+                        _put(field, v)
+                else:
+                    _put(field, v)
                 matched = True
-            elif "连续性红旗" in s:
-                v = _clean_value(_after_keyword(s, "连续性红旗"))
-                if v and v != "无":
-                    _put("continuity", v)
-                matched = True
-            elif "疲劳度" in s:
-                _put("fatigue", _clean_value(_after_keyword(s, "疲劳度")))
-                matched = True
-            elif "信息差" in s:
-                _put("foreshadow_info", _clean_value(_after_keyword(s, "信息差")))
-                matched = True
-            elif "活人感" in s:
-                _put("protagonist_liveliness", _clean_value(_after_keyword(s, "活人感")))
-                matched = True
-            elif "路人缘" in s:
-                _put("character_sympathy", _clean_value(_after_keyword(s, "路人缘")))
-                matched = True
-            elif "最想看" in s:
-                _put("anticipation", _clean_value(_after_keyword(s, "最想看")))
-                section = None
-                matched = True
-            else:
-                kw = _taboo_kw(s)
-                if kw:
-                    _put("taboos", _clean_value(_after_keyword(s, kw)))
+                break
+            if not matched:
+                hit_ant = next((kw for kw in _ANTICIPATION_KWS if kw in s), None)
+                if hit_ant:
+                    _put("anticipation", _clean_value(_after_keyword(s, hit_ant)))
                     section = None
                     matched = True
+                else:
+                    kw = _taboo_kw(s)
+                    if kw:
+                        _put("taboos", _clean_value(_after_keyword(s, kw)))
+                        section = None
+                        matched = True
             if not matched and section and not radar[section] \
                     and re.match(r"^([\d一二三四五六七八九十]+[\.、]|[-*])", s):
                 _put(section, _item_text(s))
     except OSError:
         pass  # 便签不可读：雷达字段留空（QA：不再吞全部异常）
+
+    # QA P6：便签存在但雷达字段全空 → 明示「格式疑似偏离模板」，不再让主控误读为「无反馈」
+    try:
+        _text = critic_path.read_text(encoding="utf-8", errors="replace")
+        _is_skeleton = "SKELETON" in _text[:400] or "（待评）" in _text[:1200]
+        _content_lines = [ln for ln in _text.splitlines()
+                          if ln.strip() and not ln.strip().startswith(("#", "<!--", "-->"))]
+        _values = [radar[k] for k in ("vibe", "anticipation", "taboos", "continuity", "fatigue",
+                                      "foreshadow_info", "protagonist_liveliness", "character_sympathy")]
+        if not _is_skeleton and len(_content_lines) >= 3 and not any(_values):
+            radar["format_warning"] = ("便签存在但雷达 8 字段全空——格式疑似偏离规范模板"
+                                       "（关键词：本章体感/连续性红旗/疲劳度/信息差/活人感/路人缘/最想看/最怕踩），"
+                                       "请回读原文核对；雷达不作「无反馈」解读")
+    except OSError:
+        pass
     return radar
 
 
@@ -451,6 +473,10 @@ def get_algorithmic_guidance(book: Path, current_ch: int) -> list[str]:
 
 def build_cockpit_briefing(book: Path, ch: str | None = None) -> dict[str, Any]:
     """计算并构建主控态势驾驶舱完整数据模型。"""
+    # QA G1：NOVEL_STUDIO_DEBUG=1 时聚合各节耗时（briefing.debug_timing_ms + stderr）
+    import time as _time
+    timings: dict[str, float] = {}
+    t_start = _time.perf_counter()
     proj = common.load_json(book / "project.json", default={}) or {}
     target_ch = ch if ch else _infer_active_chapter(book)
     ch_num = common.chapter_token_to_num(target_ch) or 1
@@ -458,6 +484,7 @@ def build_cockpit_briefing(book: Path, ch: str | None = None) -> dict[str, Any]:
     vol = _find_chapter_vol(book, ch_tok)
 
     cur = {key: state.load_state(book, key) for key in ("current", "entities", "lines", "synopsis", "timeline")}
+    timings["state_load_ms"] = round((_time.perf_counter() - t_start) * 1000, 1)
 
     # 1. 确定工作流与工序状态
     beats_files = common.find_chapter_files(book, "beats", ch_tok)
@@ -618,6 +645,8 @@ def build_cockpit_briefing(book: Path, ch: str | None = None) -> dict[str, Any]:
     except (ValueError, OSError):
         pass  # 拓扑构建失败（如状态损坏）：张力拓扑留空
 
+    timings["workflow_momentum_ms"] = round((_time.perf_counter() - t_start) * 1000, 1)
+
     # 3. 老白读者催更雷达 (Critic Radar)
     critic_radar = _get_critic_radar(book, ch_num)
 
@@ -627,8 +656,13 @@ def build_cockpit_briefing(book: Path, ch: str | None = None) -> dict[str, Any]:
     # 4.5 确定性算法制导胶囊 (Algorithmic Guidance)
     algorithmic_guidance = get_algorithmic_guidance(book, ch_num)
 
+    timings["radars_guidance_ms"] = round((_time.perf_counter() - t_start) * 1000, 1)
+
     # 5. 健康度与自愈处方 (Health & Remedies)
     remedies = checks.get_self_healing_remedies(book, ch_tok)
+    timings["health_remedies_ms"] = round((_time.perf_counter() - t_start) * 1000, 1)
+    if common.debug_enabled():
+        common.debug(f"cockpit 分节耗时: {timings}（总 {timings['health_remedies_ms']}ms）")
     errors = [r for r in remedies if r["level"] == "error"]
     warnings = [r for r in remedies if r["level"] == "warning"]
 
@@ -636,7 +670,7 @@ def build_cockpit_briefing(book: Path, ch: str | None = None) -> dict[str, Any]:
     deadlock_codes = {"project_missing", "project_corrupt"}
     is_deadlock = any(e["code"] in deadlock_codes or not e.get("can_auto_heal", True) for e in errors)
 
-    return {
+    briefing = {
         "schema": "novel-studio.cockpit/v1",
         "book": book.name,
         "title": proj.get("title", book.name),
@@ -667,6 +701,9 @@ def build_cockpit_briefing(book: Path, ch: str | None = None) -> dict[str, Any]:
             "remedies": remedies
         }
     }
+    if common.debug_enabled():
+        briefing["debug_timing_ms"] = timings
+    return briefing
 
 
 def render_cockpit_terminal(briefing: dict[str, Any]) -> None:
@@ -733,6 +770,8 @@ def render_cockpit_terminal(briefing: dict[str, Any]) -> None:
                 f"[dim]来源便签：log/critic/{cr['prev_chapter']}.md[/dim]",
                 f"[bold green]🌟 老白体感反馈：[/bold green]{cr.get('vibe', '暂无')}",
             ]
+            if cr.get("format_warning"):
+                cr_lines.append(f"[bold red]🚨 {cr['format_warning']}[/bold red]")
             if cr.get("continuity"):
                 cr_lines.append(f"[bold red]🚩 连续性红旗：[/bold red]{cr['continuity']}")
             cr_lines.append(f"[bold cyan]🔥 下章迫切期待：[/bold cyan]{cr.get('anticipation', '暂无')}")

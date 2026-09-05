@@ -62,6 +62,10 @@ class Knowledge(BaseModel):
     weight: int = Field(default=1, ge=1, description="重要度权重")
     note: Optional[str] = Field(None, description="谁不得知晓或揭示约束")
     requires: list[str] = Field(default_factory=list, description="前置依赖线索ID列表")
+    holders: list[str] = Field(
+        default_factory=list,
+        description="知情圈（知情方实体名/别名，选填）：pov 推导对圈内角色不再误标「不应知情」；"
+                    "缺省 = 除正文另行交代外全员不知情")
 
 
 class LinesState(BaseModel):

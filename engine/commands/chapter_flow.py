@@ -20,16 +20,15 @@ except ImportError:
     _HAS_RICH = False
     console = None
 
-from ._shared import _norm_ch, _resolve_and_validate, print_ws_not_found
+from ._shared import _norm_ch, ws_gate
 
 
 # ---------------------------------------------------------------------------
 # pack
 # ---------------------------------------------------------------------------
 def cmd_pack(args) -> int:
-    book = _resolve_and_validate(args.workspace)
-    if book is None or not (book / "project.json").exists():
-        print_ws_not_found()
+    book = ws_gate(args)  # QA P5：--json 错误路径也出 JSON 信封
+    if book is None:
         return 1
     ch = None
     if args.chapter:
@@ -63,9 +62,8 @@ def cmd_pack(args) -> int:
 # evidence
 # ---------------------------------------------------------------------------
 def cmd_evidence(args) -> int:
-    book = _resolve_and_validate(args.workspace)
-    if book is None or not (book / "project.json").exists():
-        print_ws_not_found()
+    book = ws_gate(args)  # QA P5：--json 错误路径也出 JSON 信封
+    if book is None:
         return 1
     kind, rest = args.kind, list(args.args or [])
     if kind == "all":
@@ -134,9 +132,8 @@ def cmd_evidence(args) -> int:
 # check
 # ---------------------------------------------------------------------------
 def cmd_check(args) -> int:
-    book = _resolve_and_validate(args.workspace)
-    if book is None or not (book / "project.json").exists():
-        print_ws_not_found()
+    book = ws_gate(args)  # QA P5：--json 错误路径也出 JSON 信封
+    if book is None:
         return 1
     report = checks.run_checks(book)
     if args.json:
@@ -216,9 +213,8 @@ def _render_review_md(d: dict) -> str:
 
 
 def cmd_review(args) -> int:
-    book = _resolve_and_validate(args.workspace)
-    if book is None or not (book / "project.json").exists():
-        print_ws_not_found()
+    book = ws_gate(args)  # QA P5：--json 错误路径也出 JSON 信封
+    if book is None:
         return 1
     if getattr(args, "rev_action", None) != "new":
         print("❌ review 需要 new 子命令，如: python studio.py review new ch_007")
@@ -346,9 +342,8 @@ def _clip(s: str, n: int) -> str:
 
 
 def cmd_beats(args) -> int:
-    book = _resolve_and_validate(args.workspace)
-    if book is None or not (book / "project.json").exists():
-        print_ws_not_found()
+    book = ws_gate(args)  # QA P5：--json 错误路径也出 JSON 信封
+    if book is None:
         return 1
     ch = getattr(args, "chapter", None)
     if not ch:
@@ -378,6 +373,20 @@ def cmd_beats(args) -> int:
 
     proj = common.load_json(book / "project.json", default={}) or {}
     protagonist = proj.get("protagonist", "主角名")
+
+    # QA P8：form 默认值不再硬编码——上一章用了默认章型时切换推荐值，
+    # 防「连续同章型无理由」在脚手架阶段就已埋雷
+    default_form = "暗流汇聚"
+    if n > 1:
+        for pf in common.find_chapter_files(book, "beats", n - 1):
+            prev_fm = common.parse_front_matter(pf.read_text(encoding="utf-8", errors="replace"))
+            prev_form = str(prev_fm.get("form", "")).strip()
+            if prev_form:
+                for alt in ("危机逼近", "生死博弈", "战后清点", "暗流汇聚"):
+                    if alt != prev_form:
+                        default_form = alt
+                        break
+            break
 
     milestone = pack_mod._volume_phase_milestone(book, n)
 
@@ -424,13 +433,34 @@ def cmd_beats(args) -> int:
     text = tmpl_path.read_text(encoding="utf-8")
     text = text.replace("{{slot:chapter_id}}", tok)
     text = text.replace("{{slot:vol_id}}", vol_str)
-    text = text.replace("{{slot:form|暗流汇聚}}", "暗流汇聚")
+    text = text.replace("{{slot:form|暗流汇聚}}", default_form)
     text = text.replace("{{slot:protagonist|主角名}}", protagonist)
     text = text.replace("{{slot:tension_curve|动态起伏}}", "危机逼近 → 试探博弈 → 动作破局")
     text = text.replace("{{slot:tension_score|6}}", "6")
     text = text.replace("{{slot:stage_mode|Simmering}}", "Simmering")
-    conflict_str = f"本章核心戏剧目标推进\n  - 所属阶段：{milestone}\n  - 上章现场：{sit}" if milestone else sit
-    text = text.replace("<!-- 双方不可退让的核心诉求与冲突点 -->", conflict_str)
+    # QA P7：「所属阶段 + 上章现场」注入——此前 replace 的模板标记不存在，属静默 no-op 死代码；
+    # 现在模板补了标记，并保留锚点回退，任何路径注入失败都走 stderr 警告（绝不静默）
+    coord_block = (f"- **所属阶段**：{milestone or '（未匹配到分卷阶段，请核对 outlines/*/outline.md）'}\n"
+                   f"- **上章现场**：{str(sit).strip() or '（暂无现场快照，按首章/转场处理）'}")
+    coord_marker = "<!-- 双方不可退让的核心诉求与冲突点 -->"
+    if coord_marker in text:
+        text = text.replace(coord_marker, coord_block)
+    elif "- **本章核心戏剧目标**：" in text:
+        # 旧模板（无标记）回退：锚定「本章核心戏剧目标」行上方注入
+        text = text.replace("- **本章核心戏剧目标**：",
+                            coord_block + "\n- **本章核心戏剧目标**：", 1)
+    else:
+        # 兜底：frontmatter 之后的正文独立块 + stderr 明示（QA P7：注入失败必须可见）。
+        # 不能 prepend 到最顶——frontmatter 的 --- 必须保持首行
+        block = f"## 本章坐标（引擎自动注入 · 可改）\n\n{coord_block}\n\n"
+        fm_close = text.find("\n---", 3) if text.startswith("---") else -1
+        insert_at = text.find("\n## ", fm_close + 1 if fm_close > 0 else 0)
+        if insert_at > 0:
+            text = text[:insert_at] + "\n" + block + text[insert_at:]
+        else:
+            text = block + text
+        print("⚠️ beats 脚手架「所属阶段/上章现场」注入：模板标记与锚点均缺失，"
+              "已回退到 frontmatter 后独立块——请人工核对位置", file=sys.stderr)
     text = re.sub(r"- GUN-XXX[^\n]*\n- KNO-XXX[^\n]*\n- MIS-XXX[^\n]*", due_lines_str, text)
 
     # 一致性速查注入：实体名册（含别名，含卷纲规划行点名实体）+ KNO 知情差边界
@@ -479,9 +509,8 @@ def cmd_beats(args) -> int:
 # critic
 # ---------------------------------------------------------------------------
 def cmd_critic(args) -> int:
-    book = _resolve_and_validate(args.workspace)
-    if book is None or not (book / "project.json").exists():
-        print_ws_not_found()
+    book = ws_gate(args)  # QA P5：--json 错误路径也出 JSON 信封
+    if book is None:
         return 1
     ch_arg = getattr(args, "chapter", None)
     if not ch_arg:
@@ -597,9 +626,8 @@ def cmd_critic(args) -> int:
 # graph
 # ---------------------------------------------------------------------------
 def cmd_graph(args) -> int:
-    book = _resolve_and_validate(args.workspace)
-    if book is None or not (book / "project.json").exists():
-        print_ws_not_found()
+    book = ws_gate(args)  # QA P5：--json 错误路径也出 JSON 信封
+    if book is None:
         return 1
     return graph_mod.run_graph(
         book,
@@ -618,9 +646,8 @@ def cmd_graph(args) -> int:
 # export
 # ---------------------------------------------------------------------------
 def cmd_export(args) -> int:
-    book = _resolve_and_validate(args.workspace)
-    if book is None or not (book / "project.json").exists():
-        print_ws_not_found()
+    book = ws_gate(args)  # QA P5：--json 错误路径也出 JSON 信封
+    if book is None:
         return 1
     if not args.txt and not args.views:
         args.txt = args.views = True
@@ -643,9 +670,8 @@ def cmd_export(args) -> int:
 
 
 def cmd_dashboard(args) -> int:
-    book = _resolve_and_validate(args.workspace)
-    if book is None or not (book / "project.json").exists():
-        print_ws_not_found()
+    book = ws_gate(args)  # QA P5：--json 错误路径也出 JSON 信封
+    if book is None:
         return 1
     try:
         out_file = dashboard.export_dashboard(book)
@@ -668,9 +694,8 @@ def cmd_dashboard(args) -> int:
 # ask / pov / calendar（只读取证三件套：写作前先问书，严禁凭记忆脑补）
 # ---------------------------------------------------------------------------
 def cmd_ask(args) -> int:
-    book = _resolve_and_validate(args.workspace)
-    if book is None or not (book / "project.json").exists():
-        print_ws_not_found()
+    book = ws_gate(args)  # QA P5：--json 错误路径也出 JSON 信封
+    if book is None:
         return 1
     query = str(getattr(args, "query", "") or "").strip()
     payload = evidence.ask(book, query)
@@ -679,9 +704,8 @@ def cmd_ask(args) -> int:
 
 
 def cmd_pov(args) -> int:
-    book = _resolve_and_validate(args.workspace)
-    if book is None or not (book / "project.json").exists():
-        print_ws_not_found()
+    book = ws_gate(args)  # QA P5：--json 错误路径也出 JSON 信封
+    if book is None:
         return 1
     payload = evidence.pov(book, str(getattr(args, "name", "") or ""))
     print(json.dumps(payload, ensure_ascii=False, indent=2))
@@ -750,9 +774,8 @@ def _calendar_payload(book, span: int) -> dict:
 
 
 def cmd_calendar(args) -> int:
-    book = _resolve_and_validate(args.workspace)
-    if book is None or not (book / "project.json").exists():
-        print_ws_not_found()
+    book = ws_gate(args)  # QA P5：--json 错误路径也出 JSON 信封
+    if book is None:
         return 1
     try:
         span = int(getattr(args, "span", None) or 5)

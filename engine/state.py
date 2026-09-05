@@ -49,9 +49,11 @@ _LINE_KIND_SPEC = {
                          "update_fields": {"status", "target_ch", "content", "truth", "level", "parties", "requires"}},
     "knowledge": {"id_re": KNO_ID_RE, "prefix": "KNO",
                   "statuses": ("Concealed", "Revealed"), "resolved": "Revealed",
-                  "plant_fields": {"secret", "target_ch", "plant_ch", "note", "weight", "requires"},
+                  # QA P17：holders = 知情圈（知情方实体名/别名列表，选填）——
+                  # POV 推导对 holders 内角色不再误标「不应知情」，防吃书
+                  "plant_fields": {"secret", "target_ch", "plant_ch", "note", "weight", "requires", "holders"},
                   "plant_need": ("secret",), "update_str": ("secret", "note"),
-                  "update_fields": {"status", "target_ch", "secret", "note", "weight", "requires"}},
+                  "update_fields": {"status", "target_ch", "secret", "note", "weight", "requires", "holders"}},
 }
 
 
@@ -113,6 +115,12 @@ status 只许 active/retired（越界整案回滚进 failed/）；"现状/近况
   timeline.events 条目支持 {"time": "…", "event": "既有事件原文", "replace": "修订后描述"}——
   按 time+event 逐字命中既有事件后只改写其描述（不新增、chapter 保持原值），未命中整案拒绝；
   synopsis 支持 {"chapters": {"ch_XXX": {"title": "…", "synopsis": "…"}}——跨章修订历史章的标题/梗概。
+  ⚠️ 跨章梗概修订仅对「已登记」章节生效：指向未注册章整案拒收（不再静默 no-op）。
+lines 字段口径：
+  target_ch 取值 = int 章号（如 21）/ ch_NNN（三位补零，如 ch_007）/ "第N章"（如 "第29章"）/ "longline" 四选一；
+  字符串数字（"21"）与无补零章号（ch_7）均拒收。plant 必填 target_ch。
+  knowledge（秘密线）plant 可携带选填 "holders": ["实体名/别名", …] 声明知情圈——
+  pov 推导对知情圈内角色不再误标「不应知情」（防吃书）；缺省 = 除正文另行交代外全员不知情。
 引文柔性接地（建议携带，绝不阻断）：各条目（entities/lines/ledger.transactions/timeline.events/timeline.clocks/synopsis）
   可携带 "quote": "凭印象摘录的本章 final 支撑句"——引擎模糊接地：相似度 ≥85% 视为命中；
   60~85% 提示「近似命中」；更低仅提示「存疑」。全程只出提示、绝不阻断 sync，
@@ -231,7 +239,8 @@ def _norm_target(value) -> tuple[object, str | None]:
         m = CH_RE.fullmatch(value)
         if m:
             return int(m.group(1)), None
-    return value, (f"target_ch 非法: {value!r}（允许：正整数章号、ch_NNN、\"第N章\" 或 \"longline\"）")
+    return value, (f"target_ch 非法: {value!r}（允许：int 章号如 21 / ch_NNN 三位补零 / \"第N章\" / \"longline\"；"
+                   f"字符串数字如 \"21\" 与无补零的 ch_7 均不接受）")
 
 
 _DAY_NUM_RE = re.compile(r"第\s*([0-9]+|[零一二两三四五六七八九十百]+)\s*[日天]")
@@ -464,9 +473,16 @@ def validate_proposal(proposal, expected_chapter: str | None = None) -> tuple[li
                     errors.append(f"lines[{i}].weight 必须为 ≥1 的整数")
                 if g.get("id") and not spec["id_re"].fullmatch(str(g["id"])):
                     errors.append(f"lines[{i}].id 必须匹配 {spec['id_re'].pattern}")
+                if "holders" in g:
+                    if kind != "knowledge":
+                        errors.append(f"lines[{i}].holders 仅 knowledge（秘密线）支持（知情圈）")
+                    elif (not isinstance(g["holders"], list)
+                          or any(not isinstance(h, str) or not h.strip() for h in g["holders"])):
+                        errors.append(f"lines[{i}].holders 必须为实体名/别名 字符串数组")
                 if "target_ch" not in g:
                     errors.append(f"lines[{i}]（plant {kind}）必须提供 target_ch"
-                                  f"（正整数章号、ch_NNN、\"第N章\" 或 \"longline\"；缺省会静默占用长线配额，故强制显式声明）")
+                                  f"（int 章号如 21 / ch_NNN 三位补零 / \"第N章\" / \"longline\"；"
+                                  f"缺省会静默占用长线配额，故强制显式声明）")
                 _, terr = _norm_target(g.get("target_ch"))
                 if terr:
                     errors.append(f"lines[{i}]: {terr}")
@@ -500,6 +516,12 @@ def validate_proposal(proposal, expected_chapter: str | None = None) -> tuple[li
                         errors.append(f"lines[{i}].requires 必须为字符串数组")
                     elif any(not isinstance(r, str) for r in g["requires"]):
                         errors.append(f"lines[{i}].requires 的元素必须为字符串")
+                if "holders" in g:
+                    if kind != "knowledge":
+                        errors.append(f"lines[{i}].holders 仅 knowledge（秘密线）支持（知情圈）")
+                    elif (not isinstance(g["holders"], list)
+                          or any(not isinstance(h, str) or not h.strip() for h in g["holders"])):
+                        errors.append(f"lines[{i}].holders 必须为实体名/别名 字符串数组")
                 if not g.get("id"):
                     errors.append(f"lines[{i}]（{action}）必须提供 id")
                 if action == "remind" and kind != "foreshadow":
@@ -763,7 +785,12 @@ def _same_line_content(kind: str, existing: dict, g: dict, ch_num: int) -> bool:
     else:
         want = {"secret": g["secret"], "plant_ch": g.get("plant_ch") or ch_num, "target_ch": target,
                 "weight": g.get("weight", 1), "note": g.get("note", ""),
-                "requires": [str(r) for r in g.get("requires", []) if str(r).strip()]}
+                "requires": [str(r) for r in g.get("requires", []) if str(r).strip()],
+                "holders": [str(h).strip() for h in g.get("holders", []) if str(h).strip()]}
+    if kind == "knowledge":
+        # 兼容 holders 引入前封存的旧条目（无该键按空知情圈处理）
+        return (all(existing.get(k) == v for k, v in want.items() if k != "holders")
+                and (existing.get("holders") or []) == want["holders"])
     return all(existing.get(k) == v for k, v in want.items())
 
 
@@ -808,10 +835,15 @@ def _merge_lines(state: dict, items: list[dict], ch_num: int, rep: dict) -> None
                 rep["updated"].append(f"🎭 新误会 {gid}：{g['content'][:30]}")
             else:
                 reqs = [str(r) for r in g.get("requires", []) if str(r).strip()]
-                arr.append({"id": gid, "secret": g["secret"], "plant_ch": g.get("plant_ch") or ch_num,
-                            "status": "Concealed", "target_ch": target,
-                            "weight": g.get("weight", 1), "note": g.get("note", ""), "requires": reqs})
-                rep["updated"].append(f"🔒 知识线登记 {gid}《{g['secret'][:24]}》→ 计划揭示 {target}")
+                holders = [str(h).strip() for h in g.get("holders", []) if str(h).strip()]
+                entry = {"id": gid, "secret": g["secret"], "plant_ch": g.get("plant_ch") or ch_num,
+                         "status": "Concealed", "target_ch": target,
+                         "weight": g.get("weight", 1), "note": g.get("note", ""), "requires": reqs}
+                if holders:
+                    entry["holders"] = holders
+                arr.append(entry)
+                holder_note = f"｜知情圈：{'、'.join(holders)}" if holders else ""
+                rep["updated"].append(f"🔒 知识线登记 {gid}《{g['secret'][:24]}》→ 计划揭示 {target}{holder_note}")
             idx[gid] = arr[-1]
             continue
         gid = g.get("id")
@@ -1093,9 +1125,12 @@ def _merge_synopsis(state: dict, patch: dict, ch: str, rep: dict) -> None:
         chs = state.setdefault("chapters", {})
         ent = chs.get(c)
         if ent is None:
-            ent = {"num": _chapter_num(c) or 0, "title": "", "synopsis": "", "source": "manual"}
-            chs[c] = ent
-            rep["updated"].append(f"📖 新增章节梗概占位（{c}）")
+            # QA P21：跨章修订通道只认已登记章——指向未注册章整案报错，
+            # 不再静默 no-op / 悄悄建占位（修订意图丢失无从追溯）
+            rep["errors"].append(
+                f"synopsis.chapters.{c} 无既有梗概（跨章修订通道仅支持修订已登记章节；"
+                f"正常登记请随该章 sync 走 synopsis.text，待其封存后再用修订通道）")
+            continue
         for f in ("title", "synopsis"):
             if f in cp:
                 v = cp[f]
@@ -1111,6 +1146,20 @@ def _merge_proposal_into(data: dict, proposal: dict, ch, ch_num, rep: dict) -> N
         _merge_current(data["current"], proposal["current"], rep)
     if proposal.get("entities"):
         _merge_entities(data["entities"], proposal["entities"], rep)
+        # QA P22：退役与同案在场冲突 → 自动从 present 剔除并醒目提示
+        # （闪回/补叙章确需在场：请先在同案把该实体 status 改回 active 再声明 present）
+        pcs = data["current"].get("present_characters")
+        if pcs:
+            # 两种退役写法都算：action=retire，或 upsert 携带 status=retired（README 文档口径）
+            retired = {str(e.get("name", "")).strip() for e in proposal["entities"]
+                       if isinstance(e, dict) and str(e.get("name", "")).strip()
+                       and (e.get("action") == "retire" or e.get("status") == "retired")}
+            dropped = [n for n in pcs if str(n).strip() in retired]
+            if dropped:
+                data["current"]["present_characters"] = [n for n in pcs if str(n).strip() not in retired]
+                rep["warnings"].append(
+                    f"🗂️ 实体{'、'.join(dropped)}本提案内退役，已自动从 present_characters 剔除"
+                    f"（「已退役但在场」状态矛盾不再入库；闪回章请先 status=active 再声明在场）")
     if proposal.get("lines"):
         _merge_lines(data["lines"], proposal["lines"], ch_num or 0, rep)
     if proposal.get("timeline"):
@@ -1126,6 +1175,8 @@ def apply_proposal(book: Path, proposal: dict, expected_chapter: str | None = No
     rep: dict = {"updated": [], "warnings": [], "errors": [],
                  "chapter": proposal.get("chapter") if isinstance(proposal, dict) else None}
     errors, plan = validate_proposal(proposal, expected_chapter)
+    common.debug(f"gate=validate_proposal: {len(errors)} 错误"
+                 + (f"（{errors[0]}）" if errors else ""))
     rep["plan"] = plan
     if errors:
         rep["errors"] = errors
@@ -1141,6 +1192,8 @@ def apply_proposal(book: Path, proposal: dict, expected_chapter: str | None = No
         rep["errors"].append(f"幂等登记簿损坏，拒绝合并: {exc}")
         return rep
     if op in marker:
+        common.debug(f"gate=idempotency: op={op} 命中登记簿（hash={proposal_hash[:16]}… "
+                     f"登记 {marker[op][:16]}…）→ {'内容一致跳过' if marker[op] == proposal_hash else '内容冲突拒收'}")
         if marker[op] != proposal_hash:
             rep["errors"].append(f"operation_id {op} 已用于不同内容，拒绝复用")
         else:
@@ -1148,9 +1201,11 @@ def apply_proposal(book: Path, proposal: dict, expected_chapter: str | None = No
             rep["duplicate"] = True
         return rep
     if proposal_hash in marker.values():
+        common.debug(f"gate=idempotency: 内容哈希 {proposal_hash[:16]}… 已应用过（不同 op）→ 跳过")
         rep["warnings"].append("相同内容提案已应用过，跳过")
         rep["duplicate"] = True
         return rep
+    common.debug(f"gate=idempotency: 通过（op={op} hash={proposal_hash[:16]}… 未登记）")
 
     try:
         data = {key: copy.deepcopy(load_state(book, key)) for key in STATE_KEYS}
@@ -1160,6 +1215,9 @@ def apply_proposal(book: Path, proposal: dict, expected_chapter: str | None = No
     before_hash = {key: common.canonical_json_hash(data[key]) for key in STATE_KEYS}
 
     _merge_proposal_into(data, proposal, ch, ch_num, rep)
+    common.debug(f"gate=merge: updated={len(rep['updated'])} warnings={len(rep['warnings'])} "
+                 f"errors={len(rep['errors'])}"
+                 + (f"（{rep['errors'][0]}）" if rep["errors"] else ""))
     if rep["errors"]:
         rep["updated"] = []
         rep["warnings"] = []
@@ -1168,6 +1226,8 @@ def apply_proposal(book: Path, proposal: dict, expected_chapter: str | None = No
         return rep
 
     verify_errors = verify_data(data)
+    common.debug(f"gate=verify_data（写闸门，含前置因果闭环保）: {len(verify_errors)} 错误"
+                 + (f"（{verify_errors[0]}）" if verify_errors else ""))
     if verify_errors:
         rep["errors"].extend(verify_errors)
         rep["updated"] = []
@@ -1256,6 +1316,28 @@ def _stray_files(inbox: Path) -> list[str]:
     return out
 
 
+def _write_rejection_sidecar(archived: str, errors: list[str],
+                             chapter: str | None = None, operation_id: str | None = None) -> None:
+    """QA P14：拒收提案归档时附带拒收原因侧车（_<名>.rejection.json）。
+
+    侧车文件名以「_」前缀命名，不匹配 ch_*.json 的合并/捡回正则（_CH_FILE_RE 与
+    _failed_candidates 的 glob），永不参与合并；「按报错逐条修复后重跑 sync」的自愈
+    流程不再依赖当场 stdout 日志。
+    """
+    try:
+        p = Path(archived)
+        side = p.with_name(f"_{p.stem}.rejection.json")
+        common.dump_json(side, {
+            "chapter": chapter,
+            "operation_id": operation_id,
+            "reasons": errors,
+            "ts": datetime.datetime.now().isoformat(timespec="seconds"),
+            "note": "本文件仅记录拒收原因（不是提案）；按 reasons 逐条修复提案后重跑 sync 即可。",
+        })
+    except (OSError, TypeError, ValueError):
+        pass  # 侧车是审计增强，失败不阻断归档主流程
+
+
 def _archive(pf: Path, dst: Path) -> Path:
     dst.mkdir(parents=True, exist_ok=True)
     # 加固：pf 必须在 inbox 内且非 symlink
@@ -1331,6 +1413,7 @@ def apply_inbox(book: Path, expect_chapter: str | None = None, dry_run: bool = F
                 overall["failed"] += 1
                 if not dry_run:
                     result["archived_to"] = str(_archive(pf, inbox / "failed"))
+                    _write_rejection_sidecar(result["archived_to"], result["errors"])
                 fn = common.chapter_number_from_name(pf.name)
                 tn = common.chapter_token_to_num(expect_chapter) if expect_chapter else None
                 if expect_chapter is None or fn is None or fn == tn:
@@ -1350,6 +1433,10 @@ def apply_inbox(book: Path, expect_chapter: str | None = None, dry_run: bool = F
                 overall["failed"] += 1
                 if not dry_run:
                     rep["archived_to"] = str(_archive(pf, inbox / "failed"))
+                    _write_rejection_sidecar(rep["archived_to"], rep["errors"],
+                                              chapter=ch if isinstance(ch, str) else None,
+                                              operation_id=str(proposal.get("operation_id"))
+                                              if isinstance(proposal, dict) and proposal.get("operation_id") else None)
                 break
             if rep.get("duplicate"):
                 overall["duplicates"] += 1
@@ -1371,6 +1458,67 @@ def apply_inbox(book: Path, expect_chapter: str | None = None, dry_run: bool = F
     return overall
 
 
+def _prereq_errors(lines: dict) -> list[str]:
+    """前置因果闭环保（QA P20：从「仅 check 可见的状态级错误」提升为合并时写闸门）。
+
+    对合并后的 lines 数据构建「线 → requires」图，查两类因果违规：
+    - 循环前置依赖（prerequisite_cycle 同语义）
+    - 本线已闭环而前置依赖未达成（prerequisite_unmet 同语义）
+    返回错误信息列表（空 = 通过）；未知前置 ID 不在此报错（check 层降级 prerequisite_missing 警告）。
+    """
+    errors: list[str] = []
+    resolved_status = {"foreshadows": "Resolved", "misunderstandings": "Resolved", "knowledge": "Revealed"}
+    graph: dict[str, dict] = {}
+    for arr_key, rstatus in resolved_status.items():
+        for item in lines.get(arr_key, []) or []:
+            lid = str(item.get("id") or "")
+            if not lid:
+                continue
+            graph[lid] = {"status": str(item.get("status", "")), "resolved": rstatus,
+                          "requires": [str(r) for r in (item.get("requires") or [])]}
+    for lid, info in graph.items():
+        is_resolved = info["status"].lower() == info["resolved"].lower()
+        for req_id in info["requires"]:
+            req = graph.get(req_id)
+            if req is None:
+                continue
+            if is_resolved and req["status"].lower() != req["resolved"].lower():
+                errors.append(f"前置因果冲突：线索 {lid} 已标记完成({info['status']})，"
+                              f"但其前置依赖 {req_id} 仍未完成({req['status']})——"
+                              f"请将当章 action 改为 remind，或先推进前置线索 {req_id}")
+    # 循环依赖检测（迭代式 DFS 三色法，与 checks.run_checks 同语义；报首个成环节点）
+    WHITE, GRAY, BLACK = 0, 1, 2
+    color = {lid: WHITE for lid in graph}
+    found_cycle = None
+    for root in graph:
+        if found_cycle or color[root] != WHITE:
+            continue
+        color[root] = GRAY
+        stack = [(root, iter(graph[root]["requires"]))]
+        while stack:
+            node, it = stack[-1]
+            advanced = False
+            for neighbor in it:
+                if neighbor not in graph:
+                    continue
+                if color[neighbor] == GRAY:
+                    found_cycle = neighbor
+                    break
+                if color[neighbor] == WHITE:
+                    color[neighbor] = GRAY
+                    stack.append((neighbor, iter(graph[neighbor]["requires"])))
+                    advanced = True
+                    break
+            if found_cycle:
+                break
+            if not advanced:
+                color[node] = BLACK
+                stack.pop()
+    if found_cycle:
+        errors.append(f"前置因果冲突：线索 {found_cycle} 存在循环前置依赖（requires 闭环）——请解除闭环后重提")
+    return errors
+
+
 def verify_data(data: dict[str, dict]) -> list[str]:
     errors: list[str] = []
     for sec in ("current", "entities", "lines", "timeline", "ledger"):
@@ -1379,6 +1527,11 @@ def verify_data(data: dict[str, dict]) -> list[str]:
             for pe in p_errors:
                 if pe not in errors:
                     errors.append(pe)
+
+    # QA P20：前置因果闸门并入写闸门——sync 合并时即拦截闭环/未决前置，
+    # 不再等独立 check 才暴露（verify_state 的 sync「状态体检」同源覆盖）
+    if isinstance(data.get("lines"), dict):
+        errors.extend(_prereq_errors(data["lines"]))
 
     led = data["ledger"]
     running = {}

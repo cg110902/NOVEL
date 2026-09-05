@@ -14,8 +14,14 @@ stage_mode: {{slot:stage_mode|Simmering}}
 # release_trigger: <!-- 若为 Eruption 必填：掀开底牌反击的高能爽感瞬间 -->
 # style_notes 请根据当章核心看点量身定制，禁止与上章完全相同（避免 style_notes_copy 警告）
 style_notes: 通俗大白话 | 拒绝冷峻逼仄 | 鲜活对白与动作 | 物理刀口截断
+# 字数口径：check 按「剥离首行章题的正文」计 CJK——压线章请在 bands 下限上多留 5~10 字余量
+# （低于下限 15% 会触发 word_band_breach 警告）
 editor_extra: 
 ---
+
+## 本章坐标（引擎自动注入 · 主控可改）
+
+<!-- 双方不可退让的核心诉求与冲突点 -->
 
 ## 核心冲突与场景脉络
 
