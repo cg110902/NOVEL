@@ -88,6 +88,14 @@ def ws_gate(args) -> Path | None:
     不混文本）；文本模式保持人话提示；两种模式均只打印一次说明（QA P12 去重）。
     返回 None 时调用方 `return ws_gate_code()`（QA P3-4：按原因区分 1/2）。
     """
+    # QA P3-4 修正：下面第 94 行给 _RESOLVE_REASON 赋值却没声明 global，Python 因此把
+    # 整个函数内的该名字都视为局部变量，导致两个真实缺陷：
+    #   ① 走「非 project_missing」分支时（如 -w 指向不存在的目录），该局部名从未绑定，
+    #      第 100 行读取即 UnboundLocalError——本该输出结构化错误信封的 --json 路径直接崩栈；
+    #   ② 即便走了 project_missing 分支，赋的也是局部变量，ws_gate_code() 读的是模块级
+    #      那个，原因永远传不过去，「按原因区分退出码 1/2」形同虚设。
+    # 声明 global 同时修掉两者，并让原因真正流到 ws_gate_code()。
+    global _RESOLVE_REASON
     js = bool(getattr(args, "json", False))
     book = _resolve_and_validate(args.workspace, suppress_text=js)
     if book is not None and not (book / "project.json").exists():
