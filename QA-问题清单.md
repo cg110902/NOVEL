@@ -239,3 +239,26 @@ python studio.py errcodes --json → total=52
 「工作正常、不必改」的闸门复验：unfilled_slot / candidate_leak / beats_fm_extra_keys /
   beats_form_repeat_without_reason / final_drift 全部仍按预期触发
 ```
+
+### 端到端复跑验证（修复后完整跑通第 4 章）
+
+单点探针不足以证明修复可用，因此在副本 `workspace/烟渡测试/`（沧澜拾灯 的拷贝，未污染回归基线）上
+**用修好的引擎完整跑通 ch_004 全五阶段**，由一人分饰五角色，严格按各 SKILL 卡执行：
+
+| 阶段 | 动作 | 结果 |
+|---|---|---|
+| Stage 1 | `beats new ch_004 --write` + 主控写实细纲 | 名册含 `无主空灯`（**P2-2 在真实流程成立**）；`check` 0 errors 0 warnings |
+| — | 细纲首写 `GUN-006（…）：plant` | `line_action_orphan` 正确报警，文案直接给出正确写法 `plant GUN-006`，按提示改后消警（**P2-1 豁免语法可用**） |
+| Stage 2 | `pack ch_004` + 角色网关抽查 | **P0-2** 6 例全中：drafter 读 `state/`、`log/critic/` 拒读，读 beats 放行；reader 读 `raw/` 拒读；critic 读 beats 拒读、读 `state/current.json` 放行 |
+| Stage 3 | raw → final 精修 | raw 2064 → final **2364** 汉字，硬合同下限 2200 **一次达标**；剪枝后等量回补净增 300 字 |
+| — | `check` | **ch_004 不在 `beats_words_drift` 名单**（落在自报带 [2200,2800] 内），而 ch_001–003 三章均在——工艺问题 1+2 的修复在真实产出上生效 |
+| Stage 4 | Reader 提案 | `proposal check ch_004` **零项** |
+| — | `sync --dry-run` | 首次拦出我提案的 3 类真实契约错误：GUN 用 `plan` 非 `content`、KNO 不支持 `remind`、提案层 `timeline.events` 不收 `chapter`；修正后 `remind` 仍被拒 `plan`（remind 只收 `id/kind/action/quote/requires/target_ch`）——闸门逐层准确 |
+| — | `beats_overlap` | 按修好的 Reader 卡第 0 条纪律改写后，**由历史 8 次降为 0**（工艺问题 3 生效） |
+| — | 最终 `--dry-run` | **零告警零错误**，合并 1 |
+| Stage 4B | Critic 盲审便签 | 如实记录引擎判定的「弱收」并给出复核意见，未糊过 |
+| Stage 5 | `sync ch_004` | exit 0；GUN-006 埋设、MIS-001 激化至 3、KNO-001 更新、编年史 +4、梗概登记、快照 `ch_004_done` |
+| 收尾 | `check` + 指针对账 | `ok=True`，0 errors / 0 warnings / 3 infos（均为历史三章字数偏差）；**`cockpit` 与 `status` 对「下一章」同答 ch_005**（**P1-4 在真实流程成立**） |
+
+**结论**：修复不仅在探针下成立，在完整工作流里也成立；且修好的 Editor 字数硬合同纪律让本章
+**首次尝试即满足自报字数带**，而修复前的三章全部欠字返工。
