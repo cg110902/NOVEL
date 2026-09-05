@@ -21,3 +21,13 @@ dev = ["pytest>=8.0"]
 
 [tool.setuptools.dynamic]
 version = {attr = "engine.__version__"}
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# 用例通过 subprocess 调 studio.py，导入的是仓库里的 engine，故必须把仓库根留在
+# sys.path 上；conftest.py 也需可被用例直接 import（build_book 等夹具助手）。
+pythonpath = [".", "tests"]
+addopts = "-ra"
+# 说明：本套件每条用例都要 fork 一个 Python 进程跑 CLI，90 项约 2.5 分钟属正常，
+# 不是卡死。若需要单例超时保护，装 pytest-timeout 后再加 `timeout = 300`
+# （未装该插件时写这行只会产生 Unknown config option 警告，故此处不写）。
