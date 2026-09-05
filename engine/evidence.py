@@ -1107,6 +1107,14 @@ def names(book: Path) -> dict:
     known: set[str] = {str(proj.get("protagonist", "")).strip()}
     for names_list in lookup.values():
         known.update(nm for nm in names_list if nm)
+    # QA P2-3：别名 → 规范实体名反查表。`known` 混装规范名与别名，命中别名时必须
+    # 解析回规范名，否则给出的 `state set 'entities.<别名>.aliases'` 手势执行即失败。
+    _canonical: dict[str, str] = {}
+    for primary, names_list in lookup.items():
+        _canonical[primary] = primary
+        for a in names_list:
+            if a:
+                _canonical.setdefault(a, primary)
     try:
         pools = state.load_state(book, "ledger").get("pools", {})
     except (ValueError, FileNotFoundError):
@@ -1164,6 +1172,11 @@ def names(book: Path) -> dict:
                         (k in w or w in k or
                          (k[0] == w[0] and difflib.SequenceMatcher(None, w, k).ratio() >= 0.5))})
         hosts = sorted(set(hosts) | set(_appellation_host(w)))
+        # QA P2-3 修正：`known` 混装了规范实体名与别名，于是 host 可能落到**别名**上
+        # （实测「周叔」被判给「周大年」，而 周大年 只是 老周头 的别名）。据此给出的
+        # `state set 'entities.周大年.aliases'` 手势执行即失败（「实体不存在，拒绝猜测」），
+        # 等于给出一条跑不通的建议。现统一解析回规范实体名。
+        hosts = sorted({_canonical.get(h, h) for h in hosts})
         if hosts:
             known_variants.append({"name": w, "count": total, "chapters": chs[-5:], "of": hosts[:3]})
         else:
