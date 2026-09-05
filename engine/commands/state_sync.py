@@ -497,7 +497,23 @@ def _cmd_proposal_auto(book: Path, ch: str, args) -> int:
         s = ln.strip().lstrip("-*· ").strip()
         if not s or s.startswith(("#", "<")):
             continue
-        if s.startswith("**内容") or s.startswith("**场景") or s.startswith("**收束") :
+        # QA P2-12：上面这行的 lstrip("-*· ") 会把行首的 `**` 一并吃掉
+        # （"- **内容**：x" → "内容**：x"），于是紧随其后的 s.startswith("**内容")
+        # 永远不可能命中——五种写法实测全部 False，该分支自始即是死代码
+        # （把 **内容** 放宽成 **内容 也同样不命中）。
+        # 死代码的真实后果只有一个：残留的尾部 ** 漏进状态字段——proposal auto
+        # 实跑产出过 current.situation = "本章核心戏剧目标**：把「无主空灯」…"。
+        # 另有一个连带缺口：空标签行（如 "- **场景脉络**："，冒号后无内容）
+        # 会被当成正文收进来，在 situation 尾部留下 "；场景脉络：" 碎片。
+        #
+        # 这里刻意只做两件明确正确的事，不扩大过滤范围：
+        #   ① 剥掉成对 ** 粗体标记（与 P2-10 的 _clean() 同一口径）；
+        #   ② 跳过「冒号后无内容」的空标签行。
+        # 不去按「内容/场景/收束」前缀整行跳过——细纲里 "- 🎬 **内容**：天刚亮，
+        # 陆沉舟进屋蹲在灶台前…" 恰恰是真正的场景正文，把死代码复活成会删正文的
+        # 行为变更既无人要求，也会让 situation 丢掉实际内容。
+        s = re.sub(r"\*\*", "", s).strip()
+        if re.match(r"^[^：:]{1,12}[：:]\s*$", s):
             continue
         cleaned = re.sub(r"^(?:章末物理刀口|[-·*]*\s*📍\s*\**章末物理刀口卡点\**)[:：]\s*", "", s).strip()
         if cleaned and not cleaned.startswith(("<", "<!--")):
