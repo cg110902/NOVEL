@@ -5,6 +5,8 @@
 """
 from __future__ import annotations
 
+import difflib
+import json
 import math
 import re
 from pathlib import Path
@@ -15,6 +17,12 @@ try:
     import jieba
     import jieba.posseg as pseg
     import jieba.analyse
+    try:
+        # 压掉冷启动的「Building prefix dict...」初始化日志（走 stderr，
+        # 会混进 Agent 的合并输出造成噪声；--json 的 stdout 本不受影响）
+        jieba.setLogLevel(60)  # logging.CRITICAL
+    except Exception:
+        pass
     _HAS_JIEBA = True
 except ImportError:
     _HAS_JIEBA = False
@@ -638,4 +646,328 @@ def form_distribution(book: Path) -> dict:
     for rec in out.values():
         n = rec["count"] or 1
         rec["shares"] = {k: round(v / n, 3) for k, v in rec["forms"].items()}
+    return out
+
+
+# --------------------------------------------------------------------------- 只读取证三件套（ask / pov / names）
+def ask(book: Path, query: str) -> dict:
+    """ask：全书事实检索机（只读取证，零裁决）。
+
+    查询词先做别名展开（实体名/别名双向包含、账本池名、线索 ID 直查），再对
+    「六表结构化命中」与「final 正文原句」双域检索；所有命中均带章节/条目出处。
+    未命中 = 合法事实（该词暂无账面与正文记录），绝不臆造。
+    """
+    q = str(query or "").strip()
+    out: dict = {"kind": "ask", "query": q}
+    if not q:
+        out["error"] = "查询词为空（示例：studio ask 灵石 / ask 苏九娘 / ask GUN-001）"
+        return out
+    terms: list[str] = [q]
+
+    # 1) 别名展开（实体）
+    try:
+        ents = state.load_state(book, "entities").get("entries", [])
+    except (ValueError, FileNotFoundError):
+        ents = []
+    lookup = entity_lookup(book)
+    ent_hits = []
+    for e in ents:
+        if e.get("status", "active") != "active":
+            continue
+        names = lookup.get(str(e.get("name", "")), [])
+        if any(nm and len(nm) >= 2 and (nm in q or q in nm) for nm in names):
+            ent_hits.append({k: e.get(k) for k in
+                             ("name", "type", "aliases", "summary", "realm", "faction",
+                              "life_status", "holder", "location") if e.get(k) not in (None, "", [])})
+            terms.extend(nm for nm in names if nm not in terms)
+    if ent_hits:
+        out["entities"] = ent_hits[:8]
+
+    # 2) 线索命中（ID 精确 或 名称/内容词命中）
+    try:
+        lines = state.load_state(book, "lines")
+    except (ValueError, FileNotFoundError):
+        lines = {}
+    line_hits = []
+    for arr, kind in (("foreshadows", "foreshadow"), ("misunderstandings", "misunderstanding"),
+                      ("knowledge", "knowledge")):
+        for g in lines.get(arr, []):
+            gid = str(g.get("id", ""))
+            blob = " ".join(str(g.get(k, "")) for k in
+                            ("id", "name", "plan", "content", "parties", "truth", "secret", "note"))
+            if q == gid or any(t in blob for t in terms):
+                line_hits.append({"id": gid, "kind": kind, "status": g.get("status"),
+                                  "target_ch": g.get("target_ch"),
+                                  "desc": str(g.get("name") or g.get("secret") or g.get("content") or "")[:60]})
+    if line_hits:
+        out["lines"] = line_hits[:10]
+
+    # 3) 账本命中
+    try:
+        led = state.load_state(book, "ledger")
+    except (ValueError, FileNotFoundError):
+        led = {}
+    pool_terms = set()
+    for pid, p in (led.get("pools") or {}).items():
+        for t in (pid, p.get("name"), p.get("unit")):
+            t = str(t or "")
+            if len(t) >= 2 and (t in q or q in t):
+                pool_terms.add(pid)
+    tx_hits = []
+    for t in reversed(led.get("transactions") or []):
+        subj = str(t.get("subject", ""))
+        if t.get("pool") in pool_terms or any(s in subj for s in terms):
+            tx_hits.append({"chapter": t.get("chapter"), "pool": t.get("pool"),
+                            "delta": t.get("delta"), "subject": subj[:40],
+                            "balance_after": t.get("balance_after")})
+        if len(tx_hits) >= 8:
+            break
+    if tx_hits:
+        out["ledger"] = tx_hits
+        out["pools_now"] = {pid: p.get("current") for pid, p in (led.get("pools") or {}).items()}
+
+    # 4) 编年史 / 危机时钟 / 梗概命中
+    try:
+        tl = state.load_state(book, "timeline")
+    except (ValueError, FileNotFoundError):
+        tl = {}
+    ev_hits = [{"time": e.get("time"), "event": str(e.get("event", ""))[:60], "chapter": e.get("chapter")}
+               for e in reversed(tl.get("events") or [])
+               if any(s in str(e.get("event", "")) for s in terms)][:8]
+    if ev_hits:
+        out["events"] = ev_hits
+    clock_hits = [{"name": c.get("name"), "target_ch": c.get("target_ch"), "status": c.get("status"),
+                   "desc": str(c.get("desc", ""))[:50]}
+                  for c in tl.get("clocks") or []
+                  if any(s in (str(c.get("name", "")) + str(c.get("desc", ""))) for s in terms)]
+    if clock_hits:
+        out["clocks"] = clock_hits[:6]
+    try:
+        syn = state.load_state(book, "synopsis").get("chapters", {})
+    except (ValueError, FileNotFoundError):
+        syn = {}
+    syn_hits = [{"chapter": tok, "title": v.get("title", ""), "synopsis": str(v.get("synopsis", ""))[:60]}
+                for tok, v in sorted(syn.items())
+                if any(s in (str(v.get("title", "")) + str(v.get("synopsis", ""))) for s in terms)]
+    if syn_hits:
+        out["synopsis"] = syn_hits[-6:]
+
+    # 5) 现场快照命中
+    try:
+        cur = state.load_state(book, "current")
+    except (ValueError, FileNotFoundError):
+        cur = {}
+    if any(s in json.dumps(cur, ensure_ascii=False, default=str) for s in terms):
+        out["current"] = {k: v for k, v in cur.items() if v not in ("", [], None)}
+
+    # 6) 正文原句证据（近章优先，仅用 ≥2 字词匹配）
+    usable = [t for t in dict.fromkeys(terms) if len(t) >= 2]
+    text_hits = []
+    if usable:
+        for tok, _, text in reversed(final_chapters(book)):
+            for sent in _sentences(text):
+                hit_terms = [t for t in usable if t in sent]
+                if hit_terms:
+                    text_hits.append({"chapter": tok, "terms": hit_terms[:3],
+                                      "quote": sent.strip()[:90]})
+                    break
+            if len(text_hits) >= 8:
+                break
+    if text_hits:
+        out["text_hits"] = text_hits
+    out["notes"] = ["未命中 = 合法事实（账面与正文均无记录）；本命令只读取证、零裁决，语义判断归主控。"]
+    return out
+
+
+def pov(book: Path, name: str) -> dict:
+    """pov：角色视角包（只读推导，advisory）。
+
+    从现有账本推导「该角色此刻知道什么 / 不知道什么」：
+    - 已揭示知识（KNO Revealed）+ 其登场章节的编年史事件 = 他应知信息（公开/亲历）；
+    - 未揭示知识（KNO Concealed）= 按账本他不知情（若正文另有交代，以正文为准）。
+    严禁据此硬写入正文——语义裁决归主控与起草员。
+    """
+    target = str(name or "").strip()
+    out: dict = {"kind": "pov", "name": target}
+    if not target:
+        out["error"] = "角色名为空（示例：studio pov 苏九娘）"
+        return out
+    try:
+        ents = state.load_state(book, "entities").get("entries", [])
+    except (ValueError, FileNotFoundError):
+        ents = []
+    lookup = entity_lookup(book)
+    resolved = None
+    for primary, names in lookup.items():
+        if target == primary or target in names:
+            resolved = primary
+            break
+    if resolved is None:
+        cands = [p for p, names in lookup.items()
+                 if len(target) >= 2 and any(target in nm or nm in target for nm in names)]
+        out["error"] = f"实体「{target}」未登记"
+        if cands:
+            out["candidates"] = cands[:8]
+        return out
+
+    e = next((x for x in ents if x.get("name") == resolved), {}) or {}
+    names = lookup[resolved]
+    out["resolved"] = resolved
+    out["profile"] = {k: e.get(k) for k in
+                      ("type", "aliases", "summary", "realm", "faction", "life_status",
+                       "status", "attitude", "dossier", "golden_quote", "card")
+                      if e.get(k) not in (None, "", [])}
+    if e.get("charges") is not None:
+        out["profile"]["charges"] = f"{e['charges']}/{e.get('max_charges', '?')}"
+
+    carries = [{"name": it.get("name"), "location": it.get("location", ""),
+                "condition": it.get("condition", ""), "charges": it.get("charges")}
+               for it in ents
+               if it.get("type") == "item" and it.get("status", "active") == "active"
+               and str(it.get("holder", "")) in names]
+    if carries:
+        out["carries"] = carries
+    if e.get("relations"):
+        out["relations"] = e["relations"]
+
+    try:
+        cur = state.load_state(book, "current")
+    except (ValueError, FileNotFoundError):
+        cur = {}
+    out["on_stage_now"] = any(nm in (cur.get("present_characters") or []) for nm in names)
+
+    footprint = []
+    for tok, _, text in final_chapters(book):
+        if sum(count_aliases(text, names).values()):
+            footprint.append(tok)
+    if footprint:
+        out["appearances"] = {"first": footprint[0], "last": footprint[-1],
+                              "recent": footprint[-10:]}
+    seen_chapters = {common.chapter_token_to_num(tok) or 0 for tok in footprint}
+
+    try:
+        lines = state.load_state(book, "lines")
+    except (ValueError, FileNotFoundError):
+        lines = {}
+    try:
+        tl = state.load_state(book, "timeline")
+    except (ValueError, FileNotFoundError):
+        tl = {}
+    knows = {"public_knowledge": [], "lived_events": []}
+    for k in lines.get("knowledge", []):
+        if str(k.get("status", "")).strip().lower() == "revealed":
+            knows["public_knowledge"].append({"id": k.get("id"), "secret": str(k.get("secret", ""))[:50]})
+    knows["public_knowledge"] = knows["public_knowledge"][-8:]
+    for ev in tl.get("events") or []:
+        ch_num = common.chapter_token_to_num(ev.get("chapter")) or 0
+        if ch_num and ch_num in seen_chapters:
+            knows["lived_events"].append({"chapter": ev.get("chapter"),
+                                          "event": str(ev.get("event", ""))[:50]})
+    knows["lived_events"] = knows["lived_events"][-8:]
+    out["knows"] = knows
+    out["unknown_to_char"] = {
+        "items": [{"id": k.get("id"), "secret": str(k.get("secret", ""))[:50],
+                   "note": str(k.get("note", "") or "")[:40]}
+                  for k in lines.get("knowledge", [])
+                  if str(k.get("status", "")).strip().lower() != "revealed"][-8:],
+        "note": "按账本未揭示 = 该角色不应知情；若正文已另行交代，以正文为准。"}
+
+    open_lines = []
+    for arr, kind in (("foreshadows", "foreshadow"), ("misunderstandings", "misunderstanding"),
+                      ("knowledge", "knowledge")):
+        for g in lines.get(arr, []):
+            if str(g.get("status", "")).strip().lower() in ("resolved", "revealed"):
+                continue
+            blob = " ".join(str(g.get(k, "")) for k in
+                            ("name", "content", "plan", "parties", "secret", "note"))
+            if any(nm in blob for nm in names if len(nm) >= 2):
+                open_lines.append({"id": g.get("id"), "kind": kind, "status": g.get("status"),
+                                   "target_ch": g.get("target_ch"),
+                                   "desc": str(g.get("name") or g.get("content") or g.get("secret") or "")[:40]})
+    if open_lines:
+        out["open_lines"] = open_lines[:10]
+    out["notes"] = ["本命令由现有账本推导（advisory）；语义与写法裁决归主控/起草员。"]
+    return out
+
+
+def names(book: Path) -> dict:
+    """names：跨章专名漂移扫描（只读，零裁决）。
+
+    输出三类事实：
+    - unregistered：跨章高频但未注册的专名候选（jieba NER，缺库退化为 n-gram）；
+    - variant_clusters：候选间的近似簇（包含关系或编辑相似 ≥0.8）——同物异名风险；
+    - known_variants：疑似既有实体的变体写法（该挂别名还是建实体，归主控）。
+    """
+    finals = final_chapters(book)
+    out: dict = {"kind": "names", "final_chapters": len(finals),
+                 "unregistered": [], "variant_clusters": [], "known_variants": []}
+    if not finals:
+        return out
+    proj = common.load_json(book / "project.json", default={}) or {}
+    lookup = entity_lookup(book)
+    known: set[str] = {str(proj.get("protagonist", "")).strip()}
+    for names_list in lookup.values():
+        known.update(nm for nm in names_list if nm)
+    try:
+        pools = state.load_state(book, "ledger").get("pools", {})
+    except (ValueError, FileNotFoundError):
+        pools = {}
+    for p in pools.values():
+        for t in (p.get("name"), p.get("unit")):
+            if t:
+                known.add(str(t))
+    known.discard("")
+
+    per: dict[str, dict[str, int]] = {}
+    if _HAS_JIEBA:
+        for tok, _, text in finals:
+            for w, flag in pseg.cut(text):
+                if flag in ("nr", "ns", "nt", "nz") and 2 <= len(w) <= 6:
+                    per.setdefault(w, {}).setdefault(tok, 0)
+                    per[w][tok] += 1
+    else:
+        for tok, _, text in finals:
+            for seg in re.split(r"[^\u4e00-\u9fff]+", text):
+                if len(seg) < 2:
+                    continue
+                for L in (2, 3, 4):
+                    for i in range(len(seg) - L + 1):
+                        g = seg[i:i + L]
+                        per.setdefault(g, {}).setdefault(tok, 0)
+                        per[g][tok] += 1
+
+    raw_cands = []
+    for w, chs in per.items():
+        total = sum(chs.values())
+        if total < 3 or w in known or is_candidate_noise(w, pools):
+            continue
+        raw_cands.append((w, total, sorted(chs)))
+
+    known_variants, unregistered = [], []
+    for w, total, chs in raw_cands:
+        hosts = sorted({k for k in known if len(k) >= 2 and
+                        (k in w or w in k or
+                         (k[0] == w[0] and difflib.SequenceMatcher(None, w, k).ratio() >= 0.5))})
+        if hosts:
+            known_variants.append({"name": w, "count": total, "chapters": chs[-5:], "of": hosts[:3]})
+        else:
+            unregistered.append((w, total, chs))
+
+    clusters = []
+    for w, total, chs in sorted(unregistered, key=lambda x: -x[1]):
+        placed = False
+        for cl in clusters:
+            head = cl["head"]
+            if head in w or w in head or difflib.SequenceMatcher(None, w, head).ratio() >= 0.8:
+                cl["members"].append({"name": w, "count": total, "chapters": chs[-5:]})
+                placed = True
+                break
+        if not placed:
+            clusters.append({"head": w, "members": [{"name": w, "count": total, "chapters": chs[-5:]}]})
+
+    out["unregistered"] = [{"name": w, "count": t, "chapters": chs[-5:]}
+                           for w, t, chs in unregistered[:15]]
+    out["variant_clusters"] = [cl for cl in clusters if len(cl["members"]) >= 2][:8]
+    out["known_variants"] = known_variants[:10]
+    out["notes"] = ["只出数、零裁决：是否注册/挂别名/改名归主控；近似写法也可能是正文修辞。"]
     return out

@@ -1,84 +1,90 @@
 {
-  "type": "object",
   "additionalProperties": false,
-  "description": "主角/场景'此刻'速写；仅供 pack P0 提示上下文。叙事出处是正文，机器真值是 state/；不一致属事实错。",
   "properties": {
     "time": {
-      "type": "string",
-      "description": "此刻时间（timeline 历法口径，如'第二日·午后'）"
+      "type": "string"
     },
     "region": {
-      "type": "string",
-      "description": "宏观大地图区域/疆域（如'北荒域·黑风山'、'江城市·城南区'），防止大跨度长途移动瞬移吃书"
+      "type": "string"
     },
     "location": {
-      "type": "string",
-      "description": "此刻具体地点/场景"
+      "type": "string"
     },
     "power_level": {
-      "type": "string",
-      "description": "能力/修为阶梯摘要；阶梯里程碑在 timeline.arcs"
+      "type": "string"
     },
     "abilities": {
-      "type": "string",
-      "description": "可用能力/技能清单（自由文本）"
+      "type": "string"
     },
     "injury": {
-      "type": "string",
-      "description": "当前伤势"
+      "type": "string"
     },
     "equipment": {
-      "type": "string",
-      "description": "随身装备"
+      "type": "string"
     },
     "assets": {
-      "type": "string",
-      "description": "非资金类资源（资金走 ledger）"
+      "type": "string"
     },
     "situation": {
-      "type": "string",
-      "description": "一句话处境，供下一章 pack 快速回温"
+      "type": "string"
     },
     "mood": {
-      "type": "string",
-      "description": "POV 此刻心境/情绪基调（软状态，引擎不校验；如'疑惧交加，对义庄戒备'）。情绪线没动可不写。"
+      "type": "string"
     },
     "goal": {
-      "type": "string",
-      "description": "POV 角色当下想要什么（软状态，引擎不校验；区别于 beats 任务书面向读者的目标，如'查清主事去向，同时防被当成贼'）。没变可不写。"
+      "type": "string"
     },
     "key_relationships": {
-      "type": "string",
-      "description": "当前主要关系速写（软状态，引擎不校验；如'沈拓↔赵四：敌对未明；沈拓↔村长：客套'）。关系未动可不写。"
+      "type": "string"
     },
     "present_characters": {
-      "type": "array",
+      "description": "章末在场角色名单",
       "items": {
         "type": "string"
       },
-      "description": "章末此刻仍在场的角色名（给下一章 P0 回温，不是本章出现过的全部人）；必须已注册在 state/entities.json（sync 强制闭合）"
+      "title": "Present Characters",
+      "type": "array"
     },
     "loadout": {
-      "type": "object",
-      "description": "主角当前常驻作战体系（核心功法/身法/招牌杀招/保命底牌），防后期技能失忆",
+      "additionalProperties": false,
       "properties": {
-        "cultivation": {"type": "string"},
-        "movement": {"type": "string"},
-        "attack": {"type": "string"},
-        "trump_card": {"type": "string"},
-        "equipped_items": {"type": "array", "items": {"type": "string"}}
-      }
+        "cultivation": {
+          "type": "string"
+        },
+        "movement": {
+          "type": "string"
+        },
+        "attack": {
+          "type": "string"
+        },
+        "trump_card": {
+          "type": "string"
+        },
+        "equipped_items": {
+          "description": "常驻佩戴/激活法宝道具",
+          "items": {
+            "type": "string"
+          },
+          "title": "Equipped Items",
+          "type": "array"
+        }
+      },
+      "title": "Loadout",
+      "type": "object"
     },
     "aftershock": {
-      "type": "string",
-      "description": "上章戏剧余震与未平残局（给下一章开篇必接戏动作）"
+      "type": "string"
     },
     "active_pressures": {
-      "type": "array",
+      "description": "当前悬在主角头上的核心危机与倒计时",
       "items": {
         "type": "string"
       },
-      "description": "当前悬在主角头上的核心危机与倒计时"
+      "title": "Active Pressures",
+      "type": "array"
     }
-  }
+  },
+  "title": "CurrentState",
+  "type": "object",
+  "$comment": "本文件由 engine/models/schema_gen.py 从 Pydantic 模型自动生成，禁止手改；重新生成：python -m engine.models.schema_gen"
 }

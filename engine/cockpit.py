@@ -4,16 +4,16 @@
 1. workflow：精准定位当前章节与活跃工序 Stage，提供 0 歧义的下一步调度指令与标准派发参数。
 2. dramatic_momentum：计算戏剧动力学（承接余震 aftershock、悬顶危机 active_pressures、现场信息差机锋 dramatic_irony、两两张力网络 scene_tensions）。
 3. health_and_remedies：全书事实核验、确定性断言体检与具备可操作性的自愈处方（Remedies）。
-4. critic_radar：直接透视上一章读者催更便签（最想看/最怕踩），免去主控翻读外部文件。
+4. critic_radar：直接透视上一章读者催更便签（体感/连续性红旗/最想看/最怕踩），免去主控翻读外部文件。
 """
 from __future__ import annotations
 
 import json
 import re
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
-from . import checks, common, evidence, graph, state
+from . import checks, common, graph, state
 
 
 def _infer_active_chapter(book: Path) -> str:
@@ -66,24 +66,55 @@ def _find_chapter_vol(book: Path, ch: str) -> str:
             rel_parts = beats_files[-1].relative_to(book / "outlines").parts
             if rel_parts and rel_parts[0].startswith("vol_"):
                 return rel_parts[0]
-        except Exception:
+        except (OSError, ValueError):
             pass
     for vdir in sorted((book / "outlines").glob("vol_*")):
         outline_file = vdir / "outline.md"
         if outline_file.is_file():
             try:
                 otext = outline_file.read_text(encoding="utf-8", errors="ignore")
-                m = re.findall(r"\bch_?(\d+)\b", otext)
+                m = re.findall(r"ch[_\-](\d{1,4})", otext)
                 if m and int(m[0]) <= ch_num <= int(m[-1]):
                     return vdir.name
-            except Exception:
+            except OSError:
                 pass
     return f"vol_{(ch_num - 1) // 50 + 1:02d}"
 
 
+def _after_keyword(line: str, keyword: str) -> str:
+    """取便签行中关键词之后的内容（容忍 emoji/加粗/列表前缀，如 `- 💬 **本章体感**：xxx`）。"""
+    m = re.search(re.escape(keyword), line)
+    if not m:
+        return ""
+    return line[m.end():].strip()
+
+
+def _clean_value(text: str) -> str:
+    """清洗提取值：去列表/加粗残留、去"（仅供参考）"类包裹说明、去尾随冒号。"""
+    v = re.sub(r"^[:：\s*#\-]+", "", text).strip()
+    v = re.sub(r"^[（(][^）)]*[)）][:：]?\s*", "", v).strip()
+    v = re.sub(r"[:：]\s*$", "", v).strip()
+    return v
+
+
+def _item_text(line: str) -> str:
+    """提取分区列表项的实质内容（去序号、去【标签】前缀）。"""
+    s = re.sub(r"^[\d一二三四五六七八九十]+[\.、]\s*", "", line.strip())
+    s = re.sub(r"^[-*]\s*", "", s)
+    s = re.sub(r"^【[^】]*】[:：]?\s*", "", s)
+    return s.strip()
+
+
 def _get_critic_radar(book: Path, ch_num: int) -> dict[str, str]:
-    """读取上一章读者催更便签，提炼体感、期待与避坑点。"""
-    radar = {"prev_chapter": "", "vibe": "", "anticipation": "", "taboos": ""}
+    """读取上一章读者催更便签，提炼体感、连续性红旗、期待与避坑点。
+
+    兼容三种写法：① 字段直写（`- 🚩 **连续性红旗**：xxx`）；
+    ② 标题行带内容（`### ⚠️ 最怕踩：圣母`）；
+    ③ 标题+分区列表（SKILL 模板格式：标题下首条列表项作为该维度摘要）。
+    """
+    radar = {"prev_chapter": "", "vibe": "", "anticipation": "", "taboos": "", "continuity": "",
+             "fatigue": "", "foreshadow_info": "", "protagonist_liveliness": "",
+             "character_sympathy": ""}
     if ch_num <= 1:
         return radar
 
@@ -93,18 +124,73 @@ def _get_critic_radar(book: Path, ch_num: int) -> dict[str, str]:
     if not critic_path.is_file():
         return radar
 
+    def _put(field: str, value: str) -> None:
+        if value and not radar[field]:
+            radar[field] = value
+
+    def _taboo_kw(s: str) -> str:
+        """避坑字段关键词：最长匹配优先，避免“读者最怕踩的坑：”把“的坑”当内容。"""
+        for kw in ("最怕踩的坑", "最怕踩", "避坑"):
+            if kw in s:
+                return kw
+        return ""
+
+    section = None  # 标题开启的分区（anticipation/taboos），供列表项回填
     try:
         text = critic_path.read_text(encoding="utf-8", errors="replace")
-        for line in text.splitlines():
-            line_str = line.strip()
-            if "本章体感" in line_str:
-                radar["vibe"] = re.sub(r"^[-*#\s]*\**本章体感\**[:：\s]*", "", line_str)
-            elif "最想看" in line_str:
-                radar["anticipation"] = re.sub(r"^[-*#\s]*\**[下当]章最想看[什么]*\**[:：\s]*", "", line_str)
-            elif "最怕踩" in line_str or "避坑" in line_str:
-                radar["taboos"] = re.sub(r"^[-*#\s]*\**[下当]章最怕踩[什么]*\**[:：\s]*", "", line_str)
-    except Exception:
-        pass
+        for raw in text.splitlines():
+            s = raw.strip()
+            if not s:
+                continue
+            if s.startswith("#"):
+                section = None
+                if "最想看" in s:
+                    section = "anticipation"
+                    _put("anticipation", _clean_value(_after_keyword(s, "最想看")))
+                else:
+                    kw = _taboo_kw(s)
+                    if kw:
+                        section = "taboos"
+                        _put("taboos", _clean_value(_after_keyword(s, kw)))
+                if section and radar[section]:
+                    section = None  # 标题行已自带内容，无需列表回填
+                continue
+            matched = False
+            if "本章体感" in s:
+                _put("vibe", _clean_value(_after_keyword(s, "本章体感")))
+                matched = True
+            elif "连续性红旗" in s:
+                v = _clean_value(_after_keyword(s, "连续性红旗"))
+                if v and v != "无":
+                    _put("continuity", v)
+                matched = True
+            elif "疲劳度" in s:
+                _put("fatigue", _clean_value(_after_keyword(s, "疲劳度")))
+                matched = True
+            elif "信息差" in s:
+                _put("foreshadow_info", _clean_value(_after_keyword(s, "信息差")))
+                matched = True
+            elif "活人感" in s:
+                _put("protagonist_liveliness", _clean_value(_after_keyword(s, "活人感")))
+                matched = True
+            elif "路人缘" in s:
+                _put("character_sympathy", _clean_value(_after_keyword(s, "路人缘")))
+                matched = True
+            elif "最想看" in s:
+                _put("anticipation", _clean_value(_after_keyword(s, "最想看")))
+                section = None
+                matched = True
+            else:
+                kw = _taboo_kw(s)
+                if kw:
+                    _put("taboos", _clean_value(_after_keyword(s, kw)))
+                    section = None
+                    matched = True
+            if not matched and section and not radar[section] \
+                    and re.match(r"^([\d一二三四五六七八九十]+[\.、]|[-*])", s):
+                _put(section, _item_text(s))
+    except OSError:
+        pass  # 便签不可读：雷达字段留空（QA：不再吞全部异常）
     return radar
 
 
@@ -234,11 +320,32 @@ def _extract_lines_radar(lines: dict, ch_num: int) -> dict[str, Any]:
     }
 
 
-def _compute_character_dormancy(book: Path, current_ch: int) -> list[str]:
+def _load_final_texts(book: Path, current_ch: int) -> dict[int, str]:
+    """一次性预读 1..current_ch-1 的定稿文本（键=章号）。
+
+    供角色沉寂/死库存雷达共用：避免每个实体各自重新 glob+read 全部 final
+    （原实现为 O(章数×实体数) 次文件读取，长书会把"0.1 秒出报"拖成数秒）。
+    """
+    texts: dict[int, str] = {}
+    for ch_idx in range(1, current_ch):
+        ch_tok = f"ch_{ch_idx:03d}"
+        final_files = list((book / "manuscript").glob(f"*/final/{ch_tok}*.md"))
+        if final_files:
+            # 多版本时取最高版本（与 evidence.final_chapters 口径一致，QA P3-22）
+            best = max(final_files, key=lambda f: (common.chapter_version_from_name(f.name),
+                                                   common.chapter_number_from_name(f.name) or 0))
+            texts[ch_idx] = best.read_text(encoding="utf-8", errors="ignore")
+    return texts
+
+
+def _compute_character_dormancy(book: Path, current_ch: int,
+                                final_texts: dict[int, str] | None = None) -> list[str]:
     """滑动窗口计算核心角色沉寂预警（>=3章未露面或未登场）。"""
     alerts = []
     if current_ch <= 2:
         return alerts
+    if final_texts is None:
+        final_texts = _load_final_texts(book, current_ch)
 
     char_files = list((book / "characters").glob("*.md"))
     char_names = [f.stem for f in char_files if not f.stem.startswith(".")]
@@ -250,17 +357,12 @@ def _compute_character_dormancy(book: Path, current_ch: int) -> list[str]:
                 cname = edata.get("name")
                 if cname and cname not in char_names:
                     char_names.append(cname)
-    except Exception:
-        pass
+    except (ValueError, OSError):
+        pass  # 实体账本损坏：退化为仅 characters/ 目录名册
 
     char_last_seen = {c: 0 for c in char_names}
 
-    for ch_idx in range(1, current_ch):
-        ch_tok = f"ch_{ch_idx:03d}"
-        final_files = list((book / "manuscript").glob(f"*/final/{ch_tok}.md"))
-        if not final_files:
-            continue
-        text = final_files[0].read_text(encoding="utf-8", errors="ignore")
+    for ch_idx, text in final_texts.items():
         for c in char_names:
             if c in text:
                 char_last_seen[c] = ch_idx
@@ -310,11 +412,14 @@ def _compute_tension_rhythm(book: Path, current_ch: int) -> list[str]:
     return alerts
 
 
-def _compute_dead_inventory(book: Path, current_ch: int) -> list[str]:
+def _compute_dead_inventory(book: Path, current_ch: int,
+                            final_texts: dict[int, str] | None = None) -> list[str]:
     """背包资产周转与沉睡道具/词条雷达。"""
     alerts = []
     if current_ch <= 3:
         return alerts
+    if final_texts is None:
+        final_texts = _load_final_texts(book, current_ch)
 
     try:
         entries = state.load_state(book, "entities").get("entries", [])
@@ -323,27 +428,24 @@ def _compute_dead_inventory(book: Path, current_ch: int) -> list[str]:
                 iname = edata.get("name")
                 if iname and iname not in ("我悟了，你随意",):
                     last_seen_ch = 0
-                    for ch_idx in range(1, current_ch):
-                        ch_tok = f"ch_{ch_idx:03d}"
-                        final_files = list((book / "manuscript").glob(f"*/final/{ch_tok}.md"))
-                        if final_files:
-                            text = final_files[0].read_text(encoding="utf-8", errors="ignore")
-                            if iname in text:
-                                last_seen_ch = ch_idx
+                    for ch_idx, text in final_texts.items():
+                        if iname in text:
+                            last_seen_ch = ch_idx
                     if last_seen_ch > 0 and (current_ch - 1 - last_seen_ch) >= 3:
                         alerts.append(f"🎒 [沉睡道具提醒] 道具/词条「{iname}」已连续 {current_ch - 1 - last_seen_ch} 章未登场(上次使用: ch_{last_seen_ch:03d})，可考虑在后续战力推演、融合升华或剧情破局时调用。")
-    except Exception:
-        pass
+    except (ValueError, OSError):
+        pass  # 状态账本损坏：跳过沉睡道具提醒
 
     return alerts
 
 
 def get_algorithmic_guidance(book: Path, current_ch: int) -> list[str]:
-    """聚合所有确定性算法制导胶囊。"""
+    """聚合所有确定性算法制导胶囊（finals 只读一次，供沉寂/死库存雷达共用）。"""
+    final_texts = _load_final_texts(book, current_ch)
     guidance = []
-    guidance.extend(_compute_character_dormancy(book, current_ch))
+    guidance.extend(_compute_character_dormancy(book, current_ch, final_texts))
     guidance.extend(_compute_tension_rhythm(book, current_ch))
-    guidance.extend(_compute_dead_inventory(book, current_ch))
+    guidance.extend(_compute_dead_inventory(book, current_ch, final_texts))
     return guidance
 
 
@@ -362,7 +464,14 @@ def build_cockpit_briefing(book: Path, ch: str | None = None) -> dict[str, Any]:
     raw_files = common.find_chapter_files(book, "raw", ch_tok)
     final_files = common.find_chapter_files(book, "final", ch_tok)
     inbox_file = (book / "state" / "inbox" / f"{ch_tok}.json").is_file() or (book / "state" / "inbox" / "processed" / f"{ch_tok}.json").is_file()
-    critic_file = (book / "log" / "critic" / f"{ch_tok}.md").is_file()
+    critic_file = False
+    _cf = book / "log" / "critic" / f"{ch_tok}.md"
+    if _cf.is_file():
+        try:
+            # QA P2-7：引擎预填的 SKELETON 骨架不代表 Stage 4B 已完成，防「假便签」阻断真子代理派发
+            critic_file = "SKELETON" not in _cf.read_text(encoding="utf-8", errors="replace")[:400]
+        except OSError:
+            critic_file = True
 
     syn = cur["synopsis"].get("chapters", {})
     if isinstance(syn, dict):
@@ -389,7 +498,8 @@ def build_cockpit_briefing(book: Path, ch: str | None = None) -> dict[str, Any]:
         next_action = {
             "actor": "Director",
             "stage": "Stage 1",
-            "instruction": f"当章已全部完工并同步封存，推进至下一章 {next_ch}",
+            "instruction": f"当章已全部完工并同步封存，推进至下一章 {next_ch}"
+                           "（按章程取证规则：ask=不在眼前必问 ／ pov=跨章对手戏必跑 ／ calendar=排产参考）",
             "command": f"python studio.py beats new {next_ch} --write",
             "target_file": f"outlines/{vol}/beats/{next_ch}.md"
         }
@@ -398,7 +508,8 @@ def build_cockpit_briefing(book: Path, ch: str | None = None) -> dict[str, Any]:
         next_action = {
             "actor": "Director",
             "stage": "Stage 1",
-            "instruction": "吸纳上一章读者催更便签与戏剧余震，生成并确认细纲任务书落盘",
+            "instruction": "吸纳上一章读者催更便签与戏剧余震，生成并确认细纲任务书落盘"
+                           "（按章程取证规则：ask=不在眼前必问 ／ pov=跨章对手戏必跑 ／ calendar=排产参考）",
             "command": f"python studio.py beats new {ch_tok} --write",
             "target_file": f"outlines/{vol}/beats/{ch_tok}.md"
         }
@@ -407,7 +518,7 @@ def build_cockpit_briefing(book: Path, ch: str | None = None) -> dict[str, Any]:
         next_action = {
             "actor": "Drafter",
             "stage": "Stage 2",
-            "instruction": "向起草员 Drafter 下达 Stage 2 标准工序派发令，放飞算力展开3大场景",
+            "instruction": "向起草员 Drafter 下达 Stage 2 标准工序派发令，放飞算力展开核心场景",
             "command": f"python studio.py pack {ch_tok} --full",
             "target_file": f"manuscript/{vol}/raw/{ch_tok}_v1.md"
         }
@@ -453,7 +564,8 @@ def build_cockpit_briefing(book: Path, ch: str | None = None) -> dict[str, Any]:
         next_action = {
             "actor": "Director",
             "stage": "Stage 5",
-            "instruction": "主控审定 Reader 提案，一键执行 sync 原子合并账目并封存快照",
+            "instruction": "主控审定 Reader 提案，一键执行 sync 原子合并账目并封存快照"
+                           "（审定存疑处可 `studio ask <关键词>` 只读取证后再裁决）",
             "command": f"python studio.py sync {ch_tok}",
             "target_file": f"state/snapshots/"
         }
@@ -491,8 +603,8 @@ def build_cockpit_briefing(book: Path, ch: str | None = None) -> dict[str, Any]:
                 if ename and ename not in scene_chars:
                     if ename in b_text or any(a and a in b_text for a in ent.get("aliases", [])):
                         scene_chars.append(ename)
-        except Exception:
-            pass
+        except (ValueError, OSError):
+            pass  # 实体账本损坏：现场名册退化为 current.present
     scene_chars = [c for c in scene_chars if c]
 
     # 信息差机锋 (Dramatic Irony)
@@ -503,8 +615,8 @@ def build_cockpit_briefing(book: Path, ch: str | None = None) -> dict[str, Any]:
     try:
         full_G = graph.build_narrative_graph(book)
         scene_tensions = graph.extract_scene_tensions(full_G, scene_chars)
-    except Exception:
-        pass
+    except (ValueError, OSError):
+        pass  # 拓扑构建失败（如状态损坏）：张力拓扑留空
 
     # 3. 老白读者催更雷达 (Critic Radar)
     critic_radar = _get_critic_radar(book, ch_num)
@@ -562,8 +674,6 @@ def render_cockpit_terminal(briefing: dict[str, Any]) -> None:
     try:
         from rich.console import Console
         from rich.panel import Panel
-        from rich.table import Table
-        from rich.text import Text
 
         console = Console()
 
@@ -619,12 +729,15 @@ def render_cockpit_terminal(briefing: dict[str, Any]) -> None:
 
         # 3. 催更雷达看板
         if cr.get("prev_chapter"):
-            cr_text = (
-                f"[dim]来源便签：log/critic/{cr['prev_chapter']}.md[/dim]\n"
-                f"[bold green]🌟 老白体感反馈：[/bold green]{cr.get('vibe', '暂无')}\n"
-                f"[bold cyan]🔥 下章迫切期待：[/bold cyan]{cr.get('anticipation', '暂无')}\n"
-                f"[bold yellow]⚠️ 剧情避坑警示：[/bold yellow]{cr.get('taboos', '暂无')}"
-            )
+            cr_lines = [
+                f"[dim]来源便签：log/critic/{cr['prev_chapter']}.md[/dim]",
+                f"[bold green]🌟 老白体感反馈：[/bold green]{cr.get('vibe', '暂无')}",
+            ]
+            if cr.get("continuity"):
+                cr_lines.append(f"[bold red]🚩 连续性红旗：[/bold red]{cr['continuity']}")
+            cr_lines.append(f"[bold cyan]🔥 下章迫切期待：[/bold cyan]{cr.get('anticipation', '暂无')}")
+            cr_lines.append(f"[bold yellow]⚠️ 剧情避坑警示：[/bold yellow]{cr.get('taboos', '暂无')}")
+            cr_text = "\n".join(cr_lines)
             console.print(Panel(cr_text, title=f"📡 [bold]老白催更雷达 (参考 {cr['prev_chapter']})[/bold]", border_style="yellow"))
 
         # 4. 伏笔暗线分类雷达看板

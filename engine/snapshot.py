@@ -83,12 +83,20 @@ def create_snapshot(book: Path, snapshot_name: str) -> tuple[bool, str]:
         if folder.exists():
             return False, "快照目录冲突（微秒级时间戳下理论上不该发生）"
         folder.mkdir(parents=True, exist_ok=False)
-        copied = []
-        for f in _state_files(book):
-            shutil.copy2(f, folder / f.name)
-            copied.append(f.name)
-        manifest = _manifest_of(folder)
-        common.dump_json(folder / MANIFEST_NAME, manifest)
+        try:
+            copied = []
+            for f in _state_files(book):
+                shutil.copy2(f, folder / f.name)
+                copied.append(f.name)
+            manifest = _manifest_of(folder)
+            common.dump_json(folder / MANIFEST_NAME, manifest)
+        except BaseException as exc:
+            # 盲区深读修复：复制中途失败必须清掉残缺快照目录——否则"缺 manifest
+            # 按旧快照兼容放行"会让一个撕裂快照变成可回滚目标
+            shutil.rmtree(folder, ignore_errors=True)
+            if isinstance(exc, OSError):
+                raise ValueError(f"快照复制失败（已清理残缺目录，状态未受影响）: {exc}") from exc
+            raise
         # 二次校验：确保写入的 manifest 与实际文件一致
         ok, msg = _verify_manifest(folder)
         if not ok:
@@ -169,20 +177,27 @@ def rollback_snapshot(book: Path, target: str) -> tuple[bool, str, str]:
             return False, f"回滚前备份自检失败，拒绝回滚以免丢失现场: {bmsg}", ""
         restored = []
         restored_names = set()
-        for f in sorted(chosen.iterdir()):
-            if f.is_file() and f.name != MANIFEST_NAME:
-                shutil.copy2(f, sd / f.name)
-                restored.append(f.name)
-                restored_names.add(f.name)
-        for f in list(sd.iterdir()):
-            if not f.is_file() or f.name in restored_names:
-                continue
-            if f.name in {".state.lock", ".engine.lock", MANIFEST_NAME}:
-                continue
-            if f.name.startswith(".") and f.name != state.MARKER_NAME:
-                continue
-            if f.suffix in (".json", ".md"):
-                f.unlink()
+        try:
+            for f in sorted(chosen.iterdir()):
+                if f.is_file() and f.name != MANIFEST_NAME:
+                    shutil.copy2(f, sd / f.name)
+                    restored.append(f.name)
+                    restored_names.add(f.name)
+            for f in list(sd.iterdir()):
+                if not f.is_file() or f.name in restored_names:
+                    continue
+                if f.name in {".state.lock", ".engine.lock", MANIFEST_NAME}:
+                    continue
+                if f.name.startswith(".") and f.name != state.MARKER_NAME:
+                    continue
+                if f.suffix in (".json", ".md"):
+                    f.unlink()
+        except OSError as exc:
+            # 盲区深读修复：恢复/清理中途失败时现场处于撕裂态，必须给出
+            # pre_rollback 备份位置与明确出口，而不是裸 OSError
+            raise ValueError(
+                f"回滚恢复中途失败（{exc}）。当前 state/ 可能撕裂："
+                f"请用本快照重试，或手工检查 pre_rollback_{ts} 备份目录后恢复。") from exc
     lines = [f"已回滚至快照 {chosen.name}（恢复 {len(restored)} 个文件）",
              f"当前状态已自动备份为 pre_rollback_{ts}"]
     if note:

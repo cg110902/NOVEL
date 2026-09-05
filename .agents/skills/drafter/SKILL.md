@@ -25,7 +25,7 @@ description: Universal plot drafting and creative narrative generator for Novel 
   - ❌ **严禁调用其他所有工具**：严禁调用 `grep_search`、`find_by_name`、`list_dir` 漫游搜索！严禁调用 `ask_question` 打扰人类！
 - 🟢 **准读清单（Strict Whitelist · 必读且仅能读以下内容）**：
   - **【执行pack】**：运行 `python studio.py pack ch_XXX --full`，由确定性引擎一次性送达最完备时空胶囊：
-    1. **当章细纲任务书**（3场景推进目标与章末刀口）；
+    1. **当章细纲任务书**（场景推进目标与章末刀口；内含引擎注入的「一致性速查」——实体名册（含既有别名）与知情差边界）；
     2. **开篇承接余震**（`=== 戏剧余震与开篇承接 ===`，正文第一段必须咬住该余波事件！）；
     3. **现场信息差机锋**（`=== 现场信息差机锋 ===`，认知鸿沟与秘密差，AI写对手戏对白与试探的核心弹药！）；
     4. **悬顶危机倒计时**（`=== 悬顶危机倒计时 ===`，即时压迫感与事件紧迫性）；
@@ -40,7 +40,7 @@ description: Universal plot drafting and creative narrative generator for Novel 
  
 - 🔴 **禁读清单（Strict Blacklist · 绝对禁止打开）**：
   - ❌ **严禁读取 `log/critic/*`**（催更便签已由主控吸收进细纲，起草员严禁越级参考！）；
-  - ❌ **严禁读取 `bible/*` 与未命中的 `characters/*`**（pack 已提炼当章登场角色，禁止乱翻全设定导致信息过载与过度思考，只允许读取本章登场角色的 characters）；
+  - ❌ **严禁读取 `bible/*` 与 `characters/*`**（人物画像与世界观已由 pack/beats 一致性速查提炼投递，禁止乱翻全设定导致信息过载与过度思考；需要角色卡全文时经 `python studio.py pack ch_XXX --full` 获取，严禁直读文件）；
   - ❌ **严禁读取除上一章以外的所有旧章正文**；
   - ❌ **严禁读取 `state/*` 账本内部数据**；
   - ❌ **严禁读取 `engine/*` 源码**（黑盒铁律）。
@@ -57,9 +57,10 @@ description: Universal plot drafting and creative narrative generator for Novel 
      - ③ **【突发异变/杀机骤降】**。
      - ④ **【正在进行时的人物状态】**。
      - ⑤ **【戏剧余震与心理对峙】**。
-2. **完整具象化展开 1~3 个核心场景**。**坚决严禁使用大纲体、剧本体或概述性语言糊弄跳过冲突**！
+2. **完整具象化展开 当前核心核心场景**。**坚决严禁使用大纲体、剧本体或概述性语言糊弄跳过冲突**！
 3. **字数充沛饱满（2000~3000+ 汉字）**。
 4. **恪守战力标尺严防吃书**。
+5. **恪守一致性速查（专名与知情差 · 防穿帮铁律）**：人名/物名/地名严格沿用 beats「一致性速查」名册的既有写法与别名，**严禁另立新名或自创称呼变体**；场景对白严守知情差边界——**角色账本上不知道的事，一个字都不能说漏**。
 
 ---
 
@@ -81,12 +82,12 @@ description: Universal plot drafting and creative narrative generator for Novel 
 ### 3. 🌊 语言通俗、直白、大白话，降低阅读成本。
  
 
-### 5. 情绪流体力学（严格对照细纲的 stage_mode）
+### 4. 情绪流体力学（严格对照细纲的 stage_mode）
 - `Suppression (蓄水打压)`：写透外部阻力与压制，蓄满戏剧弹簧；
 - `Eruption (决战爆发)`：按照细纲的 `release_trigger` 掀开底牌，宣泄爽感；
 - `Harvest (战后清点)`：写透战利品落袋与地位提升的踏实满足感。
 
-### 6. 章末物理刀口
+### 5. 章末物理刀口
 - 结尾必须卡在动作发生临界点或悬念落地的刹那，坚决不写事后哲学总结。
 
 
@@ -104,6 +105,6 @@ description: Universal plot drafting and creative narrative generator for Novel 
    ```text
    【章节工序完工回执】
    - 完工阶段：Stage 2 起草 (Drafter)
-   - 产出文件：manuscript/vol_XX/raw/ch_XXX_v1.md
-   - 交付核验：[真实字数]字 ｜ 核心场景完整展开 ｜ 刀口物理截断 ｜ 零脚本直接落盘
+   - 产出路径：manuscript/vol_XX/raw/ch_XXX_v1.md
+   - 核心指标：[真实字数]字 ｜ 核心场景完整展开 ｜ 刀口物理截断 ｜ 零脚本直接落盘
    ```

@@ -1,19 +1,14 @@
 {
-  "type": "object",
-  "required": [
-    "entries"
-  ],
+  "additionalProperties": false,
   "properties": {
     "entries": {
-      "type": "array",
+      "description": "全书注册实体清单",
       "items": {
-        "type": "object",
-        "required": [
-          "name"
-        ],
         "additionalProperties": false,
         "properties": {
           "name": {
+            "description": "实体唯一名称",
+            "title": "Name",
             "type": "string"
           },
           "type": {
@@ -23,13 +18,17 @@
               "place",
               "faction",
               "other"
-            ]
+            ],
+            "title": "EntityType",
+            "type": "string"
           },
           "aliases": {
-            "type": "array",
+            "description": "别名列表",
             "items": {
               "type": "string"
-            }
+            },
+            "title": "Aliases",
+            "type": "array"
           },
           "card": {
             "type": "string"
@@ -41,15 +40,15 @@
             "enum": [
               "active",
               "retired"
-            ]
+            ],
+            "title": "EntityStatus",
+            "type": "string"
           },
           "realm": {
-            "type": "string",
-            "description": "（person 用）境界/阶位/社会职务（如'练气四层'、'刑警队长'）"
+            "type": "string"
           },
           "faction": {
-            "type": "string",
-            "description": "（person 用）所属势力/组织名"
+            "type": "string"
           },
           "life_status": {
             "enum": [
@@ -57,7 +56,8 @@
               "deceased",
               "missing"
             ],
-            "description": "（person 用）生命状态：alive(存活) / deceased(战死/离世) / missing(失踪)"
+            "title": "LifeStatus",
+            "type": "string"
           },
           "attitude": {
             "enum": [
@@ -66,58 +66,79 @@
               "friendly",
               "allied"
             ],
-            "description": "（faction 用）对主角/主角团的政治与阵营立场"
+            "title": "FactionAttitude",
+            "type": "string"
           },
           "holder": {
-            "type": "string",
-            "description": "（item 用）当前持有者名；必须已在 entities 注册（sync 闭合校验）"
+            "type": "string"
           },
           "location": {
-            "type": "string",
-            "description": "（item 用）当前所在地点（自由文本）"
+            "type": "string"
           },
           "condition": {
-            "type": "string",
-            "description": "（item 用）当前完损/状态（如'完整''毁于火'）"
+            "type": "string"
           },
           "charges": {
-            "type": "integer",
             "minimum": 0,
-            "description": "（item 用）剩余使用次数/充能点数"
+            "type": "integer"
           },
           "max_charges": {
-            "type": "integer",
             "minimum": 1,
-            "description": "（item 用）最大使用次数/充能上限"
+            "type": "integer"
           },
           "dossier": {
-            "type": "string",
-            "description": "（person/faction 用）与主角的恩怨羁绊、历史过节与交互备忘（如'ch_002 曾被主角暗算，怀恨在心'）"
+            "type": "string"
           },
           "scope": {
-            "type": "string",
-            "description": "所属分卷生命周期（如 vol_01；省略表示全书通用）"
+            "type": "string"
           },
           "golden_quote": {
-            "type": "string",
-            "description": "首次高光定稿切片（100~200字物象细节）"
+            "type": "string"
           },
           "relations": {
-            "type": "array",
-            "description": "与特定角色的动态张力关系清单",
+            "description": "与特定角色的动态张力关系",
             "items": {
-              "type": "object",
-              "required": ["target", "type"],
               "additionalProperties": false,
               "properties": {
-                "target": { "type": "string" },
-                "type": { "type": "string" },
-                "desc": { "type": "string" }
-              }
-            }
+                "target": {
+                  "description": "目标实体名称",
+                  "title": "Target",
+                  "type": "string"
+                },
+                "type": {
+                  "description": "张力关系类型，如 debt, rival, ally, subordinate, distrust 等",
+                  "title": "Type",
+                  "type": "string"
+                },
+                "desc": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "target",
+                "type"
+              ],
+              "title": "EntityRelation",
+              "type": "object"
+            },
+            "title": "Relations",
+            "type": "array"
           }
-        }
-      }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "EntityEntry",
+        "type": "object"
+      },
+      "title": "Entries",
+      "type": "array"
     }
-  }
+  },
+  "title": "EntitiesState",
+  "type": "object",
+  "required": [
+    "entries"
+  ],
+  "$comment": "本文件由 engine/models/schema_gen.py 从 Pydantic 模型自动生成，禁止手改；重新生成：python -m engine.models.schema_gen"
 }

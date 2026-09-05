@@ -1,42 +1,43 @@
 {
-  "type": "object",
-  "required": [
-    "events",
-    "arcs"
-  ],
+  "additionalProperties": false,
   "properties": {
     "events": {
-      "type": "array",
+      "description": "时空大事记",
       "items": {
-        "type": "object",
-        "required": [
-          "time",
-          "event"
-        ],
         "additionalProperties": false,
         "properties": {
           "time": {
+            "description": "绝对/相对时间点，如'第一日·正午'",
+            "title": "Time",
             "type": "string"
           },
           "event": {
+            "description": "发生的重大事件事实记录",
+            "title": "Event",
             "type": "string"
           },
           "chapter": {
             "type": "string"
           }
-        }
-      }
+        },
+        "required": [
+          "time",
+          "event"
+        ],
+        "title": "TimelineEvent",
+        "type": "object"
+      },
+      "title": "Events",
+      "type": "array"
     },
     "arcs": {
-      "type": "array",
+      "description": "叙事大弧与战略走向",
       "items": {
-        "type": "object",
-        "required": [
-          "name"
-        ],
         "additionalProperties": false,
         "properties": {
           "name": {
+            "description": "大弧名称",
+            "title": "Name",
             "type": "string"
           },
           "baseline": {
@@ -55,46 +56,53 @@
             "type": "string"
           },
           "strategy_history": {
-            "type": "array",
             "items": {
-              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "chapter": {
+                  "title": "Chapter",
+                  "type": "string"
+                },
+                "strategy": {
+                  "title": "Strategy",
+                  "type": "string"
+                }
+              },
               "required": [
                 "chapter",
                 "strategy"
               ],
-              "additionalProperties": false,
-              "properties": {
-                "chapter": {
-                  "type": "string"
-                },
-                "strategy": {
-                  "type": "string"
-                }
-              }
-            }
+              "title": "ArcStrategyEntry",
+              "type": "object"
+            },
+            "title": "Strategy History",
+            "type": "array"
           }
-        }
-      }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "TimelineArc",
+        "type": "object"
+      },
+      "title": "Arcs",
+      "type": "array"
     },
     "clocks": {
-      "type": "array",
-      "description": "危机/重大事件倒计时时钟（自动在 pack 中计算剩余章数并生成紧迫感提醒）",
+      "description": "危机倒计时时钟",
       "items": {
-        "type": "object",
-        "required": [
-          "name",
-          "target_ch"
-        ],
         "additionalProperties": false,
         "properties": {
           "name": {
-            "type": "string",
-            "description": "时钟名称（如'宗门大比'、'三年之约'、'毒发倒计时'）"
+            "description": "时钟名称，如'宗门大比'、'毒发倒计时'",
+            "title": "Name",
+            "type": "string"
           },
           "target_ch": {
-            "type": "integer",
+            "description": "目标爆发/结算章号",
             "minimum": 1,
-            "description": "目标爆发/结算章号"
+            "title": "Target Ch",
+            "type": "integer"
           },
           "urgency": {
             "enum": [
@@ -103,11 +111,11 @@
               "high",
               "critical"
             ],
-            "description": "紧迫等级"
+            "title": "ClockUrgency",
+            "type": "string"
           },
           "desc": {
-            "type": "string",
-            "description": "危机内容与超时后果简述"
+            "type": "string"
           },
           "status": {
             "enum": [
@@ -116,10 +124,26 @@
               "Defused",
               "Expired"
             ],
-            "description": "时钟状态：Active(进行中) / Triggered(已引爆) / Defused(已解除) / Expired(已逾期)"
+            "title": "ClockStatus",
+            "type": "string"
           }
-        }
-      }
+        },
+        "required": [
+          "name",
+          "target_ch"
+        ],
+        "title": "TimelineClock",
+        "type": "object"
+      },
+      "title": "Clocks",
+      "type": "array"
     }
-  }
+  },
+  "title": "TimelineState",
+  "type": "object",
+  "required": [
+    "events",
+    "arcs"
+  ],
+  "$comment": "本文件由 engine/models/schema_gen.py 从 Pydantic 模型自动生成，禁止手改；重新生成：python -m engine.models.schema_gen"
 }

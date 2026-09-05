@@ -51,14 +51,25 @@ def _validate(value, schema: dict, path: str, errors: list[str]) -> None:
         errors.append(f"{path}: 必须等于 {schema['const']!r}（实际 {value!r}）")
     if "anyOf" in schema:
         ok = False
+        branch_errors: list[list[str]] = []
         for sub in schema["anyOf"]:
-            sub_errors: list[str] = []
+            sub_errors = []
             _validate(value, sub, path, sub_errors)
             if not sub_errors:
                 ok = True
                 break
+            branch_errors.append(sub_errors)
         if not ok:
-            errors.append(f"{path}: 不满足 anyOf（{schema['anyOf']}）")
+            if not branch_errors:
+                # 空 anyOf（如 null 分支被全部摘除后的理论残形）= 任何值都非法
+                errors.append(f"{path}: 无可匹配的 anyOf 分支")
+                return
+            # 报告与实际值"最接近"的分支错误（条数最少者），而非倾倒整个子 schema；
+            # 例如 Optional 字段收到错误类型时，仍能给出"类型应为 string"而非 anyOf 转储。
+            best = min(branch_errors, key=len)
+            errors.extend(best[:3])
+            if len(best) > 3:
+                errors.append(f"{path}: ...（anyOf 最接近分支尚有 {len(best) - 3} 条问题略）")
             return
     if isinstance(value, str) and "pattern" in schema:
         import re

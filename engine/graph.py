@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 from pathlib import Path
 
 from . import common
@@ -75,8 +76,8 @@ def build_narrative_graph(ws_path: Path) -> nx.Graph:
                         rtype = rel.get("type", "tension")
                         rdesc = rel.get("desc", "")
                         G.add_edge(name, target, relation=rtype, label=rdesc)
-        except Exception:
-            pass
+        except (TypeError, AttributeError, KeyError):
+            pass  # 形状异常跳过；JSON 损坏(ValueError)上抛，拒绝静默空图
 
     # 2. 伏笔/误会/秘密线索关联加载
     lines_file = state_dir / "lines.json"
@@ -115,8 +116,8 @@ def build_narrative_graph(ws_path: Path) -> nx.Graph:
                     for req in item.get("requires", []):
                         if req in G:
                             G.add_edge(lid, req, relation="requires", label="前置因果依赖")
-        except Exception:
-            pass
+        except (TypeError, AttributeError, KeyError):
+            pass  # 形状异常跳过；JSON 损坏(ValueError)上抛，拒绝静默空图
 
     return G
 
@@ -158,7 +159,7 @@ def extract_scene_tensions(G: nx.Graph, present_entities: list[str]) -> list[str
     return tensions[:4]
 
 
-def cmd_summary(G: nx.Graph) -> None:
+def cmd_summary(G: nx.Graph, as_json: bool = False) -> None:
     n_nodes = G.number_of_nodes()
     n_edges = G.number_of_edges()
     n_entities = sum(1 for _, d in G.nodes(data=True) if d.get("node_type") == "entity")
@@ -166,9 +167,20 @@ def cmd_summary(G: nx.Graph) -> None:
     components = list(nx.connected_components(G))
     comp_count = len(components)
     main_pct = 0.0
+    main_size = 0
     if components and n_nodes > 0:
         main_comp = max(components, key=len)
-        main_pct = (len(main_comp) / n_nodes) * 100.0
+        main_size = len(main_comp)
+        main_pct = (main_size / n_nodes) * 100.0
+
+    if as_json:
+        print(json.dumps({
+            "nodes": n_nodes, "edges": n_edges,
+            "entities": n_entities, "lines": n_lines,
+            "components": comp_count,
+            "main_component": {"nodes": main_size, "coverage_pct": round(main_pct, 1)},
+        }, ensure_ascii=False, indent=2))
+        return
 
     print("=" * 65)
     print(" 🌐 [NetworkX 实体与叙事关系网全景]")
@@ -181,18 +193,28 @@ def cmd_summary(G: nx.Graph) -> None:
     print("=" * 65)
 
 
-def cmd_path(G: nx.Graph, source: str, target: str) -> None:
-    print(f" 🔍 寻找从 [{source}] 到 [{target}] 的破局跳板/叙事路径...")
-    if source not in G:
-        print(f"❌ 未找到起点节点: {source}")
-        return
-    if target not in G:
-        print(f"❌ 未找到终点节点: {target}")
-        return
-
-    if not nx.has_path(G, source, target):
-        print(f"⚠️ [{source}] 与 [{target}] 在当前拓扑中暂无连通路径（二者完全孤立或尚未产生交集）！")
-        return
+def cmd_path(G: nx.Graph, source: str, target: str, as_json: bool = False) -> None:
+    if as_json:
+        if source not in G or target not in G:
+            reason = "source_missing" if source not in G else "target_missing"
+            print(json.dumps({"source": source, "target": target, "found": False,
+                              "reason": reason}, ensure_ascii=False))
+            return
+        if not nx.has_path(G, source, target):
+            print(json.dumps({"source": source, "target": target, "found": False,
+                              "reason": "disconnected"}, ensure_ascii=False))
+            return
+    else:
+        print(f" 🔍 寻找从 [{source}] 到 [{target}] 的破局跳板/叙事路径...")
+        if source not in G:
+            print(f"❌ 未找到起点节点: {source}")
+            return
+        if target not in G:
+            print(f"❌ 未找到终点节点: {target}")
+            return
+        if not nx.has_path(G, source, target):
+            print(f"⚠️ [{source}] 与 [{target}] 在当前拓扑中暂无连通路径（二者完全孤立或尚未产生交集）！")
+            return
 
     shortest = nx.shortest_path(G, source, target)
     print(f"\n ⭐ 【最短破局链路】 (距离: {len(shortest) - 1} 跳):")
@@ -206,15 +228,51 @@ def cmd_path(G: nx.Graph, source: str, target: str) -> None:
     print("   " + "".join(chain))
 
     all_paths = list(nx.all_simple_paths(G, source, target, cutoff=4))
+    if as_json:
+        edges = []
+        for i in range(len(shortest) - 1):
+            u, v = shortest[i], shortest[i + 1]
+            edge_data = G.get_edge_data(u, v, default={})
+            rel = edge_data.get("label", edge_data.get("relation", "关联"))
+            edges.append({"from": u, "relation": rel, "to": v})
+        print(json.dumps({
+            "source": source, "target": target, "found": True,
+            "distance": len(shortest) - 1, "path": shortest, "edges": edges,
+            "alternatives": [list(p) for p in all_paths[1:4]],
+        }, ensure_ascii=False, indent=2))
+        return
     if len(all_paths) > 1:
         print(f"\n 💡 备选叙事跳板路径 (前 {min(len(all_paths), 3)} 条):")
         for idx, p in enumerate(all_paths[:3], 1):
             print(f"   {idx}. {' -> '.join(p)}")
 
 
-def cmd_neighbors(G: nx.Graph, node: str, depth: int = 1) -> None:
+def cmd_neighbors(G: nx.Graph, node: str, depth: int = 1, as_json: bool = False) -> None:
     if node not in G:
+        if as_json:
+            print(json.dumps({"node": node, "found": False}, ensure_ascii=False))
+            return
         print(f"❌ 未找到节点: {node}")
+        return
+    if as_json:
+        neighbor_items = []
+        for n in G.neighbors(node):
+            edge = G.get_edge_data(node, n, default={})
+            rel = edge.get("label", edge.get("relation", "关联"))
+            ntype = G.nodes[n].get("entity_type", G.nodes[n].get("node_type", ""))
+            summary = G.nodes[n].get("summary", G.nodes[n].get("content", ""))
+            neighbor_items.append({"name": n, "relation": rel, "type": ntype,
+                                   "summary": summary})
+        payload = {"node": node, "depth": depth, "found": True,
+                   "neighbors": neighbor_items}
+        if depth == 2:
+            sub_nodes = {node}
+            for n in G.neighbors(node):
+                sub_nodes.add(n)
+                for nn in G.neighbors(n):
+                    sub_nodes.add(nn)
+            payload["sub_nodes"] = sorted(sub_nodes)
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
         return
     print(f" 🕸️ 实体 [{node}] 的 {depth}-Hop 关联子网:")
     if depth == 1:
@@ -237,10 +295,19 @@ def cmd_neighbors(G: nx.Graph, node: str, depth: int = 1) -> None:
         print(f"   共涵盖 {len(sub_nodes)} 个节点: {', '.join(sorted(sub_nodes))}")
 
 
-def cmd_isolated(G: nx.Graph) -> None:
-    print(" ⚠️ [孤立/边缘资产排查（防烂尾与闲置设定）]")
+def cmd_isolated(G: nx.Graph, as_json: bool = False) -> None:
     isolated = [n for n in G.nodes if G.degree(n) == 0]
     low_degree = [n for n in G.nodes if G.degree(n) == 1 and G.nodes[n].get("node_type") == "entity"]
+    if as_json:
+        print(json.dumps({
+            "isolated": [{"name": n, "type": G.nodes[n].get("entity_type", G.nodes[n].get("node_type", "")),
+                          "summary": G.nodes[n].get("summary", "")} for n in isolated],
+            "low_degree": [{"name": n, "type": G.nodes[n].get("entity_type", G.nodes[n].get("node_type", "")),
+                            "summary": G.nodes[n].get("summary", ""),
+                            "neighbor": next(iter(G.neighbors(n)), None)} for n in low_degree],
+        }, ensure_ascii=False, indent=2))
+        return
+    print(" ⚠️ [孤立/边缘资产排查（防烂尾与闲置设定）]")
 
     if isolated:
         print(f"\n 🚫 完全孤立节点（与其他任何人物/势力/道具零关联，共 {len(isolated)} 个）:")
@@ -258,15 +325,29 @@ def cmd_isolated(G: nx.Graph) -> None:
             print(f"   • [{n}] 仅连接 [{neighbor}] ｜ 简介: {d.get('summary', '')[:35]}")
 
 
-def cmd_centrality(G: nx.Graph) -> None:
-    print(" 👑 [叙事核心与中介枢纽度排名 (Betweenness Centrality)]")
+def cmd_centrality(G: nx.Graph, as_json: bool = False) -> None:
     if not G.nodes:
+        if as_json:
+            print(json.dumps({"ranking": []}, ensure_ascii=False))
+            return
+        print(" 👑 [叙事核心与中介枢纽度排名 (Betweenness Centrality)]")
         print("   （当前图无节点）")
         return
     bc = nx.betweenness_centrality(G)
     dc = nx.degree_centrality(G)
 
     ranked = sorted(G.nodes, key=lambda n: (bc[n], dc[n]), reverse=True)
+    if as_json:
+        ranking = []
+        for idx, n in enumerate(ranked[:12], 1):
+            d = G.nodes[n]
+            t = d.get("entity_type", d.get("line_type", d.get("node_type", "other")))
+            ranking.append({"rank": idx, "name": n, "type": t,
+                            "degree_centrality": round(dc[n], 6),
+                            "betweenness": round(bc[n], 6)})
+        print(json.dumps({"ranking": ranking}, ensure_ascii=False, indent=2))
+        return
+    print(" 👑 [叙事核心与中介枢纽度排名 (Betweenness Centrality)]")
     print(f"{'排名':<4} {'实体/节点':<18} {'类型':<10} {'度中心度':<10} {'中介中心度(剧情枢纽)':<12}")
     print("-" * 65)
     for idx, n in enumerate(ranked[:12], 1):
@@ -275,7 +356,7 @@ def cmd_centrality(G: nx.Graph) -> None:
         print(f"{idx:<4} {n:<18} {t:<10} {dc[n]:<10.3f} {bc[n]:<12.3f}")
 
 
-def run_graph(book: Path, action: str | None, **kwargs) -> int:
+def run_graph(book: Path, action: str | None, as_json: bool = False, **kwargs) -> int:
     common.reconfigure_utf8()
     if not _HAS_NX:
         print("❌ 未检测到 networkx 库，请运行 pip install networkx")
@@ -289,15 +370,15 @@ def run_graph(book: Path, action: str | None, **kwargs) -> int:
 
     act = action or "summary"
     if act == "summary":
-        cmd_summary(G)
+        cmd_summary(G, as_json=as_json)
     elif act == "path":
-        cmd_path(G, kwargs.get("source", ""), kwargs.get("target", ""))
+        cmd_path(G, kwargs.get("source", ""), kwargs.get("target", ""), as_json=as_json)
     elif act == "neighbors":
-        cmd_neighbors(G, kwargs.get("name", ""), kwargs.get("depth", 1))
+        cmd_neighbors(G, kwargs.get("name", ""), kwargs.get("depth", 1), as_json=as_json)
     elif act == "isolated":
-        cmd_isolated(G)
+        cmd_isolated(G, as_json=as_json)
     elif act == "centrality":
-        cmd_centrality(G)
+        cmd_centrality(G, as_json=as_json)
     else:
         print(f"❌ 未知 graph 动作: {act}")
         return 2
@@ -307,6 +388,7 @@ def run_graph(book: Path, action: str | None, **kwargs) -> int:
 def main(argv: list[str] | None = None) -> int:
     parent_parser = argparse.ArgumentParser(add_help=False)
     parent_parser.add_argument("-w", "--workspace", help="工作区路径")
+    parent_parser.add_argument("--json", action="store_true", help="结构化 JSON 输出")
 
     parser = argparse.ArgumentParser(description="Novel Studio 实体与叙事拓扑图分析器", parents=[parent_parser])
     subparsers = parser.add_subparsers(dest="subcommand")
@@ -332,6 +414,7 @@ def main(argv: list[str] | None = None) -> int:
     return run_graph(
         book,
         args.subcommand,
+        as_json=getattr(args, "json", False),
         source=getattr(args, "source", None),
         target=getattr(args, "target", None),
         name=getattr(args, "name", None),

@@ -1,60 +1,63 @@
 {
-  "type": "object",
-  "required": [
-    "pools",
-    "transactions"
-  ],
+  "additionalProperties": false,
   "properties": {
     "note": {
       "type": "string"
     },
     "pools": {
-      "type": "object",
       "additionalProperties": {
-        "type": "object",
-        "required": [
-          "name",
-          "initial",
-          "current"
-        ],
         "additionalProperties": false,
         "properties": {
           "name": {
+            "description": "资金/资源池名称",
+            "title": "Name",
             "type": "string"
           },
           "unit": {
             "type": "string"
           },
           "initial": {
+            "description": "期初结余",
+            "title": "Initial",
             "type": "integer"
           },
           "current": {
+            "description": "当前可用结余",
+            "title": "Current",
             "type": "integer"
           }
-        }
-      }
+        },
+        "required": [
+          "name",
+          "initial",
+          "current"
+        ],
+        "title": "LedgerPool",
+        "type": "object"
+      },
+      "description": "资金池字典",
+      "title": "Pools",
+      "type": "object"
     },
     "transactions": {
-      "type": "array",
+      "description": "历史交易对账流水",
       "items": {
-        "type": "object",
-        "required": [
-          "chapter",
-          "pool",
-          "delta",
-          "subject",
-          "balance_after"
-        ],
         "additionalProperties": false,
         "properties": {
           "chapter": {
-            "type": "string",
-            "pattern": "^ch_\\d{3,}$"
+            "description": "发生章节编号",
+            "pattern": "^ch_\\d{3,}$",
+            "title": "Chapter",
+            "type": "string"
           },
           "pool": {
+            "description": "关联资源池 ID",
+            "title": "Pool",
             "type": "string"
           },
           "delta": {
+            "description": "收支变动额（收入为正，支出为负）",
+            "title": "Delta",
             "type": "integer"
           },
           "type": {
@@ -63,9 +66,13 @@
               "expense",
               "opening_balance",
               "manual"
-            ]
+            ],
+            "title": "TransactionType",
+            "type": "string"
           },
           "subject": {
+            "description": "收支明细事由",
+            "title": "Subject",
             "type": "string"
           },
           "counterparty": {
@@ -75,10 +82,30 @@
             "type": "string"
           },
           "balance_after": {
+            "description": "发生后账户结余",
+            "title": "Balance After",
             "type": "integer"
           }
-        }
-      }
+        },
+        "required": [
+          "chapter",
+          "pool",
+          "delta",
+          "subject",
+          "balance_after"
+        ],
+        "title": "LedgerTransaction",
+        "type": "object"
+      },
+      "title": "Transactions",
+      "type": "array"
     }
-  }
+  },
+  "title": "LedgerState",
+  "type": "object",
+  "required": [
+    "pools",
+    "transactions"
+  ],
+  "$comment": "本文件由 engine/models/schema_gen.py 从 Pydantic 模型自动生成，禁止手改；重新生成：python -m engine.models.schema_gen"
 }

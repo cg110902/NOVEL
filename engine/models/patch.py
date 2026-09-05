@@ -54,12 +54,15 @@ class EntityMutation(BaseModel):
 
 
 class ProposalModel(BaseModel):
-    """对齐 novel-studio.state-mutation/v2 规范的强类型提案校验模型。"""
-    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+    """对齐 novel-studio.state-mutation/v2 规范的强类型提案校验模型。
 
-    schema_version: Literal["novel-studio.state-mutation/v2"] = Field(
-        default="novel-studio.state-mutation/v2", alias="schema"
-    )
+    与 schema 闸门对齐：
+    - `schema` 键必填（信封契约，不给默认值）；
+    - 仅认 `_draft`（populate_by_name=False，裸 `draft` 键按未知字段拒绝）。
+    """
+    model_config = ConfigDict(extra="forbid", populate_by_name=False)
+
+    schema_version: Literal["novel-studio.state-mutation/v2"] = Field(..., alias="schema")
     chapter: str = Field(..., pattern=r"^ch_\d{3,}$")
     operation_id: Optional[str] = Field(None, pattern=r"^[A-Za-z0-9_.-]{1,128}$")
     draft: Optional[bool] = Field(None, alias="_draft")

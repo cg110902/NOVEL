@@ -15,6 +15,7 @@ import os
 import re
 import sys
 import tempfile
+import threading
 import time
 from pathlib import Path
 
@@ -30,6 +31,9 @@ _CN_NUM_MAP = {
     "六": 6, "七": 7, "八": 8, "九": 9, "十": 10,
     "零": 0, "〇": 0,
 }
+
+# file_lock 的进程内重入计数（键=规范化的锁文件绝对路径）
+_LOCK_DEPTH = threading.local()
 
 
 def _cn_chapter_to_int(s: str) -> int | None:
@@ -69,6 +73,11 @@ def reconfigure_utf8() -> None:
 
 def project_root() -> Path:
     return Path(__file__).resolve().parent.parent
+
+
+def norm_path_key(p: Path | str) -> str:
+    """路径的进程内规范化键（Windows 大小写/分隔符不敏感；file_lock 重入计数与迁移缓存用）。"""
+    return os.path.normcase(str(Path(p).absolute()))
 
 
 # ---------------------------------------------------------------------------
@@ -267,12 +276,12 @@ def atomic_write_text(path: Path | str, text: str, encoding: str = "utf-8") -> N
             fh.write(text)
             fh.flush()
             os.fsync(fh.fileno())
-        for attempt in range(4):
+        for attempt in range(6):
             try:
                 os.replace(tmp, p)
                 break
             except PermissionError:
-                if attempt == 3:
+                if attempt == 5:
                     raise
                 time.sleep(0.05 * (2 ** attempt))
         # POSIX 持久化：fsync 父目录，确保 rename 落盘（断电不丢）
@@ -333,9 +342,23 @@ def file_lock(dir_path: Path | str, name: str = ".engine.lock", timeout: float =
     """同目录互斥锁（O_EXCL 创建锁文件）；超时抛 TimeoutError；>120s 的陈锁允许抢占。
 
     改进：双重 mtime 检查 + inode 校验，缩小 TOCTOU 窗口，避免误删他人新锁。
+    重入：同进程同线程对同一把锁的嵌套获取直接放行（引用计数），杜绝
+    「sync 持锁 → load_state → 迁移钩子再取锁」类的自死锁；跨线程/跨进程语义不变。
     """
     lock = Path(dir_path) / name
     lock.parent.mkdir(parents=True, exist_ok=True)
+    key = os.path.normcase(str(lock.absolute()))
+    depth: dict[str, int] = getattr(_LOCK_DEPTH, "d", None) or {}
+    _LOCK_DEPTH.d = depth
+    if depth.get(key):
+        depth[key] += 1
+        try:
+            yield lock
+        finally:
+            depth[key] -= 1
+            if not depth[key]:
+                del depth[key]
+        return
     deadline = time.monotonic() + timeout
     acquired = False
     attempts = 0
@@ -370,12 +393,24 @@ def file_lock(dir_path: Path | str, name: str = ".engine.lock", timeout: float =
             attempts += 1
             sleep_time = min(0.05, 0.01 * (1.15 ** min(attempts, 12)))
             time.sleep(sleep_time)
+    depth[key] = 1
+    my_ino: int | None = None
+    try:
+        my_ino = lock.stat().st_ino  # 记录自己锁文件的 inode（QA P2-12）
+    except OSError:
+        pass  # 无法确认 inode 时不删除（宁可留给陈锁抢占，也不冒误删他人锁的风险）
     try:
         yield lock
     finally:
+        depth.pop(key, None)
         if acquired:
-            with contextlib.suppress(OSError):
-                lock.unlink()
+            # 仅当锁文件仍是自己创建的那一个（inode 一致）才删除：
+            # 防陈锁被他人抢占后，原持有者 finally 误删抢占者的活跃锁
+            try:
+                if my_ino is not None and lock.stat().st_ino == my_ino:
+                    lock.unlink()
+            except OSError:
+                pass
 
 
 # ---------------------------------------------------------------------------

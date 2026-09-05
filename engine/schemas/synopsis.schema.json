@@ -1,22 +1,17 @@
 {
-  "type": "object",
-  "required": [
-    "chapters"
-  ],
+  "additionalProperties": false,
   "properties": {
     "book_logline": {
       "type": "string"
     },
     "chapters": {
-      "type": "object",
       "additionalProperties": {
-        "type": "object",
-        "required": [
-          "num"
-        ],
         "additionalProperties": false,
         "properties": {
           "num": {
+            "description": "章节序号",
+            "minimum": 1,
+            "title": "Num",
             "type": "integer"
           },
           "title": {
@@ -26,12 +21,25 @@
             "type": "string"
           },
           "source": {
-            "enum": [
-              "manual"
-            ]
+            "const": "manual",
+            "type": "string"
           }
-        }
-      }
+        },
+        "required": [
+          "num"
+        ],
+        "title": "ChapterSynopsis",
+        "type": "object"
+      },
+      "description": "分章梗概字典，键为 ch_XXX",
+      "title": "Chapters",
+      "type": "object"
     }
-  }
+  },
+  "title": "SynopsisState",
+  "type": "object",
+  "required": [
+    "chapters"
+  ],
+  "$comment": "本文件由 engine/models/schema_gen.py 从 Pydantic 模型自动生成，禁止手改；重新生成：python -m engine.models.schema_gen"
 }

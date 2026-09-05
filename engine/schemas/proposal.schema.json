@@ -1,26 +1,20 @@
 {
-  "type": "object",
-  "required": [
-    "schema",
-    "chapter"
-  ],
   "additionalProperties": false,
+  "description": "对齐 novel-studio.state-mutation/v2 规范的强类型提案校验模型。\n\n与 schema 闸门对齐：\n- `schema` 键必填（信封契约，不给默认值）；\n- 仅认 `_draft`（populate_by_name=False，裸 `draft` 键按未知字段拒绝）。",
   "properties": {
     "schema": {
-      "enum": [
-        "novel-studio.state-mutation/v2"
-      ],
-      "description": "提案契约版本（固定 novel-studio.state-mutation/v2）"
+      "const": "novel-studio.state-mutation/v2",
+      "title": "Schema",
+      "type": "string"
     },
     "chapter": {
-      "type": "string",
       "pattern": "^ch_\\d{3,}$",
-      "description": "本章号（须与文件名及 sync 目标一致）"
+      "title": "Chapter",
+      "type": "string"
     },
     "operation_id": {
-      "type": "string",
       "pattern": "^[A-Za-z0-9_.-]{1,128}$",
-      "description": "幂等身份，建议 <ch>.<角色>.<时间戳/序号>，如 ch_007.director.0829a"
+      "type": "string"
     },
     "_draft": {
       "type": "boolean"
@@ -43,5 +37,12 @@
     "synopsis": {
       "type": "object"
     }
-  }
+  },
+  "required": [
+    "schema",
+    "chapter"
+  ],
+  "title": "ProposalModel",
+  "type": "object",
+  "$comment": "本文件由 engine/models/schema_gen.py 从 Pydantic 模型自动生成，禁止手改；重新生成：python -m engine.models.schema_gen"
 }

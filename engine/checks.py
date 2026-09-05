@@ -9,11 +9,12 @@
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from pathlib import Path
 
-from . import common, evidence, state
+from . import common, errcodes, evidence, state
 
 try:
     from rapidfuzz import fuzz
@@ -24,6 +25,8 @@ except ImportError:
 SLOT_RE = re.compile(r"\{\{\s*slot:")
 CANDIDATE_RE = re.compile(r"candidate_[0-9A-Za-z_*]")
 FORM_SHARE_LIMIT = 0.40
+QUOTE_PASS_RATIO = 85.0   # 模糊相似度 ≥85 视为命中（静默通过）
+QUOTE_NEAR_RATIO = 60.0   # [60, 85) 提示「近似命中」；< 60 提示「存疑」；全程不阻断
 
 _QUOTE_SLOTS: list[tuple[str, object]] = [
     ("entities", lambda p: p.get("entities") or []),
@@ -40,7 +43,7 @@ def _iter_quote_items(proposal: dict):
     for name, getter in _QUOTE_SLOTS:
         try:
             items = getter(proposal)
-        except Exception:
+        except (AttributeError, KeyError, TypeError):
             continue
         for i, item in enumerate(items):
             if isinstance(item, dict):
@@ -65,19 +68,30 @@ def _norm_quote_punct(s: str) -> str:
 
 
 def validate_quotes(book: Path, ch: str, proposal: dict) -> list[str]:
+    """引文柔性接地（advisory · 永不阻断）。
+
+    分级语义（2026-09 引文柔性化：摘录凭印象即可，严禁 LLM 逐字抠字眼浪费算力）：
+    - 逐字 / 空白归一 / 标点归一 / 模糊 ≥ QUOTE_PASS_RATIO → 命中，静默通过；
+    - 模糊 [QUOTE_NEAR_RATIO, PASS) → 「近似命中」提示（凭印象摘录的预期偏差，供主控参考）；
+    - 其余（含短引文无法可靠模糊判定）→ 「存疑」提示（可能编造或版本漂移，主控复核）；
+    - 战死/退役等高危变更未携带引文 → 醒目提示（建议附原句，便于日后回溯）。
+    返回值为提示清单，调用方一律不得据此阻断 sync。
+    """
     finals = common.find_chapter_files(book, "final", ch)
     if not finals:
         return []
     text = finals[-1].read_text(encoding="utf-8", errors="replace")
     norm_text = _norm_quote_ws(text)
     norm_punct_text = _norm_quote_punct(text)
-    errors: list[str] = []
+    notes: list[str] = []
     for where, item in _iter_quote_items(proposal):
+        if not isinstance(item, dict):
+            continue
         q = item.get("quote")
         if q is None:
             continue
         if not isinstance(q, str) or not q.strip():
-            errors.append(f"{where}.quote 必须为非空字符串（逐字摘自 final 的支撑句）")
+            notes.append(f"🟡 {where}.quote 非空字符串（请填正文原句或删除该字段）: {q!r}")
             continue
         if q in text:
             continue
@@ -87,17 +101,44 @@ def validate_quotes(book: Path, ch: str, proposal: dict) -> list[str]:
         norm_p_q = _norm_quote_punct(q)
         if norm_p_q and len(norm_p_q) >= 4 and norm_p_q in norm_punct_text:
             continue
+        score = -1.0
         if _HAS_RAPIDFUZZ and norm_p_q and len(norm_p_q) >= 8:
             score = fuzz.partial_ratio(norm_p_q, norm_punct_text)
-            if score >= 90.0:
-                continue
+        if score >= QUOTE_PASS_RATIO:
+            continue
         frag = q if len(q) <= 32 else q[:32] + "…"
-        errors.append(f"{where}.quote 未逐字见于当章 final（引文必须原样摘录，含标点）: 「{frag}」")
-    return errors
+        if score >= QUOTE_NEAR_RATIO:
+            notes.append(f"🟡 {where}.quote 近似命中（相似度 {score:.0f}%，与原文存在字词偏差）"
+                         f"——凭印象摘录的预期现象，仅供主控参考: 「{frag}」")
+        else:
+            notes.append(f"🟡 {where}.quote 未命中当章 final（存疑引文，不阻断）"
+                         f"——主控复核是否编造或版本漂移: 「{frag}」")
+    for e in (proposal.get("entities") or []):
+        if not isinstance(e, dict):
+            continue
+        name = str(e.get("name", "")).strip() or "未命名实体"
+        has_quote = bool(str(e.get("quote") or "").strip())
+        if not has_quote and e.get("life_status") == "deceased":
+            notes.append(f"🚨 实体「{name}」被登记为【战死/离世】但未携带引文"
+                         "——强烈建议凭印象附正文原句，便于日后回溯审计")
+        if not has_quote and e.get("status") == "retired":
+            notes.append(f"🚨 实体「{name}」被标记为【退役/退场】但未携带引文"
+                         "——强烈建议凭印象附正文原句")
+    return notes
+
+
+class _FoundCycle(Exception):
+    """迭代式 DFS 检出循环依赖时抛出（携带成环节点 ID）。"""
+
+    def __init__(self, node: str):
+        super().__init__(node)
+        self.node = node
 
 
 def _char_shingles(text: str, n: int) -> set[str]:
-    z = re.sub(r"[\s，。！？、；：「」『』“”‘’\"'（）()《》〈〉—…·\-~,.;:?!\\n]", "", text or "")
+    # 注意：字符类不含字母 n（旧写法 \\n 在 raw string 中是「反斜杠+字母n」两个成员，
+    # 会把西文单词里的 n 当标点剔除，QA P3-19）；换行已由 \s 覆盖。
+    z = re.sub(r"[\s，。！？、；：「」『』“”‘’\"'（）()《》〈〉—…·\-~,.;:?!]", "", text or "")
     return {z[i:i + n] for i in range(0, max(0, len(z) - n + 1))}
 
 
@@ -152,7 +193,13 @@ def verify_candidates(book: Path, ch: str, proposal: dict) -> dict:
             except (ValueError, FileNotFoundError):
                 submitted = ""
         if submitted and submitted != final_title:
-            add("warn", "title_mismatch", f"章题与 final 不一致: 提交「{submitted}」≠ final「{final_title}」（契约：逐字拷贝）")
+            # 双侧同规则归一化（QA P2-4）：此前只剥 final 侧的「第N章」前缀，
+            # 提案侧逐字拷贝的章题反而每次触发假阳性告警
+            sub_norm = re.sub(r"^(?:第\s*[0-9零一二三四五六七八九十百千]+\s*章|ch[_-]?\d+)\s*",
+                              "", str(submitted)).strip()
+            if sub_norm != final_title:
+                add("warn", "title_mismatch",
+                    f"章题与 final 不一致: 提交「{submitted}」≠ final「{final_title}」（契约：逐字拷贝）")
 
     beats_files = common.find_chapter_files(book, "beats", n)
     if beats_files:
@@ -257,6 +304,18 @@ def verify_candidates(book: Path, ch: str, proposal: dict) -> dict:
                 add("warn", "state_watch_hit",
                     f"正文出现「{term}」但提案/现场 current.{field} 未提及——疑似状态刷新遗漏（修辞/闪回情形忽略）")
 
+    # 开篇咬合检查（advisory）：final 首部应承接上章余震（pack「首段必咬住」硬提醒的机械复核）；
+    # sync 在合并前调用本电池，此刻 current.aftershock 恰为上一章封存的余震，时序正确。
+    if n > 1 and str(cur_state.get("aftershock") or "").strip():
+        prev_after = str(cur_state["aftershock"]).strip()
+        head = text[:600]
+        windows = [prev_after[i:i + 4] for i in range(0, max(1, len(prev_after) - 3))
+                   if len(prev_after[i:i + 4].strip()) == 4]
+        if windows and not any(w in head for w in windows):
+            add("info", "aftermath_opening_miss",
+                f"final 开篇未触及上章余震「{prev_after[:40]}」的任何 4 字片段——"
+                "核对首段是否需要咬住余波（氛围型余震或有意转场可忽略）")
+
     known = [str(x).lower() for names in lookup.values() for x in names]
     cand_stop = _CAND_STOP | {str(w).strip() for w in (proj.get("candidate_stopwords") or [])
                               if isinstance(w, str) and w.strip()}
@@ -347,46 +406,10 @@ def verify_candidates(book: Path, ch: str, proposal: dict) -> dict:
     return out
 
 
-DEFAULT_REMEDIES: dict[str, str] = {
-    "project_missing": "运行 python studio.py init <书名> 初始化项目工作区。",
-    "project_corrupt": "检查 project.json 的 JSON 语法并修正，或从 snapshots 快照目录恢复。",
-    "project_field_empty": "在 project.json 中补齐缺失的字段设定（如 title, genre, protagonist 等）。",
-    "project_field_type": "将 project.json 中的 words_target 修正为二元整数数组 [min, max]。",
-    "wordlist_unconfigured": "运行 python studio.py config suggest 获取推荐词表并根据需要配置。",
-    "param_shape_invalid": "检查 project.json 配置项格式，确保符合规范规范要求。",
-    "state_inconsistent": "运行 python studio.py ledger recompute 重新核对账本，或手动平账。",
-    "unregistered_character": "运行 python studio.py entity add <实体名> 将登场人物登记入 state/entities.json，或修正正文/细纲中的拼写。",
-    "retired_entity_on_stage": "该实体已标记退场/阵亡；若重新出场请先在 entities.json 中更新状态或更名。",
-    "state_unreadable": "检查 state 目录下的 JSON 文件语法并修复，或从快照回滚。",
-    "duplicate_final": "清理重复的 final 文件，保持同章唯一的单一真理源。",
-    "final_gap_chapters": "检查分卷目录下的章号顺序，补齐遗漏章节或修正文件名。",
-    "unfilled_slot": "修改 beats 细纲或世界观文件，将 {{slot:...}} 占位符替换为具体剧情或设定内容。",
-    "candidate_leak": "将未定命名 candidate_* 替换为具体的角色名或地名。",
-    "plotline_starvation": "该线索长期未推进，请在当章或后续章节 beats 中安排线索推进（advancement）或提及（remind）。",
-    "prerequisite_missing": "在 state/lines.json 中补齐前置线索定义，或修正该线索的 requires 依赖项。",
-    "prerequisite_unmet": "该线索依赖的前置线索尚未达成！请将当章 action 改为 remind，或先推进前置线索，待前置线索达成后方可收网/揭晓。",
-    "prerequisite_cycle": "检查并解除线索依赖闭环，破除循环 requires 拓扑。",
-    "beats_fm_extra_keys": "移除 beats 文件 front-matter 中的非标准字段。",
-    "beats_missing_form": "在 beats 细纲的 front-matter 中补充 form 字段（如 form: 危机建构 / 生死博弈等）。",
-    "beats_form_repeat_without_reason": "更改当章 form 章型，避免连续同章型疲劳；若确需连续，需在 front-matter 补充 form_reason 说明原因。",
-    "style_notes_copy": "针对本章特色编写独有的 style_notes，避免完全复制模板文本。",
-    "words_band_crowded": "调整细纲中的预计字数区间，避免与整体规划脱节。",
-    "acceptance_empty_criterion": "细纲验收标准（acceptance）必须包含具体的剧情动作或事实信息点，避免假大空。",
-    "line_action_orphan": "细纲中声明了线索动作但未在 lines.json 找到对应线索，请核对线索 ID 或在 lines 中登记。",
-    "line_action_missing": "细纲中声明的线索动作类型缺失，请明确为 plant/advance/remind/reveal/resolve 之一。",
-    "final_without_raw": "流程完整性建议：运行工序时留存 raw 草稿毛坯记录以备审计。",
-    "final_without_beats": "流程完整性建议：运行 python studio.py beats new ch_XXX 补充细纲。",
-    "word_band_deviation": "字数偏离目标带，精修师 Editor 在润色时可精简冗余或扩充细节交锋。",
-    "encoding_replacement_chars": "检测到编码替换字符（如 \\ufffd），请使用 utf-8 重新保存受影响的文件。",
-    "line_quota_exceeded": "当前活跃线索过多，建议在后续章节逐步收网已成熟的伏笔，保持主线清爽。",
-    "longline_quota_exceeded": "跨卷长线伏笔超出上限，建议精简或收束部分跨卷暗线。",
-    "form_share_over_limit": "该章型在全书中占比超过 40%，建议在后续章节丰富其他类型的叙事章型。",
-    "high_tension_fatigue": "连续高压章型导致情绪疲劳，下一章建议安排松弛缓冲型章型。",
-    "beats_scene_abstract": "细纲中包含假大空短语，请用具体的动作、对白或冲突置换抽象描述。",
-    "protagonist_pov_drift": "主角视角失焦，下一章强化主角出场比重与核心破局动作。",
-    "tension_flatline": "连续低张力章节，下一章建议引入突发危机或外部强冲突打破平淡。",
-    "tension_burnout": "连续极高张力章节，下一章建议安排战后清点或战利品兑现，让读者情绪适度舒缓释放。",
-}
+# 错误码与修复文案的唯一真源在 errcodes.REGISTRY（含 severity 与人话解释，供 Agent 消费）；
+# 此处仅派生兜底 remedy 字典，禁止在本文件再手写新条目（守卫测试 test_errcodes 拦截漂移）。
+DEFAULT_REMEDIES: dict[str, str] = {c.code: c.remedy for c in errcodes.REGISTRY.values()
+                                    if c.remedy}
 
 
 def _err(code: str, msg: str, remedy: str = "", can_auto_heal: bool = True) -> dict:
@@ -729,6 +752,24 @@ def run_checks(book: Path) -> dict:
                 warnings.append(_err("retired_entity_on_stage",
                                      f"current.present_characters 含已退休实体「{name}」"
                                      "（retired=退场/死亡——闪回/补叙章可忽略，否则移出 present 或改回 active）"))
+        # 别名冲突与悬空关系边（advisory，QA P2-9）
+        owner_by_alias: dict[str, list[str]] = {}
+        ent_names = {str(e.get("name", "")) for e in ents}
+        for e in ents:
+            for a in {str(e.get("name", ""))} | {str(x) for x in e.get("aliases", []) if x}:
+                owner_by_alias.setdefault(a, []).append(str(e.get("name", "")))
+        for alias, owners in sorted(owner_by_alias.items()):
+            if len(owners) > 1:
+                warnings.append(_err("alias_conflict",
+                                     f"别名「{alias}」被多个实体共享（{ '、'.join(owners[:4]) }）"
+                                     "——mentions/pov/在场推断将产生歧义，请在 entities 中消歧"))
+        for e in ents:
+            for rel in e.get("relations", []) or []:
+                tgt = str(rel.get("target", "")).strip()
+                if tgt and tgt not in ent_names and tgt not in owner_by_alias:
+                    warnings.append(_err("relation_target_unknown",
+                                         f"实体「{e.get('name','')}」的关系指向未登记实体「{tgt}」"
+                                         "（关系图悬空边：补登目标实体或修正拼写）"))
     except (ValueError, FileNotFoundError) as exc:
         errors.append(_err("state_unreadable", str(exc)))
 
@@ -760,9 +801,15 @@ def run_checks(book: Path) -> dict:
         if vol_outline.is_file():
             try:
                 otext = vol_outline.read_text(encoding="utf-8", errors="ignore")
-                ch_hits = [int(m) for m in re.findall(r"\b(?:ch_?|第\s*)(\d{1,4})\b", otext)]
-                if ch_hits:
-                    plan_start = min(ch_hits)
+                # 只认阶段头里的范围对（ch_A—ch_B）作为规划起点证据（QA P1-4）：
+                # 大纲自由文本里的 ch_NNN 提及（如「回收 ch_030 的暗线」）不再参与推断，
+                # 且范围必须与本卷实际章号区间相交，防跨卷引用误判。
+                ranges = re.findall(r"ch_(\d{1,4})\s*[—－\-~至到]\s*ch_(\d{1,4})", otext)
+                starts = [int(a) for a, b in ranges
+                          if int(a) >= 1 and int(b) >= int(a)
+                          and int(a) <= max(nums) and int(b) >= min(nums)]
+                if starts:
+                    plan_start = min(starts)
             except OSError:
                 pass
         # M3 修复：vol_01 不再无条件从 1 开始
@@ -861,30 +908,38 @@ def run_checks(book: Path) -> dict:
                                            f"因果逻辑冲突：线索 {lid} 已标记完成({info['status']})，但其前置依赖 {req_id} 仍未完成({req_info['status']})！",
                                            remedy=f"在 lines 账本中先推进并达成前置线索 {req_id}，或暂缓收束 {lid} 并将其状态退回 Active/Planted。"))
 
-        # 检测循环依赖 (Cyclic Dependency Detection)
-        def _has_cycle(start_id: str, visited: set[str], stack: set[str]) -> bool:
-            visited.add(start_id)
-            stack.add(start_id)
-            for neighbor in all_lines_map.get(start_id, {}).get("requires", []):
-                if neighbor in all_lines_map:
-                    if neighbor not in visited:
-                        if _has_cycle(neighbor, visited, stack):
-                            return True
-                    elif neighbor in stack:
-                        return True
-            stack.remove(start_id)
-            return False
-
-        visited_nodes: set[str] = set()
-        for lid in all_lines_map:
-            if lid not in visited_nodes:
-                if _has_cycle(lid, visited_nodes, set()):
-                    errors.append(_err("prerequisite_cycle",
-                                       f"因果逻辑冲突：线索 {lid} 存在循环前置依赖！",
-                                       remedy=f"检查并解除线索 {lid} 的前置依赖闭环，破除循环 requires 拓扑。"))
-                    break
-    except Exception:
-        pass
+        # 检测循环依赖 (Cyclic Dependency Detection)——迭代式 DFS（QA P2-13：
+        # 递归实现遇深层 requires 链会 RecursionError，曾被 except Exception 吞掉使守卫静默失效）
+        WHITE, GRAY, BLACK = 0, 1, 2
+        color = {lid: WHITE for lid in all_lines_map}
+        for root_id in all_lines_map:
+            if color[root_id] != WHITE:
+                continue
+            stack = [(root_id, iter(all_lines_map[root_id].get("requires", [])))]
+            color[root_id] = GRAY
+            while stack:
+                node, it = stack[-1]
+                advanced = False
+                for neighbor in it:
+                    if neighbor not in all_lines_map:
+                        continue
+                    if color.get(neighbor, BLACK) == GRAY:
+                        raise _FoundCycle(neighbor)
+                    if color.get(neighbor, BLACK) == WHITE:
+                        color[neighbor] = GRAY
+                        stack.append((neighbor, iter(all_lines_map[neighbor].get("requires", []))))
+                        advanced = True
+                        break
+                if not advanced:
+                    color[node] = BLACK
+                    stack.pop()
+    except _FoundCycle as cyc:
+        errors.append(_err("prerequisite_cycle",
+                           f"因果逻辑冲突：线索 {cyc.node} 存在循环前置依赖！",
+                           remedy=f"检查并解除线索 {cyc.node} 的前置依赖闭环，破除循环 requires 拓扑。"))
+    except (OSError, ValueError) as exc:
+        warnings.append(_err("lines_state_unreadable",
+                             f"lines 账本不可读，因果依赖守卫降级跳过: {exc}"))
 
     empty_words = [w for w in (proj.get("empty_criteria_words") or [])
                    if isinstance(w, str) and w.strip()]
@@ -934,16 +989,18 @@ def run_checks(book: Path) -> dict:
                                  f"{f.name}: 目标/验收含空判据词 {'、'.join(crit_hits[:5])}"
                                  "（判据建议使用具体可验证的动词与实体名词）"))
         action_sec = "\n".join(common.md_section(text, r"^##\s*.*线(索)?动作"))
-        orphans = sorted(set(re.findall(r"(?:GUN|MIS|KNO)-\d{3,}", action_sec)) - ledger_line_ids)
+        planned_plants = set(re.findall(r"plant\s+((?:GUN|MIS|KNO)-\d{3,})", action_sec))
+        orphans = sorted(set(re.findall(r"(?:GUN|MIS|KNO)-\d{3,}", action_sec)) - ledger_line_ids
+                         - planned_plants)
         if orphans:
             warnings.append(_err("line_action_orphan",
                                  f"{f.name}: 线动作栏引用台账不存在的线 {', '.join(orphans[:5])}"
-                                 "（先 plant 或核对 ID）"))
+                                 "（先 plant 或核对 ID；计划本章 plant 的新线请写「plant GUN-XXX」格式以豁免）"))
         missing_ids = sorted({gid for t, gid in open_due if t <= num and gid not in action_sec})
         if missing_ids:
             warnings.append(_err("line_action_missing",
                                  f"{f.name}: 到期/逾期线 {', '.join(missing_ids[:5])} 未出现在「线动作」栏"
-                                 "（不还须写顺延理由，novel_workflow.md#Stage 1）"))
+                                 "（不还须在 beats 写明顺延理由，归主控 Stage 1 裁决）"))
 
     def _vol_nums(area: str) -> set[tuple[str, int]]:
         out = set()
@@ -1009,6 +1066,18 @@ def run_checks(book: Path) -> dict:
         if len(open_long) > long_cap:
             warnings.append(_err("longline_quota_exceeded",
                                  f"未结全书长线 {len(open_long)} 条 > 上限 {long_cap} 条（长线过多分散主线焦点）"))
+        mis_cap = lcap.get("active_misunderstandings", 4)
+        kno_cap = lcap.get("active_knowledge", 5)
+        open_mis = [m for m in lines_st.get("misunderstandings", [])
+                    if str(m.get("status", "")).strip().lower() != "resolved"]
+        open_kno = [k for k in lines_st.get("knowledge", [])
+                    if str(k.get("status", "")).strip().lower() != "revealed"]
+        if len(open_mis) > mis_cap:
+            warnings.append(_err("line_quota_exceeded",
+                                 f"未澄清误会 {len(open_mis)} 条 > 上限 {mis_cap} 条（认知差堆积稀释主线，建议尽快安排澄清或合并同类）"))
+        if len(open_kno) > kno_cap:
+            warnings.append(_err("line_quota_exceeded",
+                                 f"未揭示知识线 {len(open_kno)} 条 > 上限 {kno_cap} 条（秘密堆积稀释主线，建议尽快安排揭示节点）"))
     except (ValueError, FileNotFoundError):
         pass
 
@@ -1062,8 +1131,8 @@ def run_checks(book: Path) -> dict:
             for e in ents:
                 if e.get("name") == protagonist:
                     protagonist_names.update(str(a) for a in e.get("aliases", []) if a)
-        except Exception:
-            pass
+        except (ValueError, OSError):
+            pass  # 实体账本损坏：主角名册退化为仅主角本名，不做静默扩表
 
         finals = list(evidence.final_chapters(book))
         if len(finals) >= 2:
@@ -1117,10 +1186,47 @@ def run_checks(book: Path) -> dict:
             except OSError:
                 continue
 
+    # bible 版本盖章对照（info）：世界圣经在封存后又被改动 → 新旧章适用的世界规则可能不同
+    try:
+        jpath = book / "state" / "bible_log.jsonl"
+        bible_path = book / "bible" / "project_bible.md"
+        if jpath.is_file() and bible_path.is_file():
+            last_ch, last_sha = "", ""
+            for jline in jpath.read_text(encoding="utf-8", errors="replace").splitlines():
+                jline = jline.strip()
+                if not jline:
+                    continue
+                try:
+                    rec = json.loads(jline)
+                except json.JSONDecodeError:
+                    continue
+                if isinstance(rec, dict) and rec.get("bible_sha"):
+                    last_ch, last_sha = str(rec.get("chapter", "")), str(rec["bible_sha"])
+            cur_sha = hashlib.sha256(bible_path.read_bytes()).hexdigest()[:16]
+            if last_ch and last_sha and cur_sha != last_sha:
+                infos.append(_err("bible_drift",
+                                  f"bible/project_bible.md 自 {last_ch} 封存后有改动——其后旧章系旧版规则所写，"
+                                  "回溯修订或新设定生效时请对照 state/bible_log.jsonl 与「本书偏离清单」"))
+    except OSError:
+        pass
+
+    # 新书 Stage 0 待办降级：纯未开工书（beats/raw/final 全空）且全部错误均为
+    # unfilled_slot 时，未填模板属于「待办清单」而非数据损坏——降级为 infos 并放行；
+    # 一旦存在任何创作活动，unfilled_slot 恢复硬闸门语义（防止带病开工）。
+    onboarding = bool(errors) and all(e.get("code") == "unfilled_slot" for e in errors) \
+        and all(not common.find_chapter_files(book, area)
+                for area in ("beats", "raw", "final"))
+    if onboarding:
+        for e in errors:
+            e["code"] = "stage0_onboarding"
+            e["msg"] += "（新书 Stage 0 待办，暂不阻断；开写后恢复硬闸门）"
+        infos.extend(errors)
+        errors = []
+
     stats["errors"] = len(errors)
     stats["warnings"] = len(warnings)
     stats["infos"] = len(infos)
-    return {"schema": "novel-studio.check/v1", "ok": not errors,
+    return {"schema": "novel-studio.check/v1", "ok": not errors, "onboarding": onboarding,
             "errors": errors, "warnings": warnings, "infos": infos, "stats": stats}
 
 
