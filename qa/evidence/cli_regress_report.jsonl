@@ -1,0 +1,21 @@
+{"case": "recall.default", "rc": 0, "secs": 0.94, "json_ok": true, "keys": ["chapter", "character_cognition", "irreversible_facts", "kind", "next_chapter", "next_chapter_boundaries", "pending_lines"]}
+{"case": "recall.ch_013", "rc": 0, "secs": 0.99, "json_ok": true, "keys": ["chapter", "character_cognition", "irreversible_facts", "kind", "next_chapter", "next_chapter_boundaries", "pending_lines"]}
+{"case": "recall.err_epoch", "rc": 0, "secs": 0.92, "json_ok": true, "keys": ["chapter", "character_cognition", "irreversible_facts", "kind", "next_chapter", "next_chapter_boundaries", "pending_lines"]}
+{"case": "simulate.impact.kill", "rc": 0, "secs": 0.91, "json_ok": true, "keys": ["action", "affected_cognition", "affected_items", "affected_lines", "affected_milestones", "affected_relations", "kind", "target_entity", "unblocked_lines", "warnings"]}
+{"case": "simulate.impact.line", "rc": 0, "secs": 0.95, "json_ok": true, "keys": ["action", "affected_cognition", "affected_items", "affected_lines", "affected_milestones", "affected_relations", "kind", "target_line_id", "unblocked_lines", "warnings"]}
+{"case": "simulate.impact.bad", "rc": 0, "secs": 0.98, "json_ok": true, "keys": ["action", "affected_cognition", "affected_items", "affected_lines", "affected_milestones", "affected_relations", "kind", "target_entity", "unblocked_lines", "warnings"]}
+{"case": "simulate.branch", "rc": 0, "secs": 0.93, "json_ok": true, "keys": ["anchor_chapter", "branches", "branches_count", "kind", "markdown", "next_chapter", "written"]}
+{"case": "export.txt", "rc": 0, "secs": 0.9, "json_ok": true, "keys": ["written"]}
+{"case": "export.views", "rc": 0, "secs": 0.9, "json_ok": true, "keys": ["written"]}
+{"case": "dashboard", "rc": 0, "secs": 0.92, "json_ok": true, "keys": ["dashboard", "url"]}
+{"case": "critic.default", "rc": 0, "secs": 0.91, "json_ok": true, "keys": ["chapter", "exists", "hint", "note"]}
+{"case": "critic.ch_010", "rc": 0, "secs": 0.9, "json_ok": true, "keys": ["chapter", "exists", "hint", "note"]}
+{"case": "critic.write", "rc": 0, "secs": 0.91, "json_ok": true, "keys": ["chapter", "skeleton", "written"]}
+{"case": "critic.err_badch", "rc": 2, "secs": 0.89, "json_ok": true, "keys": ["chapter", "code", "error"], "err": "无法解析章节号: 'ch_ABC'", "code": "usage"}
+{"case": "checkpoint.default", "rc": 0, "secs": 0.92, "json_ok": true, "keys": ["all_phases", "assessment", "chapter", "chapter_num", "current_phase", "directives", "recent_progress", "state_digest", "urgent_lines"]}
+{"case": "checkpoint.ch_010", "rc": 0, "secs": 0.9, "json_ok": true, "keys": ["all_phases", "assessment", "chapter", "chapter_num", "current_phase", "directives", "recent_progress", "state_digest", "urgent_lines"]}
+{"case": "checkpoint.err", "rc": 0, "secs": 0.9, "json_ok": true, "keys": ["all_phases", "assessment", "chapter", "chapter_num", "current_phase", "directives", "recent_progress", "state_digest", "urgent_lines"]}
+{"case": "index.sync", "rc": 0, "secs": 1.49, "json_ok": true, "keys": ["db_path", "indexed_chapters", "indexed_cognition", "indexed_entities", "indexed_lines", "ok", "rebuilt", "time_ms"], "ok": true}
+{"case": "index.rebuild", "rc": 0, "secs": 1.8, "json_ok": true, "keys": ["db_path", "indexed_chapters", "indexed_cognition", "indexed_entities", "indexed_lines", "ok", "rebuilt", "time_ms"], "ok": true}
+{"case": "errcodes", "rc": 2, "secs": 0.89, "json_ok": false, "FAIL": "rc=2", "stderr": "usage: studio [-h] [--version]\n              {status,cockpit,init,pack,ask,pov,calendar,evidence,index,audit,recall,simu"}
+{"case": "help.list", "rc": 2, "secs": 0.9, "json_ok": false, "FAIL": "rc=2", "stderr": "usage: studio [-h] [--version]\n              {status,cockpit,init,pack,ask,pov,calendar,evidence,index,audit,recall,simu"}
