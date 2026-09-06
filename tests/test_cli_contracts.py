@@ -8,6 +8,8 @@
 """
 from __future__ import annotations
 
+import json
+
 import pytest
 
 
@@ -271,3 +273,125 @@ def test_valid_book_unaffected(cli, book):
     r = cli("check", "-w", book)
     assert not r.crashed, r.err[-500:]
     assert r.code == 0
+
+
+# ---------------------------------------------------------------------------
+# --json 纯 JSON 契约（手术刀命令的错误/成功路径都不得向 stdout 泄漏人类文本）
+# ---------------------------------------------------------------------------
+def test_ledger_recompute_json_fix_path_is_pure_json(cli, book):
+    """账本漂移后 recompute --json：stdout 必须只含一个 JSON 对象（不得先打人类文本）。"""
+    p = book / "state" / "ledger.json"
+    d = json.loads(p.read_text(encoding="utf-8"))
+    assert d["pools"], "夹具书应已有资源池"
+    pid = next(iter(d["pools"]))
+    d["pools"][pid]["current"] = 999999  # 制造漂移
+    p.write_text(json.dumps(d, ensure_ascii=False), encoding="utf-8")
+
+    r = cli("ledger", "recompute", "-w", book, "--json")
+    assert not r.crashed, r.out + r.err
+    assert r.code == 0, r.out[-300:]
+    payload = r.json()
+    assert payload["ok"] is True
+    assert payload["fixed"], "应报告池修复明细"
+    # stdout 从头到尾必须可整体 parse（无人类文本前缀）
+    assert json.loads(r.out) == payload, f"stdout 非纯 JSON：{r.out[:200]!r}"
+
+    # 修复后再跑：自洽空修复，同样纯 JSON
+    r2 = cli("ledger", "recompute", "-w", book, "--json")
+    assert r2.code == 0
+    assert r2.json()["fixed"] == []
+
+
+def test_ledger_json_mode_error_envelopes(cli, book):
+    """ledger --json 错误路径：不可读账本 / 重复建池都出 JSON 信封且不崩。"""
+    led = book / "state" / "ledger.json"
+    d = json.loads(led.read_text(encoding="utf-8"))
+    pid = next(iter(d["pools"]))
+    d["pools"][pid]["initial"] = "不是整数"
+    led.write_text(json.dumps(d, ensure_ascii=False), encoding="utf-8")
+
+    r = cli("ledger", "recompute", "-w", book, "--json")
+    assert not r.crashed, r.out + r.err
+    assert r.code == 1
+    payload = r.json()
+    assert payload["ok"] is False and payload["error"]
+
+    # 恢复合法账本后：重复声明同一池 → rc1 + JSON 信封
+    d["pools"][pid]["initial"] = 100
+    led.write_text(json.dumps(d, ensure_ascii=False), encoding="utf-8")
+    r = cli("ledger", "pool", "add", pid, "--name", "又一份", "--unit", "两",
+            "--initial", "1", "-w", book, "--json")
+    assert not r.crashed, r.out + r.err
+    assert r.code == 1
+    payload = r.json()
+    assert payload["ok"] is False and "已存在" in payload["error"]
+
+
+def test_state_and_config_json_mode_contract(cli, book):
+    """state/config 手术刀 --json：错误是信封、成功是信封，stdout 无裸文本。"""
+    r = cli("state", "get", "nosuchtable.field", "-w", book, "--json")
+    assert not r.crashed and r.code == 2
+    assert r.json()["ok"] is False
+
+    r = cli("config", "set", "generic_stopwords", "not-json", "-w", book, "--json")
+    assert not r.crashed and r.code == 2
+    assert r.json()["ok"] is False
+
+    r = cli("config", "set", "generic_stopwords", '["掌柜","伙计"]', "-w", book, "--json")
+    assert not r.crashed and r.code == 0
+    payload = r.json()
+    assert payload["ok"] is True and payload["key"] == "generic_stopwords"
+
+    r = cli("config", "unset", "generic_stopwords", "-w", book, "--json")
+    assert not r.crashed and r.code == 0
+    payload = r.json()
+    assert payload["ok"] is True and payload["removed"] == "generic_stopwords"
+
+    r = cli("config", "unset", "generic_stopwords", "-w", book, "--json")
+    assert not r.crashed and r.code == 0
+    assert r.json()["was_configured"] is False
+
+
+def test_review_and_pack_and_audit_json_error_envelopes(cli, book):
+    """review/pack/audit 在 --json 下错误路径必须输出 JSON 信封（stdout 零杂质）。"""
+    # review new 无 final 章节 → rc1 + JSON（text 模式消息不变）
+    r = cli("review", "new", "ch_999", "-w", book, "--json")
+    assert not r.crashed, r.out + r.err
+    assert r.code == 1
+    payload = r.json()
+    assert payload["ok"] is False and payload["error"]
+
+    # review 无法解析章节号 → rc2 + JSON
+    r = cli("review", "new", "abc", "-w", book, "--json")
+    assert not r.crashed and r.code == 2
+    assert r.json()["ok"] is False
+
+    # pack 不存在的章节（无细纲）→ rc1 + JSON
+    r = cli("pack", "ch_999", "-w", book, "--json")
+    assert not r.crashed and r.code == 1
+    assert r.json()["ok"] is False
+
+    # audit 无 final 章节 → rc1 + JSON（与文本模式退出码同口径）
+    r = cli("audit", "ch_999", "-w", book, "--json")
+    assert not r.crashed and r.code == 1
+    payload = r.json()
+    assert payload.get("error") or payload.get("chapter"), payload
+
+
+def test_beats_new_json_stdout_purity_with_normalization(cli, book):
+    """beats new ch_7 --json：归一提示不得泄漏进 stdout（JSON 模式 stdout 只含信封）。"""
+    r = cli("beats", "new", "ch_7", "-w", book, "--json")
+    assert not r.crashed, r.out + r.err
+    assert r.code == 0, r.out[-300:]
+    payload = r.json()
+    assert payload["chapter"] == "ch_007"
+    # stdout 整体可 parse = 无人类提示前缀
+    assert json.loads(r.out) == payload
+
+
+def test_simulate_impact_json_usage_envelope(cli, book):
+    """simulate impact 缺参在 --json 下必须给 JSON 信封而非裸文本。"""
+    r = cli("simulate", "impact", "-w", book, "--json")
+    assert not r.crashed, r.out + r.err
+    assert r.code == 2
+    assert r.json()["ok"] is False
