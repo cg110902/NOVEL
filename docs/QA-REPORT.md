@@ -60,15 +60,24 @@
 `qa/scripts/build_pressure_book.py` 构造 26 章完整提案链（实体 14+ 别名、GUN/KNO/MIS 三线、双池流水、锁定事实、cognition、时钟/里程碑、timeline revise），**每章状态推进都走 inbox → sync 真实闸门**；beats 注入 🔒 不可逆台账与字数模板后 `check` 达 E0/W0。
 原始证据：`qa/evidence/scale_report.jsonl`（前 22 行 = pb_book 扫描）。
 
-### 4.2 规模炮台（26 → 60 章）
-| 命令 | 26 章 | 60 章 |
-|---|---|---|
-| evidence all | 4.08s | 7.51s |
-| evidence style | — | 7.12s |
-| index | 1.47s | 1.91s |
-| audit / pack / graph / dashboard / export / 其余 | ≤1.6s | ≤1.61s |
+### 4.2 规模炮台（26 → 60 → 100 章）
+100 章扩展：`qa/scripts/extend_scale_book.py` 生成 ch_061–100（仅 beats/raw/final，无新
+proposal），`qa/scripts/scale_pb100.py` 扫描 27 条命令（原始行见 `qa/evidence/scale_report.jsonl`）。
 
-进程内注射：实体 14→164（mention 扫描 0.020→0.054s）、+300 条线（gaps 0.012s）——**无交叉平方热点**，结论：规模曲线近线性，无崩溃。
+| 命令 | 26 章 | 60 章 | 100 章 |
+|---|---|---|---|
+| evidence all | 4.08s | 7.51s | 11.05s |
+| evidence style | — | 7.12s | 10.66s |
+| evidence names | — | — | 10.04s |
+| index / index --rebuild | 1.47s | 1.91s | 1.96s / 2.58s |
+| audit / pack / check / recall / pov / ask / cockpit / graph / dashboard / export / milestone / critic / checkpoint / simulate / snapshot | ≤1.6s | ≤1.61s | ≤1.56s |
+
+27/27 全 rc0、零崩溃、零坏 JSON、总耗时 58.7s；数据量 3.85×（26→100 章），
+全书级扫描耗时仅 ≈2.7×（近线性偏亚线性），**无交叉平方热点**。
+100 章书 `check` 仍 **E0**（唯一 W = milestone_overdue，系合成书 state 停在 ch_026 的假象，
+非规模问题；40 个新章全部通过 form 重复/同款检查门禁）。
+进程内注射（此前阶段）：实体 14→164（mention 扫描 0.020→0.054s）、+300 条线
+（gaps 0.012s）——无交叉平方热点。
 
 ### 4.3 自愈链路放大（故障注入 × 修复处方闭环）
 1. final 漂移 → `snapshot rollback NAME` + processed 16 章重放（幂等全 rc0）→ E0（残余 W 仅 final_drift，属设计边界：正文不进快照）。

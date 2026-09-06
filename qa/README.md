@@ -8,6 +8,8 @@
 | `build_pressure_book.py` | 生成 26 章压力书（完整 proposal 链，逐章走 inbox→sync 真实闸门） | `/tmp/qa_root/pb_book`（书），`/tmp/qa_root/conftest_prose.py` 由其生成正文 |
 | `conftest_prose.py` | 确定性正文生成器（被 build 脚本 import） | — |
 | `scale_run.py` | 22 条命令耗时/崩溃扫描（26 章书 + 60 章规模书） | `qa/evidence/scale_report.jsonl` 或 `/tmp/qa_root/scale_report.jsonl` |
+| `extend_scale_book.py` | 把规模书从 N 章扩到 M 章（只加 beats/raw/final，幂等可重跑） | `/tmp/qa_root/pb100`（100 章规模书） |
+| `scale_pb100.py` | 100 章复核：27 条命令耗时/崩溃/JSON 契约 + 写路径探针（snapshot create、index --rebuild） | 追加行到 `qa/evidence/scale_report.jsonl`（前缀 `pb100 `） |
 | `cli_regress.py` | CLI 契约回归：rc + JSON 信封 + 产物落盘（21 路径；`--write` 允许 branch/critic 落盘） | `qa/evidence/cli_regress_report.jsonl` |
 
 ## evidence/
