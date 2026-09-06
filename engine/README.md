@@ -10,7 +10,7 @@
 | 模块 / 子包 | 核心职责 | 强援技术接入 |
 |---|---|---|
 | `models/` | 状态机领域对象与语义原子补丁强类型模型 | **Pydantic V2**（严格禁止未知键注入 `extra='forbid'`，支持 `SemanticEntityPatch`） |
-| `cli.py` | 29 命令薄壳调度：参数解析 + help 目录 + `main`（命令实现下沉至 `commands/`） | argparse |
+| `cli.py` | 28 命令薄壳调度：参数解析 + help 目录 + `main`（命令实现下沉至 `commands/`） | argparse |
 | `commands/` | 命令实现层五模块：`book_setup`（init/status/cockpit/config/errcodes）、`chapter_flow`（pack/beats/evidence/check/review/critic/graph/export/audit/index + ask/pov/calendar 只读取证）、`state_sync`（sync/proposal/snapshot/checkpoint/state/ledger/milestone）、`recall`（残酷四问自证）、`simulate`（剧情推演沙盒）；共享助手在 `_shared` | **Rich**（高保真圆角面板、彩色 Markdown 渲染、老白读者评分卡与状态流） |
 | `cockpit.py` | 主控态势驾驶舱：工作流导航、戏剧动力学（余震/悬顶危机/信息差机锋）、伏笔暗线分类雷达、角色活跃度与自愈处方 | 确定性聚合（秒级出报） |
 | `audit.py` | 确定性机械审计探针：7大探针（不可逆事实违背/在场与死亡/道具充能/金额一致/知情差泄露/认知差冲突/别名漂移） | 确定性跨域比对算法 |

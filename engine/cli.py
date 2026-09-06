@@ -1,7 +1,8 @@
-"""CLI 薄壳：23 命令参数解析与总调度；命令实现分置于 engine/commands/* 三模块。
+"""CLI 薄壳：28 命令参数解析与总调度；命令实现分置于 engine/commands/* 五模块。
 
-status / init / cockpit / pack / evidence / check / checkpoint / state / config / sync / snapshot / export /
-proposal / review / beats / critic / graph / errcodes / help / ask / pov / calendar / ledger。
+status / init / cockpit / pack / evidence / index / check / checkpoint / state / config / sync / snapshot /
+export / proposal / review / beats / critic / graph / errcodes / help / ask / pov / calendar / ledger /
+audit / recall / simulate / milestone。
 退出码：0=ok / 1=阻断（含 check errors、sync 失败）/ 2=用法错。
 """
 from __future__ import annotations

@@ -1046,6 +1046,11 @@ def _merge_lines(state: dict, items: list[dict], ch_num: int, rep: dict) -> None
             else:
                 rep["updated"].append(f"✅ {gid} 已回收/澄清")
         elif action == "remind":
+            # 与 update 路径同口径：已闭环线索被 remind 静默重开，必须出警示（advisory）
+            if str(ent.get("status", "")) == spec["resolved"]:
+                rep["warnings"].append(
+                    f"🔁 {gid} 已闭环（{ent.get('status')}）又被 remind 重开为 Reminded"
+                    "——若为有意回响/续线请核实，否则请保持 Resolved")
             ent["status"] = "Reminded"
             if "target_ch" in g:
                 tgt, terr = _norm_target(g["target_ch"])
@@ -1057,6 +1062,11 @@ def _merge_lines(state: dict, items: list[dict], ch_num: int, rep: dict) -> None
                 ent["target_ch"] = tgt
             rep["updated"].append(f"🔔 {gid} 已回唤")
         elif action == "escalate":
+            # 与 update 路径同口径：已澄清误会又被 escalate 静默重开，必须出警示（advisory）
+            if str(ent.get("status", "")) == spec["resolved"]:
+                rep["warnings"].append(
+                    f"🔁 {gid} 已澄清（Resolved）又被 escalate 重开为 Escalated"
+                    "——若为新一轮误会请核实，否则请保持 Resolved")
             ent["status"] = "Escalated"
             old_level = ent.get("level") if isinstance(ent.get("level"), int) else None
             if "level" in g and isinstance(g["level"], int):
@@ -1219,12 +1229,18 @@ def _merge_timeline(state: dict, patch: dict, ch: str, rep: dict) -> None:
 
 
 def _tx_replay_key(t: dict, ch: str) -> tuple:
-    """流水内容指纹：崩溃重放/归档重提的同一笔交易判定依据。"""
+    """流水内容指纹：崩溃重放/归档重提的同一笔交易判定依据。
+
+    ch 必须参与指纹兜底：省略 chapter 键的入账流水落盘时会回填提案所属章
+    （_merge_ledger 的 t.get("chapter", ch)），崩溃重放时若指纹仍算作
+    "__legacy__"，与已入库行的指纹（chapter=ch）错配，幂等去重失效 → 同一笔
+    流水双计。故 chapter 缺席时以当前提案章号为指纹口径，与存储口径一致。
+    """
     try:
         delta = int(t["delta"])
     except (ValueError, TypeError):
         return ("__invalid__",)
-    tx_ch = t.get("chapter")
+    tx_ch = t.get("chapter") or ch
     chapter_key = str(tx_ch) if tx_ch else "__legacy__"
     return (chapter_key, str(t.get("pool")), delta,
             str(t.get("type") or ("income" if delta >= 0 else "expense")),
@@ -1771,7 +1787,11 @@ def pending_proposals(book: Path) -> list[Path]:
 
 def apply_inbox(book: Path, expect_chapter: str | None = None, dry_run: bool = False) -> dict:
     inbox = inbox_dir(book)
-    overall = {"applied": 0, "failed": 0, "duplicates": 0, "skipped": 0, "results": [], "picked_up": False}
+    # failed = 全部失败数（含非目标章的损坏提案）；failed_target = 阻断目标章本次
+    # 同步的失败数——非目标章损坏提案已归档 failed/ 并带侧车，不应阻断目标章封存，
+    # 否则「目标章已合并、提案已归档、快照被拒」会造成无法重跑的卡死态（ 实测）。
+    overall = {"applied": 0, "failed": 0, "failed_target": 0, "duplicates": 0, "skipped": 0,
+               "results": [], "picked_up": False}
 
     def _failed_candidates() -> list[Path]:
         fdir = inbox / "failed"
@@ -1819,6 +1839,7 @@ def apply_inbox(book: Path, expect_chapter: str | None = None, dry_run: bool = F
                 fn = common.chapter_number_from_name(pf.name)
                 tn = common.chapter_token_to_num(expect_chapter) if expect_chapter else None
                 if expect_chapter is None or fn is None or fn == tn:
+                    overall["failed_target"] += 1
                     break
                 result["note"] = "非目标章提案，已归档 failed/ 并继续"
                 continue
@@ -1833,6 +1854,7 @@ def apply_inbox(book: Path, expect_chapter: str | None = None, dry_run: bool = F
             overall["results"].append(rep)
             if rep["errors"]:
                 overall["failed"] += 1
+                overall["failed_target"] += 1
                 if not dry_run:
                     rep["archived_to"] = str(_archive(pf, inbox / "failed"))
                     _write_rejection_sidecar(rep["archived_to"], rep["errors"],

@@ -13,7 +13,7 @@ Novel Studio 是专为 **Google Antigravity** 深度定制的长篇商业小说�
 以下能力全部封装在确定性引擎（`engine/`，黑盒）内，Agent 只经 CLI 消费、禁知实现：
 
 - **强类型状态机**：Pydantic V2 八表真值（current / entities / lines / timeline / ledger / synopsis / locked / cognition）；提案（proposal）为唯一写入口，过 schema 校验、引文柔性接地、幂等登记、复式记账重算四道闸；
-- **命令面（29 个生产指令）**：`python studio.py help --json` 是命令目录、阶段配方与退出码契约的唯一自查入口——含 cockpit 态势驾驶舱、check 事实体检、audit 确定性机械探针、recall 残酷四问自证、simulate 剧情推演沙盒、milestone 主线里程碑管理、sync 状态封存、ledger recompute 账本修复、snapshot 回滚等；
+- **命令面（28 个生产指令）**：`python studio.py help --json` 是命令目录、阶段配方与退出码契约的唯一自查入口——含 cockpit 态势驾驶舱、check 事实体检、audit 确定性机械探针、recall 残酷四问自证、simulate 剧情推演沙盒、milestone 主线里程碑管理、sync 状态封存、ledger recompute 账本修复、snapshot 回滚等；
 - **强援库**：jieba（专名与词频）、networkx（实体拓扑寻路）、rapidfuzz（引文模糊接地）、rich（终端渲染）、sqlite3（FTS5 检索加速）。
 
 ---

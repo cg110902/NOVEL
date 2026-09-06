@@ -585,12 +585,17 @@ def cmd_beats(args) -> int:
             break
 
     beats_path = book / "outlines" / vol_str / "beats" / f"{tok}.md"
+    drift_warning = ""
     if getattr(args, "write", False) and beats_path.exists() and not getattr(args, "force", False):
         return _err(f"{tok} beats 细纲已存在: {beats_path}（覆盖请加 --force）",
                     code=1, err_code="exists")
     if getattr(args, "write", False) and common.find_chapter_files(book, "final", tok):
-        print(f"⚠️ 该章已有定稿（manuscript/*/final/{tok}.md）——本次写入/覆盖细纲后，"
-              f"正文与任务书可能版本漂移；若为回溯修订，请同步核对 final 与提案修订通道（timeline 事件修订 / synopsis 跨章修订）")
+        drift_warning = (f"该章已有定稿（manuscript/*/final/{tok}.md）——本次写入/覆盖细纲后，"
+                         "正文与任务书可能版本漂移；若为回溯修订，请同步核对 final 与提案修订通道"
+                         "（timeline 事件修订 / synopsis 跨章修订）")
+        # --json 契约：文本警示不进 stdout（写盘分支已并入 payload.warning），仅文本模式即时输出
+        if not getattr(args, "json", False):
+            print(f"⚠️ {drift_warning}")
 
     proj = common.load_json(book / "project.json", default={}) or {}
     protagonist = proj.get("protagonist", "主角名")
@@ -714,8 +719,10 @@ def cmd_beats(args) -> int:
         beats_path.parent.mkdir(parents=True, exist_ok=True)
         common.atomic_write_text(beats_path, text)
         if getattr(args, "json", False):
-            print(json.dumps({"chapter": tok, "written": beats_path.relative_to(book).as_posix()},
-                             ensure_ascii=False))
+            payload_out = {"chapter": tok, "written": beats_path.relative_to(book).as_posix()}
+            if drift_warning:
+                payload_out["warning"] = drift_warning
+            print(json.dumps(payload_out, ensure_ascii=False))
         else:
             print(f"✅ 已生成 {tok} 细纲任务书脚手架：{beats_path.relative_to(book).as_posix()}")
         return 0

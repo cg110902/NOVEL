@@ -290,7 +290,13 @@ def cmd_status(args) -> int:
                 print("   现有书：" + "、".join(str(b) for b in books))
             return 1
         if book is None:
-            # 越界情况已打印，直接返回
+            # 越界情况：文本模式已由 _resolve_and_validate 打印；--json 模式
+            # suppress_text 生效，此处必须补 JSON 信封（否则 stdout 静默空、契约违约）
+            if js:
+                print(json.dumps({"exists": False, "reason": "workspace_out_of_bounds",
+                                  "workspace": str(raw),
+                                  "books": [str(b) for b in common.list_books()]},
+                                 ensure_ascii=False))
             return 1
     if book is None or not book.exists():
         books = common.list_books()

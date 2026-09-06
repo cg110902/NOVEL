@@ -361,7 +361,10 @@ def render_recall_markdown(d: dict) -> str:
     L.append(f"- **未回收伏笔 ({len(lines['foreshadows'])} 条)**：")
     for f in lines["foreshadows"][:8]:
         overdue_str = " 🔴 [已逾期]" if f["overdue"] else ""
-        L.append(f"  - [{f['id']}] {f['name']}（目标: ch_{f.get('target_ch'):03d}{overdue_str}）")
+        # target_ch 允许 "longline" 字符串——:03d 仅适用于整数章号，否则文本模式崩溃
+        tgt = f.get("target_ch")
+        tgt_str = f"ch_{tgt:03d}" if isinstance(tgt, int) else str(tgt)
+        L.append(f"  - [{f['id']}] {f['name']}（目标: {tgt_str}{overdue_str}）")
     if len(lines["foreshadows"]) > 8:
         L.append(f"  - ... 其余 {len(lines['foreshadows']) - 8} 条略")
 

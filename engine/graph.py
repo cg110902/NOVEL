@@ -218,15 +218,17 @@ def cmd_path(G: nx.Graph, source: str, target: str, as_json: bool = False) -> in
             return 1
 
     shortest = nx.shortest_path(G, source, target)
-    print(f"\n ⭐ 【最短破局链路】 (距离: {len(shortest) - 1} 跳):")
-    chain = []
-    for i in range(len(shortest) - 1):
-        u, v = shortest[i], shortest[i + 1]
-        edge_data = G.get_edge_data(u, v, default={})
-        rel = edge_data.get("label", edge_data.get("relation", "关联"))
-        chain.append(f"[{u}] ──({rel})──> ")
-    chain.append(f"[{shortest[-1]}]")
-    print("   " + "".join(chain))
+    if not as_json:
+        # --json 契约：stdout 必须是纯 JSON（Agent 消费），链路横幅只在文本模式输出
+        print(f"\n ⭐ 【最短破局链路】 (距离: {len(shortest) - 1} 跳):")
+        chain = []
+        for i in range(len(shortest) - 1):
+            u, v = shortest[i], shortest[i + 1]
+            edge_data = G.get_edge_data(u, v, default={})
+            rel = edge_data.get("label", edge_data.get("relation", "关联"))
+            chain.append(f"[{u}] ──({rel})──> ")
+        chain.append(f"[{shortest[-1]}]")
+        print("   " + "".join(chain))
 
     all_paths = list(nx.all_simple_paths(G, source, target, cutoff=4))
     if as_json:

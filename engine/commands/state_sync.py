@@ -213,11 +213,14 @@ def cmd_sync(args) -> int:
                     if not js:
                         print(f"ℹ️ [audit] 仲裁报告包含 {hard_count} 处硬矛盾，但已标记为已裁定 (adjudicated=true)，放行封存。")
 
+    review_gate_msgs: list[str] = []
     dest = book / "log" / "review" / f"{ch}.md"
     if dest.is_file():
-        gate = checks.review_gate(book, ch)
-        if gate:
-            for g in gate:
+        review_gate_msgs = checks.review_gate(book, ch)
+        # --json 契约：stdout 必须保持纯 JSON，注记提示并入 payload（review_gate 键）；
+        # 文本模式保留人话即时输出。
+        if review_gate_msgs and not js:
+            for g in review_gate_msgs:
                 print(f"ℹ️ 校对注记提示：{g}")
 
     common.debug(f"sync {ch}: dry_run={args.dry_run} final={has_manuscript} proposal={proposal_path.name if proposal_path else '无'}")
@@ -228,13 +231,16 @@ def cmd_sync(args) -> int:
     verify_errors: list[str] = []
     snap_msg, snap_ok = "", True
     applied_now = overall.get("applied", 0)
+    # 阻断目标章的失败数：非目标章损坏提案已归档 failed/ 并带侧车，不应阻断
+    # 目标章封存（否则目标章提案已归档、状态已合并、快照被拒 → 无法重跑的卡死态）
+    target_failed = overall.get("failed_target", overall.get("failed", 0))
     no_op = applied_now == 0 and overall.get("duplicates", 0) == 0
-    if no_op and not overall.get("failed"):
+    if no_op and not target_failed:
         noop_hint = ("空提案已归档 processed/：如需重提，请修改内容并换新 operation_id 后放回 state/inbox/"
                      if any(r.get("noop") for r in overall["results"]) else "")
         return _fail("未合入任何变更（提案为错章/被留置/空提案），拒绝封存快照", hint=noop_hint,
                      apply=overall)
-    if not args.dry_run and overall["failed"] == 0 and applied_now > 0:
+    if not args.dry_run and target_failed == 0 and applied_now > 0:
         verify_errors = state.verify_state(book)
         common.debug(f"verify_state（状态体检，含前置因果闸门）: {len(verify_errors)} 错误"
                      + (f"（{verify_errors[0]}）" if verify_errors else ""))
@@ -250,8 +256,9 @@ def cmd_sync(args) -> int:
 
     payload = {"chapter": ch, "dry_run": args.dry_run, "apply": overall,
                "quote_notes": quote_notes, "verify_battery": battery,
+               "review_gate": review_gate_msgs,
                "verify_errors": verify_errors, "snapshot": {"ok": snap_ok, "name": snap_msg}
-               if not args.dry_run and overall["failed"] == 0 and applied_now > 0 else None}
+               if not args.dry_run and target_failed == 0 and applied_now > 0 else None}
     if verify_errors and not args.dry_run:
         # 合并已落盘但体检失败时的最小恢复指引（此前无任何出口提示）
         payload["recovery"] = ("状态已合并但体检未通过、快照未封存：修正数据后用 "
@@ -280,9 +287,12 @@ def cmd_sync(args) -> int:
         if overall["picked_up"]:
             print(" ↩️ 已从 failed/ 捡回本章提案重试")
         # 「留置」语义明示：提案章节 ≠ 同步目标（或空提案）时跳过、不归档不报错，等其所属章 sync 时处理
+        _non_target_failed = overall["failed"] - target_failed
         print(f" 汇总：合并 {overall['applied']} ｜ 重复跳过 {overall['duplicates']} ｜ "
-              f"失败 {overall['failed']} ｜ 留置 {overall['skipped']}"
-              f"{'（留置 = 非本章提案/空提案，未处理；将由其所属章 sync 时合并）' if overall['skipped'] else ''}")
+              f"失败 {target_failed} ｜ 留置 {overall['skipped']}"
+              + (f"（另有 {_non_target_failed} 份非本章提案失败，已归档 failed/ 并附侧车，不阻断本章封存）"
+                 if _non_target_failed > 0 else "")
+              + (f"（留置 = 非本章提案/空提案，未处理；将由其所属章 sync 时合并）" if overall['skipped'] else ""))
         if verify_errors:
             print(" ❌ 状态体检未通过（未封存快照）：")
             for e in verify_errors:
@@ -291,7 +301,7 @@ def cmd_sync(args) -> int:
                   "或 `snapshot rollback <上一封存点>` 回退后修复提案重提。")
         elif snap_msg:
             print(f" 📸 快照：{'✅ ' if snap_ok else '❌ '}{snap_msg}")
-    if overall["failed"] or verify_errors or (not snap_ok and snap_msg):
+    if target_failed or verify_errors or (not snap_ok and snap_msg):
         return 1
     # 增量更新 SQLite 只读投影与全文检索索引
     try:
@@ -629,18 +639,29 @@ def _cmd_proposal_auto(book: Path, ch: str, args) -> int:
     }
 
     if getattr(args, "write", False):
+        js_auto = bool(getattr(args, "json", False))
         target = inbox / f"{ch}.json"
         if target.exists() and not getattr(args, "force", False):
-            print(f"❌ {ch} 已有在途提案（state/inbox/{ch}.json）——proposal auto 拒绝覆盖；"
-                  f"确认丢弃手改内容请追加 --force")
+            msg = (f"{ch} 已有在途提案（state/inbox/{ch}.json）——proposal auto 拒绝覆盖；"
+                   f"确认丢弃手改内容请追加 --force")
+            print(json.dumps({"ok": False, "code": "exists", "error": msg}, ensure_ascii=False)
+                  if js_auto else f"❌ {msg}")
             return 1
         inbox.mkdir(parents=True, exist_ok=True)
         common.dump_json(target, proposal)
-        print(f"🤖 提案草案已自动生成并写入: {inbox / f'{ch}.json'}")
-        print(f"   已自动对齐标题「{title}」、在场人物 {present_chars} 与 {len(lines_ops)} 条线动作。")
-        print("   ⚠️ auto 草案的 synopsis/timeline 会与 beats 存在措辞重叠（beats_overlap advisory 属预期噪声），"
-              "事实性文字请以 final 为源微调后再 sync。")
-        print(f"   主控可按需微调 current 字段后直接运行 `python studio.py sync {ch}`！")
+        if js_auto:
+            print(json.dumps({"ok": True, "chapter": ch,
+                              "written": target.relative_to(book).as_posix(),
+                              "present": present_chars, "lines_ops": len(lines_ops),
+                              "note": "auto 草案的 synopsis/timeline 与 beats 措辞重叠属预期噪声，"
+                                      "事实性文字请以 final 为源微调后再 sync"},
+                             ensure_ascii=False))
+        else:
+            print(f"🤖 提案草案已自动生成并写入: {inbox / f'{ch}.json'}")
+            print(f"   已自动对齐标题「{title}」、在场人物 {present_chars} 与 {len(lines_ops)} 条线动作。")
+            print("   ⚠️ auto 草案的 synopsis/timeline 会与 beats 存在措辞重叠（beats_overlap advisory 属预期噪声），"
+                  "事实性文字请以 final 为源微调后再 sync。")
+            print(f"   主控可按需微调 current 字段后直接运行 `python studio.py sync {ch}`！")
         return 0
     else:
         print(json.dumps(proposal, ensure_ascii=False, indent=2))
@@ -666,13 +687,19 @@ def cmd_proposal(args) -> int:
     if action == "verify":
         return _cmd_proposal_verify(book, ch, args)
     inbox = book / "state" / "inbox"
+    js_new = bool(getattr(args, "json", False))
     if (inbox / f"{ch}.json").exists():
-        print(f"❌ {ch} 已有在途提案（state/inbox/{ch}.json）——先处理再建新骨架")
+        msg = f"{ch} 已有在途提案（state/inbox/{ch}.json）——先处理再建新骨架"
+        print(json.dumps({"ok": False, "code": "exists", "error": msg}, ensure_ascii=False)
+              if js_new else f"❌ {msg}")
         return 1
+    failed_hint = ""
     if (inbox / "failed" / f"{ch}.json").is_file():
         # failed/ 同章旧提案与新建骨架并存易误判（check/verify 双查两处）
-        print(f"⚠️ {ch} 在 failed/ 存在失败提案（state/inbox/failed/{ch}.json）——"
-              "sync 将优先取 inbox 新骨架；建议核对失败原因后删除或改名旧提案，避免双份混淆")
+        failed_hint = (f"{ch} 在 failed/ 存在失败提案（state/inbox/failed/{ch}.json）——"
+                       "sync 将优先取 inbox 新骨架；建议核对失败原因后删除或改名旧提案，避免双份混淆")
+        if not js_new:
+            print(f"⚠️ {failed_hint}")
     from datetime import datetime
     mmdd = datetime.now().strftime("%m%d_%H%M%S")
     skeleton = {
@@ -685,10 +712,16 @@ def cmd_proposal(args) -> int:
     }
     if getattr(args, "write", False):
         common.dump_json(inbox / f"{ch}.json", skeleton)
-        print(f"🧩 骨架已写入: {inbox / f'{ch}.json'}")
-        sys.stdout.flush()
-        print(f"   填六区后 `python studio.py sync {ch} --dry-run` 预演；"
-              f"纪律与键形状见 {inbox / 'README.md'}", file=sys.stderr)
+        if js_new:
+            print(json.dumps({"ok": True, "chapter": ch,
+                              "written": (inbox / f"{ch}.json").relative_to(book).as_posix(),
+                              **({"warning": failed_hint} if failed_hint else {})},
+                             ensure_ascii=False))
+        else:
+            print(f"🧩 骨架已写入: {inbox / f'{ch}.json'}")
+            sys.stdout.flush()
+            print(f"   填六区后 `python studio.py sync {ch} --dry-run` 预演；"
+                  f"纪律与键形状见 {inbox / 'README.md'}", file=sys.stderr)
         return 0
     print(json.dumps(skeleton, ensure_ascii=False, indent=1))
     sys.stdout.flush()
@@ -742,10 +775,9 @@ def cmd_snapshot(args) -> int:
             else:
                 print(f"❌ {e}")
             return 1
-        if args.json:
-            print(json.dumps({"ok": ok, "snapshot": chosen, "message": msg},
-                             ensure_ascii=False))
-        else:
+        # --json 契约：回滚结果与 --clean-drafts 清理结果合并为单一 JSON 信封
+        rb_payload = {"ok": ok, "snapshot": chosen, "message": msg} if args.json else None
+        if not args.json:
             print(("🔄 ✅ " if ok else "🔄 ❌ ") + msg)
         if ok and args.clean_drafts:
             base = snapshot.chapter_of_snapshot(chosen)
@@ -790,12 +822,15 @@ def cmd_snapshot(args) -> int:
                                     if (nn := common.chapter_number_from_name(p.name))
                                     and nn > base and not p.name.endswith(state.NO_MERGE_SUFFIXES)]
             if args.json:
-                print(json.dumps({"ok": ok, "clean_drafts_removed": removed,
-                                  "pending_hint": pending_hint}, ensure_ascii=False))
+                rb_payload["clean_drafts_removed"] = removed
+                if pending_hint:
+                    rb_payload["pending_hint"] = pending_hint
             else:
                 print(f"🧹 清理超前于快照的稿件/细纲/注记/评测：{removed} 个文件（已移入 workspace/.trash/ 回收区备份）")
                 if pending_hint:
                     print(f"   ↳ 收件箱仍有 {len(pending_hint)} 份超章待办提案未删（保守起见请自行定夺）：{'、'.join(pending_hint[:5])}")
+        if args.json:
+            print(json.dumps(rb_payload, ensure_ascii=False))
         return 0 if ok else 1
     return 2
 
