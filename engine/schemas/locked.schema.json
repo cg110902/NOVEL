@@ -1,0 +1,78 @@
+{
+  "additionalProperties": false,
+  "description": "不可逆事实台账表 (state/locked.json) 根模型。",
+  "properties": {
+    "schema_version": {
+      "default": "novel-studio.locked/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "entries": {
+      "items": {
+        "additionalProperties": false,
+        "description": "单条不可逆事实条目。",
+        "properties": {
+          "id": {
+            "description": "不可逆事实唯一ID (如 LOCK-001)",
+            "pattern": "^LOCK-\\d{3,}$",
+            "title": "Id",
+            "type": "string"
+          },
+          "fact": {
+            "description": "事实简明陈述",
+            "minLength": 4,
+            "title": "Fact",
+            "type": "string"
+          },
+          "since_ch": {
+            "description": "确立生效章号 (如 ch_003)",
+            "pattern": "^ch_\\d{3,}$",
+            "title": "Since Ch",
+            "type": "string"
+          },
+          "kind": {
+            "description": "不可逆类型：death (死亡) | irreversible_action (不可逆动作) | rule (规则铁律) | promise (死契承诺)",
+            "enum": [
+              "death",
+              "destruction",
+              "disbandment",
+              "irreversible_action",
+              "rule",
+              "promise",
+              "pact"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "quote": {
+            "description": "final 原文佐证句 (经 RapidFuzz 柔性接地)",
+            "minLength": 2,
+            "title": "Quote",
+            "type": "string"
+          },
+          "note": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "fact",
+          "since_ch",
+          "kind",
+          "quote"
+        ],
+        "title": "LockedEntry",
+        "type": "object"
+      },
+      "maxItems": 50,
+      "title": "Entries",
+      "type": "array"
+    }
+  },
+  "title": "LockedState",
+  "type": "object",
+  "required": [
+    "entries"
+  ],
+  "$comment": "本文件由 engine/models/schema_gen.py 从 Pydantic 模型自动生成，禁止手改；重新生成：python -m engine.models.schema_gen"
+}

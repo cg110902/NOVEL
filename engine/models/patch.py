@@ -72,3 +72,8 @@ class ProposalModel(BaseModel):
     timeline: Optional[dict[str, Any]] = None
     ledger: Optional[dict[str, Any]] = None
     synopsis: Optional[dict[str, Any]] = None
+    locked: Optional[list[dict[str, Any]]] = None
+    locked_candidates: Optional[list[dict[str, Any]]] = None
+    cognition: Optional[list[dict[str, Any]]] = None
+    cognition_delta: Optional[list[dict[str, Any]]] = None
+    consequences: Optional[list[dict[str, Any]]] = None

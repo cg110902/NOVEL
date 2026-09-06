@@ -25,12 +25,14 @@ MUTATION_SCHEMA = "novel-studio.state-mutation/v2"
 STATE_DIR_NAME = "state"
 INBOX_NAME = "inbox"
 MARKER_NAME = ".applied_operations.json"
-STATE_KEYS = ("current", "entities", "lines", "timeline", "ledger", "synopsis")
+STATE_KEYS = ("current", "entities", "lines", "timeline", "ledger", "synopsis", "locked", "cognition")
 
 CH_RE = re.compile(r"ch_(\d{3,})$")
 GUN_ID_RE = re.compile(r"GUN-\d{3,}")
 MIS_ID_RE = re.compile(r"MIS-\d{3,}")
 KNO_ID_RE = re.compile(r"KNO-\d{3,}")
+LOCK_ID_RE = re.compile(r"^LOCK-\d{3,}$")
+COG_ID_RE = re.compile(r"^COG-\d{3,}$")
 NO_MERGE_SUFFIXES = (".draft.json", ".template.json", ".sample.json")
 
 _SCHEMA_CACHE: dict[str, dict] = {}
@@ -49,7 +51,7 @@ _LINE_KIND_SPEC = {
                          "update_fields": {"status", "target_ch", "content", "truth", "level", "parties", "requires"}},
     "knowledge": {"id_re": KNO_ID_RE, "prefix": "KNO",
                   "statuses": ("Concealed", "Revealed"), "resolved": "Revealed",
-                  # QA P17：holders = 知情圈（知情方实体名/别名列表，选填）——
+                  #  P17：holders = 知情圈（知情方实体名/别名列表，选填）——
                   # POV 推导对 holders 内角色不再误标「不应知情」，防吃书
                   "plant_fields": {"secret", "target_ch", "plant_ch", "note", "weight", "requires", "holders"},
                   "plant_need": ("secret",), "update_str": ("secret", "note"),
@@ -86,13 +88,17 @@ def defaults_for(key: str) -> dict:
     if key == "lines":
         return {"foreshadows": [], "misunderstandings": [], "knowledge": []}
     if key == "timeline":
-        return {"events": [], "arcs": [], "clocks": []}
+        return {"events": [], "arcs": [], "clocks": [], "milestones": []}
     if key == "ledger":
         return {"note": "复式多资源池账本：余额一律由流水重算，禁止手改",
                 "pools": {"standard_currency": {"name": "主通货", "unit": "枚", "initial": 0, "current": 0}},
                 "transactions": []}
     if key == "synopsis":
         return {"book_logline": "", "chapters": {}}
+    if key == "locked":
+        return {"schema_version": "novel-studio.locked/v1", "entries": []}
+    if key == "cognition":
+        return {"schema_version": "novel-studio.cognition/v1", "entries": []}
     raise KeyError(f"未知状态键: {key}")
 
 
@@ -121,7 +127,7 @@ lines 字段口径：
   字符串数字（"21"）与无补零章号（ch_7）均拒收。plant 必填 target_ch。
   knowledge（秘密线）plant 可携带选填 "holders": ["实体名/别名", …] 声明知情圈——
   pov 推导对知情圈内角色不再误标「不应知情」（防吃书）；缺省 = 除正文另行交代外全员不知情。
-ledger.pools 资源池口径（QA P3-1：此前全部 AI 向文档零说明，池只能读源码试出来）：
+ledger.pools 资源池口径（ P3-1：此前全部 AI 向文档零说明，池只能读源码试出来）：
   ⚠️ Stage 0 就应声明本书的资源池（灵石/银两/寿元/功勋…），不要等写到有账目才补。
   新建池：{"pools": {"my_pool": {"name": "灵石", "unit": "块", "initial": 0}}}
     · name/unit/initial 三项均必填：name/unit 为非空字符串，initial 为整数。
@@ -138,7 +144,7 @@ ledger.pools 资源池口径（QA P3-1：此前全部 AI 向文档零说明，�
            "note": "备注(选填)", "quote": "本章 final 支撑句(选填)"}]}}
     · chapter 必须等于提案自身的 chapter（跨章写账 = 整案拒收，见 ledger_tx_order）；
     · delta 用带符号整数（收入正、支出负）；balance_after 由引擎重算，不必手写。
-timeline.clocks 危机时钟口径（QA P3-2：此前字段契约完全未文档化，按常识写 id/deadline_ch 必被拒）：
+timeline.clocks 危机时钟口径（ P3-2：此前字段契约完全未文档化，按常识写 id/deadline_ch 必被拒）：
   合法字段仅五个，多一个即「含未知字段」整案拒收：
     · name（字符串，必填）：时钟名，如「灯债半年滚利」；
     · target_ch（整数，必填，≥1）：目标爆发/结算章号——⚠️ 只收 int，不收 "ch_012"/"第12章"/"longline"；
@@ -236,7 +242,7 @@ def _chapter_num(ch: str) -> int | None:
 
 
 def _canonical_ch(ch: str) -> str:
-    """ch_0123 → ch_123：以章号为键的分区（梗概/编年史等）统一三位列，防口径分裂（QA P3-20）。"""
+    """ch_0123 → ch_123：以章号为键的分区（梗概/编年史等）统一三位列，防口径分裂（ P3-20）。"""
     n = _chapter_num(ch)
     return f"ch_{n:03d}" if n else ch
 
@@ -336,7 +342,7 @@ def _index_by(items: list[dict], key: str) -> dict:
 
 
 def _scan_nulls(node, path: str, out: list[str]) -> None:
-    """递归收集显式 null 位置（持久层闸门拒绝 null，提案入口给出明确报错，QA P2-8）。"""
+    """递归收集显式 null 位置（持久层闸门拒绝 null，提案入口给出明确报错， P2-8）。"""
     if node is None:
         out.append(f"{path}: 不接受显式 null（键要么缺席要么为合法值）")
     elif isinstance(node, dict):
@@ -362,7 +368,7 @@ def validate_proposal(proposal, expected_chapter: str | None = None) -> tuple[li
         if k.startswith("candidate_"):
             errors.append(f"{k}: 候选字段仅供复核，禁止直接进入合并")
     null_hits: list[str] = []
-    for sec in ("current", "entities", "lines", "timeline", "ledger", "synopsis"):
+    for sec in ("current", "entities", "lines", "timeline", "ledger", "synopsis", "locked", "locked_candidates", "cognition", "cognition_delta", "consequences"):
         if proposal.get(sec) is not None:
             _scan_nulls(proposal[sec], sec, null_hits)
     errors.extend(null_hits[:10])
@@ -529,7 +535,7 @@ def validate_proposal(proposal, expected_chapter: str | None = None) -> tuple[li
                     allowed_nonplant = base_keys | {"requires", "level", "content", "truth",
                                                     "parties", "target_ch"}
                 elif action in ("resolve", "remind"):
-                    # target_ch 可选携带：回响/回收时顺延或改期回收计划（QA E2E 实测 Reader 需要此语义）
+                    # target_ch 可选携带：回响/回收时顺延或改期回收计划（ E2E 实测 Reader 需要此语义）
                     allowed_nonplant = base_keys | {"requires", "target_ch"}
                 else:  # update：沿用 update_fields 白名单
                     allowed_nonplant = base_keys | set(spec["update_fields"])
@@ -564,10 +570,10 @@ def validate_proposal(proposal, expected_chapter: str | None = None) -> tuple[li
 
     tl = proposal.get("timeline")
     if isinstance(tl, dict):
-        n = len(tl.get("events", []) or []) + len(tl.get("arcs", []) or []) + len(tl.get("clocks", []) or [])
+        n = len(tl.get("events", []) or []) + len(tl.get("arcs", []) or []) + len(tl.get("clocks", []) or []) + len(tl.get("milestones", []) or [])
         _plan("timeline", n)
         for k in tl:
-            if k not in ("events", "arcs", "clocks"):
+            if k not in ("events", "arcs", "clocks", "milestones"):
                 errors.append(f"timeline 含未知字段: {k}")
         for i, ev in enumerate(tl.get("events", []) or []):
             if not isinstance(ev, dict):
@@ -607,6 +613,21 @@ def validate_proposal(proposal, expected_chapter: str | None = None) -> tuple[li
                 errors.append(f"timeline.clocks[{i}].urgency 必须 ∈ ['low', 'medium', 'high', 'critical']")
             if "status" in c and c["status"] not in ("Active", "Triggered", "Defused", "Expired"):
                 errors.append(f"timeline.clocks[{i}].status 必须 ∈ ['Active', 'Triggered', 'Defused', 'Expired']")
+        for i, m in enumerate(tl.get("milestones", []) or []):
+            if not isinstance(m, dict):
+                errors.append(f"timeline.milestones[{i}] 必须为对象")
+                continue
+            for k in m:
+                if k not in ("id", "title", "target_ch", "status", "desc", "achieved_ch", "quote", "action"):
+                    errors.append(f"timeline.milestones[{i}] 含未知字段: {k}")
+            if not m.get("title") or not str(m["title"]).strip():
+                errors.append(f"timeline.milestones[{i}].title 必填")
+            tch = m.get("target_ch")
+            if tch is not None and (not isinstance(tch, int) or isinstance(tch, bool) or tch < 1):
+                errors.append(f"timeline.milestones[{i}].target_ch 必须为 ≥1 的正整数")
+            st = m.get("status")
+            if st is not None and st not in ("pending", "achieved", "abandoned"):
+                errors.append(f"timeline.milestones[{i}].status 必须 ∈ ['pending', 'achieved', 'abandoned']")
 
     led = proposal.get("ledger")
     if isinstance(led, dict):
@@ -624,7 +645,7 @@ def validate_proposal(proposal, expected_chapter: str | None = None) -> tuple[li
                     if not isinstance(p, dict):
                         errors.append(f"ledger.pools[{pid}] 必须为对象")
                         continue
-                    # QA P0-3：资源池此前只校验「字段类型」，不校验「字段名」也不校验
+                    #  P0-3：资源池此前只校验「字段类型」，不校验「字段名」也不校验
                     # 「必填与否」，与同一分区内 transactions 的严格度不一致——后者对未知键
                     # 一律拒收。后果实测：把 initial 打成 intial（探针 E）会被静默接受，
                     # 起始余额默默落为 0，账本从源头被污染且全程无任何提示。
@@ -674,7 +695,7 @@ def validate_proposal(proposal, expected_chapter: str | None = None) -> tuple[li
                     errors.append(f"ledger.transactions[{i}]: type=expense 但 delta={delta}（支出必须为负数）")
             if t.get("chapter") is not None and not re.fullmatch(r"ch_\d{3,}", str(t["chapter"])):
                 errors.append(f"ledger.transactions[{i}].chapter 须匹配 ch_NNN")
-            # QA P0-1：跨章账本注入闸——流水只能记在提案所属章，禁止改写其他章的账。
+            #  P0-1：跨章账本注入闸——流水只能记在提案所属章，禁止改写其他章的账。
             # 既有流水的修订走 ledger recompute / 显式修订通道，不走新提案追加。
             if (t.get("chapter") is not None and expected_chapter
                     and re.fullmatch(r"ch_\d{3,}", str(t["chapter"]))
@@ -713,6 +734,91 @@ def validate_proposal(proposal, expected_chapter: str | None = None) -> tuple[li
                     for f in ("title", "synopsis"):
                         if f in cp and not isinstance(cp[f], str):
                             errors.append(f"synopsis.chapters[{c}].{f} 必须为字符串")
+
+    locked = proposal.get("locked")
+    if isinstance(locked, list):
+        _plan("locked", len(locked))
+        allowed_locked_keys = {"action", "id", "fact", "since_ch", "kind", "quote", "note", "reason"}
+        for i, l in enumerate(locked):
+            if not isinstance(l, dict):
+                errors.append(f"locked[{i}] 必须为对象")
+                continue
+            for k in l:
+                if k not in allowed_locked_keys:
+                    errors.append(f"locked[{i}] 含未知字段: {k}")
+            lid = l.get("id")
+            if not lid or not LOCK_ID_RE.match(str(lid)):
+                errors.append(f"locked[{i}].id 非法: {lid!r}（必须符合 ^LOCK-\\d{{3,}}$）")
+            act = l.get("action", "plant")
+            if act not in ("plant", "upsert", "retire"):
+                errors.append(f"locked[{i}].action 必须 ∈ ['plant', 'upsert', 'retire']")
+            if act in ("plant", "upsert"):
+                fact = l.get("fact")
+                if not fact or len(str(fact).strip()) < 4:
+                    errors.append(f"locked[{i}].fact 至少需要 4 字有效陈述")
+                kind = l.get("kind")
+                if kind not in ("death", "irreversible_action", "rule", "promise"):
+                    errors.append(f"locked[{i}].kind 必须 ∈ ['death', 'irreversible_action', 'rule', 'promise']")
+            elif act == "retire":
+                if not l.get("reason"):
+                    errors.append(f"locked[{i}] 归档退役必须提供 reason")
+
+    cog_full = proposal.get("cognition")
+    if isinstance(cog_full, list):
+        _plan("cognition", len(cog_full))
+        allowed_cog_full = {"action", "id", "character", "kind", "content", "since_ch", "quote", "note"}
+        for i, item in enumerate(cog_full):
+            if not isinstance(item, dict):
+                errors.append(f"cognition[{i}] 必须为对象")
+                continue
+            for k in item:
+                if k not in allowed_cog_full:
+                    errors.append(f"cognition[{i}] 含未知字段: {k}")
+            if not item.get("character") or not str(item.get("character")).strip():
+                errors.append(f"cognition[{i}].character 必填")
+            cid = item.get("id")
+            if cid and not COG_ID_RE.match(str(cid)):
+                errors.append(f"cognition[{i}].id 非法: {cid!r}（必须符合 ^COG-\\d{{3,}}$）")
+
+    cog = proposal.get("cognition_delta")
+    if isinstance(cog, list):
+        _plan("cognition_delta", len(cog))
+        allowed_cog_keys = {"character", "learned", "misread", "doubted", "quote"}
+        for i, item in enumerate(cog):
+            if not isinstance(item, dict):
+                errors.append(f"cognition_delta[{i}] 必须为对象")
+                continue
+            for k in item:
+                if k not in allowed_cog_keys:
+                    errors.append(f"cognition_delta[{i}] 含未知字段: {k}")
+            if not item.get("character") or not str(item.get("character")).strip():
+                errors.append(f"cognition_delta[{i}].character 必填")
+
+    cons = proposal.get("consequences")
+    if isinstance(cons, list):
+        _plan("consequences", len(cons))
+        allowed_cons_keys = {"subject", "change", "irreversible", "quote"}
+        for i, item in enumerate(cons):
+            if not isinstance(item, dict):
+                errors.append(f"consequences[{i}] 必须为对象")
+                continue
+            for k in item:
+                if k not in allowed_cons_keys:
+                    errors.append(f"consequences[{i}] 含未知字段: {k}")
+
+    lc = proposal.get("locked_candidates")
+    if isinstance(lc, list):
+        _plan("locked_candidates", len(lc))
+        for i, item in enumerate(lc):
+            if not isinstance(item, dict):
+                errors.append(f"locked_candidates[{i}] 必须为对象")
+                continue
+            for k in item:
+                if k not in ("fact", "kind", "quote", "note"):
+                    errors.append(f"locked_candidates[{i}] 含未知字段: {k}")
+            if not item.get("fact") or len(str(item["fact"]).strip()) < 4:
+                errors.append(f"locked_candidates[{i}].fact 至少需要 4 字有效陈述")
+
     return errors, plan
 
 
@@ -1047,6 +1153,47 @@ def _merge_timeline(state: dict, patch: dict, ch: str, rep: dict) -> None:
                     cent[f] = c[f]
             rep["updated"].append(f"⏰ 危机时钟「{cname}」已更新（状态: {cent.get('status')}）")
 
+    milestones = state.setdefault("milestones", [])
+    m_idx = {str(m.get("id")): m for m in milestones if m.get("id")}
+    m_title_idx = {str(m.get("title")): m for m in milestones if m.get("title")}
+    max_ms_id = 0
+    for m in milestones:
+        mid_str = str(m.get("id", ""))
+        if mid_str.startswith("MS-"):
+            try:
+                num = int(mid_str.split("-")[1])
+                if num > max_ms_id:
+                    max_ms_id = num
+            except (IndexError, ValueError):
+                pass
+
+    for m in patch.get("milestones", []) or []:
+        mid = m.get("id")
+        title = m.get("title", "")
+        ment = m_idx.get(str(mid)) if mid else m_title_idx.get(str(title))
+        if ment is None:
+            max_ms_id += 1
+            if not mid:
+                mid = f"MS-{max_ms_id:03d}"
+            ch_num = _chapter_num(ch) or 1
+            ment = {
+                "id": mid,
+                "title": title,
+                "target_ch": m.get("target_ch", ch_num),
+                "status": m.get("status", "pending"),
+                "desc": m.get("desc", ""),
+            }
+            if m.get("achieved_ch"):
+                ment["achieved_ch"] = m["achieved_ch"]
+            milestones.append(ment)
+            m_idx[mid] = ment
+            rep["updated"].append(f"🚩 新增主线里程碑「{title}」({mid}) → target ch_{ment['target_ch']:03d}")
+        else:
+            for f in ("title", "target_ch", "status", "desc", "achieved_ch"):
+                if f in m:
+                    ment[f] = m[f]
+            rep["updated"].append(f"🚩 主线里程碑「{ment['title']}」已更新（状态: {ment.get('status')}）")
+
 
 def _tx_replay_key(t: dict, ch: str) -> tuple:
     """流水内容指纹：崩溃重放/归档重提的同一笔交易判定依据。"""
@@ -1173,7 +1320,7 @@ def _merge_synopsis(state: dict, patch: dict, ch: str, rep: dict) -> None:
         chs = state.setdefault("chapters", {})
         ent = chs.get(c)
         if ent is None:
-            # QA P21：跨章修订通道只认已登记章——指向未注册章整案报错，
+            #  P21：跨章修订通道只认已登记章——指向未注册章整案报错，
             # 不再静默 no-op / 悄悄建占位（修订意图丢失无从追溯）
             rep["errors"].append(
                 f"synopsis.chapters.{c} 无既有梗概（跨章修订通道仅支持修订已登记章节；"
@@ -1189,12 +1336,136 @@ def _merge_synopsis(state: dict, patch: dict, ch: str, rep: dict) -> None:
                 rep["updated"].append(f"📖 {c} {f} 已修订 →「{v[:24]}…」")
 
 
+def _merge_locked(state: dict, patch: list, ch: str, rep: dict) -> None:
+    if not isinstance(patch, list):
+        rep["errors"].append("locked 分区必须为列表")
+        return
+    entries = state.setdefault("entries", [])
+    entry_map = {e["id"]: e for e in entries if isinstance(e, dict) and "id" in e}
+    for item in patch:
+        if not isinstance(item, dict):
+            continue
+        action = item.get("action", "plant")
+        iid = item.get("id")
+        if not iid or not LOCK_ID_RE.match(str(iid)):
+            rep["errors"].append(f"locked 条目 ID 非法: {iid!r}（必须符合 ^LOCK-\\d{{3,}}$）")
+            return
+        if action in ("plant", "upsert"):
+            fact = item.get("fact", "")
+            kind = item.get("kind", "irreversible_action")
+            new_entry = {
+                "id": str(iid),
+                "fact": str(fact).strip(),
+                "since_ch": str(item.get("since_ch") or ch),
+                "kind": str(kind),
+                "quote": str(item.get("quote") or "").strip(),
+            }
+            if item.get("note"):
+                new_entry["note"] = str(item.get("note")).strip()
+            if iid in entry_map:
+                entry_map[iid].update(new_entry)
+                rep["updated"].append(f"🔒 更新不可逆事实 {iid}（{fact[:20]}…）")
+            else:
+                entries.append(new_entry)
+                entry_map[iid] = new_entry
+                rep["updated"].append(f"🔒 新增不可逆事实 {iid}（{fact[:20]}…）")
+        elif action == "retire":
+            reason = item.get("reason")
+            if iid in entry_map:
+                entries[:] = [e for e in entries if e.get("id") != iid]
+                entry_map.pop(iid, None)
+                rep["updated"].append(f"🔓 退役不可逆事实 {iid}（原因: {reason}）")
+            else:
+                rep["warnings"].append(f"locked 条目 {iid} 不存在，退役忽略")
+    if len(entries) > 15:
+        rep["warnings"].append(f"🔒 不可逆事实已达 {len(entries)} 条（超出 15 条配额），建议退役过时承诺")
+
+
+def _merge_cognition(state: dict, patch: list, ch: str, rep: dict) -> None:
+    if not isinstance(patch, list):
+        rep["errors"].append("cognition 分区必须为列表")
+        return
+    entries = state.setdefault("entries", [])
+    entry_map = {e["id"]: e for e in entries if isinstance(e, dict) and "id" in e}
+
+    max_id = 0
+    for e in entries:
+        m = COG_ID_RE.match(str(e.get("id", "")))
+        if m:
+            try:
+                num = int(m.group(0).split("-")[1])
+                if num > max_id:
+                    max_id = num
+            except (IndexError, ValueError):
+                pass
+
+    for item in patch:
+        if not isinstance(item, dict):
+            continue
+        iid = item.get("id")
+        action = item.get("action", "plant")
+        if not iid:
+            max_id += 1
+            iid = f"COG-{max_id:03d}"
+            char = str(item.get("character", "")).strip()
+            content = str(item.get("learned") or item.get("doubted") or item.get("misread") or item.get("content") or "").strip()
+            kind = "fact" if item.get("learned") else ("suspicion" if item.get("doubted") else ("misunderstanding" if item.get("misread") else "fact"))
+            quote = str(item.get("quote") or "").strip()
+            note = str(item.get("note") or "").strip()
+            if not char or not content:
+                continue
+            new_entry = {
+                "id": iid,
+                "character": char,
+                "kind": kind,
+                "content": content,
+                "since_ch": str(item.get("since_ch") or ch),
+                "quote": quote or f"始于 {ch}",
+            }
+            if note:
+                new_entry["note"] = note
+            entries.append(new_entry)
+            entry_map[iid] = new_entry
+            rep["updated"].append(f"🧠 新增角色认知 {iid}「{char}」（{content[:20]}…）")
+            continue
+
+        if not COG_ID_RE.match(str(iid)):
+            rep["errors"].append(f"cognition 条目 ID 非法: {iid!r}（必须符合 ^COG-\\d{{3,}}$）")
+            return
+        if action in ("plant", "upsert"):
+            char = str(item.get("character", "")).strip()
+            content = str(item.get("content", "")).strip()
+            kind = str(item.get("kind", "fact"))
+            new_entry = {
+                "id": str(iid),
+                "character": char,
+                "kind": kind,
+                "content": content,
+                "since_ch": str(item.get("since_ch") or ch),
+                "quote": str(item.get("quote") or f"始于 {ch}").strip(),
+            }
+            if item.get("note"):
+                new_entry["note"] = str(item.get("note")).strip()
+            if iid in entry_map:
+                entry_map[iid].update(new_entry)
+                rep["updated"].append(f"🧠 更新角色认知 {iid}「{char}」（{content[:20]}…）")
+            else:
+                entries.append(new_entry)
+                entry_map[iid] = new_entry
+                rep["updated"].append(f"🧠 新增角色认知 {iid}「{char}」（{content[:20]}…）")
+        elif action == "retire":
+            if iid in entry_map:
+                entries[:] = [e for e in entries if e.get("id") != iid]
+                entry_map.pop(iid, None)
+                rep["updated"].append(f"🧠 退役角色认知 {iid}")
+
+
 def _merge_proposal_into(data: dict, proposal: dict, ch, ch_num, rep: dict) -> None:
     if proposal.get("current"):
         _merge_current(data["current"], proposal["current"], rep)
     if proposal.get("entities"):
         _merge_entities(data["entities"], proposal["entities"], rep)
-        # QA P22：退役与同案在场冲突 → 自动从 present 剔除并醒目提示
+        #  P22：退役与同案在场冲突 → 自动从 present 剔除并醒目提示
         # （闪回/补叙章确需在场：请先在同案把该实体 status 改回 active 再声明 present）
         pcs = data["current"].get("present_characters")
         if pcs:
@@ -1216,6 +1487,17 @@ def _merge_proposal_into(data: dict, proposal: dict, ch, ch_num, rep: dict) -> N
         _merge_ledger(data["ledger"], proposal["ledger"], ch, rep)
     if proposal.get("synopsis"):
         _merge_synopsis(data["synopsis"], proposal["synopsis"], ch, rep)
+    if proposal.get("locked"):
+        if "locked" not in data or not isinstance(data["locked"], dict):
+            data["locked"] = defaults_for("locked")
+        _merge_locked(data["locked"], proposal["locked"], ch, rep)
+    cog_patch = proposal.get("cognition") or proposal.get("cognition_delta")
+    if cog_patch:
+        if "cognition" not in data or not isinstance(data["cognition"], dict):
+            data["cognition"] = defaults_for("cognition")
+        _merge_cognition(data["cognition"], cog_patch, ch, rep)
+    if proposal.get("locked_candidates"):
+        rep["updated"].append(f"🔒 记录 {len(proposal['locked_candidates'])} 条不可逆事实提名（待主控审定入账）")
 
 
 def apply_proposal(book: Path, proposal: dict, expected_chapter: str | None = None,
@@ -1311,7 +1593,7 @@ def apply_proposal(book: Path, proposal: dict, expected_chapter: str | None = No
         common.dump_json(marker_path, marker)
     except Exception as exc:
         # 回滚自身走原子写（tmp+replace），且失败必须上抛——静默吞掉会造成
-        # 「宣称已回滚、现场却撕裂」的假安全（QA P2-11）
+        # 「宣称已回滚、现场却撕裂」的假安全（ P2-11）
         restore_fail: list[str] = []
         for p, content in backup.items():
             try:
@@ -1346,7 +1628,7 @@ def _gather(inbox: Path) -> list[Path]:
         if p.name.endswith(NO_MERGE_SUFFIXES):
             continue
         if not _CH_FILE_RE.fullmatch(p.name):
-            continue  # 非提案命名的异物不参与合并（QA P1-5：异物不再阻断 verify+snapshot）
+            continue  # 非提案命名的异物不参与合并（ P1-5：异物不再阻断 verify+snapshot）
         out.append(p)
     return sorted(out)
 
@@ -1366,7 +1648,7 @@ def _stray_files(inbox: Path) -> list[str]:
 
 def _write_rejection_sidecar(archived: str, errors: list[str],
                              chapter: str | None = None, operation_id: str | None = None) -> None:
-    """QA P14：拒收提案归档时附带拒收原因侧车（_<名>.rejection.json）。
+    """ P14：拒收提案归档时附带拒收原因侧车（_<名>.rejection.json）。
 
     侧车文件名以「_」前缀命名，不匹配 ch_*.json 的合并/捡回正则（_CH_FILE_RE 与
     _failed_candidates 的 glob），永不参与合并；「按报错逐条修复后重跑 sync」的自愈
@@ -1507,7 +1789,7 @@ def apply_inbox(book: Path, expect_chapter: str | None = None, dry_run: bool = F
 
 
 def _prereq_errors(lines: dict) -> list[str]:
-    """前置因果闭环保（QA P20：从「仅 check 可见的状态级错误」提升为合并时写闸门）。
+    """前置因果闭环保（ P20：从「仅 check 可见的状态级错误」提升为合并时写闸门）。
 
     对合并后的 lines 数据构建「线 → requires」图，查两类因果违规：
     - 循环前置依赖（prerequisite_cycle 同语义）
@@ -1569,14 +1851,14 @@ def _prereq_errors(lines: dict) -> list[str]:
 
 def verify_data(data: dict[str, dict]) -> list[str]:
     errors: list[str] = []
-    for sec in ("current", "entities", "lines", "timeline", "ledger"):
+    for sec in ("current", "entities", "lines", "timeline", "ledger", "locked"):
         if sec in data and isinstance(data[sec], dict):
             p_errors = models.validate_with_model(sec, data[sec], prefix=sec)
             for pe in p_errors:
                 if pe not in errors:
                     errors.append(pe)
 
-    # QA P20：前置因果闸门并入写闸门——sync 合并时即拦截闭环/未决前置，
+    #  P20：前置因果闸门并入写闸门——sync 合并时即拦截闭环/未决前置，
     # 不再等独立 check 才暴露（verify_state 的 sync「状态体检」同源覆盖）
     if isinstance(data.get("lines"), dict):
         errors.extend(_prereq_errors(data["lines"]))
@@ -1666,6 +1948,44 @@ def verify_data(data: dict[str, dict]) -> list[str]:
         tch = clk.get("target_ch")
         if not isinstance(tch, int) or isinstance(tch, bool) or tch < 1:
             errors.append(f"时钟「{cname or i}」target_ch 非法: {tch}")
+
+    if "timeline" in data and isinstance(data["timeline"], dict):
+        ms_entries = data["timeline"].get("milestones", [])
+        ms_ids = [str(m.get("id", "")) for m in ms_entries]
+        dup_ms = sorted({x for x in ms_ids if ms_ids.count(x) > 1})
+        if dup_ms:
+            errors.append(f"主线里程碑重复编号: {dup_ms}")
+
+    if "cognition" in data and isinstance(data["cognition"], dict):
+        cog_entries = data["cognition"].get("entries", [])
+        cog_ids = [str(e.get("id", "")) for e in cog_entries]
+        dup_cog = sorted({x for x in cog_ids if cog_ids.count(x) > 1})
+        if dup_cog:
+            errors.append(f"角色认知台账重复编号: {dup_cog}")
+        bad_cog = [x for x in cog_ids if not COG_ID_RE.fullmatch(x)]
+        if bad_cog:
+            errors.append(f"角色认知台账非法编号: {bad_cog[:5]}")
+
+    if "locked" in data and isinstance(data["locked"], dict):
+        locked_entries = data["locked"].get("entries", [])
+        locked_ids = [str(e.get("id", "")) for e in locked_entries]
+        dup_locked = sorted({x for x in locked_ids if locked_ids.count(x) > 1})
+        if dup_locked:
+            errors.append(f"不可逆事实台账重复编号: {dup_locked}")
+        bad_locked = [x for x in locked_ids if not LOCK_ID_RE.fullmatch(x)]
+        if bad_locked:
+            errors.append(f"不可逆事实台账非法编号: {bad_locked[:5]}")
+        for le in locked_entries:
+            if le.get("kind") == "death":
+                fact_text = str(le.get("fact", ""))
+                for ent in data.get("entities", {}).get("entries", []):
+                    ename = ent.get("name", "")
+                    if ename and ename in fact_text:
+                        if ent.get("life_status") not in ("deceased", None):
+                            errors.append(
+                                f"locked 事实声明角色「{ename}」死亡({le.get('id')})，"
+                                f"但 entities 中其 life_status={ent.get('life_status')!r}（矛盾）"
+                            )
     return errors
 
 

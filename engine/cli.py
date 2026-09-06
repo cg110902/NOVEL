@@ -12,10 +12,12 @@ import json
 from . import __version__, common
 from .commands._shared import _add_common_opts
 from .commands.book_setup import cmd_config, cmd_cockpit, cmd_errcodes, cmd_init, cmd_status
-from .commands.chapter_flow import (cmd_ask, cmd_beats, cmd_calendar, cmd_check, cmd_critic,
-                                    cmd_dashboard, cmd_evidence, cmd_export, cmd_graph, cmd_pack,
+from .commands.chapter_flow import (cmd_ask, cmd_audit, cmd_beats, cmd_calendar, cmd_check, cmd_critic,
+                                    cmd_dashboard, cmd_evidence, cmd_export, cmd_graph, cmd_index, cmd_pack,
                                     cmd_pov, cmd_review)
-from .commands.state_sync import (cmd_checkpoint, cmd_ledger, cmd_proposal, cmd_snapshot,
+from .commands.recall import cmd_recall
+from .commands.simulate import cmd_simulate
+from .commands.state_sync import (cmd_checkpoint, cmd_ledger, cmd_milestone, cmd_proposal, cmd_snapshot,
                                   cmd_state, cmd_sync)
 
 
@@ -33,9 +35,11 @@ COMMAND_HELP = {
     "ask": "全书事实检索机（只读取证：别名展开→六表+final 原句双域，带章节出处；写细纲前先问书）",
     "pov": "角色视角包（档案/持有/关系/出场足迹/他知道与不知道的/未了线——由账本推导，advisory）",
     "calendar": "未来 N 章排产日历（到期线/危机时钟/卷阶段里程碑投影；Stage 1 排产前置参考）",
-    "evidence": "机械证据：all|mentions|gaps|names|dup|style|words|file|candidates|prev（纯 JSON，零裁决）",
+    "evidence": "机械证据：all|mentions|gaps|names|dup|style|words|file|candidates|prev|index（纯 JSON，零裁决）",
+    "index": "SQLite3 双平面投影索引：构建/重建 FTS5 BM25 全文检索与关系表缓存",
     "check": "结构/schema/算术体检（errors 只允许事实级；有 errors 退出码 1；新书 Stage 0 待办不阻断）",
     "checkpoint": "宏观航向校准点（每5章复盘分卷四分位里程碑与主线偏航）",
+    "milestone": "主线里程碑管理：list ｜ add（Stage 0 播种主线里程碑与预期达成章节）",
     "state": "状态速查与手术刀纠偏：state show ｜ get <表.字段> ｜ set <表.字段> <值>（如 state get current.time；防真值幻觉）",
     "config": "书级参数手术刀：list|guide|suggest|get|set[--merge]|unset（主控供参通道，project.json；含 words_target/lines_cap 等项目级键）",
     "sync": "提案合并 → 状态体检 → 快照（Stage 5 闭环，可 --dry-run）",
@@ -47,6 +51,9 @@ COMMAND_HELP = {
     "review": "校对注记：new <章节>（骨架预填验收条目+机器数据，--write 写 log/review/）",
     "beats": "细纲脚手架：new [章节]（Stage 1 智能生成带字数预算与情绪蓄水泵的 beats 任务书）",
     "critic": "老白读者催更便签：查看 Stage 4B 便签或落盘 SKELETON 预填骨架（骨架不替代子代理评审）",
+    "audit": "确定性矛盾排查探针（7大机械探针：在场/充能/金额/KNO/不可逆/认知差/别名漂移；0 Token 候选清单）",
+    "recall": "知乎残酷四问 0 Token 机械自证（主要人物知道什么/哪三条不能改/伏笔未兑现/下章红线）",
+    "simulate": "剧情推演沙盒与走向假说（impact 因果链测算 ｜ branch 多分支走向参谋件）",
     "graph": "实体拓扑沙盘与叙事中介寻路（NetworkX 强力赋能：path/neighbors/isolated/centrality）",
     "errcodes": "错误码注册表速查：全部体检码的 severity/解释/修复建议（--json 供 Agent）",
     "help": "本命令目录与实战配方（--json 供 Agent 解析速查）",
@@ -56,22 +63,22 @@ STAGE_MAP = {
     "Stage 0 (设定构想)": {
         "role": "Director",
         "description": "确立世界观法则、人物卡、分卷大纲与词表供参",
-        "commands": ["init", "config"],
+        "commands": ["init", "config", "milestone"],
     },
     "Stage 1 (细纲装配)": {
         "role": "Director",
         "description": "吸收上章 Critic 建议、装配戏剧冲突、细纲任务书与拓扑破局",
-        "commands": ["beats", "graph"],
+        "commands": ["beats", "graph", "recall", "simulate"],
     },
     "Stage 2-3 (起草与重塑)": {
         "role": "Drafter & Editor",
         "description": "初稿剧情爆发起草，顺畅读感文学重塑，一次成型直接落盘",
         "commands": ["pack"],
     },
-    "Stage 4 (双轨质检)": {
-        "role": "Reader & Critic",
-        "description": "事实审计提案生成（轨A）与老白读者毒舌评测（轨B）原生并发",
-        "commands": ["evidence", "critic", "proposal"],
+    "Stage 4 (多轨质检)": {
+        "role": "Reader & Critic & Auditor",
+        "description": "事实审计提案生成（轨A）、老白读者催更评测（轨B）与一致性仲裁（轨C）",
+        "commands": ["evidence", "audit", "critic", "proposal"],
     },
     "Stage 5 (同步与封存)": {
         "role": "Director",
@@ -100,6 +107,15 @@ RECIPES = [
             "python studio.py ask <关键词/实体名/线索ID>   # 全书事实检索：六表+正文原句，带章节出处",
             "python studio.py pov <角色名>                # 角色视角包：他知道什么/不知道什么/未了线",
             "python studio.py calendar [N]                # 未来 N 章排产日历：到期线/时钟/里程碑",
+        ],
+    },
+    {
+        "name": "重大剧情抉择前取证与推演",
+        "stage_flow": "Stage 1",
+        "steps": [
+            "python studio.py recall                        # 0 Token 机械自证知乎残酷四问",
+            "python studio.py simulate impact --entity <角色名> --action kill  # 测算角色死亡波及范围",
+            "python studio.py simulate branch [ch_XXX]      # 生成多走向假说参谋单",
         ],
     },
     {
@@ -228,12 +244,47 @@ def _build_subparsers(sub: argparse._SubParsersAction) -> None:
     q.add_argument("span", nargs="?", type=int, default=5, help="投影章数（默认 5，上限 12）")
     q.set_defaults(func=cmd_calendar)
 
-    q = sub.add_parser("evidence", help="机械证据：all|mentions|gaps|names|dup|style|words|file|candidates|prev")
+    q = sub.add_parser("evidence", help="机械证据：all|mentions|gaps|names|dup|style|words|file|candidates|prev|index")
     _add_common_opts(q)
     q.add_argument("kind", choices=["all", "mentions", "gaps", "names", "dup", "style", "words", "file",
-                                    "candidates", "prev"])
+                                    "candidates", "prev", "index"])
     q.set_defaults(func=cmd_evidence)
     q.add_argument("args", nargs="*", help="kind 参数（名字/章节等）")
+
+    q = sub.add_parser("index", help="SQLite3 只读投影索引构建/重建 (FTS5 + BM25)")
+    _add_common_opts(q)
+    q.add_argument("--rebuild", "-r", action="store_true", help="强制从头全量清空并重建索引")
+    q.set_defaults(func=cmd_index)
+
+    q = sub.add_parser("audit", help="确定性矛盾排查探针（7大机械探针：在场/充能/金额/KNO/不可逆/认知差/别名漂移）")
+    _add_common_opts(q)
+    q.add_argument("chapter", nargs="?", default="", help="章节标识（如 ch_005，缺省默认最新章）")
+    q.add_argument("--write", action="store_true", help="生成并落盘 log/audit/ch_XXX.md 仲裁初稿")
+    q.set_defaults(func=cmd_audit)
+
+    q = sub.add_parser("recall", help="知乎残酷四问 0 Token 机械自证（主要人物知道什么/哪三条不能改/伏笔未兑现/下章红线）")
+    _add_common_opts(q)
+    q.add_argument("chapter", nargs="?", default="", help="锚定章节（如 ch_005，缺省默认最新定稿章）")
+    q.set_defaults(func=cmd_recall)
+
+    q = sub.add_parser("simulate", help="剧情推演沙盒与走向假说（impact 因果链测算 ｜ branch 多分支参谋件）")
+    _add_common_opts(q)
+    sub_sim = q.add_subparsers(dest="simulate_action", required=True)
+
+    p_imp = sub_sim.add_parser("impact", help="因果链波及测算（模拟击杀角色/损毁道具/揭开机密）")
+    _add_common_opts(p_imp)
+    p_imp.add_argument("--entity", "-e", help="目标实体名称（如 苏九娘）")
+    p_imp.add_argument("--line", "-l", help="目标线索编号（如 KNO-001）")
+    p_imp.add_argument("--action", "-a", default="mutate", help="模拟动作（如 kill/destroy/reveal）")
+    p_imp.set_defaults(func=cmd_simulate)
+
+    p_br = sub_sim.add_parser("branch", help="多分支走向假说参谋单（写至 log/branches/）")
+    _add_common_opts(p_br)
+    p_br.add_argument("chapter", nargs="?", default="", help="锚定章节（缺省默认最新章）")
+    p_br.add_argument("--count", "-c", type=int, default=3, help="候选分支数量（默认 3）")
+    p_br.add_argument("--write", action="store_true", help="写入 log/branches/ch_XXX.md")
+    p_br.set_defaults(func=cmd_simulate)
+    q.set_defaults(func=cmd_simulate)
 
     q = sub.add_parser("check", help="结构/schema/算术体检（errors 只允许事实级）")
     _add_common_opts(q)
@@ -243,6 +294,24 @@ def _build_subparsers(sub: argparse._SubParsersAction) -> None:
     _add_common_opts(q)
     q.add_argument("chapter", nargs="?", help="复盘目标章节（默认最新定稿/细纲章）")
     q.set_defaults(func=cmd_checkpoint)
+
+    q = sub.add_parser("milestone", help="主线里程碑管理：list（默认）| add（Stage 0 播种主线里程碑与预期达成章节）")
+    _add_common_opts(q)
+    ms_sub = q.add_subparsers(dest="milestone_action")
+    r = ms_sub.add_parser("list", help="里程碑列表（默认动作）")
+    r.add_argument("-w", "--workspace", default=argparse.SUPPRESS)
+    r.add_argument("--json", action="store_true", default=argparse.SUPPRESS)
+    r.set_defaults(func=cmd_milestone)
+
+    r = ms_sub.add_parser("add", help="添加/播种新里程碑（Stage 0 / 1）")
+    r.add_argument("--title", "-t", required=True, help="里程碑标题（如「查清灯司黑账」）")
+    r.add_argument("--target-ch", "-c", type=int, help="预期达成章节（正整数）")
+    r.add_argument("--id", help="指定里程碑编号（如 MS-001，省略自动生成）")
+    r.add_argument("--desc", "-d", default="", help="里程碑详细描述")
+    r.add_argument("-w", "--workspace", default=argparse.SUPPRESS)
+    r.add_argument("--json", action="store_true", default=argparse.SUPPRESS)
+    r.set_defaults(func=cmd_milestone)
+    q.set_defaults(func=cmd_milestone)
 
     q = sub.add_parser("state", help="状态速查与手术刀纠偏：show ｜ get <表.字段> ｜ set <表.字段> <值>")
     _add_common_opts(q)
@@ -318,10 +387,10 @@ def _build_subparsers(sub: argparse._SubParsersAction) -> None:
     r.add_argument("-w", "--workspace", default=argparse.SUPPRESS)
     r.add_argument("--json", action="store_true", default=argparse.SUPPRESS)
     r.set_defaults(func=cmd_ledger)
-    # QA P3-1：Stage 0 原先没有任何 CLI 通道声明资源池（config guide 不含池键、
+    #  P3-1：Stage 0 原先没有任何 CLI 通道声明资源池（config guide 不含池键、
     # state set 禁登新事实），池只能靠 Stage 5 提案或读源码试出来。
     pa = lg.add_parser("pool", help="资源池管理")
-    # QA P3-1：pool 子解析器必须自带 -w/--json，否则 `-w <书>` 的值会被 argparse
+    #  P3-1：pool 子解析器必须自带 -w/--json，否则 `-w <书>` 的值会被 argparse
     # 当成 pool_action 正向参数吃掉（实测 invalid choice: 'workspace/probe'）。
     pa.add_argument("-w", "--workspace", default=argparse.SUPPRESS)
     pa.add_argument("--json", action="store_true", default=argparse.SUPPRESS)

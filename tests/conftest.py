@@ -55,6 +55,8 @@ def env(ws_root) -> dict:
     e = dict(os.environ)
     e["NOVEL_STUDIO_WORKSPACE_ROOT"] = str(ws_root)
     e["NOVEL_STUDIO_DEBUG"] = "1"
+    e["PYTHONUTF8"] = "1"
+    e["PYTHONIOENCODING"] = "utf-8"
     e.pop("PYTHONPATH", None)
     return e
 
@@ -65,8 +67,8 @@ def env(ws_root) -> dict:
 class CliResult:
     def __init__(self, code: int, out: str, err: str):
         self.code = code
-        self.out = out
-        self.err = err
+        self.out = out or ""
+        self.err = err or ""
 
     @property
     def crashed(self) -> bool:
@@ -96,7 +98,7 @@ def cli(env):
     def run(*args, cwd: Path | None = None) -> CliResult:
         proc = subprocess.run(
             [PY, str(STUDIO), *[str(a) for a in args]],
-            capture_output=True, text=True, env=env,
+            capture_output=True, text=True, encoding="utf-8", errors="replace", env=env,
             cwd=str(cwd or REPO_ROOT),
         )
         return CliResult(proc.returncode, proc.stdout, proc.stderr)
@@ -237,6 +239,7 @@ def build_book(ws_root: Path, slug: str, chapters: int = 3,
         "strong": ["动手", "下狱", "报官"],
         "suspense": ["尾随", "夜半", "对不上"],
     }
+    cfg["audit_mode"] = "off"
     pj.write_text(json.dumps(cfg, ensure_ascii=False, indent=2), encoding="utf-8")
     return book
 

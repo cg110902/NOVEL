@@ -1,0 +1,82 @@
+{
+  "additionalProperties": false,
+  "description": "角色认知台账表 (state/cognition.json) 根模型。",
+  "properties": {
+    "schema_version": {
+      "default": "novel-studio.cognition/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "entries": {
+      "description": "角色认知条目清单",
+      "items": {
+        "additionalProperties": false,
+        "description": "单条角色动态认知条目。",
+        "properties": {
+          "id": {
+            "description": "认知条目唯一编号 (如 COG-001)",
+            "pattern": "^COG-\\d{3,}$",
+            "title": "Id",
+            "type": "string"
+          },
+          "character": {
+            "description": "知情角色名",
+            "minLength": 1,
+            "title": "Character",
+            "type": "string"
+          },
+          "kind": {
+            "default": "fact",
+            "description": "认知性质：fact (确凿获知) | suspicion (心生怀疑) | misunderstanding (误解) | secret_known (知晓机密)",
+            "enum": [
+              "fact",
+              "suspicion",
+              "misunderstanding",
+              "secret_known"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "content": {
+            "description": "角色所知/所疑核心陈述",
+            "minLength": 2,
+            "title": "Content",
+            "type": "string"
+          },
+          "since_ch": {
+            "description": "该认知建立或变迁的章节 (如 ch_002)",
+            "pattern": "^ch_\\d{3,}$",
+            "title": "Since Ch",
+            "type": "string"
+          },
+          "quote": {
+            "description": "定稿逐字佐证原句",
+            "minLength": 2,
+            "title": "Quote",
+            "type": "string"
+          },
+          "note": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "character",
+          "content",
+          "since_ch",
+          "quote"
+        ],
+        "title": "CognitionEntry",
+        "type": "object"
+      },
+      "title": "Entries",
+      "type": "array"
+    }
+  },
+  "title": "CognitionState",
+  "type": "object",
+  "required": [
+    "entries"
+  ],
+  "$comment": "本文件由 engine/models/schema_gen.py 从 Pydantic 模型自动生成，禁止手改；重新生成：python -m engine.models.schema_gen"
+}

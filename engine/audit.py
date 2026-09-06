@@ -1,0 +1,530 @@
+"""engine/audit.py: 确定性矛盾排查探针（7大机械探针：在场/充能/金额/KNO/不可逆/认知差/别名漂移）。
+
+设计原则：
+1. 0 Token 消耗、极速（<0.2s）、确定性机械计算；
+2. 零主观裁决：输出 CandidateContradiction（候选矛盾点），由 Auditor 子代理进一步仲裁；
+3. 输出 candidate_hard（硬矛盾候选）与 candidate_soft（软存疑候选）两个分级；
+4. 证据确凿：每条候选必须携带正文行号/原句及对应账本条目 (state_ref)。
+"""
+from __future__ import annotations
+
+import difflib
+import json
+import re
+from pathlib import Path
+from typing import Any
+
+from . import common, state
+
+try:
+    import jieba
+    import jieba.posseg as pseg
+    try:
+        jieba.setLogLevel(60)
+    except Exception:
+        pass
+    _HAS_JIEBA = True
+except ImportError:
+    _HAS_JIEBA = False
+
+try:
+    from rapidfuzz import fuzz
+    _HAS_RAPIDFUZZ = True
+except ImportError:
+    _HAS_RAPIDFUZZ = False
+
+
+_STOP_WORDS = {
+    "的", "了", "在", "是", "我", "有", "和", "就", "不", "人", "都", "一", "一个",
+    "上", "也", "很", "到", "说", "要", "去", "你", "会", "着", "没有", "看", "好",
+    "自己", "这", "那", "他", "她", "它", "他们", "她们", "它们", "么", "之", "与",
+    "并", "及", "且", "但", "而", "或", "如果", "虽然", "因为", "所以", "之后", "之前",
+    "此时", "此刻", "当下", "只见", "只见那", "不知", "心中", "眼中", "手里", "身上"
+}
+
+_CN_NUM_MAP = {
+    "零": 0, "一": 1, "二": 2, "两": 2, "三": 3, "四": 4, "五": 5,
+    "六": 6, "七": 7, "八": 8, "九": 9, "十": 10, "百": 100, "千": 1000, "万": 10000
+}
+
+
+def _parse_cn_number(s: str) -> int | None:
+    """简易中文数字转整数（覆盖常用小额银钱数额）。"""
+    s = s.strip()
+    if s.isdigit():
+        return int(s)
+    try:
+        if len(s) == 1 and s in _CN_NUM_MAP:
+            return _CN_NUM_MAP[s]
+        if len(s) == 2 and s.startswith("十") and s[1] in _CN_NUM_MAP:
+            return 10 + _CN_NUM_MAP[s[1]]
+        if "万" in s:
+            parts = s.split("万", 1)
+            w_part = _parse_cn_number(parts[0]) or 1
+            r_part = _parse_cn_number(parts[1]) if parts[1] else 0
+            return w_part * 10000 + (r_part or 0)
+        total = 0
+        cur = 0
+        for ch in s:
+            v = _CN_NUM_MAP.get(ch)
+            if v is None:
+                continue
+            if v in (10, 100, 1000):
+                total += (cur or 1) * v
+                cur = 0
+            else:
+                cur = v
+        total += cur
+        return total if total > 0 else None
+    except Exception:
+        return None
+
+
+def _find_mentions_with_lines(lines: list[str], keyword: str) -> list[tuple[int, str]]:
+    """在文本行中查找关键字，返回 (1-based行号, 裁剪行内容)。"""
+    hits = []
+    if not keyword or len(keyword) < 2:
+        return hits
+    for idx, line in enumerate(lines, start=1):
+        if keyword in line:
+            clean = line.strip()
+            if len(clean) > 80:
+                clean = clean[:77] + "…"
+            hits.append((idx, clean))
+    return hits
+
+
+# ---------------------------------------------------------------------------
+# 7 大确定性探针
+# ---------------------------------------------------------------------------
+
+def probe_locked_facts(text: str, lines: list[str], n: int, locked_st: dict, ents_st: list[dict]) -> list[dict]:
+    """探针 1：不可逆事实违背（LOCK 事实刚性防吃书）。"""
+    candidates = []
+    entries = locked_st.get("entries", []) if isinstance(locked_st, dict) else []
+    for lock in entries:
+        if not isinstance(lock, dict):
+            continue
+        lid = lock.get("id", "LOCK")
+        kind = lock.get("kind", "fact")
+        fact = lock.get("fact", "")
+        since = lock.get("since_ch", "ch_000")
+        since_num = common.chapter_token_to_num(since) or 0
+        if n <= since_num:
+            continue
+
+        if kind == "death":
+            deceased_name = ""
+            for ent in ents_st:
+                name = ent.get("name", "")
+                if name and (name in fact or ent.get("life_status") == "deceased"):
+                    deceased_name = name
+                    break
+            if not deceased_name:
+                m = re.search(r"([^已确认于在被]{2,4})(?:已|确认|在|身亡|死亡|殒落)", fact)
+                if m:
+                    deceased_name = m.group(1).strip()
+
+            if deceased_name:
+                hits = _find_mentions_with_lines(lines, deceased_name)
+                for line_no, content in hits:
+                    exempt_pats = ["回忆", "当年", "想起", "若是", "倘若", "墓", "碑", "死前", "遗物", "牌位", "尸首", "尸体", "魂魄", "英年早逝", "祭奠"]
+                    if any(p in content for p in exempt_pats):
+                        continue
+                    if f"{deceased_name}道" in content or f"{deceased_name}说" in content or f"{deceased_name}冷笑" in content or f"「" in content or f"“" in content:
+                        candidates.append({
+                            "probe": "locked_facts",
+                            "severity": "candidate_hard",
+                            "line_no": line_no,
+                            "also_flagged_by": "retired_entity_on_stage",
+                            "title": f"不可逆事实违背：已故角色「{deceased_name}」疑似活人出场/发言",
+                            "description": f"已于 {since} 登记死亡的不可逆事实 [{lid}]（{fact}），但在本章出现对白或行动。",
+                            "evidence": f"L{line_no}: {content}",
+                            "state_ref": lid,
+                            "suggestion": "请核对正文是否为回忆/幻觉；若为活人登场，属严重硬性吃书，需定向修复或替换登场人物。"
+                        })
+                        break
+
+        elif kind in ("destruction", "disbandment"):
+            target_name = ""
+            for ent in ents_st:
+                name = ent.get("name", "")
+                if name and name in fact:
+                    target_name = name
+                    break
+            if target_name:
+                hits = _find_mentions_with_lines(lines, target_name)
+                for line_no, content in hits:
+                    active_pats = ["走进", "来到", "灯火", "坐下", "营业", "客人", "如常", "落脚"]
+                    if any(p in content for p in active_pats):
+                        candidates.append({
+                            "probe": "locked_facts",
+                            "severity": "candidate_hard",
+                            "line_no": line_no,
+                            "also_flagged_by": None,
+                            "title": f"不可逆事实违背：已摧毁/解散的「{target_name}」疑似如常运转",
+                            "description": f"已于 {since} 登记摧毁/解散的不可逆事实 [{lid}]（{fact}），但正文出现正常运作描写。",
+                            "evidence": f"L{line_no}: {content}",
+                            "state_ref": lid,
+                            "suggestion": "核对该设施是否应为废墟/旧址，避免出现人员正常出入或消费情节。"
+                        })
+                        break
+    return candidates
+
+
+def probe_location_presence(text: str, lines: list[str], cur_st: dict, ents_st: list[dict]) -> list[dict]:
+    """探针 2：空间与在场探针（检查角色地理空间跳跃与存活状态）。"""
+    candidates = []
+    for ent in ents_st:
+        name = ent.get("name", "")
+        if not name:
+            continue
+        if ent.get("life_status") == "deceased":
+            hits = _find_mentions_with_lines(lines, name)
+            for line_no, content in hits:
+                if any(p in content for p in ["墓", "死", "遗", "昔日", "想起", "当年"]):
+                    continue
+                candidates.append({
+                    "probe": "location_presence",
+                    "severity": "candidate_hard",
+                    "line_no": line_no,
+                    "also_flagged_by": "retired_entity_on_stage",
+                    "title": f"已亡角色活跃出场：实体「{name}」已故但出现于正文",
+                    "description": f"实体台账记录「{name}」生命状态为 deceased，但在本章活跃出场。",
+                    "evidence": f"L{line_no}: {content}",
+                    "state_ref": f"entities.{name}",
+                    "suggestion": "核实人物是否已死亡；若是回忆请注明，否则请替换为存活角色。"
+                })
+                break
+
+        ent_loc = str(ent.get("location", "") or "").strip()
+        status = str(ent.get("status", "") or "").strip()
+        if status in ("imprisoned", "sealed", "isolated") or any(k in ent_loc for k in ["牢", "绝壁", "禁地", "极北", "深渊"]):
+            hits = _find_mentions_with_lines(lines, name)
+            if hits:
+                for line_no, content in hits:
+                    if not any(k in content for k in ["逃出", "解封", "传讯", "虚影", "提审"]):
+                        candidates.append({
+                            "probe": "location_presence",
+                            "severity": "candidate_soft",
+                            "line_no": line_no,
+                            "also_flagged_by": None,
+                            "title": f"封闭空间角色出场存疑：实体「{name}」处于「{ent_loc or status}」",
+                            "description": f"实体记录处于受困/偏远地点，但在本章场景出场且无越狱/传讯前置动作。",
+                            "evidence": f"L{line_no}: {content}",
+                            "state_ref": f"entities.{name}",
+                            "suggestion": "补充角色脱困说明、千里传音或化身交代，防止空间瞬移穿帮。"
+                        })
+                        break
+    return candidates
+
+
+def probe_charges_possession(text: str, lines: list[str], ents_st: list[dict], cur_st: dict) -> list[dict]:
+    """探针 3：道具与充能探针（检查零充能或已消耗道具的违规使用）。"""
+    candidates = []
+    use_verbs = ["祭出", "催动", "服下", "吞下", "拔出", "挥动", "激发", "启动", "激活", "施展", "掏出", "掷出", "捏碎", "使用"]
+    for ent in ents_st:
+        etype = ent.get("type", "")
+        if etype not in ("item", "artifact", "weapon", "consumable", "prop"):
+            continue
+        name = ent.get("name", "")
+        charges = ent.get("charges")
+        status = ent.get("status", "")
+        aliases = ent.get("aliases", []) or []
+        names_to_check = [name] + [a for a in aliases if a]
+
+        is_exhausted = (charges == 0) or (status in ("exhausted", "consumed", "destroyed", "lost"))
+        if not is_exhausted:
+            continue
+
+        for check_name in names_to_check:
+            hits = _find_mentions_with_lines(lines, check_name)
+            for line_no, content in hits:
+                if any(v in content for v in use_verbs):
+                    candidates.append({
+                        "probe": "charges_possession",
+                        "severity": "candidate_hard",
+                        "line_no": line_no,
+                        "also_flagged_by": "item_charges_zero",
+                        "title": f"已耗尽道具违规使用：道具「{name}」（charges={charges}/status={status}）",
+                        "description": f"账本记录道具「{name}」已耗尽或销毁，但正文出现使用动作。",
+                        "evidence": f"L{line_no}: {content}",
+                        "state_ref": f"entities.{name}",
+                        "suggestion": "核验道具是否在前期已消耗完毕；若是新获取同名道具或残存灵力，需在正文明确交代。"
+                    })
+                    break
+    return candidates
+
+
+def probe_amount_ledger(text: str, lines: list[str], led_st: dict) -> list[dict]:
+    """探针 4：账本金额一致性（检查正文交易支出与账本余额矛盾）。"""
+    candidates = []
+    pools = led_st.get("pools", {}) if isinstance(led_st, dict) else {}
+    money_pat = re.compile(r"(?:花费|支出|花了|付了|掏出|收下|得到|入账|买下|价值|结余|还剩)\s*([0-9一二两三四五六七八九十百千万]+)\s*(两|文|块|枚|两银子|铜钱|灵石|金币)")
+    for line_no, line in enumerate(lines, start=1):
+        for m in money_pat.finditer(line):
+            raw_num, unit = m.group(1), m.group(2)
+            val = _parse_cn_number(raw_num)
+            if val is None or val <= 0:
+                continue
+            pool_key = None
+            if "两" in unit or "银" in unit:
+                pool_key = "silver" if "silver" in pools else None
+            elif "灵石" in unit:
+                pool_key = "spirit_stone" if "spirit_stone" in pools else None
+            elif "铜钱" in unit or "文" in unit:
+                pool_key = "copper" if "copper" in pools else None
+            elif "金" in unit:
+                pool_key = "gold" if "gold" in pools else None
+
+            if pool_key and pool_key in pools:
+                bal = pools[pool_key].get("balance", 0)
+                if any(k in line for k in ["花费", "支出", "花了", "付了", "买下"]) and val > bal:
+                    candidates.append({
+                        "probe": "amount_ledger",
+                        "severity": "candidate_soft",
+                        "line_no": line_no,
+                        "also_flagged_by": "amount_unmatched",
+                        "title": f"金额收支存疑：正文支出 {val} {unit} 大于账本余额 ({bal})",
+                        "description": f"正文出现单次大额支出，但对应资源池 {pool_key} 当前余额仅为 {bal}。",
+                        "evidence": f"L{line_no}: {line.strip()[:80]}",
+                        "state_ref": f"ledger.pools.{pool_key}",
+                        "suggestion": "核对是否有先期入账未登入提案，或修改正文数值使之与财务账本自洽。"
+                    })
+    return candidates
+
+
+def probe_secret_leakage(text: str, lines: list[str], lines_st: dict) -> list[dict]:
+    """探针 5：KNO 秘密知情差泄露（检查不知情者在对话中直接谈及秘密）。"""
+    candidates = []
+    knowledge = lines_st.get("knowledge", []) if isinstance(lines_st, dict) else []
+    for kno in knowledge:
+        status = str(kno.get("status", "")).lower()
+        if status in ("revealed", "公开"):
+            continue
+        kid = kno.get("id", "KNO")
+        secret = str(kno.get("secret", "")).strip()
+        holders = kno.get("holders") or kno.get("knower") or []
+        knower = set(str(k).strip() for k in holders)
+        if not secret or len(secret) < 4:
+            continue
+
+        keywords = []
+        if _HAS_JIEBA:
+            for w, flag in pseg.cut(secret):
+                if flag in ("n", "nr", "ns", "nt", "nz", "v", "a") and len(w) >= 2 and w not in _STOP_WORDS:
+                    keywords.append(w)
+        else:
+            keywords = [w for w in re.findall(r"[\u4e00-\u9fa5]{2,4}", secret) if w not in _STOP_WORDS]
+
+        if not keywords:
+            continue
+
+        for line_no, line in enumerate(lines, start=1):
+            quotes = re.findall(r"[“「『\"]([^”」』\"\n]{4,80})[”」』\"]", line)
+            for q in quotes:
+                hit_kws = [kw for kw in keywords if kw in q]
+                if len(hit_kws) >= 2 or (len(hit_kws) == 1 and len(hit_kws[0]) >= 4 and hit_kws[0] in q):
+                    speaker = None
+                    m_spk = re.search(r"([^，。！？\s]{2,6}?)(?:冷声|厉声|轻声|沉声|颤声|怒|含笑|淡然|森然|高声|低声|咬牙|皱眉|怒斥)*(?:道|说|笑|叹|喝|问)[:：]", line)
+                    if m_spk:
+                        speaker = m_spk.group(1).strip()
+                        speaker = re.sub(r"(?:冷声|厉声|轻声|沉声|颤声|怒|含笑|淡然|森然|高声|低声|咬牙|皱眉|怒斥)+$", "", speaker).strip()
+                    if speaker and knower and speaker not in knower:
+                        candidates.append({
+                            "probe": "secret_leakage",
+                            "severity": "candidate_soft",
+                            "line_no": line_no,
+                            "also_flagged_by": None,
+                            "title": f"知情差穿帮存疑：[{kid}] 秘密内容疑似由不知情角色「{speaker}」道出",
+                            "description": f"未公开知情线 [{kid}]（知情人: {','.join(knower) or '仅主角'}），角色「{speaker}」在台词中提及核心要素（{', '.join(hit_kws)}）。",
+                            "evidence": f"L{line_no}: {line.strip()[:80]}",
+                            "state_ref": kid,
+                            "suggestion": "核查该台词是否属于泄密穿帮；若是试探套话应写明心机，若不知情则需调整用词。"
+                        })
+                        break
+    return candidates
+
+
+def probe_cognition_stubs(text: str, lines: list[str], lines_st: dict, cog_st: dict | None = None) -> list[dict]:
+    """探针 6：认知差与误解冲突（检查未澄清误解前两方的突兀协同，以及与已有认知表的直接冲突）。"""
+    candidates = []
+    misunderstandings = lines_st.get("misunderstandings", []) if isinstance(lines_st, dict) else []
+    for mis in misunderstandings:
+        if mis.get("status") == "resolved":
+            continue
+        mid = mis.get("id", "MIS")
+        parties = mis.get("parties", [])
+        content = mis.get("content", "")
+        if len(parties) < 2:
+            continue
+        p1, p2 = str(parties[0]), str(parties[1])
+        if p1 in text and p2 in text:
+            coop_words = ["相视一笑", "并肩作战", "默契无间", "托付后背", "感激涕零", "冰释前嫌", "毫无保留", "握手言和"]
+            for line_no, line in enumerate(lines, start=1):
+                if (p1 in line or p2 in line) and any(w in line for w in coop_words):
+                    candidates.append({
+                        "probe": "cognition_stubs",
+                        "severity": "candidate_soft",
+                        "line_no": line_no,
+                        "also_flagged_by": None,
+                        "title": f"误解未解前突兀协同：[{mid}]（{content[:20]}）",
+                        "description": f"角色「{p1}」与「{p2}」之间尚有未解误会 [{mid}]，但在正文表现出高度信任或亲密协同动作。",
+                        "evidence": f"L{line_no}: {line.strip()[:80]}",
+                        "state_ref": mid,
+                        "suggestion": "核查二人是否有中间澄清戏；若无，应保持暗中提防与言语机锋，不可提前破冰。"
+                    })
+                    break
+
+    # 检查 state/cognition.json 中的显式认知条目
+    if cog_st and isinstance(cog_st, dict):
+        for cog in cog_st.get("entries", []):
+            cid = cog.get("id", "COG")
+            char = cog.get("character", "")
+            kind = cog.get("kind")
+            content = cog.get("content", "")
+            if kind == "misunderstanding" and char and char in text:
+                contradict_words = ["早已心知肚明", "心如明镜", "一眼看穿了真相", "知道并非如此"]
+                for line_no, line in enumerate(lines, start=1):
+                    if char in line and any(w in line for w in contradict_words):
+                        candidates.append({
+                            "probe": "cognition_stubs",
+                            "severity": "candidate_soft",
+                            "line_no": line_no,
+                            "also_flagged_by": None,
+                            "title": f"角色认知越界穿帮：[{cid}]「{char}」持有认知误解",
+                            "description": f"角色「{char}」在认知台账中标记持有误解 [{cid}]（{content[:25]}），但在正文中直接出现全知/看穿描述。",
+                            "evidence": f"L{line_no}: {line.strip()[:80]}",
+                            "state_ref": cid,
+                            "suggestion": "核查该角色是否应在本章澄清误解；若尚未澄清，严禁使用全知视角心理描写。"
+                        })
+                        break
+    return candidates
+
+
+def probe_alias_drift(text: str, lines: list[str], ents_st: list[dict]) -> list[dict]:
+    """探针 7：实体分裂与别名漂移（检查高相似度近似名，防笔误立新名）。"""
+    candidates = []
+    known_names = {}
+    known_all = set()
+    for ent in ents_st:
+        name = ent.get("name", "")
+        if name:
+            known_names[name] = ent
+            known_all.add(name)
+            for a in (ent.get("aliases") or []):
+                if a:
+                    known_all.add(str(a))
+
+    if not _HAS_JIEBA or len(known_names) == 0:
+        return candidates
+
+    words_freq = {}
+    for w, flag in pseg.cut(text):
+        if flag in ("nr", "nz", "ns", "nt") and 2 <= len(w) <= 4:
+            if w not in _STOP_WORDS and w not in known_all:
+                words_freq[w] = words_freq.get(w, 0) + 1
+
+    for word, count in words_freq.items():
+        if count < 2:
+            continue
+        for known in known_names:
+            if len(word) == len(known) and len(word) >= 2:
+                sim = 0.0
+                if _HAS_RAPIDFUZZ:
+                    sim = fuzz.ratio(word, known) / 100.0
+                else:
+                    sim = difflib.SequenceMatcher(None, word, known).ratio()
+
+                if 0.65 <= sim < 1.0:
+                    hits = _find_mentions_with_lines(lines, word)
+                    line_no = hits[0][0] if hits else None
+                    loc_str = f"L{hits[0][0]}: {hits[0][1]}" if hits else ""
+                    candidates.append({
+                        "probe": "alias_drift",
+                        "severity": "candidate_soft",
+                        "line_no": line_no,
+                        "also_flagged_by": None,
+                        "title": f"实体别名漂移存疑：「{word}」与既有实体「{known}」极度近似",
+                        "description": f"正文出现 {count} 次新词「{word}」，与既有实体「{known}」相似度达 {sim:.0%}，疑似同音/形近笔误导致实体另立新名。",
+                        "evidence": loc_str,
+                        "state_ref": f"entities.{known}",
+                        "suggestion": f"确认正文是否确为既有角色「{known}」；若是，请统一定稿写法或将其追加至 aliases。"
+                    })
+                    break
+    return candidates
+
+
+# ---------------------------------------------------------------------------
+# 聚合入口
+# ---------------------------------------------------------------------------
+
+def run_audit(book: Path, ch: str) -> dict[str, Any]:
+    """执行全部 7 项确定性机械审计探针，输出候选矛盾点汇总。"""
+    n = common.chapter_token_to_num(ch)
+    tok = f"ch_{n:03d}" if n else ch
+    if not n:
+        return {"chapter": ch, "error": f"无法解析章节号: {ch!r}"}
+
+    finals = common.find_chapter_files(book, "final", n)
+    target_file = None
+    is_raw_fallback = False
+    if finals:
+        target_file = finals[-1]
+    else:
+        raws = common.find_chapter_files(book, "raw", n)
+        if raws:
+            target_file = raws[-1]
+            is_raw_fallback = True
+        else:
+            return {"chapter": tok, "error": f"未找到 {tok} 的 manuscript 稿件（final 或 raw 均不存在）"}
+
+    raw_text = target_file.read_text(encoding="utf-8", errors="replace")
+    lines = raw_text.splitlines()
+    text = "\n".join(lines)
+
+    locked_st = state.load_state(book, "locked") if (book / "state" / "locked.json").is_file() else {}
+    ents_st = state.load_state(book, "entities").get("entries", []) if (book / "state" / "entities.json").is_file() else []
+    cur_st = state.load_state(book, "current") if (book / "state" / "current.json").is_file() else {}
+    lines_st = state.load_state(book, "lines") if (book / "state" / "lines.json").is_file() else {}
+    led_st = state.load_state(book, "ledger") if (book / "state" / "ledger.json").is_file() else {}
+    cog_st = state.load_state(book, "cognition") if (book / "state" / "cognition.json").is_file() else {}
+
+    raw_candidates: list[dict] = []
+    raw_candidates.extend(probe_locked_facts(text, lines, n, locked_st, ents_st))
+    raw_candidates.extend(probe_location_presence(text, lines, cur_st, ents_st))
+    raw_candidates.extend(probe_charges_possession(text, lines, ents_st, cur_st))
+    raw_candidates.extend(probe_amount_ledger(text, lines, led_st))
+    raw_candidates.extend(probe_secret_leakage(text, lines, lines_st))
+    raw_candidates.extend(probe_cognition_stubs(text, lines, lines_st, cog_st))
+    raw_candidates.extend(probe_alias_drift(text, lines, ents_st))
+
+    candidates = []
+    for idx, c in enumerate(raw_candidates, start=1):
+        c["id"] = f"AUDIT-{idx:03d}"
+        candidates.append(c)
+
+    hard_count = sum(1 for c in candidates if c.get("severity") == "candidate_hard")
+    soft_count = sum(1 for c in candidates if c.get("severity") == "candidate_soft")
+
+    probe_counts = {
+        "locked_facts": sum(1 for c in candidates if c.get("probe") == "locked_facts"),
+        "location_presence": sum(1 for c in candidates if c.get("probe") == "location_presence"),
+        "charges_possession": sum(1 for c in candidates if c.get("probe") == "charges_possession"),
+        "amount_ledger": sum(1 for c in candidates if c.get("probe") == "amount_ledger"),
+        "secret_leakage": sum(1 for c in candidates if c.get("probe") == "secret_leakage"),
+        "cognition_stubs": sum(1 for c in candidates if c.get("probe") == "cognition_stubs"),
+        "alias_drift": sum(1 for c in candidates if c.get("probe") == "alias_drift"),
+    }
+
+    rel_path = target_file.relative_to(book).as_posix()
+    return {
+        "chapter": tok,
+        "file": rel_path,
+        "fallback_raw": is_raw_fallback,
+        "total_candidates": len(candidates),
+        "hard_count": hard_count,
+        "soft_count": soft_count,
+        "probe_counts": probe_counts,
+        "candidates": candidates,
+    }

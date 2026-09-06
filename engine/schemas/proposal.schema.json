@@ -36,6 +36,18 @@
     },
     "synopsis": {
       "type": "object"
+    },
+    "locked": {
+      "type": "array"
+    },
+    "cognition": {
+      "type": "array"
+    },
+    "cognition_delta": {
+      "type": "array"
+    },
+    "consequences": {
+      "type": "array"
     }
   },
   "required": [

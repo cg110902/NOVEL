@@ -1,0 +1,491 @@
+"""SQLite3 双平面投影引擎 (Dual-Plane Projection & FTS5 Indexing).
+
+架构原则 (CQRS):
+- JSON 为全书唯一的持久权威写模型（Git 友好、原子快照、强 Schema 校验）；
+- SQLite (state/.index/book.db) 为只读投影与加速检索缓存，提供百章规模下的 BM25 段落全文检索与 SQL 关系查询；
+- 支持随时删除并通过 `python studio.py evidence index --rebuild` 毫秒级重建；
+- 零新增外部依赖，使用 Python 标准库 `sqlite3` + `jieba` 分词。
+"""
+from __future__ import annotations
+
+import json
+import sqlite3
+import time
+from pathlib import Path
+from typing import Any, Optional
+
+try:
+    import jieba
+    _HAS_JIEBA = True
+except ImportError:
+    _HAS_JIEBA = False
+
+try:
+    from rapidfuzz import fuzz
+    _HAS_RAPIDFUZZ = True
+except ImportError:
+    _HAS_RAPIDFUZZ = False
+
+from . import common, state, evidence
+
+
+INDEX_DIR_NAME = ".index"
+DB_NAME = "book.db"
+
+_HAS_FTS5: Optional[bool] = None
+
+
+def has_fts5() -> bool:
+    """检测当前 SQLite 运行时是否支持 FTS5 全文索引扩展。"""
+    global _HAS_FTS5
+    if _HAS_FTS5 is not None:
+        return _HAS_FTS5
+    try:
+        con = sqlite3.connect(":memory:")
+        cur = con.cursor()
+        cur.execute("CREATE VIRTUAL TABLE _test_fts USING fts5(c);")
+        con.close()
+        _HAS_FTS5 = True
+    except sqlite3.OperationalError:
+        _HAS_FTS5 = False
+    return _HAS_FTS5
+
+
+def register_entities_in_jieba(book: Path) -> None:
+    """将全书实体名与别名注入 Jieba 动态词典，保证分词时不被机械切碎。"""
+    if not _HAS_JIEBA:
+        return
+    try:
+        ents = state.load_state(book, "entities").get("entries", [])
+        for e in ents:
+            name = str(e.get("name", "")).strip()
+            if name and len(name) >= 2:
+                jieba.add_word(name)
+            for a in (e.get("aliases") or []):
+                a_str = str(a).strip()
+                if a_str and len(a_str) >= 2:
+                    jieba.add_word(a_str)
+    except Exception:
+        pass
+
+
+def get_db_path(book: Path) -> Path:
+    return Path(book) / "state" / INDEX_DIR_NAME / DB_NAME
+
+
+def get_connection(book: Path) -> sqlite3.Connection:
+    db_path = get_db_path(book)
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    con = sqlite3.connect(str(db_path), timeout=10.0)
+    con.row_factory = sqlite3.Row
+    return con
+
+
+def init_db(book: Path) -> sqlite3.Connection:
+    con = get_connection(book)
+    cur = con.cursor()
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS meta (
+        key TEXT PRIMARY KEY,
+        val TEXT
+    );
+    """)
+    if has_fts5():
+        cur.execute("""
+        CREATE VIRTUAL TABLE IF NOT EXISTS chapters_fts USING fts5(
+            chapter,
+            para_idx UNINDEXED,
+            text UNINDEXED,
+            content
+        );
+        """)
+    else:
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS chapters_fts (
+            chapter TEXT,
+            para_idx INTEGER,
+            text TEXT,
+            content TEXT
+        );
+        """)
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS entities_index (
+        name TEXT PRIMARY KEY,
+        type TEXT,
+        realm TEXT,
+        holder TEXT,
+        location TEXT,
+        charges INTEGER,
+        max_charges INTEGER,
+        life_status TEXT,
+        status TEXT,
+        summary TEXT,
+        aliases TEXT,
+        raw_json TEXT
+    );
+    """)
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS lines_index (
+        id TEXT PRIMARY KEY,
+        kind TEXT,
+        name TEXT,
+        target_ch INTEGER,
+        status TEXT,
+        holders TEXT,
+        secret TEXT,
+        raw_json TEXT
+    );
+    """)
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS events_index (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        chapter TEXT,
+        time TEXT,
+        event TEXT,
+        quote TEXT
+    );
+    """)
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS cognition_index (
+        id TEXT PRIMARY KEY,
+        chapter TEXT,
+        character TEXT,
+        kind TEXT,
+        content TEXT,
+        quote TEXT,
+        note TEXT
+    );
+    """)
+    con.commit()
+    return con
+
+
+def _segment_text(text: str) -> str:
+    """对中文文本进行 Jieba 空格分词，供 FTS5 unicode61 索引。"""
+    if not text:
+        return ""
+    if _HAS_JIEBA:
+        return " ".join(jieba.cut(text))
+    return " ".join(text)
+
+
+def build_or_update_index(book: Path, force_rebuild: bool = False) -> dict:
+    """增量或全量构建 SQLite 检索与投影索引。"""
+    t0 = time.perf_counter()
+    book = Path(book)
+    db_path = get_db_path(book)
+
+    if force_rebuild and db_path.is_file():
+        try:
+            db_path.unlink()
+        except OSError:
+            pass
+
+    con = init_db(book)
+    register_entities_in_jieba(book)
+    cur = con.cursor()
+
+    # 1. 重建或增量更新 chapters_fts
+    if force_rebuild:
+        cur.execute("DELETE FROM chapters_fts;")
+
+    # 获取已索引的章节列表
+    cur.execute("SELECT DISTINCT chapter FROM chapters_fts;")
+    indexed_chs = {row["chapter"] for row in cur.fetchall()}
+
+    final_chs = list(evidence.final_chapters(book))
+    indexed_ch_count = 0
+
+    for tok, n, text in final_chs:
+        ch_tag = f"ch_{n:03d}" if n else tok
+        if not force_rebuild and ch_tag in indexed_chs:
+            continue
+        # 先清除当章已有段落（增量重刷）
+        cur.execute("DELETE FROM chapters_fts WHERE chapter = ?;", (ch_tag,))
+        paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
+        for idx, para in enumerate(paragraphs, start=1):
+            segmented = _segment_text(para)
+            cur.execute(
+                "INSERT INTO chapters_fts(chapter, para_idx, text, content) VALUES (?, ?, ?, ?);",
+                (ch_tag, idx, para, segmented)
+            )
+        indexed_ch_count += 1
+
+    # 2. 全量刷新 entities_index
+    cur.execute("DELETE FROM entities_index;")
+    ents = state.load_state(book, "entities").get("entries", [])
+    ent_count = 0
+    for e in ents:
+        name = str(e.get("name", "")).strip()
+        if not name:
+            continue
+        aliases_str = ",".join(str(a) for a in (e.get("aliases") or []) if a)
+        cur.execute(
+            """INSERT OR REPLACE INTO entities_index
+            (name, type, realm, holder, location, charges, max_charges, life_status, status, summary, aliases, raw_json)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);""",
+            (
+                name,
+                e.get("type", "other"),
+                e.get("realm"),
+                e.get("holder"),
+                e.get("location"),
+                e.get("charges"),
+                e.get("max_charges"),
+                e.get("life_status"),
+                e.get("status", "active"),
+                e.get("summary", ""),
+                aliases_str,
+                json.dumps(e, ensure_ascii=False)
+            )
+        )
+        ent_count += 1
+
+    # 3. 全量刷新 lines_index
+    cur.execute("DELETE FROM lines_index;")
+    lines_st = state.load_state(book, "lines")
+    line_count = 0
+    for arr, kind in (("foreshadows", "foreshadow"), ("misunderstandings", "misunderstanding"), ("knowledge", "knowledge")):
+        for item in lines_st.get(arr, []):
+            iid = item.get("id")
+            if not iid:
+                continue
+            holders_str = ",".join(str(h) for h in (item.get("holders") or []) if h)
+            name_val = item.get("name") or item.get("content") or item.get("secret") or ""
+            cur.execute(
+                """INSERT OR REPLACE INTO lines_index
+                (id, kind, name, target_ch, status, holders, secret, raw_json)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?);""",
+                (
+                    iid,
+                    kind,
+                    name_val,
+                    item.get("target_ch"),
+                    item.get("status"),
+                    holders_str,
+                    item.get("secret", ""),
+                    json.dumps(item, ensure_ascii=False)
+                )
+            )
+            line_count += 1
+
+    # 4. 刷新 events_index
+    cur.execute("DELETE FROM events_index;")
+    try:
+        tl = state.load_state(book, "timeline")
+        for ev in tl.get("events", []):
+            cur.execute(
+                "INSERT INTO events_index(chapter, time, event, quote) VALUES (?, ?, ?, ?);",
+                (ev.get("chapter"), ev.get("time"), ev.get("event"), ev.get("quote", ""))
+            )
+    except (ValueError, OSError):
+        pass
+
+    # 5. 全量刷新 cognition_index
+    cur.execute("DELETE FROM cognition_index;")
+    cog_count = 0
+    try:
+        cog_st = state.load_state(book, "cognition")
+        for c in cog_st.get("entries", []):
+            cid = c.get("id")
+            if not cid:
+                continue
+            cur.execute(
+                """INSERT OR REPLACE INTO cognition_index
+                (id, chapter, character, kind, content, quote, note)
+                VALUES (?, ?, ?, ?, ?, ?, ?);""",
+                (
+                    cid,
+                    c.get("since_ch"),
+                    c.get("character"),
+                    c.get("kind"),
+                    c.get("content"),
+                    c.get("quote"),
+                    c.get("note")
+                )
+            )
+            cog_count += 1
+    except (ValueError, OSError):
+        pass
+
+    cur.execute("INSERT OR REPLACE INTO meta(key, val) VALUES ('last_indexed_at', ?);", (str(time.time()),))
+    con.commit()
+    con.close()
+
+    elapsed_ms = round((time.perf_counter() - t0) * 1000, 2)
+    return {
+        "ok": True,
+        "rebuilt": force_rebuild,
+        "indexed_chapters": indexed_ch_count if not force_rebuild else len(final_chs),
+        "indexed_entities": ent_count,
+        "indexed_lines": line_count,
+        "indexed_cognition": cog_count,
+        "time_ms": elapsed_ms,
+        "db_path": str(db_path)
+    }
+
+
+def search_chapters_bm25(book: Path, query: str, limit: int = 15) -> list[dict]:
+    """使用 FTS5 BM25 对全书章节段落执行精准语义检索。"""
+    query = str(query or "").strip()
+    if not query:
+        return []
+
+    db_path = get_db_path(book)
+    if not db_path.is_file():
+        build_or_update_index(book)
+
+    con = get_connection(book)
+    cur = con.cursor()
+
+    seg_q = _segment_text(query)
+    # FTS5 查询：清洗非法 FTS 特殊字符
+    cleaned_tokens = [tok for tok in seg_q.split() if tok and tok not in ("AND", "OR", "NOT", "*", "^")]
+    if not cleaned_tokens:
+        con.close()
+        return []
+
+    if not has_fts5():
+        like_pats = [f"%{tok}%" for tok in cleaned_tokens]
+        where_clause = " OR ".join(["text LIKE ?" for _ in like_pats])
+        try:
+            cur.execute(f"SELECT chapter, para_idx, text FROM chapters_fts WHERE {where_clause} LIMIT ?;",
+                        (*like_pats, limit * 3))
+            rows = cur.fetchall()
+        except sqlite3.OperationalError:
+            con.close()
+            return []
+        results = []
+        for r in rows:
+            ch, p_idx, txt = r["chapter"], r["para_idx"], r["text"]
+            fuzz_score = fuzz.partial_ratio(query, txt) if _HAS_RAPIDFUZZ else 60
+            results.append({
+                "chapter": ch,
+                "para_idx": p_idx,
+                "text": txt,
+                "bm25_rank": 0.0,
+                "score": round(fuzz_score / 100.0, 3)
+            })
+        con.close()
+        results.sort(key=lambda x: -x["score"])
+        return results[:limit]
+
+    fts_query = " OR ".join(f'"{t}"' for t in cleaned_tokens)
+    try:
+        cur.execute(
+            """SELECT chapter, para_idx, text, rank
+            FROM chapters_fts
+            WHERE content MATCH ?
+            ORDER BY rank
+            LIMIT ?;""",
+            (fts_query, limit * 2)
+        )
+        rows = cur.fetchall()
+    except sqlite3.OperationalError:
+        # FTS 语法容错
+        con.close()
+        return []
+
+    results = []
+    for r in rows:
+        ch = r["chapter"]
+        p_idx = r["para_idx"]
+        txt = r["text"]
+        rank = r["rank"]
+        # 计算混合相关度 (BM25 rank 是负数，越小越相关)
+        fuzz_score = fuzz.partial_ratio(query, txt) if _HAS_RAPIDFUZZ else 50
+        norm_rank = 1.0 / (1.0 + abs(rank))
+        combined_score = round(norm_rank * 0.4 + (fuzz_score / 100.0) * 0.6, 3)
+
+        results.append({
+            "chapter": ch,
+            "para_idx": p_idx,
+            "text": txt,
+            "bm25_rank": round(rank, 4),
+            "score": combined_score
+        })
+
+    con.close()
+    results.sort(key=lambda x: -x["score"])
+    return results[:limit]
+
+
+def query_character_pov(book: Path, name: str) -> dict:
+    """从 SQLite 与状态机高效聚合角色第一人称心智模型。"""
+    name = str(name or "").strip()
+    if not name:
+        return {"error": "角色名不能为空"}
+
+    db_path = get_db_path(book)
+    if not db_path.is_file():
+        build_or_update_index(book)
+
+    con = get_connection(book)
+    cur = con.cursor()
+
+    # 1. 实体身份与名下资产
+    cur.execute("SELECT * FROM entities_index WHERE name = ?;", (name,))
+    ent_row = cur.fetchone()
+    if not ent_row:
+        # 别名查找
+        cur.execute("SELECT * FROM entities_index WHERE aliases LIKE ?;", (f"%{name}%",))
+        ent_row = cur.fetchone()
+
+    character_info = dict(ent_row) if ent_row else {"name": name, "status": "active"}
+
+    # 名下持有道具
+    cur.execute("SELECT name, type, charges, max_charges, condition, summary FROM entities_index WHERE holder = ?;", (name,))
+    held_items = [dict(r) for r in cur.fetchall()]
+
+    # 2. 角色认知 (cognition)
+    cur.execute("SELECT id, kind, content, since_ch, quote, note FROM cognition_index WHERE character = ?;", (name,))
+    cogs = [dict(r) for r in cur.fetchall()]
+
+    known_facts = [c for c in cogs if c["kind"] in ("fact", "secret_known")]
+    suspicions = [c for c in cogs if c["kind"] == "suspicion"]
+    misunderstandings = [c for c in cogs if c["kind"] == "misunderstanding"]
+
+    # 3. 角色知情线与被瞒秘密
+    cur.execute("SELECT id, kind, name, status, holders, secret FROM lines_index WHERE kind = 'knowledge';")
+    kno_rows = cur.fetchall()
+    secrets_held = []
+    secrets_concealed_from_character = []
+
+    for kr in kno_rows:
+        holders = [h.strip() for h in (kr["holders"] or "").split(",") if h.strip()]
+        if name in holders or any(name in h for h in holders):
+            secrets_held.append({
+                "id": kr["id"],
+                "secret": kr["secret"] or kr["name"],
+                "status": kr["status"]
+            })
+        else:
+            if kr["status"] != "Revealed":
+                secrets_concealed_from_character.append({
+                    "id": kr["id"],
+                    "secret_topic": kr["name"] or "核心机密",
+                    "status": "对该角色完全保密（严防上帝视角）"
+                })
+
+    con.close()
+
+    return {
+        "character": name,
+        "profile": {
+            "type": character_info.get("type"),
+            "realm": character_info.get("realm"),
+            "location": character_info.get("location"),
+            "life_status": character_info.get("life_status", "alive"),
+            "summary": character_info.get("summary")
+        },
+        "held_assets": held_items,
+        "cognition": {
+            "facts": known_facts,
+            "suspicions": suspicions,
+            "misunderstandings": misunderstandings
+        },
+        "knowledge_matrix": {
+            "secrets_held": secrets_held,
+            "concealed_from_character": secrets_concealed_from_character
+        }
+    }

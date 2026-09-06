@@ -153,6 +153,18 @@ REGISTRY: dict[str, ErrCode] = {c.code: c for c in (
     # ---- 世界圣经版本 ----
     _reg("bible_drift", "info", "世界圣经（project_bible.md）自上次封存后发生改动",
          "有意修订则忽略本提示；涉及世界规则/战力标尺的修订建议在后续 beats 注明适用范围，回溯旧章时对照 state/bible_log.jsonl。"),
+    # ---- 不可逆事实台账 ----
+    _reg("locked_injection_missing", "error", "beats 任务书缺少不可逆台账注入小节（防吃书硬闸门）",
+         "运行 python studio.py beats new 重新生成细纲脚手架，或手动在 beats 正文中补充「🔒 不可逆事实台账」小节。"),
+    _reg("locked_quota_exceeded", "warning", "不可逆事实超出 15 条配额（防上下文膨胀）",
+         "不可逆事实台账条目已超 15 条配额，请通过提案使用 action=retire 淘汰已履行的旧承诺或合并次要条目。"),
+    _reg("locked_life_status_conflict", "error", "locked 死亡事实与实体 life_status 矛盾",
+         "locked 声明了角色死亡，但 entities 中该角色的 life_status 不是 deceased（或相反）；请核对两者一致性。"),
+    # ---- 主线里程碑与支线健康度 ----
+    _reg("milestone_overdue", "warning", "主线里程碑目标章节已过但仍未达成（pending）",
+         "核查主线里程碑进展；若已完成请在提案更新 status=achieved，若已调整大纲请更新 target_ch。"),
+    _reg("subplot_stall", "info", "支线伏笔超过 15 章未有任何推进/提醒",
+         "该伏笔/误解已连续 15 章未触碰，建议在后续章节安排提醒（remind_ch）或回收（resolve_ch），防主线跑焦。"),
 )}
 
 LEVELS = ("error", "warning", "info")

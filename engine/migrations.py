@@ -23,7 +23,7 @@ from . import common
 
 # 迁移注册表：{起始版本: 迁移函数}；函数签名 (data: dict[str, dict]) -> (data, notes)
 # 引擎升级、数据模型演进时，在此追加下一级迁移函数；CURRENT_STATE_VERSION 在文件末尾
-# 统一按注册表重算（QA 修复：此前在第 27 行提前求值，后注册的迁移不会抬高版本号）。
+# 统一按注册表重算（ 修复：此前在第 27 行提前求值，后注册的迁移不会抬高版本号）。
 MIGRATIONS: dict[int, Callable[[dict[str, dict]], tuple[dict[str, dict], list[str]]]] = {}
 
 VERSION_FILE = "state_schema.json"
@@ -148,7 +148,7 @@ MIGRATIONS[LEGACY_VERSION] = _migrate_v0_to_v1
 
 
 # ---------------------------------------------------------------------------
-# v1 → v2：全局 null 闸门兼容清洗（QA P2-8）
+# v1 → v2：全局 null 闸门兼容清洗（ P2-8）
 # ---------------------------------------------------------------------------
 def _migrate_v1_to_v2(data: dict[str, dict]) -> tuple[dict[str, dict], list[str]]:
     """v2 闸门对所有 Optional 字段拒绝显式 null；存量数据按当前 schema 清洗
@@ -166,6 +166,56 @@ def _migrate_v1_to_v2(data: dict[str, dict]) -> tuple[dict[str, dict], list[str]
 
 MIGRATIONS[1] = _migrate_v1_to_v2
 
+
+# ---------------------------------------------------------------------------
+# v2 → v3：引入不可逆事实台账 (locked 表)
+# ---------------------------------------------------------------------------
+def _migrate_v2_to_v3(data: dict[str, dict]) -> tuple[dict[str, dict], list[str]]:
+    """v2 → v3：引入不可逆事实台账 (locked 表)。老书若缺失自动创建空表。"""
+    from . import state as state_mod
+
+    notes: list[str] = []
+    if "locked" not in data or not isinstance(data.get("locked"), dict):
+        data["locked"] = state_mod.defaults_for("locked")
+        notes.append("初始化第七表 locked.json（空表，配额 15 条）")
+    for key in state_mod.STATE_KEYS:
+        if key in data and isinstance(data[key], dict):
+            cleaned = _strip_dropped(
+                _normalize(data[key], state_mod._schema(key), key, notes))
+            data[key] = cleaned
+    return data, notes
+
+
+MIGRATIONS[2] = _migrate_v2_to_v3
+
+
+# ---------------------------------------------------------------------------
+# v3 → v4：引入角色认知台账 (cognition 表) 与主线里程碑 (milestones)
+# ---------------------------------------------------------------------------
+def _migrate_v3_to_v4(data: dict[str, dict]) -> tuple[dict[str, dict], list[str]]:
+    """v3 → v4：引入角色认知台账 (cognition 表) 与主线里程碑。老书若缺失自动创建空表/默认字段。"""
+    from . import state as state_mod
+
+    notes: list[str] = []
+    if "cognition" not in data or not isinstance(data.get("cognition"), dict):
+        data["cognition"] = state_mod.defaults_for("cognition")
+        notes.append("初始化第八表 cognition.json（角色动态认知真值表）")
+
+    if "timeline" in data and isinstance(data["timeline"], dict):
+        if "milestones" not in data["timeline"]:
+            data["timeline"]["milestones"] = []
+            notes.append("timeline 补充 milestones 阶段里程碑航标清单")
+
+    for key in state_mod.STATE_KEYS:
+        if key in data and isinstance(data[key], dict):
+            cleaned = _strip_dropped(
+                _normalize(data[key], state_mod._schema(key), key, notes))
+            data[key] = cleaned
+    return data, notes
+
+
+MIGRATIONS[3] = _migrate_v3_to_v4
+
 # 全部注册完成后统一重算当前版本（= 最高迁移版本 + 1）
 CURRENT_STATE_VERSION = max(MIGRATIONS, default=0) + 1
 
@@ -177,8 +227,8 @@ def ensure_state_version(book: Path) -> dict:
     book = Path(book)
     sd = book / "state"
     key = common.norm_path_key(sd)
-    state_files = [sd / f"{k}.json" for k in
-                   ("current", "entities", "lines", "timeline", "ledger", "synopsis")]
+    from . import state as state_mod
+    state_files = [sd / f"{k}.json" for k in state_mod.STATE_KEYS]
     if not any(p.is_file() for p in state_files):
         return {"migrated": False}  # 未初始化的书：交给 load_state 的缺失报错，不播种
     cached = _ENSURED.get(key)
@@ -238,7 +288,7 @@ def ensure_state_version(book: Path) -> dict:
 
         for k, d in raw.items():
             state_mod.save_state(book, k, d)
-        # QA P3-7：原实现整表重写版本戳，迁移前 {created_at, version} 里的 created_at
+        #  P3-7：原实现整表重写版本戳，迁移前 {created_at, version} 里的 created_at
         # 被丢掉，变成 {from_version, migrated_at, version}——建档时间这个不可再生的
         # 事实就此消失。现保留既有键，只更新版本相关字段。
         _prev_stamp = common.load_json(version_path(book), default={}) or {}

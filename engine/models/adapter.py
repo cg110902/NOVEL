@@ -16,6 +16,8 @@ from .timeline import TimelineState
 from .lines import LinesState
 from .current import CurrentState
 from .synopsis import SynopsisState
+from .locked import LockedState
+from .cognition import CognitionState
 from .patch import ProposalModel
 
 MODEL_REGISTRY: dict[str, Type[BaseModel]] = {
@@ -25,6 +27,8 @@ MODEL_REGISTRY: dict[str, Type[BaseModel]] = {
     "lines": LinesState,
     "current": CurrentState,
     "synopsis": SynopsisState,
+    "locked": LockedState,
+    "cognition": CognitionState,
     "proposal": ProposalModel,
 }
 

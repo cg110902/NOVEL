@@ -5,7 +5,7 @@ import json
 import re
 import sys
 
-from .. import checks, common, evidence, state, dashboard
+from .. import audit, checks, common, dashboard, evidence, state
 from .. import pack as pack_mod
 from .. import graph as graph_mod
 from .. import cockpit as cockpit_mod
@@ -27,7 +27,7 @@ from ._shared import _norm_ch, ws_gate, ws_gate_code
 # pack
 # ---------------------------------------------------------------------------
 def cmd_pack(args) -> int:
-    book = ws_gate(args)  # QA P5：--json 错误路径也出 JSON 信封
+    book = ws_gate(args)  #  P5：--json 错误路径也出 JSON 信封
     if book is None:
         return ws_gate_code()
     ch = None
@@ -45,7 +45,7 @@ def cmd_pack(args) -> int:
             payload["opened"] = pack_mod.open_file(book, args.open_path,
                                                    role=getattr(args, "as_role", "drafter"))
     except PermissionError as exc:
-        # QA P0-2：禁读网关拦截——不是业务失败，是越权，单列退出码语义仍归 1（阻断）
+        #  P0-2：禁读网关拦截——不是业务失败，是越权，单列退出码语义仍归 1（阻断）
         if getattr(args, "json", False):
             print(json.dumps({"error": "forbidden", "path": args.open_path,
                               "as": getattr(args, "as_role", "drafter"),
@@ -72,7 +72,7 @@ def cmd_pack(args) -> int:
 # evidence
 # ---------------------------------------------------------------------------
 def cmd_evidence(args) -> int:
-    book = ws_gate(args)  # QA P5：--json 错误路径也出 JSON 信封
+    book = ws_gate(args)  #  P5：--json 错误路径也出 JSON 信封
     if book is None:
         return ws_gate_code()
     kind, rest = args.kind, list(args.args or [])
@@ -122,6 +122,10 @@ def cmd_evidence(args) -> int:
         if payload.get("unknown"):
             print(json.dumps(payload, ensure_ascii=False, indent=2))
             return 2
+    elif kind == "index":
+        rebuild = any(a in ("--rebuild", "-r", "rebuild") for a in rest)
+        from .. import db
+        payload = db.build_or_update_index(book, force_rebuild=rebuild)
     else:
         if len(rest) > 1:
             print(f"❌ evidence {kind} 至多一个章节参数")
@@ -137,12 +141,24 @@ def cmd_evidence(args) -> int:
     return 0
 
 
+def cmd_index(args) -> int:
+    book = ws_gate(args)
+    if book is None:
+        return ws_gate_code()
+    rebuild = bool(getattr(args, "rebuild", False))
+    from .. import db
+    payload = db.build_or_update_index(book, force_rebuild=rebuild)
+    print(json.dumps(payload, ensure_ascii=False, indent=2))
+    return 0
+
+
+
 
 # ---------------------------------------------------------------------------
 # check
 # ---------------------------------------------------------------------------
 def cmd_check(args) -> int:
-    book = ws_gate(args)  # QA P5：--json 错误路径也出 JSON 信封
+    book = ws_gate(args)  #  P5：--json 错误路径也出 JSON 信封
     if book is None:
         return ws_gate_code()
     report = checks.run_checks(book)
@@ -183,47 +199,62 @@ def _render_review_md(d: dict) -> str:
                      for e in d["proper_names"]) or "（注册表为空）"
     bal = "、".join(f"{p.get('name', pid)}（{pid}）: {p.get('current', 0)} {p.get('unit', '')}".rstrip()
                    for pid, p in sorted(d["ledger_now"].items())) or "（无池）"
-    L = [f"# {d['chapter']} 校对注记", ""]
-    L += ["<!-- 骨架由 `studio review new` 生成：机器数据已预填，结果与证据由主控填写。",
-          "     每条结论要证据：正文引文片段，或 evidence 输出（字段名+数值）——无证据的打钩=未审。",
+    loc_str = f"{d.get('location') or '未明确'} ｜ {d.get('time') or '未明确'}"
+    inj_str = f"伤势：{d.get('injury') or '完好'} ｜ 局势：{d.get('situation') or '正常'}"
+    present_str = "、".join(d["present"]) if d["present"] else "（未声明）"
+
+    L = [f"# {d['chapter']} 校对注记（四块事实结算单）", ""]
+    L += ["<!-- 骨架由 `studio review new` 生成：机器数据已预填，结果与证据由主控核定。",
+          "     每条结论要证据：正文引文片段，或 evidence/audit 输出（字段名+数值）——无证据打钩视为未审。",
           "     -->", ""]
-    L += ["## editor 回话", "", "<!-- 粘贴 editor 交付回话（重铸了什么/为什么，三到五行） -->", ""]
-    L += ["## 六项机械核对", ""]
-    L += ["### 1. 错别字", "- 结果：", ""]
-    L += ["### 2. 标点配对",
-          f"- 机器计数：「={qb['「']} 」={qb['」']} “={qb['“']} ”={qb['”']} 『={qb['『']} 』={qb['』']}"
-          "（全章计数；是否配对由人判）",
-          "- 结果：", ""]
-    L += ["### 3. 专名与 entities 写法一致",
-          f"- 专名表：{names}",
-          f"- 章末仍在场（current）：{'、'.join(d['present']) if d['present'] else '（未声明）'}",
-          "- 结果：", ""]
-    L += ["### 4. 数字与 ledger current 相符",
-          f"- 当前余额：{bal}",
-          "- 结果：", ""]
-    L += ["### 5.「必须保留」在位"]
-    if d["must_keep"]:
-        L += ["- 本章清单（自 beats 提取）："]
-        L += [f"  - {s}" for s in d["must_keep"]]
+
+    L += ["## 块一：现场结算（时地、伤势与在场角色）", ""]
+    L += [f"- **时地快照**：{loc_str}",
+          f"- **状态指征**：{inj_str}",
+          f"- **章末在场（current）**：{present_str}",
+          "- **核定结果**：", ""]
+
+    L += ["## 块二：财务与充能结算（资金流动与道具消耗）", ""]
+    L += [f"- **账本池余额**：{bal}",
+          "- **关键道具 charges 消耗**：",
+          "- **核定结果**：", ""]
+
+    L += ["## 块三：因果与不可逆事实结算（LOCK 铁律与线索闭环）", ""]
+    if d.get("locked_now"):
+        L += ["- **不可逆事实清单（LOCK 刚性约束）**："]
+        L += [f"  - {lk}" for lk in d["locked_now"][:10]]
     else:
-        L += ["- 本章清单（自 beats 提取）：（beats 无「必须保留」节内容）"]
-    L += ["- 结果：", ""]
-    L += ["### 6. 格式残留",
-          f"- 机器扫描：{{{{slot}}}}={d['residue']['slot']} ｜ candidate_*={d['residue']['candidate']}",
-          "- 结果：", ""]
-    L += ["## 验收", ""]
+        L += ["- **不可逆事实清单**：（暂无不可逆事实登记）"]
+    if d.get("due_lines"):
+        L += ["- **本章到期主线/伏笔动作**："]
+        L += [f"  - {dl}" for dl in d["due_lines"][:10]]
+    else:
+        L += ["- **本章到期主线/伏笔动作**：（无到期线索）"]
+    L += ["- **核定结果**：", ""]
+
+    L += ["## 块四：细纲契约逐条验收", ""]
     if d["acceptance"]:
-        L += ["<!-- 逐条回答，格式：N. ✓/✗ + 证据（正文引文「…」或 evidence 字段=数值，如 total=2、cjk=3120） -->"]
+        L += ["<!-- 逐条回答，格式：N. ✓/✗ + 证据（正文引文「…」或 evidence 字段=数值，如 cjk=3120） -->"]
         for i, item in enumerate(d["acceptance"], 1):
             L.append(f"{i}. {item} ")
         L.append("")
     else:
         L += ["（beats 无「验收」节——review_gate 不拦，但建议补验收条目）", ""]
+
+    L += ["## 附：机械体检与格式扫描", ""]
+    L += [f"- **标点计数**：「={qb['「']} 」={qb['」']} “={qb['“']} ”={qb['”']} 『={qb['『']} 』={qb['』']}",
+          f"- **专名一致性**：{names}",
+          f"- **格式残留**：{{{{slot}}}}={d['residue']['slot']} ｜ candidate_*={d['residue']['candidate']}"]
+    if d.get("style_info"):
+        si = d["style_info"]
+        ai_hits_str = "、".join(f"{h['word']}×{h['count']}" for h in si.get("ai_tell_hits", [])[:5]) or "0 处"
+        L.append(f"- **文风雷达**：平均句长 {si.get('len_mean', 0)} 字（偏离 {si.get('len_mean_delta', 0):+}） ｜ 对话占比 {si.get('dialogue_ratio', 0)} ｜ AI 套话命中：{ai_hits_str}")
+    L += ["- **核定结果**：", ""]
     return "\n".join(L) + "\n"
 
 
 def cmd_review(args) -> int:
-    book = ws_gate(args)  # QA P5：--json 错误路径也出 JSON 信封
+    book = ws_gate(args)  #  P5：--json 错误路径也出 JSON 信封
     if book is None:
         return ws_gate_code()
     if getattr(args, "rev_action", None) != "new":
@@ -260,17 +291,144 @@ def cmd_review(args) -> int:
     return 0
 
 
+# ---------------------------------------------------------------------------
+# audit
+# ---------------------------------------------------------------------------
+def _render_audit_md(payload: dict) -> str:
+    hard_count = payload.get("hard_count", 0)
+    soft_count = payload.get("soft_count", 0)
+    total = payload.get("total_candidates", 0)
+    tok = payload.get("chapter", "ch_001")
+    candidates = payload.get("candidates", [])
+
+    lines = [
+        "---",
+        f"audit_chapter: {tok}",
+        f"hard: {hard_count}",
+        f"soft: {soft_count}",
+        "adjudicated: false",
+        "---",
+        "",
+        f"# {tok} 事实一致性仲裁报告 (Auditor)",
+        "",
+        "## 📊 仲裁总览",
+        f"- 机械探针扫描候选数：{total} 条",
+        f"- 🔴 确凿硬矛盾候选：{hard_count} 条",
+        f"- 🟡 软性存疑候选：{soft_count} 条",
+        "",
+        "---",
+        "",
+        "## 🔴 确凿硬矛盾（必须定向修复或核实排除）",
+    ]
+    hards = [c for c in candidates if c.get("severity") == "candidate_hard"]
+    if not hards:
+        lines.append("✅ 本章未检出确凿硬矛盾候选。")
+    else:
+        for c in hards:
+            lines.append(f"- **[{c['id']}] [{c['probe']}] {c['title']}**")
+            if c.get("evidence"):
+                lines.append(f"  - **正文证据**：`{c['evidence']}`")
+            if c.get("state_ref"):
+                lines.append(f"  - **台账依据**：`{c['state_ref']}`")
+            lines.append(f"  - **描述**：{c['description']}")
+            if c.get("suggestion"):
+                lines.append(f"  - ✂️ **处理建议**：{c['suggestion']}")
+            lines.append("")
+
+    lines.extend([
+        "---",
+        "",
+        "## 🟡 软性存疑（主控关注）",
+    ])
+    softs = [c for c in candidates if c.get("severity") == "candidate_soft"]
+    if not softs:
+        lines.append("无")
+    else:
+        for c in softs:
+            lines.append(f"- **[{c['id']}] [{c['probe']}] {c['title']}**")
+            if c.get("evidence"):
+                lines.append(f"  - **正文证据**：`{c['evidence']}`")
+            if c.get("state_ref"):
+                lines.append(f"  - **台账依据**：`{c['state_ref']}`")
+            lines.append(f"  - **描述**：{c['description']}")
+            if c.get("suggestion"):
+                lines.append(f"  - **建议**：{c['suggestion']}")
+            lines.append("")
+
+    lines.extend([
+        "---",
+        "",
+        "## ✅ 交叉核实排除（误报归档）",
+        "<!-- 若经人工或 Auditor 核实上述某条属于语境误报（如回忆、同名新道具等），在此记录排除理由并将 hard 扣减或将顶部 adjudicated 设为 true -->",
+        "",
+    ])
+    return "\n".join(lines)
+
+
+def cmd_audit(args) -> int:
+    book = ws_gate(args)
+    if book is None:
+        return ws_gate_code()
+    ch_arg = getattr(args, "chapter", None)
+    if not ch_arg:
+        latest = common.latest_chapter_number(book, "final") or 1
+        ch_arg = f"ch_{latest:03d}"
+    n = common.chapter_token_to_num(ch_arg)
+    if not n:
+        print(f"❌ 无法解析章节号: {ch_arg!r}")
+        return 2
+    tok = f"ch_{n:03d}"
+
+    payload = audit.run_audit(book, tok)
+    do_write = getattr(args, "write", False)
+    if do_write and not payload.get("error"):
+        audit_dir = book / "log" / "audit"
+        audit_dir.mkdir(parents=True, exist_ok=True)
+        out_file = audit_dir / f"{tok}.md"
+        md_content = _render_audit_md(payload)
+        out_file.write_text(md_content, encoding="utf-8")
+        payload["written_file"] = str(out_file.relative_to(book))
+        if not getattr(args, "json", False):
+            print(f" 💾 已生成并写入仲裁报告: {out_file.relative_to(book)}")
+
+    if getattr(args, "json", False):
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+        return 0
+
+    if payload.get("error"):
+        print(f"❌ {payload['error']}")
+        return 1
+
+    print(f"\n🔍 [确定性机械审计探针] {payload['chapter']}（分析稿件：{payload['file']}）")
+    print(f"   候选矛盾总数: {payload['total_candidates']}（🔴 硬矛盾候选: {payload['hard_count']} ｜ 🟡 软存疑候选: {payload['soft_count']}）\n")
+    if not payload["candidates"]:
+        print("   ✅ 未检出机械矛盾候选（状态与正文基础事实高度自洽）\n")
+        return 0
+
+    for c in payload["candidates"]:
+        icon = "🔴" if c["severity"] == "candidate_hard" else "🟡"
+        print(f"   {icon} [{c['id']}] [{c['probe']}] {c['title']}")
+        print(f"      描述: {c['description']}")
+        if c.get("evidence"):
+            print(f"      证据: {c['evidence']}")
+        if c.get("state_ref"):
+            print(f"      台账: {c['state_ref']}")
+        if c.get("suggestion"):
+            print(f"      建议: {c['suggestion']}")
+        print()
+    return 0
+
 
 # ---------------------------------------------------------------------------
 # beats
 # ---------------------------------------------------------------------------
 def _consistency_section(book, n: int, cur: dict, ents: list[dict], lines_st: dict,
-                         plan_line: str = "") -> str:
-    """beats「本章一致性速查」：实体名册（含既有别名）+ KNO 知情差边界（引擎自动注入）。
+                         plan_line: str = "", locked_st: dict | None = None) -> str:
+    """beats「本章一致性速查」：不可逆事实台账 + 实体名册（含既有别名）+ KNO 知情差边界（引擎自动注入）。
 
     beats 是唯一同时被 Drafter / Editor / Reader 准读的文件——把账本记忆投递进 beats，
-    即可在不动权限网关的前提下修复 Reader 的实体盲区（防别名分裂/另立新名），并防知情差穿帮。
-    名册来源：主角 + 章末在场 + 到期线涉及实体 + 卷纲「当章预定规划」点名实体（防大纲回归角色漏网）。
+    即可在不动权限网关的前提下修复 Reader 的实体盲区（防别名分裂/另立新名），并防知情差与不可逆事实穿帮。
+    名册来源：不可逆事实 + 主角 + 章末在场 + 到期线涉及实体 + 卷纲「当章预定规划」点名实体（防大纲回归角色漏网）。
     """
     proj = common.load_json(book / "project.json", default={}) or {}
     protagonist = str(proj.get("protagonist", "")).strip()
@@ -304,7 +462,7 @@ def _consistency_section(book, n: int, cur: dict, ents: list[dict], lines_st: di
             if str(g.get("status", "")).strip().lower() in ("resolved", "revealed"):
                 continue
             t = g.get("target_ch")
-            # QA P2-2：原过滤只收 `isinstance(t, int) and t <= n+3`，于是 `target_ch:
+            #  P2-2：原过滤只收 `isinstance(t, int) and t <= n+3`，于是 `target_ch:
             # "longline"` 的全书级线索被整条剔除——那往往正是本书最重要的道具/主线
             # （实测《沧澜拾灯》的「无主空灯」规范名根本没进名册）。不跑 pack 的 Drafter
             # 只读 beats + 上章 final，就拿不到道具规范名，只能自己造词。
@@ -330,15 +488,26 @@ def _consistency_section(book, n: int, cur: dict, ents: list[dict], lines_st: di
     kno_list = [k for k in (lines_st or {}).get("knowledge", [])
                 if str(k.get("status", "")).strip().lower() != "revealed"]
     kno_list.sort(key=lambda k: -(k.get("weight") if isinstance(k.get("weight"), int) else 1))
-    if not roster and not kno_list:
+    locked_entries = (locked_st or {}).get("entries", [])
+    if not roster and not kno_list and not locked_entries:
         return ""
     out = ["## 本章一致性速查（引擎自动注入 · 主控可增删）", ""]
+    if locked_entries:
+        out += ["### 🔒 不可逆事实台账（LOCK 引擎铁律 · 严禁吃书/逆转）", ""]
+        for le in locked_entries[:15]:
+            lid = le.get("id", "LOCK")
+            kind = le.get("kind", "fact")
+            fact = _clip(str(le.get("fact", "")), 80)
+            since = le.get("since_ch", "")
+            since_part = f"（始于 {since}）" if since else ""
+            out.append(f"- [{lid}] ({kind}) {fact}{since_part}")
+        out.append("")
     if roster:
         out += ["### 实体名册（含既有别名——正文沿用既有写法，严禁另立新名碎片化实体）", ""]
         for ent in roster:
             aliases = "、".join(str(a) for a in (ent.get("aliases") or []) if a)
             name_part = f"{ent['name']}（别名：{aliases}）" if aliases else str(ent["name"])
-            # QA P2-15：截断统一带省略号（无省略号硬截断会丢关键信息且像坏句）
+            #  P2-15：截断统一带省略号（无省略号硬截断会丢关键信息且像坏句）
             summary = _clip(str(ent.get("summary", "") or ""), 60)
             out.append(f"- {name_part} ｜ {ent.get('type', 'other')} ｜ {summary}")
         out.append("")
@@ -353,20 +522,20 @@ def _consistency_section(book, n: int, cur: dict, ents: list[dict], lines_st: di
 
 
 def _clip(s: str, n: int) -> str:
-    """定长截断并带省略号（QA P2-15）。"""
+    """定长截断并带省略号（ P2-15）。"""
     s = (s or "").strip()
     return s if len(s) <= n else s[:n] + "…"
 
 
 def cmd_beats(args) -> int:
-    book = ws_gate(args)  # QA P5：--json 错误路径也出 JSON 信封
+    book = ws_gate(args)  #  P5：--json 错误路径也出 JSON 信封
     if book is None:
         return ws_gate_code()
     ch = getattr(args, "chapter", None)
     if not ch:
         latest = common.latest_chapter_number(book, "final") or 0
         ch = f"ch_{latest + 1:03d}"
-    # QA P3-3：归一化不再静默——`ch_7` 会被改写成 `ch_007` 并明确告知，
+    #  P3-3：归一化不再静默——`ch_7` 会被改写成 `ch_007` 并明确告知，
     # 避免与提案端（`target_ch` 必须是规范 ch_NNN）的严格度形成无声落差。
     tok, _rewrote = common.normalize_chapter_arg(ch)
     if not tok:
@@ -396,7 +565,7 @@ def cmd_beats(args) -> int:
     proj = common.load_json(book / "project.json", default={}) or {}
     protagonist = proj.get("protagonist", "主角名")
 
-    # QA P8：form 默认值不再硬编码——上一章用了默认章型时切换推荐值，
+    #  P8：form 默认值不再硬编码——上一章用了默认章型时切换推荐值，
     # 防「连续同章型无理由」在脚手架阶段就已埋雷
     default_form = "暗流汇聚"
     if n > 1:
@@ -426,6 +595,10 @@ def cmd_beats(args) -> int:
         ents_st = state.load_state(book, "entities").get("entries", [])
     except (ValueError, OSError):
         ents_st = []  # 实体账本不可用：名册留空
+    try:
+        locked_st = state.load_state(book, "locked")
+    except (ValueError, OSError):
+        locked_st = {}  # 不可逆台账不可用：留空
 
     due_lines_str = ""
     try:
@@ -460,7 +633,7 @@ def cmd_beats(args) -> int:
     text = text.replace("{{slot:tension_curve|动态起伏}}", "危机逼近 → 试探博弈 → 动作破局")
     text = text.replace("{{slot:tension_score|6}}", "6")
     text = text.replace("{{slot:stage_mode|Simmering}}", "Simmering")
-    # QA P7：「所属阶段 + 上章现场」注入——此前 replace 的模板标记不存在，属静默 no-op 死代码；
+    #  P7：「所属阶段 + 上章现场」注入——此前 replace 的模板标记不存在，属静默 no-op 死代码；
     # 现在模板补了标记，并保留锚点回退，任何路径注入失败都走 stderr 警告（绝不静默）
     coord_block = (f"- **所属阶段**：{milestone or '（未匹配到分卷阶段，请核对 outlines/*/outline.md）'}\n"
                    f"- **上章现场**：{str(sit).strip() or '（暂无现场快照，按首章/转场处理）'}")
@@ -472,7 +645,7 @@ def cmd_beats(args) -> int:
         text = text.replace("- **本章核心戏剧目标**：",
                             coord_block + "\n- **本章核心戏剧目标**：", 1)
     else:
-        # 兜底：frontmatter 之后的正文独立块 + stderr 明示（QA P7：注入失败必须可见）。
+        # 兜底：frontmatter 之后的正文独立块 + stderr 明示（ P7：注入失败必须可见）。
         # 不能 prepend 到最顶——frontmatter 的 --- 必须保持首行
         block = f"## 本章坐标（引擎自动注入 · 可改）\n\n{coord_block}\n\n"
         fm_close = text.find("\n---", 3) if text.startswith("---") else -1
@@ -490,7 +663,7 @@ def cmd_beats(args) -> int:
     m_plan = re.search(r"当章预定规划[:：](.+)", milestone or "")
     if m_plan:
         plan_line = m_plan.group(1).strip()
-    cons_section = _consistency_section(book, n, cur, ents_st, lines_st, plan_line=plan_line)
+    cons_section = _consistency_section(book, n, cur, ents_st, lines_st, plan_line=plan_line, locked_st=locked_st)
     if cons_section:
         text = text.replace("## 本章新登场实体速写", cons_section.rstrip() + "\n\n## 本章新登场实体速写")
 
@@ -531,7 +704,7 @@ def cmd_beats(args) -> int:
 # critic
 # ---------------------------------------------------------------------------
 def cmd_critic(args) -> int:
-    book = ws_gate(args)  # QA P5：--json 错误路径也出 JSON 信封
+    book = ws_gate(args)  #  P5：--json 错误路径也出 JSON 信封
     if book is None:
         return ws_gate_code()
     ch_arg = getattr(args, "chapter", None)
@@ -547,7 +720,7 @@ def cmd_critic(args) -> int:
 
     if critic_file.is_file():
         text = critic_file.read_text(encoding="utf-8", errors="ignore")
-        # QA P2-7：骨架明示为「未评测」，不再以正式报告的口吻回显
+        #  P2-7：骨架明示为「未评测」，不再以正式报告的口吻回显
         is_skeleton = "SKELETON" in text[:400]
         panel_title = (f"🧐 [催更便签骨架 · 未评测（Stage 4B 待 Critic 子代理改写）] {tok}"
                        if is_skeleton else f"🧐 [老白读者催更便签] {tok}")
@@ -648,7 +821,7 @@ def cmd_critic(args) -> int:
 # graph
 # ---------------------------------------------------------------------------
 def cmd_graph(args) -> int:
-    book = ws_gate(args)  # QA P5：--json 错误路径也出 JSON 信封
+    book = ws_gate(args)  #  P5：--json 错误路径也出 JSON 信封
     if book is None:
         return ws_gate_code()
     return graph_mod.run_graph(
@@ -668,7 +841,7 @@ def cmd_graph(args) -> int:
 # export
 # ---------------------------------------------------------------------------
 def cmd_export(args) -> int:
-    book = ws_gate(args)  # QA P5：--json 错误路径也出 JSON 信封
+    book = ws_gate(args)  #  P5：--json 错误路径也出 JSON 信封
     if book is None:
         return ws_gate_code()
     if not args.txt and not args.views:
@@ -692,7 +865,7 @@ def cmd_export(args) -> int:
 
 
 def cmd_dashboard(args) -> int:
-    book = ws_gate(args)  # QA P5：--json 错误路径也出 JSON 信封
+    book = ws_gate(args)  #  P5：--json 错误路径也出 JSON 信封
     if book is None:
         return ws_gate_code()
     try:
@@ -716,7 +889,7 @@ def cmd_dashboard(args) -> int:
 # ask / pov / calendar（只读取证三件套：写作前先问书，严禁凭记忆脑补）
 # ---------------------------------------------------------------------------
 def cmd_ask(args) -> int:
-    book = ws_gate(args)  # QA P5：--json 错误路径也出 JSON 信封
+    book = ws_gate(args)  #  P5：--json 错误路径也出 JSON 信封
     if book is None:
         return ws_gate_code()
     query = str(getattr(args, "query", "") or "").strip()
@@ -726,7 +899,7 @@ def cmd_ask(args) -> int:
 
 
 def cmd_pov(args) -> int:
-    book = ws_gate(args)  # QA P5：--json 错误路径也出 JSON 信封
+    book = ws_gate(args)  #  P5：--json 错误路径也出 JSON 信封
     if book is None:
         return ws_gate_code()
     payload = evidence.pov(book, str(getattr(args, "name", "") or ""))
@@ -796,7 +969,7 @@ def _calendar_payload(book, span: int) -> dict:
 
 
 def cmd_calendar(args) -> int:
-    book = ws_gate(args)  # QA P5：--json 错误路径也出 JSON 信封
+    book = ws_gate(args)  #  P5：--json 错误路径也出 JSON 信封
     if book is None:
         return ws_gate_code()
     try:

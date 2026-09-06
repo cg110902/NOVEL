@@ -29,7 +29,7 @@ description: Universal commercial webnovel reader feedback and next-chapter anti
 - 🔴 **禁读清单（Strict Blacklist · 绝对禁止打开）**：
   - ❌ **严禁读取 `outlines/*`（细纲与大纲）**：读者看小说绝不能偷看作者大纲！必须保持纯粹的读者视角；
   - ❌ **严禁读取 `manuscript/vol_XX/raw/*`**（草稿）；
-  - ❌ **严禁读取 `state/*` 其余五表（entities/lines/timeline/ledger/synopsis）、`bible/*`、`characters/*` 或 `engine/*`**。
+  - ❌ **严禁读取 `state/*` 其余七表（entities/lines/timeline/ledger/synopsis/locked/cognition）、`bible/*`、`characters/*` 或 `engine/*`**。
 
 ---
 

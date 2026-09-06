@@ -51,15 +51,17 @@ description: Universal factual auditor and state proposal generator for Novel St
 
 ---
 
-## ⚙️ 四、 4 大核心事实提取清单与提案 Schema (Craft Guidelines)
+## ⚙️ 四、 6 大核心事实提取清单与提案 Schema (Craft Guidelines)
 
-### 1. 4 大核心事实提取清单
+### 1. 6 大核心事实提取清单
 | 核心提取板块 | 对应 JSON 分区 | 明确提取要点（只记关键，不瞎编） |
 |---|---|---|
 | **1. 现场与主角状态** | `current` | • `present_characters`：章末确凿在场存活名单，**只收已注册实体**——杂兵/无名角色既不建实体也不进名单（进了会被 sync 的未登记实体闸门拒收）；<br/>• `location`, `time`：章末具体物理地点与当前时间；<br/>• 主角质变：位阶/职级/战力突破 (`power_level`)、重伤或痊愈 (`injury`)；无变动则维持原样。 |
 | **2. 重要新实体** | `entities` | • 新登场核心角色 (`person`)、核心道具/关键物品 (`item`)、新势力/机构 (`faction`)；杂兵路人等背景板不建实体；若无新实体直接保持 `[]`；<br/>• **进阶锚定（选填）**：S级信物/誓言可附带 `golden_quote`（100字原著细节）；重大恩怨转变可登记 `relations`；分卷专属配角可登记 `scope`。 |
 | **3. 核心主线伏笔** | `lines` | • 登记主线重要伏笔（`GUN-*`）、秘密（`KNO-*`）、重大误会（`MIS-*`）；动作：`plant` (初设)、`remind` (回响)、`resolve` (回收)；若无变动直接保持 `[]`；<br/>• **因果前置（选填）**：若某线索有明确前置条件，可标注 `requires: ["GUN-001"]`。 |
 | **4. 大额收支与梗概** | `ledger` & `synopsis` | • `ledger.transactions`：只记大笔资金或重大资产交易（日常开销不记，无交易直接 `[]`）；<br/>• `synopsis.title`：**逐字拷贝 final 首行标题**；<br/>• `synopsis.text`：1~2 句话写清当章核心剧情。 |
+| **5. 不可逆事实锁死** | `locked` | • 当且仅当发生重大角色永久身亡 (`death`)、核心地标彻底摧毁 (`destruction`)、重大宗门解散 (`disbandment`)、铁律级誓约成立 (`pact`)、不可逆境界跌落 (`irreversible_loss`) 时登记；严禁滥用，上限 15 条。 |
+| **6. 认知差与因果存根** | `cognition_delta` & `consequences` | • `cognition_delta`：登记角色之间心理误解/怀疑/隐瞒的增量状态（`subject`, `target`, `belief`, `status`）；<br/>• `consequences`：登记重大抉择埋下的后续因果后果预警（`cause`, `expected_effect`, `risk_level`）。 |
 
 ### 2. 标准增量提案交付格式与严格 Schema 契约 (`state/inbox/ch_XXX.json`)
 > ⚠️ **严格 Schema 契约（违反将导致引擎 sync 校验直接熔断拒收）**：
@@ -72,7 +74,7 @@ description: Universal factual auditor and state proposal generator for Novel St
 >     - `"foreshadow"` (GUN)：支持 `"plant"` / `"remind"` / `"update"` / `"resolve"`（update 可改 plan/status/target_ch，适用于推进而非回响的章节）
 >     - `"knowledge"` (KNO)：仅支持 `"plant"` / `"update"` / `"resolve"`（❌ 严禁使用 remind！）
 >     - `"misunderstanding"` (MIS)：仅支持 `"plant"` / `"escalate"` / `"resolve"`（❌ 严禁使用 remind！）；escalate **建议显式携带 `level`**（当前强度不可知——缺省引擎自动 +1，修正重提场景可能虚高）
->   - ⚠️ **`plant` 动作必填字段（缺失 = sync 整案拒收，QA P1-1）**：
+>   - ⚠️ **`plant` 动作必填字段（缺失 = sync 整案拒收， P1-1）**：
 >     - GUN（foreshadow）plant 必填：`name`（线索短名，如「半枚灯芯」）；
 >     - KNO（knowledge）plant 必填：`secret`（秘密内容一句话）；
 >     - MIS（misunderstanding）plant 必填：`parties`（涉及主体，**字符串**，如 `"周奎与陆沉"`，不是数组）+ `content`（误会内容）；
@@ -101,6 +103,31 @@ description: Universal factual auditor and state proposal generator for Novel St
     "aftershock": "选填，留给下一章开篇首段承接的强烈余波事件",
     "active_pressures": ["选填，悬在头顶的即时压迫或倒计时事件"]
   },
+  "locked": [
+    {
+      "id": "LOCK-001",
+      "fact": "角色X已于本章彻底身亡，不可复活出场",
+      "kind": "death",
+      "since_ch": "ch_XXX",
+      "quote": "角色X倒在血泊中，气绝身亡（选填）"
+    }
+  ],
+  "cognition_delta": [
+    {
+      "subject": "配角A",
+      "target": "主角",
+      "belief": "产生怀疑/误解状态",
+      "status": "active",
+      "quote": "配角A眼中闪过一丝狐疑（选填）"
+    }
+  ],
+  "consequences": [
+    {
+      "cause": "重大抉择行为",
+      "expected_effect": "未来可能导致的报复或机缘",
+      "risk_level": "medium"
+    }
+  ],
   "entities": [
     {
       "name": "新实体名称",

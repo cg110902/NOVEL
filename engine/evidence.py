@@ -31,7 +31,7 @@ SENT_SPLIT_RE = re.compile(r"[。！？!?…；\n]+")
 QUOTE_LINE_RE = re.compile(r"^\s*[「“\"『]")
 SHINGLE_N = 12
 REP_MIN = 8
-# QA P2-3：专名扫描的入选下限，evidence.names 与 checks.param_suggestions 共用同一常量，
+#  P2-3：专名扫描的入选下限，evidence.names 与 checks.param_suggestions 共用同一常量，
 # 避免两个工具阈值互不相交（实测 names 门槛 3 / suggest 门槛 6，输出零重叠，无可采纳项）。
 NAME_SCAN_MIN_COUNT = 3
 
@@ -239,7 +239,7 @@ def _cn_num_to_int(s: str) -> int | None:
 
 _GENERIC_UNITS = {"块", "枚", "张", "个", "粒", "颗", "只", "道", "本", "卷", "盒", "条", "段"}
 
-# QA P3/P18：候选噪声增强——
+#  P3/P18：候选噪声增强——
 # 语法碎片字符（专名/实体名中几乎不可能出现，出现即碎片）
 _GRAMMAR_NOISE_CHARS = set("的了着过")
 # 通用地貌/方位词作词头的「普通名词」（山脚/水口/石边…），不当专名候选
@@ -273,7 +273,7 @@ def is_candidate_noise(g: str, ledger_pools: dict | None = None,
                        known_names: list[str] | None = None) -> bool:
     """候选新实体/泛词的机械毛刺过滤（改进：账本池名仅精确匹配才过滤，避免‘灵石’误杀‘灵石矿’）。
 
-    QA P3-10：原先 `candidate_new_entity` 信噪比接近 0（实测 ch_002 七条、ch_003 十条
+     P3-10：原先 `candidate_new_entity` 信噪比接近 0（实测 ch_002 七条、ch_003 十条
     全是噪声：沉舟说 / 沉舟把 / 笞二十 / 半个饼 / 那十个 / 第十一条 / 去年冬天 / 这片滩 …）。
     每章十几条纯噪声会稀释真正的告警。现补六类**纯机械**可判定的噪声形态：
     ① 已知实体名的片段 + 尾随动词/介词（沉舟说、沉舟把）；
@@ -378,7 +378,7 @@ def _amount_scan(text: str, pools: dict) -> list[dict]:
                 sample = f"{m}{unit or name}"
                 if sample not in samples:
                     samples.append(sample)
-            # QA P1-2：原实现是 sorted(distinct)[:8]——静默丢掉最大的金额，而大额恰恰是
+            #  P1-2：原实现是 sorted(distinct)[:8]——静默丢掉最大的金额，而大额恰恰是
             # 金额对照最该看的。改为「最小 4 + 最大 4」保序展示，并显式给出截断标记与
             # 全量集合（checks 的 amount_unmatched / amount_by_quote 一律用全量比对）。
             distinct = sorted({v for v, _ in recs})
@@ -425,7 +425,7 @@ def line_sort_key(g: dict, kind: str) -> tuple:
 def quote_balance(text: str) -> dict:
     """引号收支：全角 + ASCII 计数、配对判定。
 
-    QA P2-7：原实现只数 `「」“”『』`，对 ASCII 引号全盲——实测三章定稿共用 96 个
+     P2-7：原实现只数 `「」“”『』`，对 ASCII 引号全盲——实测三章定稿共用 96 个
     ASCII `"`，quote_balance 全 0，既没提示中文稿应改用全角引号，也没检查 ASCII 引号
     是否配对。现补 ASCII 计数 + 奇偶配对判定 + 全角引号自身配对判定。
     原先 `evidence.candidates` 与 `checks.review_skeleton` 各有一份重复实现，现共用本函数。
@@ -564,7 +564,7 @@ def prev_contrast(book: Path, ch: str) -> dict:
         fm = common.parse_front_matter(text)
 
         def _clean(ln: str) -> str:
-            # QA P2-10：原实现只 lstrip("-*· ")，只吃掉行首记号，粗体的**闭合** `**`
+            #  P2-10：原实现只 lstrip("-*· ")，只吃掉行首记号，粗体的**闭合** `**`
             # 会残留（`- **核心看点**：…` → `核心看点**：…`），把 markdown 记号当正文
             # 喂给下游。现剥注释、剥列表记号、剥成对强调记号。
             s = re.sub(r"<!--.*?-->", "", ln, flags=re.S)
@@ -700,7 +700,42 @@ def dup(book: Path, ch: str | None = None) -> dict:
             "within": within, "adjacent_pairs": pairs}
 
 
-def _stats_one(text: str) -> dict:
+DEFAULT_AI_TELL_WORDS = [
+    "嘴角微微上扬", "嘴角勾起", "深吸一口气", "倒吸一口凉气", "眼眸深处",
+    "不由得", "眼神一凝", "宛如", "仿佛", "这一刻", "赫然", "与此同时",
+    "空气仿佛凝固", "闪过一丝", "心中一凛", "殊不知"
+]
+
+
+def get_ai_tell_words(book: Path) -> list[str]:
+    """获取 AI 味监控词表：合并默认词库、project.json 配置及 bible/style.md 中的禁用词。"""
+    proj = common.load_json(book / "project.json", default={}) or {}
+    words = list(proj.get("ai_tell_words") or DEFAULT_AI_TELL_WORDS)
+    style_file = book / "bible" / "style.md"
+    if style_file.is_file():
+        try:
+            txt = style_file.read_text(encoding="utf-8", errors="replace")
+            in_section = False
+            for ln in txt.splitlines():
+                if re.match(r"^##\s*.*(?:禁用|AI味|黑名单)", ln):
+                    in_section = True
+                    continue
+                elif re.match(r"^##\s*", ln):
+                    in_section = False
+                if in_section:
+                    cleaned = re.sub(r"<!--.*?-->", "", ln).strip()
+                    if cleaned.startswith(("-", "*")):
+                        content = cleaned.lstrip("-*· ").split("（")[0].split("(")[0]
+                        for part in re.split(r"[/、，,\s]+", content):
+                            part = part.strip()
+                            if len(part) >= 2 and part not in words:
+                                words.append(part)
+        except Exception:
+            pass
+    return [w for w in dict.fromkeys(words) if w]
+
+
+def _stats_one(text: str, ai_tell_words: list[str] | None = None) -> dict:
     sents = _sentences(text)
     lens = [len(re.sub(r"\s+", "", s)) for s in sents] or [0]
     mean = sum(lens) / len(lens)
@@ -711,12 +746,55 @@ def _stats_one(text: str) -> dict:
     lines = [ln for ln in text.splitlines() if ln.strip()]
     dialogue_lines = sum(1 for ln in lines if QUOTE_LINE_RE.match(ln))
     top_tags = jieba.analyse.extract_tags(text, topK=8) if _HAS_JIEBA else []
-    return {"cjk": common.cjk_count(text), "sentences": len(lens),
-            "len_mean": round(mean, 1), "len_stdev": round(math.sqrt(var), 1),
-            "max_share": round(max(lens) / total_chars, 3),
-            "dialogue_line_ratio": round(dialogue_lines / max(1, len(lines)), 3),
-            "para_head_repeat": len(heads) - len(set(heads)), "para_count": len(paras),
-            "top_keywords": top_tags}
+
+    # AI 俗套词汇检测
+    ai_hits = []
+    total_ai_hits = 0
+    cjk = common.cjk_count(text)
+    words_to_scan = ai_tell_words if ai_tell_words is not None else DEFAULT_AI_TELL_WORDS
+    for w in words_to_scan:
+        if not w or len(w) < 2:
+            continue
+        cnt = text.count(w)
+        if cnt > 0:
+            total_ai_hits += cnt
+            idx = text.find(w)
+            start = max(0, idx - 15)
+            end = min(len(text), idx + len(w) + 15)
+            snippet = "..." + text[start:end].strip().replace("\n", " ") + "..."
+            ai_hits.append({"word": w, "count": cnt, "sample": snippet})
+
+    # 词性画像：高频动词与副词
+    top_verbs = []
+    top_adverbs = []
+    if _HAS_JIEBA:
+        v_counts: dict[str, int] = {}
+        d_counts: dict[str, int] = {}
+        for w, flag in pseg.cut(text):
+            if len(w) >= 2:
+                if flag.startswith("v"):
+                    v_counts[w] = v_counts.get(w, 0) + 1
+                elif flag.startswith("d"):
+                    d_counts[w] = d_counts.get(w, 0) + 1
+        top_verbs = [w for w, _ in sorted(v_counts.items(), key=lambda x: -x[1])[:6]]
+        top_adverbs = [w for w, _ in sorted(d_counts.items(), key=lambda x: -x[1])[:6]]
+
+    ai_density = round(total_ai_hits / max(1, cjk / 1000), 2)
+    return {
+        "cjk": cjk,
+        "sentences": len(lens),
+        "len_mean": round(mean, 1),
+        "len_stdev": round(math.sqrt(var), 1),
+        "max_share": round(max(lens) / total_chars, 3),
+        "dialogue_line_ratio": round(dialogue_lines / max(1, len(lines)), 3),
+        "para_head_repeat": len(heads) - len(set(heads)),
+        "para_count": len(paras),
+        "top_keywords": top_tags,
+        "ai_tell_total": total_ai_hits,
+        "ai_tell_density": ai_density,
+        "ai_tell_hits": ai_hits,
+        "pos_profile": {"top_verbs": top_verbs, "top_adverbs": top_adverbs},
+    }
 
 
 def file_stats(book: Path, rel: str, ch: str | None = None) -> dict:
@@ -730,18 +808,68 @@ def file_stats(book: Path, rel: str, ch: str | None = None) -> dict:
         return {"error": f"工作区内找不到文件: {rel}"}
     out: dict = {"kind": "file", "path": rel}
     text = path.read_text(encoding="utf-8", errors="replace")
-    return {**out, **_stats_one(text)}
+    ai_words = get_ai_tell_words(book)
+    return {**out, **_stats_one(text, ai_tell_words=ai_words)}
 
 
 def style(book: Path, ch: str | None = None) -> dict:
-    chapters = []
-    for tok, num, text in final_chapters(book):
-        if ch is not None and num != common.chapter_token_to_num(ch):
-            continue
-        stats = _stats_one(text)
-        chapters.append({"chapter": tok, **stats})
+    all_finals = final_chapters(book)
+    ai_words = get_ai_tell_words(book)
+    target_num = common.chapter_token_to_num(ch) if ch is not None else None
+
+    all_stats = []
+    target_item = None
+    for tok, num, text in all_finals:
+        st = _stats_one(text, ai_tell_words=ai_words)
+        item = {"chapter": tok, "num": num, **st}
+        all_stats.append(item)
+        if target_num is not None and num == target_num:
+            target_item = item
+
     forms = form_distribution(book)
-    return {"kind": "style", "chapters": chapters, "form_distribution": forms}
+
+    if target_num is not None:
+        if target_item is None:
+            return {"kind": "style", "chapter": ch, "error": f"未找到定稿章节: {ch}", "chapters": []}
+        # 基线由除本章外的其他章节（或全部章节）均值决定
+        other_stats = [x for x in all_stats if x["num"] != target_num] or all_stats
+        n_other = len(other_stats)
+        baseline = {
+            "len_mean": round(sum(x["len_mean"] for x in other_stats) / n_other, 1) if n_other else 20.0,
+            "dialogue_line_ratio": round(sum(x["dialogue_line_ratio"] for x in other_stats) / n_other, 3) if n_other else 0.4,
+            "ai_tell_density": round(sum(x["ai_tell_density"] for x in other_stats) / n_other, 2) if n_other else 0.0,
+        }
+        drift = {
+            "len_mean_delta": round(target_item["len_mean"] - baseline["len_mean"], 1),
+            "dialogue_ratio_delta": round(target_item["dialogue_line_ratio"] - baseline["dialogue_line_ratio"], 3),
+            "ai_tell_density": target_item["ai_tell_density"],
+            "ai_tell_total": target_item["ai_tell_total"],
+        }
+        clean_ch = {k: v for k, v in target_item.items() if k != "num"}
+        return {
+            "kind": "style",
+            "chapter": clean_ch["chapter"],
+            "stats": clean_ch,
+            "baseline": baseline,
+            "drift": drift,
+            "chapters": [clean_ch],
+            "form_distribution": forms,
+        }
+
+    # 全书总览
+    n_all = len(all_stats)
+    baseline = {
+        "len_mean": round(sum(x["len_mean"] for x in all_stats) / n_all, 1) if n_all else 20.0,
+        "dialogue_line_ratio": round(sum(x["dialogue_line_ratio"] for x in all_stats) / n_all, 3) if n_all else 0.4,
+        "ai_tell_density": round(sum(x["ai_tell_density"] for x in all_stats) / n_all, 2) if n_all else 0.0,
+    }
+    clean_chapters = [{k: v for k, v in x.items() if k != "num"} for x in all_stats]
+    return {
+        "kind": "style",
+        "baseline": baseline,
+        "chapters": clean_chapters,
+        "form_distribution": forms,
+    }
 
 
 def _paragraphs(text: str) -> list[str]:
@@ -804,7 +932,7 @@ def ask(book: Path, query: str) -> dict:
         out["entities"] = ent_hits[:8]
 
     # 2) 线索命中
-    # QA P1-5：原实现只对 name/plan/secret/parties/... 做字面子串匹配，于是主角的
+    #  P1-5：原实现只对 name/plan/secret/parties/... 做字面子串匹配，于是主角的
     # 全书驱动力线（如 GUN-003「娘的半缕残魂」——name 与 plan 里都没有主角名字）
     # 在 `ask 陆沉舟` 时整条漏掉；而 SKILL 的取证纪律是「凡要落笔一个旧数字且它不在
     # 眼前 → 必须先 ask」，漏召回直接导致主控凭印象编数。现补一层反向索引：
@@ -930,12 +1058,42 @@ def ask(book: Path, query: str) -> dict:
     if any(s in json.dumps(cur, ensure_ascii=False, default=str) for s in terms):
         out["current"] = {k: v for k, v in cur.items() if v not in ("", [], None)}
 
-    # 6) 正文原句证据（近章优先，仅用 ≥2 字词匹配）
-    # QA P1-5：原实现每章只取第一句命中就 break，实测 ch_001 提及 18 次只回 1 句，
-    # 主控拿到的证据面过窄。改为每章最多 3 句、总量 12 句。
+    # 6) 不可逆事实与角色认知命中
+    try:
+        locked_st = state.load_state(book, "locked").get("entries", [])
+        locked_hits = [le for le in locked_st if any(t in str(le.get("fact", "")) for t in terms)]
+        if locked_hits:
+            out["locked"] = locked_hits[:6]
+    except (ValueError, FileNotFoundError):
+        pass
+
+    try:
+        cog_st = state.load_state(book, "cognition").get("entries", [])
+        cog_hits = [ce for ce in cog_st if any(t in str(ce.get("content", "")) or t in str(ce.get("character", "")) for t in terms)]
+        if cog_hits:
+            out["cognition"] = cog_hits[:6]
+    except (ValueError, FileNotFoundError):
+        pass
+
+    # 7) 正文原句证据（SQLite FTS5 BM25 段落级高速召回，降级回退句扫描）
     usable = [t for t in dict.fromkeys(terms) if len(t) >= 2]
     text_hits = []
-    if usable:
+    try:
+        from . import db
+        bm25_hits = db.search_chapters_bm25(book, q, limit=12)
+        for bh in bm25_hits:
+            hit_terms = [t for t in usable if t in bh["text"]]
+            text_hits.append({
+                "chapter": bh["chapter"],
+                "terms": hit_terms[:3] if hit_terms else [q],
+                "quote": bh["text"].strip()[:90],
+                "bm25_rank": bh.get("bm25_rank"),
+                "score": bh.get("score")
+            })
+    except Exception:
+        pass
+
+    if not text_hits and usable:
         for tok, _, text in reversed(final_chapters(book)):
             per_ch = 0
             for sent in _sentences(text):
@@ -1033,7 +1191,7 @@ def pov(book: Path, name: str) -> dict:
         if str(k.get("status", "")).strip().lower() == "revealed":
             knows["public_knowledge"].append({"id": k.get("id"), "secret": str(k.get("secret", ""))[:50]})
     knows["public_knowledge"] = knows["public_knowledge"][-8:]
-    # QA P1-3：原实现把「该角色登场章节的全部编年史」一律算作他「应知」，于是主角独自
+    #  P1-3：原实现把「该角色登场章节的全部编年史」一律算作他「应知」，于是主角独自
     # 在家的私密场景也会被标给同章出场过的配角——正好把知情差喂反。现按事件文本是否
     # 点到该角色（名字/别名）分两档：lived_events = 事件里有他，可当亲历；
     # same_chapter_events = 仅同章发生，明确不保证亲历。
@@ -1050,7 +1208,7 @@ def pov(book: Path, name: str) -> dict:
     knows["lived_events"] = knows["lived_events"][-8:]
     knows["same_chapter_events"] = knows["same_chapter_events"][-8:]
     out["knows"] = knows
-    # QA P17：holders 知情圈——秘密线的知情方角色不再被误标「不应知情」
+    #  P17：holders 知情圈——秘密线的知情方角色不再被误标「不应知情」
     def _in_holders(k: dict) -> bool:
         holders = [str(h).strip() for h in (k.get("holders") or []) if str(h).strip()]
         if not holders:
@@ -1066,6 +1224,19 @@ def pov(book: Path, name: str) -> dict:
                   if str(k.get("status", "")).strip().lower() != "revealed"
                   and not _in_holders(k)][-8:],
         "note": "按账本未揭示 = 该角色不应知情（holders 知情圈内的角色已剔除）；若正文已另行交代，以正文为准。"}
+
+    try:
+        cog_st = state.load_state(book, "cognition")
+        char_cogs = [c for c in cog_st.get("entries", [])
+                     if any(nm and (nm == c.get("character") or nm in str(c.get("character", ""))) for nm in names)]
+        if char_cogs:
+            out["cognition"] = {
+                "facts": [c for c in char_cogs if c.get("kind") in ("fact", "secret_known")][:6],
+                "suspicions": [c for c in char_cogs if c.get("kind") == "suspicion"][:6],
+                "misunderstandings": [c for c in char_cogs if c.get("kind") == "misunderstanding"][:6],
+            }
+    except (ValueError, FileNotFoundError):
+        pass
 
     open_lines = []
     for arr, kind in (("foreshadows", "foreshadow"), ("misunderstandings", "misunderstanding"),
@@ -1107,7 +1278,7 @@ def names(book: Path) -> dict:
     known: set[str] = {str(proj.get("protagonist", "")).strip()}
     for names_list in lookup.values():
         known.update(nm for nm in names_list if nm)
-    # QA P2-3：别名 → 规范实体名反查表。`known` 混装规范名与别名，命中别名时必须
+    #  P2-3：别名 → 规范实体名反查表。`known` 混装规范名与别名，命中别名时必须
     # 解析回规范名，否则给出的 `state set 'entities.<别名>.aliases'` 手势执行即失败。
     _canonical: dict[str, str] = {}
     for primary, names_list in lookup.items():
@@ -1137,7 +1308,7 @@ def names(book: Path) -> dict:
             for seg in re.split(r"[^\u4e00-\u9fff]+", text):
                 if len(seg) < 3:
                     continue
-                # QA P3/P18：n-gram 退化路径同样最小长度 3（2 字碎片不再入候选）
+                #  P3/P18：n-gram 退化路径同样最小长度 3（2 字碎片不再入候选）
                 for L in (3, 4):
                     for i in range(len(seg) - L + 1):
                         g = seg[i:i + L]
@@ -1152,7 +1323,7 @@ def names(book: Path) -> dict:
         raw_cands.append((w, total, sorted(chs)))
 
     known_variants, unregistered = [], []
-    # QA P2-3：称谓类变体（周叔 ↔ 老周头、陈嫂 ↔ 陈家的）既不互相包含、首字也不同，
+    #  P2-3：称谓类变体（周叔 ↔ 老周头、陈嫂 ↔ 陈家的）既不互相包含、首字也不同，
     # 旧 host 判定三条全部落空 → 掉进 unregistered，于是「周叔 = 老周头别名」这条唯一
     # 可执行的建议两边都不给。补一条：共享一个非通用汉字 + 候选是 2~3 字称谓词。
     _APPELLATION_TAIL = "叔伯婆嫂爷娘哥姐师公姑婶舅姨"
@@ -1172,7 +1343,7 @@ def names(book: Path) -> dict:
                         (k in w or w in k or
                          (k[0] == w[0] and difflib.SequenceMatcher(None, w, k).ratio() >= 0.5))})
         hosts = sorted(set(hosts) | set(_appellation_host(w)))
-        # QA P2-3 修正：`known` 混装了规范实体名与别名，于是 host 可能落到**别名**上
+        #  P2-3 修正：`known` 混装了规范实体名与别名，于是 host 可能落到**别名**上
         # （实测「周叔」被判给「周大年」，而 周大年 只是 老周头 的别名）。据此给出的
         # `state set 'entities.周大年.aliases'` 手势执行即失败（「实体不存在，拒绝猜测」），
         # 等于给出一条跑不通的建议。现统一解析回规范实体名。

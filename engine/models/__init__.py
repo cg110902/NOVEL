@@ -4,7 +4,7 @@
 """
 from .entities import EntitiesState, EntityEntry, EntityType, EntityStatus, LifeStatus, FactionAttitude
 from .ledger import LedgerState, LedgerPool, LedgerTransaction, TransactionType
-from .timeline import TimelineState, TimelineEvent, TimelineArc, TimelineClock, ClockUrgency, ClockStatus
+from .timeline import TimelineState, TimelineEvent, TimelineArc, TimelineClock, ClockUrgency, ClockStatus, TimelineMilestone
 from .lines import (
     LinesState,
     Foreshadow,
@@ -16,6 +16,8 @@ from .lines import (
 )
 from .current import CurrentState, Loadout
 from .synopsis import SynopsisState, ChapterSynopsis
+from .locked import LockedState, LockedEntry, LockedKind
+from .cognition import CognitionState, CognitionEntry, CognitionKind
 from .patch import ProposalModel
 from .adapter import validate_with_model, export_clean_data, MODEL_REGISTRY
 
@@ -36,6 +38,7 @@ __all__ = [
     "TimelineClock",
     "ClockUrgency",
     "ClockStatus",
+    "TimelineMilestone",
     "LinesState",
     "Foreshadow",
     "ForeshadowStatus",
@@ -47,6 +50,12 @@ __all__ = [
     "Loadout",
     "SynopsisState",
     "ChapterSynopsis",
+    "LockedState",
+    "LockedEntry",
+    "LockedKind",
+    "CognitionState",
+    "CognitionEntry",
+    "CognitionKind",
     "ProposalModel",
     "validate_with_model",
     "export_clean_data",

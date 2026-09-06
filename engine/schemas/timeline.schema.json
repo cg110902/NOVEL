@@ -137,6 +137,59 @@
       },
       "title": "Clocks",
       "type": "array"
+    },
+    "milestones": {
+      "description": "主线阶段里程碑航标",
+      "items": {
+        "additionalProperties": false,
+        "description": "主线里程碑航标（四分位宏观锚点与阶段目标）。",
+        "properties": {
+          "id": {
+            "description": "里程碑编号 (如 MS-001)",
+            "pattern": "^MS-\\d{3,}$",
+            "title": "Id",
+            "type": "string"
+          },
+          "title": {
+            "description": "里程碑标题 (如 '突破筑基期', '揭开身世第一重')",
+            "minLength": 2,
+            "title": "Title",
+            "type": "string"
+          },
+          "target_ch": {
+            "description": "预定达成章节",
+            "minimum": 1,
+            "title": "Target Ch",
+            "type": "integer"
+          },
+          "status": {
+            "default": "pending",
+            "description": "状态",
+            "enum": [
+              "pending",
+              "achieved",
+              "abandoned"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "desc": {
+            "type": "string"
+          },
+          "achieved_ch": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "target_ch"
+        ],
+        "title": "TimelineMilestone",
+        "type": "object"
+      },
+      "title": "Milestones",
+      "type": "array"
     }
   },
   "title": "TimelineState",

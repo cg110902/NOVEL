@@ -101,13 +101,22 @@ def _gate_patch(name: str, schema: dict) -> dict:
         if "loadout" in props:
             props["loadout"] = _drop_null_branch(props["loadout"])
 
+    elif name == "locked":
+        schema["required"] = ["entries"]
+
+    elif name == "cognition":
+        schema["required"] = ["entries"]
+
     elif name == "proposal":
         # 浅层信封原则（与现状闸门分工一致）：分区深校验归 Pydantic 轨道
         #（validate_proposal 中 models.validate_with_model），schema 只看容器类型；
         # 否则同一违规会产出 schema+pydantic 双份措辞不同的报错。
         for sec, container in (("current", "object"), ("entities", "array"),
                                ("lines", "array"), ("timeline", "object"),
-                               ("ledger", "object"), ("synopsis", "object")):
+                               ("ledger", "object"), ("synopsis", "object"),
+                               ("locked", "array"), ("cognition", "array"),
+                               ("cognition_delta", "array"),
+                               ("consequences", "array")):
             props[sec] = {"type": container}
         # _draft 拒绝显式 null（缺省=非草稿；null 非法）
         props["_draft"] = {"type": "boolean"}
@@ -117,7 +126,7 @@ def _gate_patch(name: str, schema: dict) -> dict:
 
 
 def _strip_null_branches(node):
-    """递归摘除 anyOf 中的 {"type": "null"} 分支（QA P2-8）。
+    """递归摘除 anyOf 中的 {"type": "null"} 分支（ P2-8）。
 
     闸门统一语义：「落盘必完整」——Optional 字段的键要么缺席、要么为合法值，
     显式 null 一律非法。此前只对 target_ch/loadout/_draft 三处逐点 patch，
@@ -161,4 +170,4 @@ def regenerate_all(write: bool = True) -> dict[str, str]:
 
 if __name__ == "__main__":
     for n, p in regenerate_all().items():
-        print(f"✅ {n}.schema.json → {p}")
+        print(f"[OK] {n}.schema.json -> {p}")

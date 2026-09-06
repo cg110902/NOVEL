@@ -256,7 +256,16 @@ def _hard_reminders(book: Path, ch: str, ch_num: int) -> list[str]:
                 line_msgs.append((2, sk, f"⏳【即将揭示】知识线 {kid}《{ksecret}》距揭示仅剩 {t - ch_num} 章"))
 
     line_msgs.sort(key=lambda x: (x[0], x[1]))
-    out.extend(msg for _, _, msg in line_msgs)
+    try:
+        locked_state = state.load_state(book, "locked")
+        for le in locked_state.get("entries", []):
+            lid, lfact = le.get("id", ""), le.get("fact", "")
+            lkind = le.get("kind", "")
+            lnote = f"（提示: {le['note']}）" if le.get("note") else ""
+            out.append(f"🔒【不可逆事实】{lid} [{lkind}] {lfact}{lnote}")
+    except (ValueError, FileNotFoundError):
+        pass
+
     proj = common.load_json(book / "project.json", default={}) or {}
     out.extend(f"本书偏离：{d}" for d in _deviation_lines(book))
     out.extend(_form_notice(book, ch, ch_num))
@@ -327,7 +336,7 @@ def build_pack(book: Path, ch: str, lean: bool = False, full: bool = False) -> d
     if not ch_num:
         raise ValueError(f"非法章号: {ch!r}")
     beats = _beats_text(book, ch)
-    cur = {key: state.load_state(book, key) for key in ("current", "entities", "lines", "synopsis", "timeline")}
+    cur = {key: state.load_state(book, key) for key in ("current", "entities", "lines", "synopsis", "timeline", "locked")}
 
     # 推断当前章节所属分卷（用于分卷视界隔离 Volume Scoping）
     cur_vol = None
@@ -648,7 +657,7 @@ def render_pack(payload: dict) -> str:
     return "\n".join(out)
 
 
-# QA P0-2：`pack --open` 的角色禁读网关。
+#  P0-2：`pack --open` 的角色禁读网关。
 # 原先 --open 只防越出工作区根，任何被授权跑 pack 的子代理都能一条命令读到
 # state/*、log/critic/*、bible/*、characters/* 与他章正文——AGENTS 第四节的
 # 「铁血准读/禁读清单」在机械层面等于零防护。现按 AGENTS 禁读清单逐角色落地：

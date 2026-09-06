@@ -11,9 +11,9 @@ from .. import common
 SLOT_RE = re.compile(r"\{\{\s*slot:(\w+)(?:\|[^}]*)?\s*\}\}")
 
 # _resolve_and_validate 是否已自行打印过失败说明（多书歧义 / -w 越界）。
-# 置位后 print_ws_not_found() 抑制误导性的二次报错（QA P2-2 / P3-11）。
+# 置位后 print_ws_not_found() 抑制误导性的二次报错（ P2-2 / P3-11）。
 _RESOLVE_NOTE_SHOWN = False
-# QA P5/P12：解析失败原因登记（JSON 错误信封与「二次打印去重」共用同一事实源）。
+#  P5/P12：解析失败原因登记（JSON 错误信封与「二次打印去重」共用同一事实源）。
 _RESOLVE_REASON: str | None = None
 
 
@@ -38,7 +38,7 @@ def print_ws_not_found(msg: str = "❌ 未找到书工作区或其 project.json�
 
 
 def resolve_note_shown() -> bool:
-    """_resolve_and_validate 本轮是否已打印过失败说明（QA P12：调用方二次打印前必须查询）。"""
+    """_resolve_and_validate 本轮是否已打印过失败说明（ P12：调用方二次打印前必须查询）。"""
     return _RESOLVE_NOTE_SHOWN
 
 
@@ -46,10 +46,10 @@ def _resolve_and_validate(ws_arg: str | None, suppress_text: bool = False) -> Pa
     """统一解析并校验工作区必须在 workspace_root 之下（防 -w 越界）。
 
     失败时打印唯一一条准确说明后返回 None（调用方按 None 返回退出码）：
-    - 多本书未指定 -w：列出全部书目录请求指定（此前误报「未找到 init」，QA P2-2）；
+    - 多本书未指定 -w：列出全部书目录请求指定（此前误报「未找到 init」， P2-2）；
     - 显式 -w 越界：打印越界错误；
     - 其余（0 本书等）：交给调用方的「未找到」提示。
-    suppress_text=True（--json 模式）时不向 stdout 打文本，由调用方输出 JSON 信封（QA P5）。
+    suppress_text=True（--json 模式）时不向 stdout 打文本，由调用方输出 JSON 信封（ P5）。
     """
     global _RESOLVE_NOTE_SHOWN, _RESOLVE_REASON
     _RESOLVE_NOTE_SHOWN = False
@@ -82,13 +82,13 @@ def _resolve_and_validate(ws_arg: str | None, suppress_text: bool = False) -> Pa
 
 
 def ws_gate(args) -> Path | None:
-    """命令统一工作区闸门（QA P5：--json 契约覆盖错误路径）。
+    """命令统一工作区闸门（ P5：--json 契约覆盖错误路径）。
 
     解析失败 / project.json 缺失时：--json 模式输出结构化错误信封（stdout 可解析，
-    不混文本）；文本模式保持人话提示；两种模式均只打印一次说明（QA P12 去重）。
-    返回 None 时调用方 `return ws_gate_code()`（QA P3-4：按原因区分 1/2）。
+    不混文本）；文本模式保持人话提示；两种模式均只打印一次说明（ P12 去重）。
+    返回 None 时调用方 `return ws_gate_code()`（ P3-4：按原因区分 1/2）。
     """
-    # QA P3-4 修正：下面第 94 行给 _RESOLVE_REASON 赋值却没声明 global，Python 因此把
+    #  P3-4 修正：下面第 94 行给 _RESOLVE_REASON 赋值却没声明 global，Python 因此把
     # 整个函数内的该名字都视为局部变量，导致两个真实缺陷：
     #   ① 走「非 project_missing」分支时（如 -w 指向不存在的目录），该局部名从未绑定，
     #      第 100 行读取即 UnboundLocalError——本该输出结构化错误信封的 --json 路径直接崩栈；
@@ -120,7 +120,7 @@ def ws_gate(args) -> Path | None:
 def ws_gate_code() -> int:
     """`ws_gate` 返回 None 时调用方应使用的退出码。
 
-    QA P3-4：多书歧义时 `status` 返 0、`check`/`cockpit`/`sync` 返 1，三者互不一致，
+     P3-4：多书歧义时 `status` 返 0、`check`/`cockpit`/`sync` 返 1，三者互不一致，
     且都违反 engine/README.md 自述的「1=业务阻断 / 2=用法错误」——多本书没带 `-w`
     是**调用方式不完整**，属用法错误，应为 2。按退出码判读的 Agent 原先会把 `status`
     的「什么都没做」当成功。现统一：multiple_books → 2，其余（未初始化/越界/缺

@@ -72,7 +72,7 @@ def reconfigure_utf8() -> None:
 
 
 def debug_enabled() -> bool:
-    """NOVEL_STUDIO_DEBUG=1 调试模式（QA G1）：闸门逐层 trace / 引文相似度分值 /
+    """NOVEL_STUDIO_DEBUG=1 调试模式（ G1）：闸门逐层 trace / 引文相似度分值 /
     幂等哈希比对 / 账本重算明细 / cockpit 分节耗时，全部走 stderr，不污染 --json stdout。"""
     return os.environ.get("NOVEL_STUDIO_DEBUG", "").strip() not in ("", "0")
 
@@ -97,7 +97,7 @@ def norm_path_key(p: Path | str) -> str:
 def workspace_root(root: Path | None = None) -> Path:
     """所有书工作区的父目录：<repo>/workspace（见仓库 .gitignore）。
 
-    QA：NOVEL_STUDIO_WORKSPACE_ROOT 可把根重定向到别处，供测试隔离使用。
+    ：NOVEL_STUDIO_WORKSPACE_ROOT 可把根重定向到别处，供测试隔离使用。
     没有它，测试自建的书会与开发者 workspace/ 下的真书混在同一个 list_books()
     结果里，于是「多书歧义 → exit 2」「仅一本书 → 自动选中」这类断言会随开发者
     手上有几本书而变绿变红，测试等于在测环境而不是测代码。
@@ -178,7 +178,7 @@ def chapter_number_from_name(name: str) -> int | None:
 def normalize_chapter_arg(raw: object) -> tuple[str | None, bool]:
     """把任意章号写法归一为规范 `ch_NNN`，并回报**是否发生了改写**。
 
-    QA P3-3：`beats new ch_7` 会静默建出 ch_007 的文件，而提案 `target_ch:"ch_7"`
+     P3-3：`beats new ch_7` 会静默建出 ch_007 的文件，而提案 `target_ch:"ch_7"`
     被明确拒收——同一个写法在两个入口严格度相反，且 CLI 侧完全不吭声。提案端的严格
     是账本契约（必须 `^ch_\\d{3,}$`），不该放松；该修的是 CLI 的**静默**。
     返回 (规范 token 或 None, 是否被改写)。
@@ -236,7 +236,7 @@ def find_chapter_files(book_dir: Path, area: str = "final", target: object = Non
     """扫描 ch_*.md。area ∈ {final, raw, beats}。加固：跳过 symlink、越界解析。
 
     返回路径与传入 book_dir 保持同一路径风格（绝对/相对），安全检查在 resolved 上进行——
-    调用方 `f.relative_to(book / ...)` 不因绝对/相对混用抛 ValueError（QA 回归修复）。
+    调用方 `f.relative_to(book / ...)` 不因绝对/相对混用抛 ValueError（ 回归修复）。
     """
     base_in = Path(book_dir)
     resolved = base_in.resolve()
@@ -437,7 +437,7 @@ def file_lock(dir_path: Path | str, name: str = ".engine.lock", timeout: float =
     depth[key] = 1
     my_ino: int | None = None
     try:
-        my_ino = lock.stat().st_ino  # 记录自己锁文件的 inode（QA P2-12）
+        my_ino = lock.stat().st_ino  # 记录自己锁文件的 inode（ P2-12）
     except OSError:
         pass  # 无法确认 inode 时不删除（宁可留给陈锁抢占，也不冒误删他人锁的风险）
     try:

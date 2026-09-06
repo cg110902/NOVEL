@@ -16,6 +16,7 @@ description: Universal director and orchestrator for Novel Studio. Coordinates w
 
 ### 1. 宏观设定与法定实体契约（Stage 0）
 - 确立核心法则、力量体系与文风红线（**坚决禁止冷峻阴暗逼仄，全篇采用直白通俗大白话**）；
+- **主线里程碑播种**：Stage 0 可通过 `python studio.py milestone add --title "..." --target-ch N [--desc "..."]` 预先登记分卷与主线核心里程碑；
 - **词表供参（Stage 0 一次性配置，之后随书生长）**：运行 `python studio.py config guide` 查看引擎可接受的参数型号单，按本书题材用 `python studio.py config set <键> '<JSON>'` 供参；
 - **实体 Schema 严格契约**：类型为 `['faction', 'item', 'other', 'person', 'place']`，简介必须为 `summary`，严禁非法字段；
 - **引擎黑盒铁律**：严禁读取或修改 `engine/*.py` 源码！
@@ -57,7 +58,9 @@ description: Universal director and orchestrator for Novel Studio. Coordinates w
 	1. **ask 触发规则（机械化自查，不靠感觉）**：凡要落笔一个旧事件/旧设定/旧数字，且它**不在你眼前的上下文里**（cockpit、pack、beats 注入内容中均没有）→ **必须先 `python studio.py ask <关键词>` 取证再写**。"在不在眼前"可机械自检；严禁以"我觉得记得"替代取证，严禁凭印象脑补事实；
 	2. **pov 触发规则（半强制）**：本章细纲若有与**近 3 章未登场角色**的对手戏 → 必跑 `python studio.py pov <角色名>`（每章至多 3 个）；常驻角色已被 current/pack 覆盖，无需重复取证（结果为账本推导，advisory）；
 	3. `python studio.py calendar [N]`：**未来 N 章排产日历**——到期线、危机时钟与卷阶段里程碑投影，Stage 1 排产前置参考；
-	4. **边界认知**：ask 只能查到账本记下的事实（未命中 = 合法事实 ≠ 没发生过）——未入账细节的矛盾由 sync 机械闸门与 Critic/人类终审兜底。
+	4. `python studio.py recall [ch_XXX]`：**知乎残酷四问 0 Token 机械自证**——10 秒速查主要人物各自知道什么、哪三条不可逆事实不能改、待兑现伏笔与下章红线；
+	5. `python studio.py simulate impact/branch`：**剧情推演沙盒**——重大剧情转折（如杀角色/破机密）前用 `simulate impact` 测算因果链波及，遇创作瓶颈用 `simulate branch` 生成隔离假说参谋单；
+	6. **边界认知**：ask 只能查到账本记下的事实（未命中 = 合法事实 ≠ 没发生过）——未入账细节的矛盾由 sync 机械闸门与 Critic/人类终审兜底。
 - **标准执行流程 (Actions)**：
   1. **生成脚手架**：运行 `python studio.py beats new [章节] --write`，引擎自动填入上章现场、到期伏笔、一致性速查（实体名册+知情差边界）、因果依赖阻塞提示、张力曲线与算法制导胶囊；
   2. **吸纳催更便签 4 大核心情报（精准制导细纲；情报源 = cockpit 催更雷达，勿重复翻读原文）**：
@@ -75,24 +78,29 @@ description: Universal director and orchestrator for Novel Studio. Coordinates w
 
 > 💡 **派发令（4 行）与回执单（3 行）的标准格式是跨角色宪法协议，canonical 定义见 `AGENTS.md` §「双向极简工序协议」**——本节只规定主控侧执行时序。严禁拷贝细纲全文（子代理经 pack 与准读清单自取上下文）、严禁重复背诵工艺规则。
 
-- **派发时序（每章 3 次派发）**：
+- **派发时序（每章 3 次标准派发 + 按需手术刀修复）**：
   1. beats 落盘 → 下发 **Stage 2 派发令**给 Drafter；
   2. Drafter 回执唤醒主控 → 立即下发 **Stage 3 派发令**给 Editor；
-  3. Editor 回执唤醒主控 → **在单次 `invoke_subagent` 调用中同时派发 Reader 与 Critic**（原生双轨并发质检，响应式唤醒，Zero Polling；⚠️ 若宿主并发额度不足导致其中一轨派发失败，先完成已成功轨道，再**立即单独补派失败轨道**——双轨必须齐活才可进 Stage 5）：
+  3. Editor 回执唤醒主控 → **在单次 `invoke_subagent` 调用中同时并发派发 Reader、Critic 与 Auditor**（原生三轨并发质检，响应式唤醒，Zero Polling；⚠️ 若宿主并发额度不足导致某轨失败，先推进已成功轨，再立即单独补派失败轨）：
   ```json
   {
     "Subagents": [
       { "TypeName": "self", "Role": "Reader", "Model": "inherit", "Prompt": "【章节工序派发令】\n- 书籍工作区：workspace/...\n- 分卷与章节：vol_XX / ch_XXX\n- 执行阶段：Stage 4A 事实审计\n- 执行纪律：严格按你的 SKILL.md 执行。恪守准读清单与准写路径，落盘即止，严禁自查与编写脚本。" },
-      { "TypeName": "self", "Role": "Critic", "Model": "inherit", "Prompt": "【章节工序派发令】\n- 书籍工作区：workspace/...\n- 分卷与章节：vol_XX / ch_XXX\n- 执行阶段：Stage 4B 催更便签\n- 执行纪律：严格按你的 SKILL.md 执行。恪守准读清单与准写路径，落盘即止，严禁自查与编写脚本。" }
+      { "TypeName": "self", "Role": "Critic", "Model": "inherit", "Prompt": "【章节工序派发令】\n- 书籍工作区：workspace/...\n- 分卷与章节：vol_XX / ch_XXX\n- 执行阶段：Stage 4B 催更便签\n- 执行纪律：严格按你的 SKILL.md 执行。恪守准读清单与准写路径，落盘即止，严禁自查与编写脚本。" },
+      { "TypeName": "self", "Role": "Auditor", "Model": "inherit", "Prompt": "【章节工序派发令】\n- 书籍工作区：workspace/...\n- 分卷与章节：vol_XX / ch_XXX\n- 执行阶段：Stage 4C 一致性仲裁\n- 执行纪律：严格按你的 SKILL.md 执行。恪守准读清单与准写路径，落盘即止，严禁自查与编写脚本。" }
     ]
   }
   ```
-- **Critic 催更便签静默存盘**：主控收到 Critic 报告直接留存作为下章细纲参考（下章由驾驶舱雷达提炼），**当章流水线直接放行进入 Stage 5 状态同步，绝不阻塞**。
+- **Auditor 硬矛盾分流（定向手术刀修复 Surgical Patch）**：
+  - 若 Auditor 报告包含 🔴 **确凿硬矛盾**（如已死复活、闭门瞬移、充能透支）：主控**绝不全章重写**，立即向 Editor 下发**定向手术刀修复令**（将 Auditor 报告中的行号与修复建议附入派发令，仅重写冲突的几行/段落）；Editor 修复并重写 `final/ch_XXX.md` 后，Reader 快速复核提案即可；
+  - 若 Auditor 无硬矛盾（仅 🟡 软存疑或 ✅ 误报排除），当章流水线直接流转至 Stage 5。
+- **Critic 催更便签静默存盘**：主控收到 Critic 报告直接留存作为下章细纲参考（下章由驾驶舱雷达提炼），**绝不阻塞当章流程**。
+- **Librarian 十章大巡检（Stage 4D）**：每 10 章整数关口（如 ch_010、ch_020...）由驾驶舱雷达提示时，主控派发 Librarian 执行近 10 章长程事实补漏（次要实体建档、道具充能对账），产出 `state/inbox/sweep_ch_XXX.json` 并随 Stage 5 一并合并封存。
 - **主控防膨胀纪律**：保持主控上下文绝对纯净——子代理只回 3 行回执单，严禁长篇抒情汇报。
 
 ### 4. 极速状态同步与看板刷新（Stage 5）
 - **极简收口**：
-  1. `python studio.py sync ch_XXX`：引擎直接执行原子合并、引文柔性接地提示、Stage 5 机械对照、事实体检与快照封存，秒级完成（`--dry-run` 可预演）；
+  1. `python studio.py sync ch_XXX`：引擎直接执行原子合并、引文柔性接地提示、Stage 4C 一致性仲裁闸门核验（`audit_mode=strict` 下须 `log/audit/ch_XXX.md` 前置通过）、Stage 5 机械对照、事实体检与快照封存，秒级完成（`--dry-run` 可预演）；
   2. **sync 拒收自愈路径（标准预案）**：提案被拒（归档 failed/）时按报错逐条修复后重跑 sync（引擎自动从 failed/ 捡回重试）；字段级修不动时可 `python studio.py proposal auto ch_XXX --write` 重新装配草案再人工微调；**修正重提必须换新 operation_id**；
   3. **`state set` 使用边界**：仅限对**已定稿事实的字段级纠偏**（修正 AI 误判值），严禁用于登记新事实/新实体——一切新事实必须走提案通道（唯一写入口）；
   4. **审定存疑先取证**：对提案中某条事实拿不准时，`python studio.py ask <关键词>` 只读取证后再裁决；账目存疑时 `python studio.py ledger recompute` 按流水全量重算修复；

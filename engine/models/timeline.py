@@ -1,7 +1,7 @@
 """时空事件轴与危机倒计时 (Timeline) 强类型领域模型。"""
 from __future__ import annotations
 from enum import Enum
-from typing import Optional
+from typing import Optional, Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -56,9 +56,22 @@ class TimelineArc(BaseModel):
     strategy_history: list[ArcStrategyEntry] = Field(default_factory=list)
 
 
+class TimelineMilestone(BaseModel):
+    """主线里程碑航标（四分位宏观锚点与阶段目标）。"""
+    model_config = ConfigDict(extra="forbid", populate_by_name=True, str_strip_whitespace=True)
+
+    id: str = Field(..., pattern=r"^MS-\d{3,}$", description="里程碑编号 (如 MS-001)")
+    title: str = Field(..., min_length=2, description="里程碑标题 (如 '突破筑基期', '揭开身世第一重')")
+    target_ch: int = Field(..., ge=1, description="预定达成章节")
+    status: Literal["pending", "achieved", "abandoned"] = Field(default="pending", description="状态")
+    desc: Optional[str] = Field(None, description="里程碑意义与达成标准")
+    achieved_ch: Optional[str] = Field(None, description="实际达成章节 (如 ch_012)")
+
+
 class TimelineState(BaseModel):
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
     events: list[TimelineEvent] = Field(default_factory=list, description="时空大事记")
     arcs: list[TimelineArc] = Field(default_factory=list, description="叙事大弧与战略走向")
     clocks: list[TimelineClock] = Field(default_factory=list, description="危机倒计时时钟")
+    milestones: list[TimelineMilestone] = Field(default_factory=list, description="主线阶段里程碑航标")

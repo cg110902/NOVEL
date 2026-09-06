@@ -19,7 +19,7 @@ from . import checks, common, graph, state
 def _infer_active_chapter(book: Path) -> str:
     """自动推断当前最需要推进或处理的章节编号。
 
-    QA P1-4：口径与 `status` 的「下一章」统一——**连续推进，绝不跳章**。
+     P1-4：口径与 `status` 的「下一章」统一——**连续推进，绝不跳章**。
     原实现取 beats/raw/final/inbox/synopsis 里出现过的最大章号，于是一份游离的
     未来章 beats（如手滑 `beats new ch_7`）会把工序指针劫持到 ch_007，而 `status`
     仍说 ch_005；主控按 SKILL「严禁猜测工序，直接执行 next_action.command」就会跳过
@@ -61,7 +61,7 @@ def _infer_active_chapter(book: Path) -> str:
 
 
 def stray_artifacts(book: Path, active_ch: str) -> list[str]:
-    """QA P1-4：超前于工序指针的游离工件（只提示，不改变指针）。"""
+    """ P1-4：超前于工序指针的游离工件（只提示，不改变指针）。"""
     n_active = common.chapter_token_to_num(active_ch) or 0
     out: list[str] = []
     for area in ("beats", "raw", "final"):
@@ -150,7 +150,7 @@ def _get_critic_radar(book: Path, ch_num: int) -> dict[str, str]:
                 return kw
         return ""
 
-    # QA P6：每字段关键词变体容错（最长优先）——Critic 子代理的标签写法漂移
+    #  P6：每字段关键词变体容错（最长优先）——Critic 子代理的标签写法漂移
     # （如「体感」vs「本章体感」）不再静默丢失该维度
     _FIELD_KWS = (
         ("vibe", ("本章体感", "阅读体感", "体感")),
@@ -212,9 +212,9 @@ def _get_critic_radar(book: Path, ch_num: int) -> dict[str, str]:
                     and re.match(r"^([\d一二三四五六七八九十]+[\.、]|[-*])", s):
                 _put(section, _item_text(s))
     except OSError:
-        pass  # 便签不可读：雷达字段留空（QA：不再吞全部异常）
+        pass  # 便签不可读：雷达字段留空（：不再吞全部异常）
 
-    # QA P6：便签存在但雷达字段全空 → 明示「格式疑似偏离模板」，不再让主控误读为「无反馈」
+    #  P6：便签存在但雷达字段全空 → 明示「格式疑似偏离模板」，不再让主控误读为「无反馈」
     try:
         _text = critic_path.read_text(encoding="utf-8", errors="replace")
         _is_skeleton = "SKELETON" in _text[:400] or "（待评）" in _text[:1200]
@@ -254,7 +254,7 @@ def _extract_dramatic_irony(lines: dict, scene_chars: list[str]) -> list[str]:
             continue
         kid = k.get("id", "KNO")
         secret = str(k.get("secret", ""))
-        # QA P3-8：原写法 k.get("note", "保密中") 对**空串**失效——state.py 落盘时写的
+        #  P3-8：原写法 k.get("note", "保密中") 对**空串**失效——state.py 落盘时写的
         # 是 "note": ""，于是默认值取不到，dramatic_irony 输出留下空尾巴「知情边界：」。
         # beats 里同一信息用 `or "保密中"` 显示正常，两处口径现统一。
         note = str(k.get("note") or "保密中")
@@ -371,7 +371,7 @@ def _load_final_texts(book: Path, current_ch: int) -> dict[int, str]:
         ch_tok = f"ch_{ch_idx:03d}"
         final_files = list((book / "manuscript").glob(f"*/final/{ch_tok}*.md"))
         if final_files:
-            # 多版本时取最高版本（与 evidence.final_chapters 口径一致，QA P3-22）
+            # 多版本时取最高版本（与 evidence.final_chapters 口径一致， P3-22）
             best = max(final_files, key=lambda f: (common.chapter_version_from_name(f.name),
                                                    common.chapter_number_from_name(f.name) or 0))
             texts[ch_idx] = best.read_text(encoding="utf-8", errors="ignore")
@@ -491,7 +491,7 @@ def get_algorithmic_guidance(book: Path, current_ch: int) -> list[str]:
 
 def build_cockpit_briefing(book: Path, ch: str | None = None) -> dict[str, Any]:
     """计算并构建主控态势驾驶舱完整数据模型。"""
-    # QA G1：NOVEL_STUDIO_DEBUG=1 时聚合各节耗时（briefing.debug_timing_ms + stderr）
+    #  G1：NOVEL_STUDIO_DEBUG=1 时聚合各节耗时（briefing.debug_timing_ms + stderr）
     import time as _time
     timings: dict[str, float] = {}
     t_start = _time.perf_counter()
@@ -500,7 +500,7 @@ def build_cockpit_briefing(book: Path, ch: str | None = None) -> dict[str, Any]:
     ch_num = common.chapter_token_to_num(target_ch) or 1
     ch_tok = f"ch_{ch_num:03d}"
     vol = _find_chapter_vol(book, ch_tok)
-    # QA P1-4：游离的超前工件只提示，不参与指针推断
+    #  P1-4：游离的超前工件只提示，不参与指针推断
     stray = stray_artifacts(book, ch_tok)
     if stray:
         common.debug(f"cockpit: 工序指针 {ch_tok}；游离超前工件 {stray}")
@@ -517,7 +517,7 @@ def build_cockpit_briefing(book: Path, ch: str | None = None) -> dict[str, Any]:
     _cf = book / "log" / "critic" / f"{ch_tok}.md"
     if _cf.is_file():
         try:
-            # QA P2-7：引擎预填的 SKELETON 骨架不代表 Stage 4B 已完成，防「假便签」阻断真子代理派发
+            #  P2-7：引擎预填的 SKELETON 骨架不代表 Stage 4B 已完成，防「假便签」阻断真子代理派发
             critic_file = "SKELETON" not in _cf.read_text(encoding="utf-8", errors="replace")[:400]
         except OSError:
             critic_file = True
@@ -639,6 +639,28 @@ def build_cockpit_briefing(book: Path, ch: str | None = None) -> dict[str, Any]:
                 elif diff <= 5:
                     active_pressures.append(f"⏳【危机倒计时仅剩 {diff} 章】「{cname}」（爆发目标 ch_{target:03d}）：{cdesc}")
 
+    # 主线里程碑推进与逾期监测
+    milestones = cur["timeline"].get("milestones", [])
+    total_ms = len(milestones)
+    achieved_ms = sum(1 for m in milestones if m.get("status") == "achieved")
+    pending_ms = [m for m in milestones if m.get("status") == "pending"]
+    pending_ms.sort(key=lambda m: m.get("target_ch", 9999))
+    next_ms = pending_ms[0] if pending_ms else None
+
+    for m in pending_ms:
+        target = m.get("target_ch")
+        mtitle = m.get("title", "")
+        if isinstance(target, int):
+            diff = target - ch_num
+            if diff <= 0:
+                active_pressures.append(f"🚩【主线里程碑已逾期】[{m.get('id')}]「{mtitle}」（目标 ch_{target:03d}）：尚未达成")
+            elif diff <= 3:
+                active_pressures.append(f"🚩【主线里程碑临近】[{m.get('id')}]「{mtitle}」（目标 ch_{target:03d}，还差 {diff} 章）")
+
+    # 十章图书管理员巡检提示
+    if ch_num > 0 and ch_num % 10 == 0:
+        active_pressures.append(f"📚【图书管理员巡检关口】当前为第 {ch_num} 章（10章整数关口），建议调度 Librarian 巡查补漏")
+
     # 现场角色集合（主角 + 现场在场 + 细纲点名登场）
     scene_chars = list(dict.fromkeys(
         [proj.get("protagonist", "")] +
@@ -715,6 +737,12 @@ def build_cockpit_briefing(book: Path, ch: str | None = None) -> dict[str, Any]:
         "algorithmic_guidance": algorithmic_guidance,
         "critic_radar": critic_radar,
         "lines_radar": lines_radar,
+        "milestones_progress": {
+            "total": total_ms,
+            "achieved": achieved_ms,
+            "rate": f"{achieved_ms}/{total_ms}" if total_ms else "0/0",
+            "next": next_ms
+        },
         "health_and_remedies": {
             "ok": len(errors) == 0,
             "errors_count": len(errors),
@@ -767,7 +795,7 @@ def render_cockpit_terminal(briefing: dict[str, Any]) -> None:
             f"[bold green]👉 下一步执行指令：[/bold green][bold white]{act['instruction']}[/bold white]\n"
             f"[dim]   建议操作/命令：{act['command']} ｜ 交付目标：{act['target_file']}[/dim]"
         )
-        # QA P1-4：游离的超前工件显式提示，避免主控误以为指针跳章
+        #  P1-4：游离的超前工件显式提示，避免主控误以为指针跳章
         if wf.get("stray_ahead_artifacts"):
             wf_text += ("\n\n[bold yellow]⚠️ 游离超前工件（不参与指针推断）：[/bold yellow]"
                         + "、".join(wf["stray_ahead_artifacts"][:6])

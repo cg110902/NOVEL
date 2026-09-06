@@ -89,7 +89,7 @@ def create_snapshot(book: Path, snapshot_name: str) -> tuple[bool, str]:
                 shutil.copy2(f, folder / f.name)
                 copied.append(f.name)
             manifest = _manifest_of(folder)
-            # QA P2：manifest 不再只有状态六表——记录快照时刻全部 final 定稿的内容哈希，
+            #  P2：manifest 不再只有状态六表——记录快照时刻全部 final 定稿的内容哈希，
             # 回滚核对与「定稿是否在封存后被改过」的追溯有了机械依据
             finals: dict[str, str] = {}
             for f in common.find_chapter_files(book, "final"):
@@ -175,7 +175,8 @@ def rollback_snapshot(book: Path, target: str) -> tuple[bool, str, str]:
     ok, msg = _verify_manifest(chosen)
     if not ok:
         return False, msg, ""
-    missing = [f"{k}.json" for k in state.STATE_KEYS if not (chosen / f"{k}.json").is_file()]
+    BASE_STATE_KEYS = ("current", "entities", "lines", "timeline", "ledger", "synopsis")
+    missing = [f"{k}.json" for k in BASE_STATE_KEYS if not (chosen / f"{k}.json").is_file()]
     if missing:
         return False, f"快照缺少状态文件 {'、'.join(missing)}，拒绝回滚", ""
 
@@ -209,6 +210,14 @@ def rollback_snapshot(book: Path, target: str) -> tuple[bool, str, str]:
                     continue
                 if f.suffix in (".json", ".md"):
                     f.unlink()
+            # 兼容历史老版本快照：若快照未包含新加入的状态表（如 locked、cognition），自动补齐默认空表
+            for k in state.STATE_KEYS:
+                target_file = sd / f"{k}.json"
+                if not target_file.is_file():
+                    state.save_state(book, k, state.defaults_for(k))
+                    restored.append(f"{k}.json (自动补齐默认表)")
+            from . import migrations
+            migrations.ensure_state_version(book)
         except OSError as exc:
             # 盲区深读修复：恢复/清理中途失败时现场处于撕裂态，必须给出
             # pre_rollback 备份位置与明确出口，而不是裸 OSError

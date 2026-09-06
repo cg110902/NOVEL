@@ -159,12 +159,12 @@ def test_line_accepts_four_digit_id(cli, book4):
 
 
 # ---------------------------------------------------------------------------
-# 4. ledger 闸门（含 QA P0-1 / P0-3）
+# 4. ledger 闸门（含  P0-1 / P0-3）
 # ---------------------------------------------------------------------------
 def test_pool_rejects_declared_current(cli, book4):
     """余额一律由流水重算，不接受声明 current。"""
     d = base()
-    d["ledger"] = {"pools": {"qa_pool": {"name": "QA池", "unit": "个",
+    d["ledger"] = {"pools": {"qa_pool": {"name": "池", "unit": "个",
                                          "initial": 0, "current": 5}}}
     assert check(cli, book4, d).code != 0
 
@@ -172,7 +172,7 @@ def test_pool_rejects_declared_current(cli, book4):
 def test_pool_rejects_missing_initial(cli, book4):
     """P0-3：省略 initial 等于声明「从 0 开始」，会悄悄改掉账本基准，故必填。"""
     d = base()
-    d["ledger"] = {"pools": {"qa_pool": {"name": "QA池", "unit": "个"}}}
+    d["ledger"] = {"pools": {"qa_pool": {"name": "池", "unit": "个"}}}
     assert check(cli, book4, d).code != 0
 
 
@@ -183,21 +183,21 @@ def test_pool_rejects_misspelled_key(cli, book4):
     且 ledger recompute 查不出来（它只校验余额与流水是否吻合，不校验期初）。
     """
     d = base()
-    d["ledger"] = {"pools": {"qa_pool": {"name": "QA池", "unit": "个", "intial": 247}}}
+    d["ledger"] = {"pools": {"qa_pool": {"name": "池", "unit": "个", "intial": 247}}}
     r = check(cli, book4, d)
     assert r.code != 0, "键名打错被静默接受——账本基准会被悄悄污染"
 
 
 def test_pool_rejects_unknown_key(cli, book4):
     d = base()
-    d["ledger"] = {"pools": {"qa_pool": {"name": "QA池", "unit": "个",
+    d["ledger"] = {"pools": {"qa_pool": {"name": "池", "unit": "个",
                                          "initial": 0, "power_level": "灯徒"}}}
     assert check(cli, book4, d).code != 0
 
 
 def test_pool_accepts_explicit_initial(cli, book4):
     d = base()
-    d["ledger"] = {"pools": {"qa_pool": {"name": "QA池", "unit": "个", "initial": 247}}}
+    d["ledger"] = {"pools": {"qa_pool": {"name": "池", "unit": "个", "initial": 247}}}
     assert check(cli, book4, d).code == 0
 
 
