@@ -13,8 +13,10 @@
 | `cli_regress.py` | CLI 契约回归：rc + JSON 信封 + 产物落盘（21 路径；`--write` 允许 branch/critic 落盘） | `qa/evidence/cli_regress_report.jsonl` |
 
 ## evidence/
-- `scale_report.jsonl` — 每行一条命令：`rc / 耗时 / rssΔ / crash / 输出字节 / keys`（pb_book 22 行 + pb60 16 行 + 进程内注射扫描）。
-- `cli_regress_report.jsonl` — 21 条 CLI 契约用例结果行。
+- `scale_report.jsonl` — 原始计时报告（混排：人读行 + 一段内嵌 JSON 数组）。现状：
+  pb_book 22 行 + 内嵌 22 对象 JSON 数组（`rc/sec/rss_delta_kb/crashed/out_bytes`）+ pb100 27 行
+  （54ba357 追加，`rc=0` 全绿）。人读行字段：`rc / 耗时 / rssΔ / crash / 输出字节 / payload keys`。
+- `cli_regress_report.jsonl` — 21 条 CLI 契约用例结果行（纯 JSONL，每条 rc/JSON 信封/产物断言）。
 
 ## 复现前提
 - 本机 python3.11 venv（`.venv-novel`）+ pydantic/jieba/networkx/rich/rapidfuzz/pytest。

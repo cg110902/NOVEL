@@ -118,3 +118,71 @@ PYTHONUTF8=1 NOVEL_STUDIO_WORKSPACE_ROOT=/tmp/qa_root .venv-novel/bin/python \
 - 本沙箱曾整体重克隆：git 本地历史与 `/tmp` QA 区被清空，仅工作树改动幸存 → 全程坚持"每批 commit + push origin arena/01a074b4-novel"；本报告与 `qa/` 资产已入仓以防再失。
 - venv 重建配方：`python3.11 -m venv .venv-novel` + 依赖（pydantic 2.13.5 / jieba / networkx / rich / rapidfuzz / pytest）。
 - 时间测量用 `resource.getrusage(RUSAGE_CHILDREN)`（`/usr/bin/time` 不存在）。
+
+---
+
+## 8. 终局更新（合并 main 前的最后一次全面复核）
+
+> 本节为追加记录，不改动上文任何历史结论；上文"131 passed"等数字以本节终态为准。
+
+### 8.1 合并到 main 的最终提交链
+
+基线 `4c001ae` 之上共 8 个提交（arena 分支）：
+
+| commit | 内容 |
+|---|---|
+| `efb4df0` | QA 硬化批次（见 §2 修复清单） |
+| `f18f20f` | 本报告 + qa/ 可复现资产入仓 |
+| `54ba357` | 60→100 章规模复核（27/27 rc0，§4.2 三点计时表） |
+| `4ad5d6d` | locked 门禁对齐 7-kind 枚举；consequences 废弃分区落盘时显式告警（原静默丢弃） |
+| `8f3b840` | 文档 ↔ 代码契约对齐：reader SKILL（cognition_delta/locked 七枚举/六大核心事实）、templates 字数相对阈值与双层告警、AGENTS 文件地图、engine README |
+| `bbd4559` | （方向性失误，已被 `a2d1482` 回滚）曾给 `_gather` 加 sweep 前缀兼容 |
+| `a2d1482` | 收件箱单文件制契约对齐 + evidence 多卷邻前章修复（详见 8.2/8.3） |
+| 终局批 | 探针类断言 10 例 + qa/README/evidence 描述修正（详见 8.4） |
+
+### 8.2 收件箱命名契约裁决（文档侧修正，代码仅两处提示/说明增强）
+
+- 引擎真契约（`engine/commands/state_sync.py` 门闸 + `state.py _gather`/failed 捡回共同印证）：
+  **每章在途提案仅一份、文件名恰为 `ch_XXX.json`**；"已封存章的修订并入下一章提案随 sync 合并"。
+  `sweep_ch_*.json` 等第二文件既过不了 sync 门闸、也无法从 failed/ 自动捡回（捡回逻辑只在
+  规范同名时触发）——属文档层发明、引擎从未支持的通道。
+- 裁决：**文档统一回引擎**。librarian SKILL / AGENTS.md / director SKILL 全部改为"修补并入当章
+  在途提案（4C 已落盘则读回合并），封存章修订并入下一章提案"，并显式声明非规范命名会被忽略。
+- 引擎侧配合（小改）：`state_sync` 的非规范命名扫描从"文件名前缀猜"改为解析 inbox 内 *.json
+  的 `chapter` 字段点名同章异物——`sweep_ch_002.json` 单独出现时现在会得到明确点名提示而非
+  泛泛拒收；`state.py` INBOX_README 补单文件制条款。
+- 回归：`tests/test_sweep_naming_contract.py`（单独出现拒收+提示点名；与正式提案并存时静默
+  忽略、绝不合并）把契约钉死，防技能侧回潮或引擎侧误放宽。
+
+### 8.3 evidence 多卷邻前章修复（全精读 1373 行后的收尾发现）
+
+- 旧实现按"章号减一 + 列表头/尾"找上一章：分卷各卷独立编号时 `dup ch_005` 会串卷比到
+  `vol_01/ch_004`（应比 `vol_02/ch_004`）；`vol_02/ch_001` 直接判"无上一章"，跨卷续写的
+  连续性丢失。
+- 修复：`dup`/`prev_contrast` 一律按 (卷, 章号) 阅读序取"前一个位置"；pair 名带卷号不混淆；
+  目标章 beats 尚未创建（规划期）时保留旧的"章号减一取最新卷"回退。
+- 回归：`tests/test_evidence_multivol.py`（两卷夹具：同卷邻对不串卷、卷首 ch_001 的上一章 =
+  前卷末章、prev_contrast 字段指纹来自正确文件）。
+
+### 8.4 run_checks 探针类断言（form/words/drift 家族）
+
+- 此前 checks 的 52 个探针代码只有整书级间接断言，无"注入一处 → 精确命中某 code/级别"的
+  类级回归。新增 `tests/test_checks_probe_classes.py`（10 例，1.8s）：
+  baseline 先验 E0，再逐例注入——`beats_fm_extra_keys`/`beats_missing_form`/
+  `beats_form_repeat_without_reason`（含 form_reason 放行对照）/`words_band_crowded`（相对
+  阈值 + 实质跳档不误报）/`style_notes_copy`/`word_band_breach`+`beats_words_unmet`/
+  `beats_words_drift`（info 级）/`final_gap_chapters`/`encoding_replacement_chars`。
+- 死键裁决（三选一定案）：`suppression_factors`/`release_trigger` **保留为白名单建议性键**——
+  引擎不消费但放行（兼容存量书），templates 以注释形式呈现且明示"引擎不强制，只做合法键放行"，
+  `parse_front_matter` 跳过注释行故模板自身零告警；不删白名单（存量书不破）、不引入消费逻辑
+  （无真实语义需求）。
+- 命令清单自检：`help --json` 由 argparse parser 动态枚举（29 顶层命令），COMMAND_HELP 29/29
+  双向无漂移；STAGE_MAP 未覆盖的 status/cockpit/ask/pov/calendar/index/ledger/review/help/
+  errcodes 均为工具/元命令（recipes 已含），属设计。
+
+### 8.5 终态数字
+
+- 全量 pytest：**146 passed**（约 4.5 分钟，`NOVEL_STUDIO_WORKSPACE_ROOT=/tmp/qa_root`）。
+- 压力书 pb_book：26 章全真闸门链，check E0/W0；规模书 pb100：100 章 check E0（唯一 W 为
+  合成书 milestone_overdue 假象）。
+- 交付终态：本报告 + `qa/` 资产在 `arena/01a074b4-novel`，经 PR 合入 `main`。
