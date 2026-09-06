@@ -306,7 +306,7 @@ def _build_subparsers(sub: argparse._SubParsersAction) -> None:
 
     r = ms_sub.add_parser("add", help="添加/播种新里程碑（Stage 0 / 1）")
     r.add_argument("--title", "-t", required=True, help="里程碑标题（如「查清灯司黑账」）")
-    r.add_argument("--target-ch", "-c", type=int, help="预期达成章节（正整数）")
+    r.add_argument("--target-ch", "-c", type=int, required=True, help="预期达成章节（正整数）")
     r.add_argument("--id", help="指定里程碑编号（如 MS-001，省略自动生成）")
     r.add_argument("--desc", "-d", default="", help="里程碑详细描述")
     r.add_argument("-w", "--workspace", default=argparse.SUPPRESS)

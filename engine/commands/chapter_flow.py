@@ -53,9 +53,11 @@ def cmd_pack(args) -> int:
             payload["opened"] = pack_mod.open_file(book, args.open_path,
                                                    role=getattr(args, "as_role", "drafter"))
     except PermissionError as exc:
-        # 禁读网关拦截——不是业务失败，是越权，单列退出码语义仍归 1（阻断）
+        # 禁读网关拦截——不是业务失败，是越权，单列退出码语义仍归 1（阻断）。
+        # --json 信封统一带 ok/code，避免消费方只认 ok 的话把越权当成功。
         if js:
-            print(json.dumps({"error": "forbidden", "path": args.open_path,
+            print(json.dumps({"ok": False, "error": "forbidden",
+                              "code": "forbidden", "path": args.open_path,
                               "as": getattr(args, "as_role", "drafter"),
                               "detail": str(exc)}, ensure_ascii=False, indent=2))
         else:
@@ -750,7 +752,8 @@ def cmd_critic(args) -> int:
     n = common.chapter_token_to_num(ch_arg)
     if not n:
         if getattr(args, "json", False):
-            print(json.dumps({"chapter": str(ch_arg), "error": f"无法解析章节号: {ch_arg!r}",
+            print(json.dumps({"chapter": str(ch_arg), "ok": False,
+                              "error": f"无法解析章节号: {ch_arg!r}",
                               "code": "usage"}, ensure_ascii=False))
         else:
             print(f"❌ 无法解析章节号: {ch_arg!r}")
@@ -784,7 +787,8 @@ def cmd_critic(args) -> int:
     final_files = common.find_chapter_files(book, "final", n)
     if not final_files:
         if getattr(args, "json", False):
-            print(json.dumps({"chapter": tok, "error": f"未找到 {tok} 的定稿（final），无法进行读者评测（需先由 Editor 定稿）",
+            print(json.dumps({"chapter": tok, "ok": False,
+                              "error": f"未找到 {tok} 的定稿（final），无法进行读者评测（需先由 Editor 定稿）",
                               "code": "no_final"}, ensure_ascii=False))
         else:
             print(f"❌ 未找到 {tok} 的定稿（final），无法进行读者评测（需先由 Editor 定稿）")

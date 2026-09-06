@@ -15,7 +15,7 @@ description: Universal director and orchestrator for Novel Studio. Coordinates w
 ## 🎬 核心工序与规范指引
 
 ### 1. 宏观设定与法定实体契约（Stage 0）
-- 确立核心法则、力量体系与文风红线（**坚决禁止冷峻阴暗逼仄，全篇采用直白通俗大白话**）；
+- 确立核心法则、力量体系与文风红线（**默认不使用冷峻文风，全篇采用直白通俗大白话**）；
 - **主线里程碑播种**：Stage 0 可通过 `python studio.py milestone add --title "..." --target-ch N [--desc "..."]` 预先登记分卷与主线核心里程碑；
 - **词表供参（Stage 0 一次性配置，之后随书生长）**：运行 `python studio.py config guide` 查看引擎可接受的参数型号单，按本书题材用 `python studio.py config set <键> '<JSON>'` 供参；
 - **实体 Schema 严格契约**：类型为 `['faction', 'item', 'other', 'person', 'place']`，简介必须为 `summary`，严禁非法字段；
