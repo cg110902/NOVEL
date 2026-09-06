@@ -33,7 +33,7 @@ description: Universal director and orchestrator for Novel Studio. Coordinates w
   2. **🔥 同会话热启动 (Hot Start)**：
      若当前会话中此前已阅读过两份底座，**严禁重复调用 `view_file` 冗余回读**；直接执行第一反射动作 `python studio.py cockpit --json` 瞬时同步。
 
-  驾驶舱由确定性 Python 引擎在 0.1 秒内聚合输出六大板块：
+  驾驶舱由确定性 Python 引擎秒级聚合输出六大板块（实测全书级约 1 秒）：
   1. **工作流导航**：引擎直接算好当前处于哪一步、下一个该调度哪个 Subagent、目标产出文件是什么；主控严禁猜测工序，直接执行 `next_action.command`；
   2. **戏剧动力学**：自动提炼开篇承接余震（aftershock）、悬顶危机倒计时（active_pressures）、现场信息差机锋（dramatic_irony）与现场两两张力网络（scene_tensions）；
   3. **老白读者催更雷达**：直接透视上一章读者体感反馈、连续性红旗、高光期待与避坑警示，以及**阅读疲劳度（fatigue）、伏笔信息差（foreshadow_info）、主角活人感（protagonist_liveliness）、角色路人缘（character_sympathy）四大情报**，主控构思细纲时**免翻读 `log/critic/` 原文**（仅雷达为空或疑似截断时回读）；

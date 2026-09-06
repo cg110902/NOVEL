@@ -123,8 +123,10 @@ workspace/<书名>/
 │   └── final/ch_XXX.md       # 定稿（Stage 3 产出，事实唯一源头）
 ├── state/                    # 八表真值（含 locked/cognition） + inbox/ 提案收件箱 + snapshots/ 快照（引擎管辖）
 ├── log/critic/ch_XXX.md      # 老白催更便签（Stage 4B 产出，供下章驾驶舱雷达）
-├── log/review/ch_XXX.md      # 校对注记（可选，主控工件）
-└── export/                   # 全书编译产物（--txt / --views）
+├── log/audit/ch_XXX.md       # 一致性仲裁报告（Stage 4C 产出；audit_mode=strict 下为 sync 前置闸门）
+├── log/branches/ch_XXX.md    # simulate branch 分支参谋单（可选，主控工件）
+├── log/review/               # 校对注记 + Librarian 长程巡检报告 sweep_ch_XXX.md（可选，主控工件）
+└── export/                   # 全书编译产物（--txt / --views / views/dashboard.html）
 ```
 
 - 仓库根另含：`studio.py`（CLI 入口）、`engine/`（确定性引擎源码，**黑盒禁读**）、`templates/`（模板库）、`engine/README.md`（引擎维护文档，主控与子代理无需读取）。
