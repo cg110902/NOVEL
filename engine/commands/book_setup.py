@@ -431,14 +431,25 @@ def cmd_config(args) -> int:
     if book is None:
         return ws_gate_code()
     proj_path = book / "project.json"
-    try:
-        proj = common.load_json(proj_path)
-    except (ValueError, OSError) as exc:
-        print(f"❌ project.json 解析失败: {exc}")
-        return 1
     act = getattr(args, "config_action", None) or "list"
     spec = checks.PARAM_SPEC
     js = getattr(args, "json", False)
+
+    def _cfg_err(msg: str, code: int = 2, key: str = "") -> int:
+        """config 手术刀错误出口：--json 一律 JSON 信封（与 config get 未知键信封同契约）。"""
+        if js:
+            payload: dict = {"ok": False, "code": "config_error", "error": msg}
+            if key:
+                payload["key"] = key
+            print(json.dumps(payload, ensure_ascii=False))
+        else:
+            print(f"❌ {msg}")
+        return code
+
+    try:
+        proj = common.load_json(proj_path)
+    except (ValueError, OSError) as exc:
+        return _cfg_err(f"project.json 解析失败: {exc}", code=1)
 
     if act == "guide":
         payload = {"kind": "config_guide",
@@ -538,9 +549,8 @@ def cmd_config(args) -> int:
     if act == "set":
         raw = getattr(args, "value", None)
         if raw is None:
-            print("❌ set 需要提供 JSON 值，如：config set generic_stopwords '[\"掌柜\",\"警官\"]'"
-                  "；--merge 并入现有值（供 config suggest 采纳回路使用）")
-            return 2
+            return _cfg_err('set 需要提供 JSON 值（示例：config set generic_stopwords ["掌柜","警官"]）；'
+                            "--merge 并入现有值（供 config suggest 采纳回路使用）")
         try:
             val = json.loads(raw)
         except json.JSONDecodeError:
@@ -551,33 +561,33 @@ def cmd_config(args) -> int:
                 if len(parts) == 2 and all(p.lstrip("-").isdigit() for p in parts):
                     val = [int(parts[0]), int(parts[1])]
             if val is None:
-                print(f"❌ 值必须是合法 JSON 字面量（区间类键如 words_target 也可裸写 \"2000,3000\"）")
-                return 2
+                return _cfg_err('值必须是合法 JSON 字面量（区间类键如 words_target 也可裸写 "2000,3000"）')
         if getattr(args, "merge", False):
             #  P1-6：合并前先校验新值形状——此前标量进 merge 会被逐字拆分静默落盘，
             # 且 dict 形状键收到标量会触发裸 TypeError/AttributeError
             pre_err = checks.validate_param_value(key, val)
             if pre_err:
-                print(f"❌ 参数形状非法（--merge 前置校验）：project.json.{pre_err}")
-                return 2
+                return _cfg_err(f"参数形状非法（--merge 前置校验）：project.json.{pre_err}")
             val = _merge_param_value(spec[key]["shape"], proj.get(key), val)
         shape_err = checks.validate_param_value(key, val)
         if shape_err:
             #  P3-5：形状非法是**用法错误**，不是被闸门阻断的作业。同一函数里
             # 「值必须是合法 JSON」与 --merge 前置校验都返 2，只有这里返 1，
             # 与 README 自述的「1=阻断 / 2=用法错」矛盾，按退出码判读的 Agent 会误判。
-            print(f"❌ 参数形状非法：project.json.{shape_err}")
-            return 2
+            return _cfg_err(f"参数形状非法：project.json.{shape_err}")
         #  P2-6：写入入口的质量守卫（单字守望词等）。只拦新写入，不影响存量配置体检。
         guard_err = checks.param_write_guard(key, val)
         if guard_err:
-            print(f"❌ 参数值不可用：project.json.{guard_err}")
-            return 2
+            return _cfg_err(f"参数值不可用：project.json.{guard_err}")
         proj[key] = val
         common.dump_json(proj_path, proj)
         note = "（空表 = 明确关闭该档）" if val in ([], {}) else ""
         how = "并入现有值" if getattr(args, "merge", False) else "整体替换"
-        print(f"✅ project.json.{key} 已更新（{how}）{note}——后续命令即时生效（动态供参，随快照封版）")
+        if js:
+            print(json.dumps({"ok": True, "key": key, "value": val,
+                              "merged": bool(getattr(args, "merge", False))}, ensure_ascii=False))
+        else:
+            print(f"✅ project.json.{key} 已更新（{how}）{note}——后续命令即时生效（动态供参，随快照封版）")
         return 0
 
     if act == "unset":
@@ -585,13 +595,20 @@ def cmd_config(args) -> int:
             proj.pop(key)
             common.dump_json(proj_path, proj)
             tail = "gap 键回到未配置态：check 将恢复缺口提示（启发式停用）" if spec[key].get("gap") else "回到未配置态"
-            print(f"✅ project.json.{key} 已移除——{tail}")
+            if js:
+                print(json.dumps({"ok": True, "removed": key, "was_configured": True,
+                                  "note": tail}, ensure_ascii=False))
+            else:
+                print(f"✅ project.json.{key} 已移除——{tail}")
         else:
-            print(f"ℹ️ 「{key}」本就未配置，无需移除")
+            if js:
+                print(json.dumps({"ok": True, "removed": key, "was_configured": False,
+                                  "note": "本就未配置，无需移除"}, ensure_ascii=False))
+            else:
+                print(f"ℹ️ 「{key}」本就未配置，无需移除")
         return 0
 
-    print(f"❌ 未知动作: {act}（合法: list|guide|get|set|unset）")
-    return 2
+    return _cfg_err(f"未知动作: {act}（合法: list|guide|get|set|unset）")
 
 
 # ---------------------------------------------------------------------------

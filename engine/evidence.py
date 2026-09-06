@@ -583,15 +583,57 @@ def prev_contrast(book: Path, ch: str) -> dict:
                 "must_keep": [s for s in must if s and not s.startswith(("#", "<"))]}
 
     out: dict = {"kind": "prev", "chapter": tok}
-    prev_files = common.find_chapter_files(book, "beats", n - 1) if n > 1 else []
-    out["prev"] = _fields(prev_files[-1]) if prev_files else None
+    out["prev"] = None
     out["prev_tail"] = ""
-    if n > 1:
-        pf = common.find_chapter_files(book, "final", n - 1)
-        if pf:
-            out["prev_tail"] = pf[-1].read_text(encoding="utf-8", errors="replace")[-300:]
-    cur_files = common.find_chapter_files(book, "beats", n)
-    out["cur"] = _fields(cur_files[-1]) if cur_files else None
+
+    def _seq(area: str) -> list[Path]:
+        """area 内 (卷, 章) 升序全序；同章多稿只留版本号最大者（find_chapter_files
+        会把 ch_006_v1 / ch_006_v2 都列出，直接按文件序取前一个会取到同章旧稿）。"""
+        rel_base = "outlines" if area == "beats" else "manuscript"
+        seen: dict[tuple[str, int], Path] = {}
+        for f in common.find_chapter_files(book, area):
+            num = common.chapter_number_from_name(f.name)
+            if num is None:
+                continue
+            try:
+                vol = f.relative_to(book / rel_base).parts[0]
+            except ValueError:
+                vol = ""
+            key = (vol, num)
+            if (key not in seen or common.chapter_version_from_name(f.name)
+                    > common.chapter_version_from_name(seen[key].name)):
+                seen[key] = f
+        return [seen[k] for k in sorted(seen)]
+
+    beats_seq = _seq("beats")
+    finals_seq = _seq("final")
+    cur_items = [p for p in beats_seq if (common.chapter_number_from_name(p.name) or 0) == n]
+    out["cur"] = _fields(cur_items[-1]) if cur_items else None
+    if cur_items:
+        # 上一张 beats 按阅读序取前一个位置：分卷独立编号时 ch_001 的上一章是前卷
+        # 末章而非「无」；同章号多卷并存时 cur 取最新卷（与 evidence 其他命令同口径）。
+        i = beats_seq.index(cur_items[-1])
+        if i > 0:
+            prev_b = beats_seq[i - 1]
+            out["prev"] = _fields(prev_b)
+            pnum = common.chapter_number_from_name(prev_b.name) or 0
+            try:
+                pvol = prev_b.relative_to(book / "outlines").parts[0]
+            except ValueError:
+                pvol = ""
+            pf = [p for p in finals_seq
+                  if (common.chapter_number_from_name(p.name) or 0) == pnum
+                  and p.relative_to(book / "manuscript").parts[0] == pvol]
+            if pf:
+                out["prev_tail"] = pf[-1].read_text(encoding="utf-8", errors="replace")[-300:]
+    elif n > 1:
+        # 目标章 beats 尚不存在（规划期）：退回按章号减一取最新一卷的旧口径。
+        pc = [p for p in beats_seq if (common.chapter_number_from_name(p.name) or 0) == n - 1]
+        if pc:
+            out["prev"] = _fields(pc[-1])
+        pt = [p for p in finals_seq if (common.chapter_number_from_name(p.name) or 0) == n - 1]
+        if pt:
+            out["prev_tail"] = pt[-1].read_text(encoding="utf-8", errors="replace")[-300:]
 
     lines = state.load_state(book, "lines")
     open_f = [g for g in lines.get("foreshadows", []) if g.get("status") != "Resolved"]
@@ -677,6 +719,12 @@ def dup(book: Path, ch: str | None = None) -> dict:
             if shared:
                 pairs.append({"pair": f"{t1}|{t2}", "shared_shingles": len(shared),
                               "examples": sorted(shared)[:3]})
+    # 章级模式的邻前章比较：final 的 (卷, 章号) 升序即阅读序，直接取前一位置上的章，
+    # 比「章号减一后取 prevs[0]」稳——分卷各自从 ch_001 编号时 prevs[0] 会串到最旧卷
+    # （vol_02/ch_005 错比 vol_01/ch_004），跨卷续写（vol_02/ch_001 的上一章是 vol_01
+    # 末章）也接不上。同章号多卷并存时逐卷各比各的，pair 名带卷号不混淆。
+    toks = [t for t, _ in full_sh]
+    sh_by_tok = dict(full_sh)
     for tok, _, text in chapters:
         sents = _sentences(text)
         seen: dict[str, int] = {}
@@ -687,11 +735,12 @@ def dup(book: Path, ch: str | None = None) -> dict:
         rep = {k: v for k, v in seen.items() if v > 1}
         if ch is not None:
             own = _shingles(sents)
-            prevs = [s for t, s in full_sh if common.chapter_number_from_name(t) == n - 1]
-            if prevs:
-                shared = own & prevs[0]
+            i = toks.index(tok)
+            if i > 0:
+                prev_tok = toks[i - 1]
+                shared = own & sh_by_tok[prev_tok]
                 if shared:
-                    pairs.append({"pair": f"prev|{ch}", "shared_shingles": len(shared),
+                    pairs.append({"pair": f"{prev_tok}|{tok}", "shared_shingles": len(shared),
                                   "examples": sorted(shared)[:3]})
         if rep:
             within.append({"chapter": tok, "repeated_sentences": len(rep),

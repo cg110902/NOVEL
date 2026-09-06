@@ -123,9 +123,21 @@ def cmd_sync(args) -> int:
         return _fail(f"未找到 {ch} 的定稿（final），拒绝空同步（Stage 5 输入合同：beats/raw/final 齐）",
                      hint=f"请由 Stage 3 Editor 完成定稿重塑并写入 manuscript/vol_XX/final/{ch}.md")
     if not has_proposal:
-        strays = ([p.name for p in inbox.glob(f"{ch}.*") if p.suffix == ".json"
-                   and not p.name.endswith(state.NO_MERGE_SUFFIXES)] if inbox.is_dir() else [])
-        hint = (f"（发现同章非规范命名：{'、'.join(sorted(strays))}——在途提案每章仅一份，"
+        # 非规范命名扫描：不按文件名前缀猜，直接看同章提案（chapter 字段 = ch）的
+        # 其他 *.json——技能/代理若按旧习惯产出 sweep_ch_XXX.json 等第二文件，门闸
+        # 要能点名提示，否则只会得到一句泛泛的「未找到正式提案」。
+        strays = []
+        if inbox.is_dir():
+            for p in sorted(inbox.glob("*.json")):
+                if p.name == f"{ch}.json" or p.name.endswith(state.NO_MERGE_SUFFIXES):
+                    continue
+                try:
+                    data = common.load_json(p)
+                except (ValueError, OSError):
+                    continue
+                if isinstance(data, dict) and data.get("chapter") == ch:
+                    strays.append(p.name)
+        hint = (f"（发现同章非规范命名：{'、'.join(strays)}——在途提案每章仅一份，"
                 f"文件名须为 {ch}.json；已封存章的修订并入下一章提案随 sync 合并）") if strays else ""
         return _fail(f"未找到 {ch} 的正式状态提案（inbox 与 failed/ 均无），拒绝空同步{hint}",
                      hint=f"运行 `python studio.py proposal new {ch} --write` 装配提案骨架，或由 Stage 4 Reader 审计交付")
@@ -710,7 +722,11 @@ def cmd_snapshot(args) -> int:
         try:
             ok, msg = snapshot.create_snapshot(book, args.name)
         except ValueError as e:
-            print(f"❌ {e}")
+            if args.json:
+                print(json.dumps({"ok": False, "code": "snapshot_error", "error": str(e)},
+                                 ensure_ascii=False))
+            else:
+                print(f"❌ {e}")
             return 2
         if args.json:
             print(json.dumps({"ok": ok, "snapshot": msg}, ensure_ascii=False))
@@ -721,7 +737,11 @@ def cmd_snapshot(args) -> int:
         try:
             ok, msg, chosen = snapshot.rollback_snapshot(book, args.name)
         except ValueError as e:
-            print(f"❌ {e}")
+            if args.json:
+                print(json.dumps({"ok": False, "code": "snapshot_error", "error": str(e)},
+                                 ensure_ascii=False))
+            else:
+                print(f"❌ {e}")
             return 1
         if args.json:
             print(json.dumps({"ok": ok, "snapshot": chosen, "message": msg},
@@ -920,6 +940,15 @@ def cmd_state(args) -> int:
     action = getattr(args, "state_action", "show")
     if not action:
         action = "show"
+    js = bool(getattr(args, "json", False))
+
+    def _fail(msg: str, code: int = 1) -> int:
+        """state 手术刀错误出口：--json 一律出 JSON 信封（与 state set 成功信封同契约）。"""
+        if js:
+            print(json.dumps({"ok": False, "error": msg}, ensure_ascii=False))
+        else:
+            print(f"❌ {msg}")
+        return code
 
     if action == "show":
         cur = state.load_state(book, "current")
@@ -935,16 +964,15 @@ def cmd_state(args) -> int:
 
     target = getattr(args, "target", "")
     if not target:
-        print("❌ 请指定要查询或修改的字段路径（例如: current.injury 或 entities.林舟.realm）")
-        return 2
+        return _fail("请指定要查询或修改的字段路径（例如: current.injury 或 entities.林舟.realm）", code=2)
 
     parts = target.split(".", 1)
     part_name = parts[0]
     sub_path = parts[1] if len(parts) > 1 else ""
 
     if part_name not in ("current", "entities", "lines", "timeline", "ledger", "synopsis"):
-        print(f"❌ 未知状态分区: {part_name}（合法: current / entities / lines / timeline / ledger / synopsis）")
-        return 2
+        return _fail(f"未知状态分区: {part_name}（合法: current / entities / lines / timeline / ledger / synopsis）",
+                     code=2)
 
     st_data = state.load_state(book, part_name)
 
@@ -959,8 +987,7 @@ def cmd_state(args) -> int:
             ename = ent_parts[0]
             ent = next((e for e in st_data.get("entries", []) if e.get("name") == ename), None)
             if ent is None:
-                print(f"❌ 实体「{ename}」未注册")
-                return 1
+                return _fail(f"实体「{ename}」未注册", code=1)
             if len(ent_parts) > 1:
                 val = ent.get(ent_parts[1])
             else:
@@ -1017,26 +1044,27 @@ def cmd_state(args) -> int:
 
         if part_name == "current":
             if not sub_path:
-                print("❌ 修改 current 必须指定具体字段（例如 current.injury）")
-                return 2
+                return _fail("修改 current 必须指定具体字段（例如 current.injury）", code=2)
             st_data[sub_path] = val
         elif part_name == "entities":
             ent_parts = sub_path.split(".", 1)
             ename = ent_parts[0]
             ent = next((e for e in st_data.get("entries", []) if e.get("name") == ename), None)
             if ent is None:
-                print(f"❌ 实体「{ename}」不存在，拒绝猜测（请先注册该实体）")
-                return 1
+                return _fail(f"实体「{ename}」不存在，拒绝猜测（请先注册该实体）", code=1)
             if len(ent_parts) < 2:
-                print(f"❌ 修改实体必须指定属性字段（例如 entities.{ename}.realm）")
-                return 2
+                return _fail(f"修改实体必须指定属性字段（例如 entities.{ename}.realm）", code=2)
             ent[ent_parts[1]] = val
         else:
             st_data[sub_path] = val
 
         #  P2-10：手术刀纠偏与 sync 合并同样持 state 锁，防并发交错撕裂
-        with common.file_lock(state.state_dir(book), name=".state.lock"):
-            state.save_state(book, part_name, st_data)
+        try:
+            with common.file_lock(state.state_dir(book), name=".state.lock"):
+                state.save_state(book, part_name, st_data)
+        except ValueError as exc:
+            # 写闸门拒绝（schema 违规 / 显式 null 等）：--json 下也须是 JSON 信封而非裸文本
+            return _fail(f"写入被结构闸门拒绝: {exc}", code=1)
         if loose_note:
             print("ℹ️ 宽松解析已生效（建议改用合法 JSON 字面量）", file=sys.stderr)
         if getattr(args, "json", False):
@@ -1054,7 +1082,7 @@ def cmd_state(args) -> int:
 _POOL_ID_RE = re.compile(r"^[a-z][a-z0-9_]{1,31}$")
 
 
-def _ledger_pool(book, args) -> int:
+def _ledger_pool(book, args, _fail=None) -> int:
     """ P3-1：Stage 0 声明资源池的 CLI 通道。
 
     此前资源池在全部 AI 向文档里只有一行示例，且没有任何 CLI 通道可声明——
@@ -1063,6 +1091,14 @@ def _ledger_pool(book, args) -> int:
     既有池不可在此改动（改期初请走 recompute/人工修订）。
     """
     js = bool(getattr(args, "json", False))
+    if _fail is None:
+        def _fail(msg: str, code: int = 1) -> int:
+            if js:
+                print(json.dumps({"ok": False, "code": "ledger_error", "error": msg},
+                                 ensure_ascii=False))
+            else:
+                print(f"❌ {msg}")
+            return code
     if getattr(args, "pool_action", None) != "add":
         msg = "未知 pool 动作（合法: add）"
         print(json.dumps({"ok": False, "error": msg}, ensure_ascii=False) if js else f"❌ {msg}")
@@ -1089,20 +1125,22 @@ def _ledger_pool(book, args) -> int:
     try:
         led = state.load_state(book, "ledger")
     except ValueError as exc:
-        print(f"❌ 账本不可读: {exc}")
-        return 1
+        return _fail(f"账本不可读: {exc}")
     pools = led.setdefault("pools", {})
     if pid in pools:
         msg = (f"资源池 {pid} 已存在（{pools[pid].get('name')}）——本命令只新建池，"
                "既有池的期初/名称请走提案或 ledger recompute 修订")
-        print(json.dumps({"ok": False, "error": msg}, ensure_ascii=False) if js else f"❌ {msg}")
+        if js:
+            print(json.dumps({"ok": False, "code": "ledger_error", "error": msg},
+                             ensure_ascii=False))
+        else:
+            print(f"❌ {msg}")
         return 1
     pools[pid] = {"name": name, "unit": unit, "initial": initial, "current": initial}
     try:
         state.save_state(book, "ledger", led)
     except ValueError as exc:
-        print(f"❌ 写入被结构闸门拒绝: {exc}")
-        return 1
+        return _fail(f"写入被结构闸门拒绝: {exc}")
     payload = {"ok": True, "pool_id": pid, "name": name, "unit": unit, "initial": initial,
                "note": "余额（current）此后一律由流水重算；记账走 ledger.transactions（提案）"}
     if js:
@@ -1117,18 +1155,27 @@ def cmd_ledger(args) -> int:
     book = ws_gate(args)  #  P5：--json 错误路径也出 JSON 信封
     if book is None:
         return ws_gate_code()
+    js = bool(getattr(args, "json", False))
+
+    def _fail(msg: str, code: int = 1) -> int:
+        """ledger 手术刀错误出口：--json 一律 JSON 信封（stdout 保持纯 JSON）。"""
+        if js:
+            print(json.dumps({"ok": False, "code": "ledger_error", "error": msg},
+                             ensure_ascii=False))
+        else:
+            print(f"❌ {msg}")
+        return code
+
     action = getattr(args, "ledger_action", None) or "recompute"
     if action == "pool":
-        return _ledger_pool(book, args)
+        return _ledger_pool(book, args, _fail)
     if action != "recompute":
-        print(f"❌ 未知 ledger 动作: {action}（合法: recompute / pool add）")
-        return 2
-    js = bool(getattr(args, "json", False))
+        return _fail(f"未知 ledger 动作: {action}（合法: recompute / pool add）", code=2)
     try:
         state.load_state(book, "ledger")
     except ValueError as exc:
-        print(f"❌ 账本不可读: {exc}")
-        return 1
+        return _fail(f"账本不可读: {exc}")
+
 
     def _recompute(led: dict) -> tuple[list[str], list[str], str | None]:
         """返回 (流水修复说明, 池修复说明, 致命错误)。"""
@@ -1177,8 +1224,7 @@ def cmd_ledger(args) -> int:
         led = state.load_state(book, "ledger")
         tx_fixed, pool_fixed, fatal = _recompute(led)
         if fatal:
-            print(f"❌ {fatal}")
-            return 1
+            return _fail(fatal)
         if not tx_fixed and not pool_fixed:
             if js:
                 print(json.dumps({"ok": True, "fixed": [], "note": "账本自洽，无需修复"},
@@ -1189,11 +1235,11 @@ def cmd_ledger(args) -> int:
         try:
             state.save_state(book, "ledger", led)
         except ValueError as exc:
-            print(f"❌ 修复落盘被闸门拒绝: {exc}")
-            return 1
-    print("🧮 账本已按流水全量重算并修复：")
-    for line in tx_fixed + pool_fixed:
-        print(f"   - {line}")
+            return _fail(f"修复落盘被闸门拒绝: {exc}")
+    if not js:
+        print("🧮 账本已按流水全量重算并修复：")
+        for line in tx_fixed + pool_fixed:
+            print(f"   - {line}")
     # 锁外复核：两条输出模式共用同一体检结论
     errs = state.verify_state(book)
     if errs:

@@ -30,23 +30,31 @@ def cmd_pack(args) -> int:
     book = ws_gate(args)  #  P5：--json 错误路径也出 JSON 信封
     if book is None:
         return ws_gate_code()
+    js = bool(getattr(args, "json", False))
+
+    def _err(msg: str, code: int = 2, err_code: str = "usage") -> int:
+        if js:
+            print(json.dumps({"ok": False, "code": err_code, "error": msg},
+                             ensure_ascii=False))
+        else:
+            print(f"❌ {msg}")
+        return code
+
     ch = None
     if args.chapter:
         ch = _norm_ch(args.chapter)
         if ch is None:
-            print(f"❌ 无法解析章节编号: {args.chapter!r}（示例: 6 或 ch_006）")
-            return 2
+            return _err(f"无法解析章节编号: {args.chapter!r}（示例: 6 或 ch_006）")
     try:
         if ch is None and not args.open_path:
-            print("❌ pack 需要章节号（如 pack ch_006），或仅 --open <相对路径> 取原文")
-            return 2
+            return _err("pack 需要章节号（如 pack ch_006），或仅 --open <相对路径> 取原文")
         payload = pack_mod.build_pack(book, ch, lean=args.lean, full=args.full) if ch else {"chapter": None}
         if args.open_path:
             payload["opened"] = pack_mod.open_file(book, args.open_path,
                                                    role=getattr(args, "as_role", "drafter"))
     except PermissionError as exc:
         #  P0-2：禁读网关拦截——不是业务失败，是越权，单列退出码语义仍归 1（阻断）
-        if getattr(args, "json", False):
+        if js:
             print(json.dumps({"error": "forbidden", "path": args.open_path,
                               "as": getattr(args, "as_role", "drafter"),
                               "detail": str(exc)}, ensure_ascii=False, indent=2))
@@ -54,9 +62,8 @@ def cmd_pack(args) -> int:
             print(f"⛔ {exc}")
         return 1
     except ValueError as exc:
-        print(f"❌ {exc}")
-        return 1
-    if args.json:
+        return _err(str(exc), code=1, err_code="engine")
+    if js:
         print(json.dumps(payload, ensure_ascii=False, indent=2))
     else:
         if ch is None:
@@ -76,38 +83,39 @@ def cmd_evidence(args) -> int:
     if book is None:
         return ws_gate_code()
     kind, rest = args.kind, list(args.args or [])
+
+    def _err(msg: str, code: int = 2) -> int:
+        """evidence 是纯 JSON 数据命令（README 契约：输出零杂质）；用法错误同样输出
+        JSON 信封（ P5 同类约定：--json 消费方永不接到裸文本 stdout）。"""
+        print(json.dumps({"kind": "evidence_error", "ok": False, "code": "usage",
+                          "error": msg, "evidence_kind": kind}, ensure_ascii=False))
+        return code
+
     if kind == "all":
         if rest:
-            print("❌ evidence all 不接受参数（聚合全书五件套）")
-            return 2
+            return _err("evidence all 不接受参数（聚合全书五件套）")
         payload = {"kind": "all", "words": evidence.words(book), "style": evidence.style(book),
                    "form": evidence.form_distribution(book), "dup": evidence.dup(book),
                    "gaps": evidence.gaps(book)}
     elif kind == "file":
         if len(rest) not in (1, 2):
-            print("❌ evidence file 需要 <相对路径> [章节号(并入该章 editor_extra)]")
-            return 2
+            return _err("evidence file 需要 <相对路径> [章节号(并入该章 editor_extra)]")
         if len(rest) == 2 and _norm_ch(rest[1]) is None:
-            print(f"❌ 无法解析章节编号: {rest[1]!r}（示例: 6 或 ch_006）")
-            return 2
+            return _err(f"无法解析章节编号: {rest[1]!r}（示例: 6 或 ch_006）")
         payload = evidence.file_stats(book, rest[0], rest[1] if len(rest) == 2 else None)
         if payload.get("error"):
-            print(f"❌ {payload['error']}")
-            return 1
+            return _err(payload["error"], code=1)
     elif kind in ("gaps", "words"):
         if rest:
-            print(f"❌ evidence {kind} 不接受参数，收到: {rest}")
-            return 2
+            return _err(f"evidence {kind} 不接受参数，收到: {rest}")
         payload = evidence.gaps(book) if kind == "gaps" else evidence.words(book)
     elif kind == "names":
         if rest:
-            print(f"❌ evidence names 不接受参数，收到: {rest}")
-            return 2
+            return _err(f"evidence names 不接受参数，收到: {rest}")
         payload = evidence.names(book)
     elif kind in ("candidates", "prev"):
         if len(rest) != 1 or _norm_ch(rest[0]) is None:
-            print(f"❌ evidence {kind} 需要章节号（如: evidence {kind} ch_007）")
-            return 2
+            return _err(f"evidence {kind} 需要章节号（如: evidence {kind} ch_007）")
         ch = _norm_ch(rest[0])
         payload = evidence.candidates(book, ch) if kind == "candidates" \
             else evidence.prev_contrast(book, ch)
@@ -116,8 +124,7 @@ def cmd_evidence(args) -> int:
             return 1
     elif kind == "mentions":
         if len(rest) > 1:
-            print("❌ evidence mentions 至多一个实体名（省略=注册表总览）")
-            return 2
+            return _err("evidence mentions 至多一个实体名（省略=注册表总览）")
         payload = evidence.mentions(book, rest[0] if rest else None)
         if payload.get("unknown"):
             print(json.dumps(payload, ensure_ascii=False, indent=2))
@@ -128,14 +135,12 @@ def cmd_evidence(args) -> int:
         payload = db.build_or_update_index(book, force_rebuild=rebuild)
     else:
         if len(rest) > 1:
-            print(f"❌ evidence {kind} 至多一个章节参数")
-            return 2
+            return _err(f"evidence {kind} 至多一个章节参数")
         ch = None
         if rest:
             ch = _norm_ch(rest[0])
             if ch is None:
-                print(f"❌ 无法解析章节编号: {rest[0]!r}（示例: 6 或 ch_006）")
-                return 2
+                return _err(f"无法解析章节编号: {rest[0]!r}（示例: 6 或 ch_006）")
         payload = evidence.dup(book, ch) if kind == "dup" else evidence.style(book, ch)
     print(json.dumps(payload, ensure_ascii=False, indent=2))
     return 0
@@ -257,25 +262,33 @@ def cmd_review(args) -> int:
     book = ws_gate(args)  #  P5：--json 错误路径也出 JSON 信封
     if book is None:
         return ws_gate_code()
+    js = bool(getattr(args, "json", False))
+
+    def _err(msg: str, code: int = 2, err_code: str = "usage") -> int:
+        if js:
+            print(json.dumps({"ok": False, "code": err_code, "error": msg},
+                             ensure_ascii=False))
+        else:
+            print(f"❌ {msg}")
+        return code
+
     if getattr(args, "rev_action", None) != "new":
-        print("❌ review 需要 new 子命令，如: python studio.py review new ch_007")
-        return 2
+        return _err("review 需要 new 子命令，如: python studio.py review new ch_007")
     n = common.chapter_token_to_num(args.chapter)
     if n is None:
-        print(f"❌ 无法解析章节号: {args.chapter}")
-        return 2
+        return _err(f"无法解析章节号: {args.chapter}")
     ch = f"ch_{n:03d}"
     try:
         data = checks.review_skeleton(book, ch)
     except ValueError as exc:
-        print(f"❌ {exc}")
-        return 1
+        return _err(str(exc), code=1,
+                    err_code="no_final" if "final" in str(exc) else "engine")
     md = _render_review_md(data)
     if getattr(args, "write", False):
         dest = book / "log" / "review" / f"{ch}.md"
         if dest.exists():
-            print(f"❌ {dest} 已存在——注记是主控工件，拒绝覆盖（请手工编辑）")
-            return 1
+            return _err(f"{dest} 已存在——注记是主控工件，拒绝覆盖（请手工编辑）",
+                        code=1, err_code="exists")
         dest.parent.mkdir(parents=True, exist_ok=True)
         dest.write_text(md, encoding="utf-8")
         if getattr(args, "json", False):
@@ -391,13 +404,18 @@ def cmd_audit(args) -> int:
         if not getattr(args, "json", False):
             print(f" 💾 已生成并写入仲裁报告: {out_file.relative_to(book)}")
 
+    if payload.get("error"):
+        if getattr(args, "json", False):
+            # 与文本模式同口径：audit 失败（final 缺失等）= 业务拒收 1，
+            # 但 JSON 模式仍把 payload（含 error）整体吐出供消费方读取。
+            print(json.dumps(payload, ensure_ascii=False, indent=2))
+            return 1
+        print(f"❌ {payload['error']}")
+        return 1
+
     if getattr(args, "json", False):
         print(json.dumps(payload, ensure_ascii=False, indent=2))
         return 0
-
-    if payload.get("error"):
-        print(f"❌ {payload['error']}")
-        return 1
 
     print(f"\n🔍 [确定性机械审计探针] {payload['chapter']}（分析稿件：{payload['file']}）")
     print(f"   候选矛盾总数: {payload['total_candidates']}（🔴 硬矛盾候选: {payload['hard_count']} ｜ 🟡 软存疑候选: {payload['soft_count']}）\n")
@@ -531,6 +549,16 @@ def cmd_beats(args) -> int:
     book = ws_gate(args)  #  P5：--json 错误路径也出 JSON 信封
     if book is None:
         return ws_gate_code()
+    js = bool(getattr(args, "json", False))
+
+    def _err(msg: str, code: int = 2, err_code: str = "usage") -> int:
+        if js:
+            print(json.dumps({"ok": False, "code": err_code, "error": msg},
+                             ensure_ascii=False))
+        else:
+            print(f"❌ {msg}")
+        return code
+
     ch = getattr(args, "chapter", None)
     if not ch:
         latest = common.latest_chapter_number(book, "final") or 0
@@ -539,11 +567,14 @@ def cmd_beats(args) -> int:
     # 避免与提案端（`target_ch` 必须是规范 ch_NNN）的严格度形成无声落差。
     tok, _rewrote = common.normalize_chapter_arg(ch)
     if not tok:
-        print(f"❌ 无法解析章节号: {ch!r}")
-        return 2
+        return _err(f"无法解析章节号: {ch!r}")
     if _rewrote:
-        print(f"ℹ️ 章号 {str(ch).strip()!r} 已归一为规范写法 {tok}"
-              "（提案 target_ch 等账本字段只接受规范 ch_NNN）")
+        note = f"ℹ️ 章号 {str(ch).strip()!r} 已归一为规范写法 {tok}" \
+               "（提案 target_ch 等账本字段只接受规范 ch_NNN）"
+        if js:
+            print(note, file=sys.stderr)  # JSON 模式 stdout 零杂质
+        else:
+            print(note)
     n = common.chapter_token_to_num(tok)
 
     vol_str = "vol_01"
@@ -556,8 +587,8 @@ def cmd_beats(args) -> int:
 
     beats_path = book / "outlines" / vol_str / "beats" / f"{tok}.md"
     if getattr(args, "write", False) and beats_path.exists() and not getattr(args, "force", False):
-        print(f"❌ {tok} beats 细纲已存在: {beats_path}（覆盖请加 --force）")
-        return 1
+        return _err(f"{tok} beats 细纲已存在: {beats_path}（覆盖请加 --force）",
+                    code=1, err_code="exists")
     if getattr(args, "write", False) and common.find_chapter_files(book, "final", tok):
         print(f"⚠️ 该章已有定稿（manuscript/*/final/{tok}.md）——本次写入/覆盖细纲后，"
               f"正文与任务书可能版本漂移；若为回溯修订，请同步核对 final 与提案修订通道（timeline 事件修订 / synopsis 跨章修订）")
@@ -622,8 +653,7 @@ def cmd_beats(args) -> int:
 
     tmpl_path = common.project_root() / "templates" / "beats.md"
     if not tmpl_path.is_file():
-        print(f"❌ 细纲模板缺失: {tmpl_path}")
-        return 1
+        return _err(f"细纲模板缺失: {tmpl_path}", code=1, err_code="engine")
 
     text = tmpl_path.read_text(encoding="utf-8")
     text = text.replace("{{slot:chapter_id}}", tok)
@@ -713,7 +743,11 @@ def cmd_critic(args) -> int:
         ch_arg = f"ch_{latest:03d}"
     n = common.chapter_token_to_num(ch_arg)
     if not n:
-        print(f"❌ 无法解析章节号: {ch_arg!r}")
+        if getattr(args, "json", False):
+            print(json.dumps({"chapter": str(ch_arg), "error": f"无法解析章节号: {ch_arg!r}",
+                              "code": "usage"}, ensure_ascii=False))
+        else:
+            print(f"❌ 无法解析章节号: {ch_arg!r}")
         return 2
     tok = f"ch_{n:03d}"
     critic_file = book / "log" / "critic" / f"{tok}.md"
@@ -743,7 +777,11 @@ def cmd_critic(args) -> int:
 
     final_files = common.find_chapter_files(book, "final", n)
     if not final_files:
-        print(f"❌ 未找到 {tok} 的定稿（final），无法进行读者评测（需先由 Editor 定稿）")
+        if getattr(args, "json", False):
+            print(json.dumps({"chapter": tok, "error": f"未找到 {tok} 的定稿（final），无法进行读者评测（需先由 Editor 定稿）",
+                              "code": "no_final"}, ensure_ascii=False))
+        else:
+            print(f"❌ 未找到 {tok} 的定稿（final），无法进行读者评测（需先由 Editor 定稿）")
         return 1
 
     final_text = final_files[-1].read_text(encoding="utf-8", errors="ignore")
@@ -810,9 +848,15 @@ def cmd_critic(args) -> int:
             print("   ⚠️ 骨架不替代 Stage 4B 评审：请派发 Critic 子代理盲审改写后再进下章细纲（cockpit 不把骨架计为已完成）。")
         return 0
     else:
-        print(f"ℹ️ {tok} 尚未执行老白读者评测。")
-        print("   正道：主控在 Stage 4 派发子代理 `Role: 'Critic'` 并行评审（零脚本、盲审便签）。")
-        print(f"   引擎辅助：python studio.py critic {tok} --write 可落盘预填骨架（SKELETON，供子代理改写，不计完成）。")
+        if getattr(args, "json", False):
+            print(json.dumps({"chapter": tok, "exists": False,
+                              "note": f"{tok} 尚未执行老白读者评测（Stage 4B 待 Critic 子代理评审）",
+                              "hint": f"python studio.py critic {tok} --write 可落盘预填骨架（SKELETON）"},
+                             ensure_ascii=False))
+        else:
+            print(f"ℹ️ {tok} 尚未执行老白读者评测。")
+            print("   正道：主控在 Stage 4 派发子代理 `Role: 'Critic'` 并行评审（零脚本、盲审便签）。")
+            print(f"   引擎辅助：python studio.py critic {tok} --write 可落盘预填骨架（SKELETON，供子代理改写，不计完成）。")
         return 0
 
 

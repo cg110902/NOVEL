@@ -10,12 +10,12 @@ tension_curve: {{slot:tension_curve|动态起伏}}
 # 情绪流体力学（蓄水泵）：1-10 张力值；Suppression(蓄水) | Simmering(试探) | Eruption(爆发) | Harvest(清点)
 tension_score: {{slot:tension_score|6}}
 stage_mode: {{slot:stage_mode|Simmering}}
-# suppression_factors: <!-- 若为 Suppression 必填：压迫阻力或隐忍限制，蓄满戏剧弹簧 -->
-# release_trigger: <!-- 若为 Eruption 必填：掀开底牌反击的高能爽感瞬间 -->
+# suppression_factors: <!-- 若为 Suppression 建议填写：压迫阻力或隐忍限制，蓄满戏剧弹簧（引擎不强制，只做合法键放行） -->
+# release_trigger: <!-- 若为 Eruption 建议填写：掀开底牌反击的高能爽感瞬间（引擎不强制） -->
 # style_notes 请根据当章核心看点量身定制，禁止与上章完全相同（避免 style_notes_copy 警告）
 style_notes: 通俗大白话 | 拒绝冷峻逼仄 | 鲜活对白与动作 | 物理刀口截断
 # 字数口径：check 按「剥离首行章题的正文」计 CJK——压线章请在 bands 下限上多留 5~10 字余量
-# （低于下限 15% 会触发 word_band_breach 警告）
+# （显著出带 >15% 容差触发警告：细纲自报带 → beats_words_unmet；project words_target 带 → word_band_breach）
 editor_extra: 
 ---
 

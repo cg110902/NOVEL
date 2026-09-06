@@ -33,7 +33,7 @@ description: Universal director and orchestrator for Novel Studio. Coordinates w
   2. **🔥 同会话热启动 (Hot Start)**：
      若当前会话中此前已阅读过两份底座，**严禁重复调用 `view_file` 冗余回读**；直接执行第一反射动作 `python studio.py cockpit --json` 瞬时同步。
 
-  驾驶舱由确定性 Python 引擎在 0.1 秒内聚合输出六大板块：
+  驾驶舱由确定性 Python 引擎秒级聚合输出六大板块（实测全书级约 1 秒）：
   1. **工作流导航**：引擎直接算好当前处于哪一步、下一个该调度哪个 Subagent、目标产出文件是什么；主控严禁猜测工序，直接执行 `next_action.command`；
   2. **戏剧动力学**：自动提炼开篇承接余震（aftershock）、悬顶危机倒计时（active_pressures）、现场信息差机锋（dramatic_irony）与现场两两张力网络（scene_tensions）；
   3. **老白读者催更雷达**：直接透视上一章读者体感反馈、连续性红旗、高光期待与避坑警示，以及**阅读疲劳度（fatigue）、伏笔信息差（foreshadow_info）、主角活人感（protagonist_liveliness）、角色路人缘（character_sympathy）四大情报**，主控构思细纲时**免翻读 `log/critic/` 原文**（仅雷达为空或疑似截断时回读）；
@@ -95,7 +95,7 @@ description: Universal director and orchestrator for Novel Studio. Coordinates w
   - 若 Auditor 报告包含 🔴 **确凿硬矛盾**（如已死复活、闭门瞬移、充能透支）：主控**绝不全章重写**，立即向 Editor 下发**定向手术刀修复令**（将 Auditor 报告中的行号与修复建议附入派发令，仅重写冲突的几行/段落）；Editor 修复并重写 `final/ch_XXX.md` 后，Reader 快速复核提案即可；
   - 若 Auditor 无硬矛盾（仅 🟡 软存疑或 ✅ 误报排除），当章流水线直接流转至 Stage 5。
 - **Critic 催更便签静默存盘**：主控收到 Critic 报告直接留存作为下章细纲参考（下章由驾驶舱雷达提炼），**绝不阻塞当章流程**。
-- **Librarian 十章大巡检（Stage 4D）**：每 10 章整数关口（如 ch_010、ch_020...）由驾驶舱雷达提示时，主控派发 Librarian 执行近 10 章长程事实补漏（次要实体建档、道具充能对账），产出 `state/inbox/sweep_ch_XXX.json` 并随 Stage 5 一并合并封存。
+- **Librarian 十章大巡检（Stage 4D）**：每 10 章整数关口（如 ch_010、ch_020...）由驾驶舱雷达提示时，主控派发 Librarian 执行近 10 章长程事实补漏（次要实体建档、道具充能对账）。**修补并入当章在途提案 `state/inbox/ch_XXX.json`**（若 4C 已落盘则读回合并，绝不另建 `sweep_ch_XXX.json` 等第二文件——收件箱单文件制，非规范命名会被 sync 静默忽略），随 Stage 5 一并合并封存；另存巡检报告 `log/review/sweep_ch_XXX.md` 供主控留档。
 - **主控防膨胀纪律**：保持主控上下文绝对纯净——子代理只回 3 行回执单，严禁长篇抒情汇报。
 
 ### 4. 极速状态同步与看板刷新（Stage 5）

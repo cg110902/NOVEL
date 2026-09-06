@@ -317,12 +317,18 @@ def cmd_simulate(args) -> int:
         return ws_gate_code()
 
     sub_act = getattr(args, "simulate_action", None)
+    js = bool(getattr(args, "json", False))
     if sub_act == "impact":
         ent = getattr(args, "entity", None)
         line = getattr(args, "line", None)
         act = getattr(args, "action", None)
         if not ent and not line:
-            print("❌ simulate impact 需要 --entity <名称> 或 --line <线索ID>")
+            msg = "simulate impact 需要 --entity <名称> 或 --line <线索ID>"
+            if js:
+                print(json.dumps({"ok": False, "code": "usage", "error": msg},
+                                 ensure_ascii=False))
+            else:
+                print(f"❌ {msg}")
             return 2
         payload = simulate_impact(book, entity=ent, line_id=line, action=act)
         if getattr(args, "json", False):

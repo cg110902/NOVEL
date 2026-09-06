@@ -1,0 +1,251 @@
+status                     rc=0     0.92s rssΔ=  177428KB crash=0 out=5519B keys=13
+pack ch_013                rc=0     0.92s rssΔ=      32KB crash=0 out=5756B keys=8
+evidence all               rc=0     4.08s rssΔ=   50036KB crash=0 out=37929B keys=6
+evidence mentions          rc=0     0.91s rssΔ=       0KB crash=0 out=3968B keys=4
+evidence gaps              rc=0     0.90s rssΔ=       0KB crash=0 out=1898B keys=6
+audit ch_013               rc=0     1.55s rssΔ=       0KB crash=0 out=382B keys=8
+graph summary              rc=0     0.91s rssΔ=       0KB crash=0 out=153B keys=6
+graph centrality           rc=0     0.94s rssΔ=       0KB crash=0 out=1738B keys=1
+check                      rc=0     1.04s rssΔ=       0KB crash=0 out=725B keys=7
+index                      rc=0     1.47s rssΔ=     744KB crash=0 out=215B keys=8
+dashboard                  rc=0     0.93s rssΔ=       0KB crash=0 out=104B keys=2
+export --txt               rc=0     0.92s rssΔ=       0KB crash=0 out=36B keys=1
+export --views             rc=0     0.93s rssΔ=       0KB crash=0 out=44B keys=1
+recall ch_013              rc=0     0.94s rssΔ=       0KB crash=0 out=3387B keys=7
+simulate branch ch_013     rc=0     0.92s rssΔ=       0KB crash=0 out=2738B keys=7
+critic ch_013              rc=0     0.93s rssΔ=       0KB crash=0 out=161B keys=4
+milestone list             rc=0     0.89s rssΔ=       0KB crash=0 out=339B keys=3
+checkpoint ch_026          rc=0     0.90s rssΔ=       0KB crash=0 out=1449B keys=9
+pov 陆沉舟                    rc=0     0.89s rssΔ=       0KB crash=0 out=2796B keys=11
+ask 黑煞宗                    rc=0     1.45s rssΔ=       0KB crash=0 out=1418B keys=7
+proposal auto ch_013       rc=0     0.88s rssΔ=       0KB crash=0 out=566B keys=9
+cockpit                    rc=0     1.05s rssΔ=       0KB crash=0 out=2381B keys=12
+
+=== JSON ===
+[
+ {
+  "cmd": "status",
+  "rc": 0,
+  "sec": 0.922,
+  "rss_delta_kb": 177428,
+  "crashed": false,
+  "out_bytes": 5519,
+  "json": "keys=13"
+ },
+ {
+  "cmd": "pack ch_013",
+  "rc": 0,
+  "sec": 0.923,
+  "rss_delta_kb": 32,
+  "crashed": false,
+  "out_bytes": 5756,
+  "json": "keys=8"
+ },
+ {
+  "cmd": "evidence all",
+  "rc": 0,
+  "sec": 4.079,
+  "rss_delta_kb": 50036,
+  "crashed": false,
+  "out_bytes": 37929,
+  "json": "keys=6"
+ },
+ {
+  "cmd": "evidence mentions",
+  "rc": 0,
+  "sec": 0.91,
+  "rss_delta_kb": 0,
+  "crashed": false,
+  "out_bytes": 3968,
+  "json": "keys=4"
+ },
+ {
+  "cmd": "evidence gaps",
+  "rc": 0,
+  "sec": 0.9,
+  "rss_delta_kb": 0,
+  "crashed": false,
+  "out_bytes": 1898,
+  "json": "keys=6"
+ },
+ {
+  "cmd": "audit ch_013",
+  "rc": 0,
+  "sec": 1.553,
+  "rss_delta_kb": 0,
+  "crashed": false,
+  "out_bytes": 382,
+  "json": "keys=8"
+ },
+ {
+  "cmd": "graph summary",
+  "rc": 0,
+  "sec": 0.914,
+  "rss_delta_kb": 0,
+  "crashed": false,
+  "out_bytes": 153,
+  "json": "keys=6"
+ },
+ {
+  "cmd": "graph centrality",
+  "rc": 0,
+  "sec": 0.939,
+  "rss_delta_kb": 0,
+  "crashed": false,
+  "out_bytes": 1738,
+  "json": "keys=1"
+ },
+ {
+  "cmd": "check",
+  "rc": 0,
+  "sec": 1.044,
+  "rss_delta_kb": 0,
+  "crashed": false,
+  "out_bytes": 725,
+  "json": "keys=7"
+ },
+ {
+  "cmd": "index",
+  "rc": 0,
+  "sec": 1.466,
+  "rss_delta_kb": 744,
+  "crashed": false,
+  "out_bytes": 215,
+  "json": "keys=8"
+ },
+ {
+  "cmd": "dashboard",
+  "rc": 0,
+  "sec": 0.928,
+  "rss_delta_kb": 0,
+  "crashed": false,
+  "out_bytes": 104,
+  "json": "keys=2"
+ },
+ {
+  "cmd": "export --txt",
+  "rc": 0,
+  "sec": 0.923,
+  "rss_delta_kb": 0,
+  "crashed": false,
+  "out_bytes": 36,
+  "json": "keys=1"
+ },
+ {
+  "cmd": "export --views",
+  "rc": 0,
+  "sec": 0.93,
+  "rss_delta_kb": 0,
+  "crashed": false,
+  "out_bytes": 44,
+  "json": "keys=1"
+ },
+ {
+  "cmd": "recall ch_013",
+  "rc": 0,
+  "sec": 0.938,
+  "rss_delta_kb": 0,
+  "crashed": false,
+  "out_bytes": 3387,
+  "json": "keys=7"
+ },
+ {
+  "cmd": "simulate branch ch_013",
+  "rc": 0,
+  "sec": 0.917,
+  "rss_delta_kb": 0,
+  "crashed": false,
+  "out_bytes": 2738,
+  "json": "keys=7"
+ },
+ {
+  "cmd": "critic ch_013",
+  "rc": 0,
+  "sec": 0.931,
+  "rss_delta_kb": 0,
+  "crashed": false,
+  "out_bytes": 161,
+  "json": "keys=4"
+ },
+ {
+  "cmd": "milestone list",
+  "rc": 0,
+  "sec": 0.893,
+  "rss_delta_kb": 0,
+  "crashed": false,
+  "out_bytes": 339,
+  "json": "keys=3"
+ },
+ {
+  "cmd": "checkpoint ch_026",
+  "rc": 0,
+  "sec": 0.902,
+  "rss_delta_kb": 0,
+  "crashed": false,
+  "out_bytes": 1449,
+  "json": "keys=9"
+ },
+ {
+  "cmd": "pov 陆沉舟",
+  "rc": 0,
+  "sec": 0.891,
+  "rss_delta_kb": 0,
+  "crashed": false,
+  "out_bytes": 2796,
+  "json": "keys=11"
+ },
+ {
+  "cmd": "ask 黑煞宗",
+  "rc": 0,
+  "sec": 1.455,
+  "rss_delta_kb": 0,
+  "crashed": false,
+  "out_bytes": 1418,
+  "json": "keys=7"
+ },
+ {
+  "cmd": "proposal auto ch_013",
+  "rc": 0,
+  "sec": 0.881,
+  "rss_delta_kb": 0,
+  "crashed": false,
+  "out_bytes": 566,
+  "json": "keys=9"
+ },
+ {
+  "cmd": "cockpit",
+  "rc": 0,
+  "sec": 1.047,
+  "rss_delta_kb": 0,
+  "crashed": false,
+  "out_bytes": 2381,
+  "json": "keys=12"
+ }
+]
+pb100 status                 rc=0     1.05s rssΔ=  177280KB crash=0 out=19580B keys=13
+pb100 pack ch_013            rc=0     0.96s rssΔ=       0KB crash=0 out=5756B keys=8
+pb100 pack ch_099            rc=0     1.00s rssΔ=     140KB crash=0 out=5730B keys=8
+pb100 evidence all           rc=0    11.05s rssΔ=   52540KB crash=0 out=137274B keys=6
+pb100 evidence style         rc=0    10.66s rssΔ=       0KB crash=0 out=72484B keys=4
+pb100 evidence mentions      rc=0     0.94s rssΔ=       0KB crash=0 out=14994B keys=4
+pb100 evidence gaps          rc=0     0.91s rssΔ=       0KB crash=0 out=1899B keys=6
+pb100 evidence names         rc=0    10.04s rssΔ=       0KB crash=0 out=838B keys=6
+pb100 evidence dup           rc=0     0.98s rssΔ=       0KB crash=0 out=40934B keys=5
+pb100 audit ch_013           rc=0     1.56s rssΔ=       0KB crash=0 out=382B keys=8
+pb100 check                  rc=0     1.31s rssΔ=       0KB crash=0 out=17638B keys=7
+pb100 index                  rc=0     1.96s rssΔ=       0KB crash=0 out=215B keys=8
+pb100 index --rebuild        rc=0     2.58s rssΔ=       0KB crash=0 out=215B keys=8
+pb100 dashboard              rc=0     0.96s rssΔ=       0KB crash=0 out=102B keys=2
+pb100 export --txt           rc=0     0.90s rssΔ=       0KB crash=0 out=36B keys=1
+pb100 export --views         rc=0     0.90s rssΔ=       0KB crash=0 out=44B keys=1
+pb100 recall ch_013          rc=0     0.89s rssΔ=       0KB crash=0 out=3387B keys=7
+pb100 simulate branch ch_013 rc=0     0.90s rssΔ=       0KB crash=0 out=2738B keys=7
+pb100 critic ch_013          rc=0     0.91s rssΔ=       0KB crash=0 out=161B keys=4
+pb100 milestone list         rc=0     0.92s rssΔ=       0KB crash=0 out=339B keys=3
+pb100 checkpoint ch_026      rc=0     0.90s rssΔ=       0KB crash=0 out=1449B keys=9
+pb100 pov 陆沉舟                rc=0     0.92s rssΔ=       0KB crash=0 out=2796B keys=11
+pb100 ask 黑煞宗                rc=0     1.47s rssΔ=       0KB crash=0 out=1418B keys=7
+pb100 cockpit                rc=0     1.33s rssΔ=       0KB crash=0 out=18687B keys=12
+pb100 graph summary          rc=0     0.88s rssΔ=       0KB crash=0 out=153B keys=6
+pb100 graph centrality       rc=0     0.91s rssΔ=       0KB crash=0 out=1738B keys=1
+pb100 snapshot create pb100_marker rc=0     0.93s rssΔ=       0KB crash=0 out=64B keys=2

@@ -182,7 +182,13 @@ def probe_location_presence(text: str, lines: list[str], cur_st: dict, ents_st: 
         if ent.get("life_status") == "deceased":
             hits = _find_mentions_with_lines(lines, name)
             for line_no, content in hits:
-                if any(p in content for p in ["墓", "死", "遗", "昔日", "想起", "当年"]):
+                # 死亡当章及后世章里，凡同句带死亡叙事词（尸体/遇害/出殡/遗言/坟/棺等）的提及，
+                # 多为死亡报道、回忆或吊唁，不应判为「活人出场」；真正“复活登场”通常无此类词。
+                # 列表须与 probe_locked_facts 的 exempt_pats 精神一致，但比其更宽：
+                # locked_facts 只对发言/引号句判硬矛盾，本探针按纯提及判，必须把死亡叙事排除干净。
+                if any(p in content for p in ["墓", "死", "尸", "遗", "昔日", "想起", "当年",
+                                              "被杀", "被刺", "遇害", "身亡", "毙命", "丧命", "殒",
+                                              "死讯", "出殡", "入殓", "灵堂", "棺", "坟", "上香", "祭"]):
                     continue
                 candidates.append({
                     "probe": "location_presence",
@@ -278,7 +284,18 @@ def probe_amount_ledger(text: str, lines: list[str], led_st: dict) -> list[dict]
                 pool_key = "gold" if "gold" in pools else None
 
             if pool_key and pool_key in pools:
-                bal = pools[pool_key].get("balance", 0)
+                # 账本口径：池余额键是 current（每次合并由流水全量重算）；balance 是旧版
+                # 流水条目字段，池对象上不存在——读它恒得 0，会把「余额内正常支出」全误报。
+                _pool = pools[pool_key] if isinstance(pools[pool_key], dict) else {}
+                _bal_raw = _pool.get("current")
+                if _bal_raw is None:
+                    _bal_raw = _pool.get("initial", 0)
+                try:
+                    bal = int(_bal_raw)
+                except (TypeError, ValueError):
+                    bal = None
+                if bal is None:
+                    continue
                 if any(k in line for k in ["花费", "支出", "花了", "付了", "买下"]) and val > bal:
                     candidates.append({
                         "probe": "amount_ledger",
@@ -294,10 +311,25 @@ def probe_amount_ledger(text: str, lines: list[str], led_st: dict) -> list[dict]
     return candidates
 
 
-def probe_secret_leakage(text: str, lines: list[str], lines_st: dict) -> list[dict]:
+_SPEAKER_MODS = r"(?:冷声|厉声|轻声|沉声|颤声|怒|含笑|淡然|森然|高声|低声|咬牙|皱眉|怒斥|嗤笑|失笑)"
+
+
+def probe_secret_leakage(text: str, lines: list[str], lines_st: dict,
+                         ents_st: list[dict] | None = None) -> list[dict]:
     """探针 5：KNO 秘密知情差泄露（检查不知情者在对话中直接谈及秘密）。"""
     candidates = []
     knowledge = lines_st.get("knowledge", []) if isinstance(lines_st, dict) else []
+    # 说话人候选名册：注册实体名 + 别名（越长者优先匹配——先验：引号前紧邻的已知人名
+    # 就是说话人，比正则盲抓「老赵拍着桌子道」整串准确）
+    speaker_roster: list[str] = []
+    for e in ents_st or []:
+        if not isinstance(e, dict):
+            continue
+        for nm in [str(e.get("name", ""))] + [str(a) for a in (e.get("aliases") or [])]:
+            nm = nm.strip()
+            if len(nm) >= 2 and nm not in speaker_roster:
+                speaker_roster.append(nm)
+    speaker_roster.sort(key=len, reverse=True)
     for kno in knowledge:
         status = str(kno.get("status", "")).lower()
         if status in ("revealed", "公开"):
@@ -321,15 +353,27 @@ def probe_secret_leakage(text: str, lines: list[str], lines_st: dict) -> list[di
             continue
 
         for line_no, line in enumerate(lines, start=1):
-            quotes = re.findall(r"[“「『\"]([^”」』\"\n]{4,80})[”」』\"]", line)
-            for q in quotes:
+            for m_q in re.finditer(r"[“「『\"]([^”」』\"\n]{4,80})[”」』\"]", line):
+                q = m_q.group(1)
                 hit_kws = [kw for kw in keywords if kw in q]
                 if len(hit_kws) >= 2 or (len(hit_kws) == 1 and len(hit_kws[0]) >= 4 and hit_kws[0] in q):
                     speaker = None
-                    m_spk = re.search(r"([^，。！？\s]{2,6}?)(?:冷声|厉声|轻声|沉声|颤声|怒|含笑|淡然|森然|高声|低声|咬牙|皱眉|怒斥)*(?:道|说|笑|叹|喝|问)[:：]", line)
-                    if m_spk:
-                        speaker = m_spk.group(1).strip()
-                        speaker = re.sub(r"(?:冷声|厉声|轻声|沉声|颤声|怒|含笑|淡然|森然|高声|低声|咬牙|皱眉|怒斥)+$", "", speaker).strip()
+                    # 1) 已知实体名册：取引号左侧最近处出现（含道/说前 6 字窗口内）的名字
+                    head = line[:m_q.start()]
+                    window = head
+                    best = None
+                    for nm in speaker_roster:
+                        pos = window.rfind(nm)
+                        if pos >= 0 and (best is None or pos > best[1]):
+                            best = (nm, pos)
+                    if best is not None and len(head) - (best[1] + len(best[0])) <= 12:
+                        speaker = best[0]
+                    # 2) 兜底：旧正则启发（去修饰词）
+                    if speaker is None:
+                        m_spk = re.search(r"([^，。！？\s]{2,6}?)(?:冷声|厉声|轻声|沉声|颤声|怒|含笑|淡然|森然|高声|低声|咬牙|皱眉|怒斥)*(?:道|说|笑|叹|喝|问)[:：]", line)
+                        if m_spk:
+                            speaker = m_spk.group(1).strip()
+                            speaker = re.sub(r"(?:冷声|厉声|轻声|沉声|颤声|怒|含笑|淡然|森然|高声|低声|咬牙|皱眉|怒斥)+$", "", speaker).strip()
                     if speaker and knower and speaker not in knower:
                         candidates.append({
                             "probe": "secret_leakage",
@@ -351,15 +395,24 @@ def probe_cognition_stubs(text: str, lines: list[str], lines_st: dict, cog_st: d
     candidates = []
     misunderstandings = lines_st.get("misunderstandings", []) if isinstance(lines_st, dict) else []
     for mis in misunderstandings:
-        if mis.get("status") == "resolved":
+        if str(mis.get("status", "")).lower() in ("resolved", "closed"):
             continue
         mid = mis.get("id", "MIS")
-        parties = mis.get("parties", [])
-        content = mis.get("content", "")
-        if len(parties) < 2:
+        raw_parties = mis.get("parties")
+        # 台账 parties 在 v2 schema 起为字符串（如「张彪与李玄」）；老书遗留可能为数组。
+        # 一律归一成实体名列表再取前两个主体——绝不可把字符串当字符数组切片，
+        # 否则「陆沉舟与官差」会误拆成「陆」「沉」两个单字主体（ P 系列修复：见 test_）。
+        if isinstance(raw_parties, str):
+            plist = [x.strip() for x in re.split(r"[与和及、，,·×/\s]+", raw_parties) if x.strip()]
+        elif isinstance(raw_parties, list):
+            plist = [str(x).strip() for x in raw_parties if str(x).strip()]
+        else:
+            plist = []
+        if len(plist) < 2:
             continue
-        p1, p2 = str(parties[0]), str(parties[1])
-        if p1 in text and p2 in text:
+        p1, p2 = plist[0], plist[1]
+        content = mis.get("content", "")
+        if (len(p1) >= 2 and p1 in text) and (len(p2) >= 2 and p2 in text):
             coop_words = ["相视一笑", "并肩作战", "默契无间", "托付后背", "感激涕零", "冰释前嫌", "毫无保留", "握手言和"]
             for line_no, line in enumerate(lines, start=1):
                 if (p1 in line or p2 in line) and any(w in line for w in coop_words):
@@ -368,7 +421,7 @@ def probe_cognition_stubs(text: str, lines: list[str], lines_st: dict, cog_st: d
                         "severity": "candidate_soft",
                         "line_no": line_no,
                         "also_flagged_by": None,
-                        "title": f"误解未解前突兀协同：[{mid}]（{content[:20]}）",
+                        "title": f"误解未解前突兀协同：[{mid}]（{str(content)[:20]}）",
                         "description": f"角色「{p1}」与「{p2}」之间尚有未解误会 [{mid}]，但在正文表现出高度信任或亲密协同动作。",
                         "evidence": f"L{line_no}: {line.strip()[:80]}",
                         "state_ref": mid,
@@ -495,7 +548,7 @@ def run_audit(book: Path, ch: str) -> dict[str, Any]:
     raw_candidates.extend(probe_location_presence(text, lines, cur_st, ents_st))
     raw_candidates.extend(probe_charges_possession(text, lines, ents_st, cur_st))
     raw_candidates.extend(probe_amount_ledger(text, lines, led_st))
-    raw_candidates.extend(probe_secret_leakage(text, lines, lines_st))
+    raw_candidates.extend(probe_secret_leakage(text, lines, lines_st, ents_st))
     raw_candidates.extend(probe_cognition_stubs(text, lines, lines_st, cog_st))
     raw_candidates.extend(probe_alias_drift(text, lines, ents_st))
 

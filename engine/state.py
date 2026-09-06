@@ -112,6 +112,10 @@ INBOX_README = """# state/inbox — 提案收件箱（Stage 4 Reader 交付 / St
 正式提案必须带 operation_id（建议 `<ch>.<角色>.<时间戳/序号>`，如 ch_007.director.0829a、
 ch_007.reader.0901_2125）；`*.draft.json`/`*.template.json`/`*.sample.json` 不参与合并，
 可放这里当草稿。entities.action 支持 upsert/register/retire（register 为 upsert 别名）。
+
+收件箱**单文件制**：每章在途提案仅一份、文件名恰为 `ch_XXX.json`；修补封存章的修订
+并入下一章在途提案随 sync 合并。`sweep_ch_*.json`、`ch_XXX.*.json` 等非规范命名一律
+不参与合并（与正式提案并存时被静默忽略、单独出现时 sync 拒收并给出规范命名提示）。
  
 
 写提案的纪律：只写增量；事实必须能在本章 final 正文找到出处；不确定就不上账。
@@ -330,6 +334,12 @@ def _guard_entity_transitions(name: str, old: dict, new: dict, rep: dict) -> Non
     new_att = str(new.get("attitude") or "").strip().lower()
     if (old_att, new_att) in _ATTITUDE_BIG_FLIPS:
         rep["warnings"].append(f"🔗【立场大翻转】实体「{name}」态度由 {old_att} 转为 {new_att}——若系剧情重大转折请忽略")
+    old_type = str(old.get("type") or "").strip().lower()
+    new_type = str(new.get("type") or "").strip().lower()
+    if new_type and old_type and new_type != old_type:
+        rep["warnings"].append(
+            f"🏷️ 实体「{name}」类别由 {old_type} 变更为 {new_type}"
+            "——跨界变更（person↔item/place/faction）会改变在场/充能等探针口径，请核实剧情语义")
     old_charges, new_charges = old.get("charges"), new.get("charges")
     if (isinstance(old_charges, int) and not isinstance(old_charges, bool)
             and isinstance(new_charges, int) and not isinstance(new_charges, bool)
@@ -757,8 +767,12 @@ def validate_proposal(proposal, expected_chapter: str | None = None) -> tuple[li
                 if not fact or len(str(fact).strip()) < 4:
                     errors.append(f"locked[{i}].fact 至少需要 4 字有效陈述")
                 kind = l.get("kind")
-                if kind not in ("death", "irreversible_action", "rule", "promise"):
-                    errors.append(f"locked[{i}].kind 必须 ∈ ['death', 'irreversible_action', 'rule', 'promise']")
+                # 与 models.locked.LockedKind / schemas/locked.schema.json 全量对齐（7 类），
+                # 此前闸门只放行 4 类，destruction/disbandment/pact 被误杀
+                if kind not in ("death", "destruction", "disbandment", "irreversible_action",
+                                "rule", "promise", "pact"):
+                    errors.append(f"locked[{i}].kind 必须 ∈ ['death', 'destruction', 'disbandment', "
+                                  "'irreversible_action', 'rule', 'promise', 'pact']")
             elif act == "retire":
                 if not l.get("reason"):
                     errors.append(f"locked[{i}] 归档退役必须提供 reason")
@@ -796,7 +810,8 @@ def validate_proposal(proposal, expected_chapter: str | None = None) -> tuple[li
 
     cons = proposal.get("consequences")
     if isinstance(cons, list):
-        _plan("consequences", len(cons))
+        # 历史遗留分区：仅校验提示、不落盘（无对应状态表；合并时另有显式降级警告）
+        plan["consequences"] = f"提示不落盘 × {len(cons)}（已废弃：因果后果请走 cognition_delta / timeline）"
         allowed_cons_keys = {"subject", "change", "irreversible", "quote"}
         for i, item in enumerate(cons):
             if not isinstance(item, dict):
@@ -1270,6 +1285,13 @@ def _merge_ledger(state: dict, patch: dict, ch: str, rep: dict) -> None:
         k = _tx_replay_key(t, ch)
         replay_budget[k] = replay_budget.get(k, 0) + 1
     replay_used: dict[tuple, int] = {}
+    applied_in_patch: dict[tuple, int] = {}
+
+    def _skip_dup(subject: str) -> None:
+        """重复流水统一出口：与已入账流水（或本提案内先行的同内容流水）逐字段一致
+        = 按「重复/重放」跳过并明示，绝不静默双计。"""
+        rep["warnings"].append(
+            f"♻️ 疑似重复/重放流水已跳过（幂等保护）：{subject[:24]}")
 
     for t in patch.get("transactions", []) or []:
         pool = t["pool"]
@@ -1282,11 +1304,18 @@ def _merge_ledger(state: dict, patch: dict, ch: str, rep: dict) -> None:
             rep["errors"].append(f"流水 delta 非整数：{t.get('delta')!r}")
             continue
         k = _tx_replay_key(t, ch)
-        if k in replay_budget and replay_used.get(k, 0) < replay_budget[k]:
+        existing_n = replay_budget.get(k, 0)
+        if existing_n > 0 and replay_used.get(k, 0) < existing_n:
+            # 与既有流水逐字段一致：崩溃重放/重复归档重提 → 跳过（只允许与既有行同数）
             replay_used[k] = replay_used.get(k, 0) + 1
-            rep["warnings"].append(
-                f"♻️ 疑似重放流水已跳过（幂等重放保护）：{str(t.get('subject', ''))[:24]}")
+            _skip_dup(str(t.get("subject", "")))
             continue
+        if applied_in_patch.get(k, 0) >= 1 or existing_n > 0:
+            # 本提案内第二条同内容流水（前一条已生效），或既有同内容流水数量已耗尽
+            # 重放配额后仍出现同内容行——均为重复，跳过而非双计。
+            _skip_dup(str(t.get("subject", "")))
+            continue
+        applied_in_patch[k] = 1
         running[pool] += delta
         tx = {"chapter": t.get("chapter", ch), "pool": pool, "delta": delta,
               "type": t.get("type") or ("income" if delta >= 0 else "expense"),
@@ -1413,6 +1442,11 @@ def _merge_cognition(state: dict, patch: list, ch: str, rep: dict) -> None:
             quote = str(item.get("quote") or "").strip()
             note = str(item.get("note") or "").strip()
             if not char or not content:
+                # 空认知条目（character 之外的字段全缺/全空）不落盘——静默吞掉会让
+                # 主控以为已登记，实际查无此条。显式警告后跳过，绝不写空行。
+                rep["warnings"].append(
+                    f"🧠 cognition 条目缺内容（character={char or '∅'}），按无效跳过——"
+                    "learned/doubted/misread/content 至少提供一个非空值")
                 continue
             new_entry = {
                 "id": iid,
@@ -1435,6 +1469,11 @@ def _merge_cognition(state: dict, patch: list, ch: str, rep: dict) -> None:
         if action in ("plant", "upsert"):
             char = str(item.get("character", "")).strip()
             content = str(item.get("content", "")).strip()
+            if not char or not content:
+                # 显式 ID 的条目同样禁止空内容落盘：写空行会让下游以空串当真值。
+                rep["warnings"].append(
+                    f"🧠 cognition 条目 {iid} 缺 character/content，按无效跳过（不落盘、不覆盖）")
+                continue
             kind = str(item.get("kind", "fact"))
             new_entry = {
                 "id": str(iid),
@@ -1458,6 +1497,9 @@ def _merge_cognition(state: dict, patch: list, ch: str, rep: dict) -> None:
                 entries[:] = [e for e in entries if e.get("id") != iid]
                 entry_map.pop(iid, None)
                 rep["updated"].append(f"🧠 退役角色认知 {iid}")
+            else:
+                # 与 locked.retire 未知条目口径一致：警告而非静默（也不报错阻断）
+                rep["warnings"].append(f"cognition 条目 {iid} 不存在，退役忽略")
 
 
 def _merge_proposal_into(data: dict, proposal: dict, ch, ch_num, rep: dict) -> None:
@@ -1498,6 +1540,12 @@ def _merge_proposal_into(data: dict, proposal: dict, ch, ch_num, rep: dict) -> N
         _merge_cognition(data["cognition"], cog_patch, ch, rep)
     if proposal.get("locked_candidates"):
         rep["updated"].append(f"🔒 记录 {len(proposal['locked_candidates'])} 条不可逆事实提名（待主控审定入账）")
+    if proposal.get("consequences"):
+        #  consequences 为历史遗留分区：只校验、无落盘目标（无对应状态表）。为避免
+        # 提案作者误以为因果存根已持久化，合并时显式降级提示（不静默吞掉，也不硬拒收）。
+        rep["warnings"].append(
+            f"⚠️ consequences 分区（{len(proposal['consequences'])} 条）不持久化：因果后果请改登记为 "
+            "cognition_delta（doubted/misread）或 timeline 事件，本分区内容仅提示、未落盘")
 
 
 def apply_proposal(book: Path, proposal: dict, expected_chapter: str | None = None,
