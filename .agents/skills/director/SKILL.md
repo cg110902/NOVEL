@@ -95,7 +95,7 @@ description: Universal director and orchestrator for Novel Studio. Coordinates w
   - 若 Auditor 报告包含 🔴 **确凿硬矛盾**（如已死复活、闭门瞬移、充能透支）：主控**绝不全章重写**，立即向 Editor 下发**定向手术刀修复令**（将 Auditor 报告中的行号与修复建议附入派发令，仅重写冲突的几行/段落）；Editor 修复并重写 `final/ch_XXX.md` 后，Reader 快速复核提案即可；
   - 若 Auditor 无硬矛盾（仅 🟡 软存疑或 ✅ 误报排除），当章流水线直接流转至 Stage 5。
 - **Critic 催更便签静默存盘**：主控收到 Critic 报告直接留存作为下章细纲参考（下章由驾驶舱雷达提炼），**绝不阻塞当章流程**。
-- **Librarian 十章大巡检（Stage 4D）**：每 10 章整数关口（如 ch_010、ch_020...）由驾驶舱雷达提示时，主控派发 Librarian 执行近 10 章长程事实补漏（次要实体建档、道具充能对账），产出 `state/inbox/sweep_ch_XXX.json` 并随 Stage 5 一并合并封存。
+- **Librarian 十章大巡检（Stage 4D）**：每 10 章整数关口（如 ch_010、ch_020...）由驾驶舱雷达提示时，主控派发 Librarian 执行近 10 章长程事实补漏（次要实体建档、道具充能对账）。**修补并入当章在途提案 `state/inbox/ch_XXX.json`**（若 4C 已落盘则读回合并，绝不另建 `sweep_ch_XXX.json` 等第二文件——收件箱单文件制，非规范命名会被 sync 静默忽略），随 Stage 5 一并合并封存；另存巡检报告 `log/review/sweep_ch_XXX.md` 供主控留档。
 - **主控防膨胀纪律**：保持主控上下文绝对纯净——子代理只回 3 行回执单，严禁长篇抒情汇报。
 
 ### 4. 极速状态同步与看板刷新（Stage 5）

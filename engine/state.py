@@ -105,15 +105,17 @@ def defaults_for(key: str) -> dict:
 INBOX_README = """# state/inbox — 提案收件箱（Stage 4 Reader 交付 / Stage 5 主控审定工位）
 
 一切状态修改从这里进：每章一个 `ch_XXX.json`（填提案以本 README 样例为准，
-业务规则见 `AGENTS.md` 与 `.agents/skills/reader/SKILL.md`）。
-Stage 4D Librarian 的修补提案命名 `sweep_ch_XXX.json`（chapter 字段 = 当前章），
-随该章 `sync` 一并合并；校验失败后同样归档 failed/ 并在修复后由 sync 自动捡回。processed/ = 已应用的审计记录（永不删改；
+业务规则见 `AGENTS.md` 与 `.agents/skills/reader/SKILL.md`）。processed/ = 已应用的审计记录（永不删改；
 唯一例外：`init --force` 整本重开）；failed/ = 失败提案，就地处修复后重跑 `sync`，
 引擎自动捡回（含重名归档的 .2/.3 变体）。
 
 正式提案必须带 operation_id（建议 `<ch>.<角色>.<时间戳/序号>`，如 ch_007.director.0829a、
 ch_007.reader.0901_2125）；`*.draft.json`/`*.template.json`/`*.sample.json` 不参与合并，
 可放这里当草稿。entities.action 支持 upsert/register/retire（register 为 upsert 别名）。
+
+收件箱**单文件制**：每章在途提案仅一份、文件名恰为 `ch_XXX.json`；修补封存章的修订
+并入下一章在途提案随 sync 合并。`sweep_ch_*.json`、`ch_XXX.*.json` 等非规范命名一律
+不参与合并（与正式提案并存时被静默忽略、单独出现时 sync 拒收并给出规范命名提示）。
  
 
 写提案的纪律：只写增量；事实必须能在本章 final 正文找到出处；不确定就不上账。
@@ -1661,7 +1663,7 @@ def apply_proposal(book: Path, proposal: dict, expected_chapter: str | None = No
     return rep
 
 
-_CH_FILE_RE = re.compile(r"(?:sweep_)?ch_\d{3,}(\.\d+)?\.json")  # P: 兼容 Librarian 的 sweep_ch_XXX.json（Stage 4D 修补提案随当章同步合并）
+_CH_FILE_RE = re.compile(r"ch_\d{3,}(\.\d+)?\.json")
 
 
 def _gather(inbox: Path) -> list[Path]:
@@ -1755,13 +1757,13 @@ def apply_inbox(book: Path, expect_chapter: str | None = None, dry_run: bool = F
         exact = fdir / f"{expect_chapter}.json"
         if exact.is_file() and not exact.is_symlink() and not exact.name.endswith(NO_MERGE_SUFFIXES):
             cands.append(exact)
-        for p in list(fdir.glob(f"{expect_chapter}.*.json")) + list(fdir.glob(f"sweep_{expect_chapter}*.json")):
+        for p in fdir.glob(f"{expect_chapter}.*.json"):
             if p.is_symlink():
                 continue
             if p.name.endswith(NO_MERGE_SUFFIXES):
                 continue
             if common.chapter_number_from_name(p.name) == common.chapter_token_to_num(expect_chapter):
-                if p.name.startswith(expect_chapter + ".") or p.name.startswith(f"sweep_{expect_chapter}"):
+                if p.name.startswith(expect_chapter + "."):
                     cands.append(p)
         cands = sorted(set(cands), key=lambda p: p.stat().st_mtime)
         return cands

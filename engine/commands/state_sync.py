@@ -123,9 +123,21 @@ def cmd_sync(args) -> int:
         return _fail(f"未找到 {ch} 的定稿（final），拒绝空同步（Stage 5 输入合同：beats/raw/final 齐）",
                      hint=f"请由 Stage 3 Editor 完成定稿重塑并写入 manuscript/vol_XX/final/{ch}.md")
     if not has_proposal:
-        strays = ([p.name for p in inbox.glob(f"{ch}.*") if p.suffix == ".json"
-                   and not p.name.endswith(state.NO_MERGE_SUFFIXES)] if inbox.is_dir() else [])
-        hint = (f"（发现同章非规范命名：{'、'.join(sorted(strays))}——在途提案每章仅一份，"
+        # 非规范命名扫描：不按文件名前缀猜，直接看同章提案（chapter 字段 = ch）的
+        # 其他 *.json——技能/代理若按旧习惯产出 sweep_ch_XXX.json 等第二文件，门闸
+        # 要能点名提示，否则只会得到一句泛泛的「未找到正式提案」。
+        strays = []
+        if inbox.is_dir():
+            for p in sorted(inbox.glob("*.json")):
+                if p.name == f"{ch}.json" or p.name.endswith(state.NO_MERGE_SUFFIXES):
+                    continue
+                try:
+                    data = common.load_json(p)
+                except (ValueError, OSError):
+                    continue
+                if isinstance(data, dict) and data.get("chapter") == ch:
+                    strays.append(p.name)
+        hint = (f"（发现同章非规范命名：{'、'.join(strays)}——在途提案每章仅一份，"
                 f"文件名须为 {ch}.json；已封存章的修订并入下一章提案随 sync 合并）") if strays else ""
         return _fail(f"未找到 {ch} 的正式状态提案（inbox 与 failed/ 均无），拒绝空同步{hint}",
                      hint=f"运行 `python studio.py proposal new {ch} --write` 装配提案骨架，或由 Stage 4 Reader 审计交付")
