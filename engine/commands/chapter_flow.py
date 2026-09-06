@@ -53,9 +53,11 @@ def cmd_pack(args) -> int:
             payload["opened"] = pack_mod.open_file(book, args.open_path,
                                                    role=getattr(args, "as_role", "drafter"))
     except PermissionError as exc:
-        # 禁读网关拦截——不是业务失败，是越权，单列退出码语义仍归 1（阻断）
+        # 禁读网关拦截——不是业务失败，是越权，单列退出码语义仍归 1（阻断）。
+        # --json 信封统一带 ok/code，避免消费方只认 ok 的话把越权当成功。
         if js:
-            print(json.dumps({"error": "forbidden", "path": args.open_path,
+            print(json.dumps({"ok": False, "error": "forbidden",
+                              "code": "forbidden", "path": args.open_path,
                               "as": getattr(args, "as_role", "drafter"),
                               "detail": str(exc)}, ensure_ascii=False, indent=2))
         else:

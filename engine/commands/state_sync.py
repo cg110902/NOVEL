@@ -94,8 +94,8 @@ def cmd_sync(args) -> int:
         return ws_gate_code()
     ch = _norm_ch(args.chapter)
     if ch is None:
-        print(f"❌ 无法解析章节编号: {args.chapter!r}（示例: 6 或 ch_006）")
-        return 2
+        return usage_error(f"无法解析章节编号: {args.chapter!r}（示例: 6 或 ch_006）",
+                           args, chapter=str(args.chapter))
 
     inbox = book / "state" / "inbox"
     js = bool(getattr(args, "json", False))
@@ -459,17 +459,52 @@ def _cmd_proposal_verify(book: Path, ch: str, args) -> int:
     return 0
 
 
+_AUTO_TARGET_PATTERNS = (
+    re.compile(r"目标\s*ch_(\d+)", re.I),
+    re.compile(r"目标[：:]\s*第\s*(\d+)\s*章"),
+    re.compile(r"target_ch\s*[:=]?\s*(\d+)", re.I),
+    re.compile(r"\bch_(\d{1,4})\b"),
+)
+
+
+def _auto_target_ch(ln: str, default_n: int) -> int | str:
+    """从细纲线动作行提取目标章（支持「目标 ch_005」「目标：第5章」「longline」）。
+
+    此前 proposal auto 一律落到 n+3，忽略细纲里显式书写的目标（如「目标 ch_005」），
+    导致自动提案与 beats 任务书打架。
+    """
+    if re.search(r"\blongline\b|长线", ln, re.I):
+        return "longline"
+    for pat in _AUTO_TARGET_PATTERNS:
+        m = pat.search(ln)
+        if m:
+            try:
+                n = int(m.group(1))
+                return n if n >= 1 else default_n
+            except (ValueError, IndexError):
+                continue
+    return default_n
+
+
 def _cmd_proposal_auto(book: Path, ch: str, args) -> int:
     inbox = book / "state" / "inbox"
+    js = bool(getattr(args, "json", False))
+
+    def _fail(msg: str, code: int = 1) -> int:
+        if js:
+            print(json.dumps({"chapter": ch, "ok": False, "code": "proposal_error",
+                              "error": msg}, ensure_ascii=False))
+        else:
+            print(f"❌ {msg}")
+        return code
+
     n = common.chapter_token_to_num(ch)
     if not n:
-        print(f"❌ 非法章号: {ch}")
-        return 1
+        return _fail(f"非法章号: {ch}", code=2)
 
     beats_files = common.find_chapter_files(book, "beats", n)
     if not beats_files:
-        print(f"❌ 未找到 {ch} 的 beats 细纲（Stage 1 未完成）")
-        return 1
+        return _fail(f"未找到 {ch} 的 beats 细纲（Stage 1 未完成）")
     beats_text = beats_files[-1].read_text(encoding="utf-8", errors="replace")
 
     final_files = common.find_chapter_files(book, "final", n)
@@ -517,12 +552,13 @@ def _cmd_proposal_auto(book: Path, ch: str, args) -> int:
                        "misunderstanding" if ("MIS" in ln) or ("误会" in ln) else \
                        "knowledge" if ("KNO" in ln) or ("知识" in ln) or ("秘密" in ln) else "foreshadow"
 
+            tgt = _auto_target_ch(ln, n + 3)
             if kind == "foreshadow":
                 item = {
                     "action": "plant",
                     "kind": "foreshadow",
                     "name": name,
-                    "target_ch": n + 3,
+                    "target_ch": tgt,
                     "weight": 2,
                     "plan": ln
                 }
@@ -535,14 +571,14 @@ def _cmd_proposal_auto(book: Path, ch: str, args) -> int:
                     "content": ln,
                     "truth": "",
                     "level": 1,
-                    "target_ch": n + 3
+                    "target_ch": tgt
                 }
             else:
                 item = {
                     "action": "plant",
                     "kind": "knowledge",
                     "secret": name if len(name) > 3 else ln,
-                    "target_ch": n + 3,
+                    "target_ch": tgt,
                     "weight": 2,
                     "note": ln
                 }
@@ -610,6 +646,12 @@ def _cmd_proposal_auto(book: Path, ch: str, args) -> int:
         s = re.sub(r"\*\*", "", s).strip()
         if re.match(r"^[^：:]{1,12}[：:]\s*$", s):
             continue
+        # 剥掉细纲模板的展示性前缀（🎬/📍 + 「内容」「场景」「收束」等标签），
+        # 只留正文。此前会把“🎬 内容：林舟摸进废料场。”整串写进 situation /
+        # synopsis，造成状态字段带装饰符号与标签。
+        s = re.sub(
+            r"^(?:🎬|📍|🔔|⚠️|💡|📌)?\s*(?:内容|场景|收束|章末物理刀口|拍点|节奏|动作)?[：:]\s*",
+            "", s).strip()
         cleaned = re.sub(r"^(?:章末物理刀口|[-·*]*\s*📍\s*\**章末物理刀口卡点\**)[:：]\s*", "", s).strip()
         if cleaned and not cleaned.startswith(("<", "<!--")):
             beats_scenes.append(cleaned)
@@ -674,8 +716,8 @@ def cmd_proposal(args) -> int:
         return ws_gate_code()
     action = getattr(args, "pp_action", None)
     if action not in ("new", "check", "auto", "verify"):
-        print("❌ proposal 需要 new/auto/check/verify 子命令，如: python studio.py proposal verify ch_003")
-        return 2
+        return usage_error("proposal 需要 new/auto/check/verify 子命令，如: python studio.py proposal verify ch_003",
+                           args)
     n = common.chapter_token_to_num(args.chapter)
     if n is None:
         return usage_error(f"无法解析章节号: {args.chapter}", args, chapter=str(args.chapter))
@@ -845,8 +887,7 @@ def cmd_checkpoint(args) -> int:
     if ch_arg:
         ch = _norm_ch(ch_arg)
         if ch is None:
-            print(f"❌ 无法解析章节编号: {ch_arg!r}（示例: 5 或 ch_005）")
-            return 2
+            return usage_error(f"无法解析章节编号: {ch_arg!r}（示例: 5 或 ch_005）", args)
         ch_num = common.chapter_token_to_num(ch)
     else:
         latest = common.latest_chapter_number(book, "final") or common.latest_chapter_number(book, "beats") or 1
@@ -1092,7 +1133,23 @@ def cmd_state(args) -> int:
         else:
             st_data[sub_path] = val
 
-        # 手术刀纠偏与 sync 合并同样持 state 锁，防并发交错撕裂
+        # 手术刀纠偏与 sync 合并同样持 state 锁，防并发交错撕裂。
+        # 写入前先跑完整状态语义闸门（verify_data）：state set 不能绕过提案的
+        # 因果/注册一致性检查（如把未登记实体塞进 present_characters）。
+        # 只拦「本次纠偏新引入」的语义错误，允许在既有污染现场直接修复
+        # （否则 present 已被写脏的书连 location 纠偏都会被旧错误反向卡死）。
+        semantic_errors = []
+        try:
+            data_before = {k: state.load_state(book, k) for k in state.STATE_KEYS}
+        except ValueError as exc:
+            return _fail(f"状态 SSOT 不可读，拒绝纠偏: {exc}", code=1)
+        before_errors = state.verify_data(data_before)
+        data_after = {k: state.load_state(book, k) for k in state.STATE_KEYS}
+        data_after[part_name] = st_data
+        after_errors = state.verify_data(data_after)
+        semantic_errors = [e for e in after_errors if e not in before_errors]
+        if semantic_errors:
+            return _fail("写入被语义闸门拒绝: " + "；".join(semantic_errors[:5]), code=1)
         try:
             with common.file_lock(state.state_dir(book), name=".state.lock"):
                 state.save_state(book, part_name, st_data)
@@ -1378,7 +1435,13 @@ def cmd_milestone(args) -> int:
         try:
             state.save_state(book, "timeline", tl)
         except ValueError as exc:
-            print(f"❌ 写入被结构闸门拒绝: {exc}")
+            # --json 契约：写闸门失败不得向 stdout 打印裸文本。
+            if js:
+                print(json.dumps({"ok": False, "code": "milestone_error",
+                                  "error": f"写入被结构闸门拒绝: {exc}"},
+                                 ensure_ascii=False))
+            else:
+                print(f"❌ 写入被结构闸门拒绝: {exc}")
             return 1
         payload = {"ok": True, "milestone": new_ms}
         if js:

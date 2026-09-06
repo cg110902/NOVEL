@@ -121,6 +121,7 @@ def init_db(book: Path) -> sqlite3.Connection:
         status TEXT,
         summary TEXT,
         aliases TEXT,
+        condition TEXT,
         raw_json TEXT
     );
     """)
@@ -156,6 +157,12 @@ def init_db(book: Path) -> sqlite3.Connection:
         note TEXT
     );
     """)
+    # 索引是可丢弃缓存，但旧 DB 可能缺后续新增列；遇到旧库做原地补列，
+    # 避免 query_character_pov 等只读路径在未强制重建时直接 SQL 报错。
+    _columns = {r["name"] for r in cur.execute("PRAGMA table_info(entities_index)").fetchall()}
+    for col, decl in (("condition", "TEXT"), ("raw_json", "TEXT")):
+        if col not in _columns:
+            cur.execute(f"ALTER TABLE entities_index ADD COLUMN {col} {decl};")
     con.commit()
     return con
 
@@ -222,8 +229,9 @@ def build_or_update_index(book: Path, force_rebuild: bool = False) -> dict:
         aliases_str = ",".join(str(a) for a in (e.get("aliases") or []) if a)
         cur.execute(
             """INSERT OR REPLACE INTO entities_index
-            (name, type, realm, holder, location, charges, max_charges, life_status, status, summary, aliases, raw_json)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);""",
+            (name, type, realm, holder, location, charges, max_charges,
+             life_status, status, summary, aliases, condition, raw_json)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);""",
             (
                 name,
                 e.get("type", "other"),
@@ -236,6 +244,7 @@ def build_or_update_index(book: Path, force_rebuild: bool = False) -> dict:
                 e.get("status", "active"),
                 e.get("summary", ""),
                 aliases_str,
+                e.get("condition"),
                 json.dumps(e, ensure_ascii=False)
             )
         )
@@ -335,7 +344,7 @@ def search_chapters_bm25(book: Path, query: str, limit: int = 15) -> list[dict]:
     if not db_path.is_file():
         build_or_update_index(book)
 
-    con = get_connection(book)
+    con = init_db(book)
     cur = con.cursor()
 
     seg_q = _segment_text(query)
@@ -420,7 +429,9 @@ def query_character_pov(book: Path, name: str) -> dict:
     if not db_path.is_file():
         build_or_update_index(book)
 
-    con = get_connection(book)
+    # 用 init_db 而非 get_connection：缓存库可能由旧版引擎生成、缺后续新增列，
+    # init_db 会做幂等建表 + 补列，避免只读路径直接 SQL 报错。
+    con = init_db(book)
     cur = con.cursor()
 
     # 1. 实体身份与名下资产
@@ -437,8 +448,8 @@ def query_character_pov(book: Path, name: str) -> dict:
     cur.execute("SELECT name, type, charges, max_charges, condition, summary FROM entities_index WHERE holder = ?;", (name,))
     held_items = [dict(r) for r in cur.fetchall()]
 
-    # 2. 角色认知 (cognition)
-    cur.execute("SELECT id, kind, content, since_ch, quote, note FROM cognition_index WHERE character = ?;", (name,))
+    # 2. 角色认知 (cognition)——cognition_index 把 since_ch 存进 chapter 列
+    cur.execute("SELECT id, chapter AS since_ch, kind, content, quote, note FROM cognition_index WHERE character = ?;", (name,))
     cogs = [dict(r) for r in cur.fetchall()]
 
     known_facts = [c for c in cogs if c["kind"] in ("fact", "secret_known")]

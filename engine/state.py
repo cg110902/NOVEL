@@ -470,6 +470,23 @@ def validate_proposal(proposal, expected_chapter: str | None = None) -> tuple[li
                             errors.append(f"entities[{i}].relations[{r_idx}].type 必填且为字符串")
                         if "desc" in rel and not isinstance(rel["desc"], str):
                             errors.append(f"entities[{i}].relations[{r_idx}].desc 必须为字符串")
+        # 同一提案内同名单/别名重复 upsert 目前会被 _merge_entities 静默折叠成一条
+        # （后写覆盖先写），容易让不同 summary/type 的登记数据凭空丢失；改为显式拒收。
+        _ent_names = [str(e.get("name", "")).strip() for e in ents if isinstance(e, dict)]
+        _ent_dups = sorted({n for n in _ent_names if n and _ent_names.count(n) > 1})
+        if _ent_dups:
+            errors.append(f"entities 同提案存在重名实体: {_ent_dups}（请合并为一条 upsert）")
+        _ent_aliases: dict[str, list[str]] = {}
+        for e in ents:
+            if not isinstance(e, dict):
+                continue
+            en = str(e.get("name", "")).strip()
+            for a in (e.get("aliases") or []):
+                if isinstance(a, str) and a.strip():
+                    _ent_aliases.setdefault(a.strip(), []).append(en)
+        _alias_dups = sorted((a, ns) for a, ns in _ent_aliases.items() if len(ns) > 1)
+        if _alias_dups:
+            errors.append(f"entities 同提案别名被多实体占用: {_alias_dups}")
 
     lines = proposal.get("lines")
     if isinstance(lines, list):
