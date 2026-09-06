@@ -49,6 +49,35 @@ class TestMigrations:
         with pytest.raises(ValueError):
             migrations.ensure_state_version(book)
 
+    def test_v2_to_v3_adds_empty_locked(self, book):
+        import json
+        # Downgrade marker to v2 and remove the v3-only locked table.
+        common.dump_json(migrations.version_path(book), {"version": 2})
+        (book / "state" / "locked.json").unlink()
+        result = migrations.ensure_state_version(book)
+        assert result["migrated"]
+        assert migrations.read_version(book) == migrations.CURRENT_STATE_VERSION
+        assert (book / "state" / "locked.json").is_file()
+        locked = state.load_state(book, "locked")
+        assert locked.get("entries") == []
+
+    def test_v3_to_v4_adds_cognition_and_milestones(self, book):
+        import json
+        # Downgrade marker to v3, remove v4 cognition table and timeline milestones.
+        common.dump_json(migrations.version_path(book), {"version": 3})
+        (book / "state" / "cognition.json").unlink()
+        tl_path = book / "state" / "timeline.json"
+        tl = json.loads(tl_path.read_text(encoding="utf-8"))
+        tl.pop("milestones", None)
+        tl_path.write_text(json.dumps(tl, ensure_ascii=False), encoding="utf-8")
+
+        result = migrations.ensure_state_version(book)
+        assert result["migrated"]
+        assert migrations.read_version(book) == migrations.CURRENT_STATE_VERSION
+        assert (book / "state" / "cognition.json").is_file()
+        loaded = state.load_state(book, "timeline")
+        assert loaded.get("milestones") == []
+
 
 class TestSnapshot:
     def test_create_list(self, book):

@@ -55,19 +55,14 @@ def _prev_final_tail(book: Path, ch_num: int, cur_vol: str | None = None) -> str
         return ""
     cur_vol_num = 0
     if cur_vol:
-        m = common.VOL_RE.search(cur_vol)
+        m = common.VOL_RE.fullmatch(str(cur_vol))
         if m:
             cur_vol_num = int(m.group(1))
     target = (cur_vol_num, ch_num)
     prev = None
     # find_chapter_files 已按 natural_chapter_sort_key=(卷,章,版本,名) 升序
     for f in finals:
-        fvol = 0
-        for part in f.parts:
-            m = common.VOL_RE.search(part)
-            if m:
-                fvol = int(m.group(1))
-                break
+        fvol = common.volume_of_path(f)
         fch = common.chapter_number_from_name(f.name) or 0
         if (fvol, fch) < target:
             prev = f

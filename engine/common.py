@@ -203,12 +203,7 @@ def file_matches_chapter(path: Path | str, target: object) -> bool:
         m_vol = VOL_RE.search(target)
         if m_vol:
             want_vol = int(m_vol.group(1))
-            got_vol = 0
-            for part in p.parts:
-                m = VOL_RE.search(part)
-                if m:
-                    got_vol = int(m.group(1))
-                    break
+            got_vol = volume_of_path(p)
             if want_vol != got_vol:
                 return False
     return True
@@ -220,14 +215,29 @@ def chapter_version_from_name(name: str) -> int:
     return int(m.group(1)) if m else 0
 
 
+def volume_of_path(path: Path) -> int:
+    """从稿件/细纲路径提取卷号。
+
+    只在 `manuscript/` 或 `outlines/` 之后的路径部件中找卷号，并且要求该部件
+    本身就是 vol_XX / volXX（fullmatch），避免把工作区路径（例如目录名
+    ``test_vol0``）误认成卷 0——此前用 ``VOL_RE.search(part)`` 会在任意包含
+    ``vol+数字`` 的祖先部件上命中，导致多卷/跨卷匹配与排序串卷。
+    """
+    seen_area = False
+    for part in Path(path).parts:
+        if part in ("manuscript", "outlines"):
+            seen_area = True
+            continue
+        if seen_area:
+            m = VOL_RE.fullmatch(part)
+            if m:
+                return int(m.group(1))
+    return 0
+
+
 def natural_chapter_sort_key(path: Path) -> tuple[int, int, int, str]:
     """(卷号, 章号, 稿版本, 名字)：跨目录排序的确定性键（数字版本，v10 > v2）。"""
-    vol = 0
-    for part in path.parts:
-        m = VOL_RE.search(part)
-        if m:
-            vol = int(m.group(1))
-            break
+    vol = volume_of_path(path)
     return (vol, chapter_number_from_name(path.name) or 0,
             chapter_version_from_name(path.name), path.name)
 
