@@ -63,3 +63,28 @@ class TestJsonEnvelope:
                 except Exception as exc:
                     raise AssertionError(f"{cmd}: stdout not JSON: {p.stdout[:200]!r} ({exc})")
                 assert isinstance(parsed, (dict, list))
+
+
+# Error paths that should always carry a structured {ok:false, code} envelope when --json.
+ERROR_MATRIX = [
+    (["critic", "ch_001"], 1),
+    (["critic", "ch_zzz"], 2),
+    (["proposal", "check", "ch_001"], 1),
+    (["proposal", "verify", "ch_001"], 1),
+    (["proposal", "auto", "ch_001"], 1),
+    (["sync", "ch_001"], 1),
+    (["state", "get", "entities.不存在.realm"], 1),
+    (["milestone", "add", "--title", "x", "--target-ch", "0"], 2),
+    (["ledger", "pool", "add", "1bad", "--name", "燃料", "--unit", "升", "--initial", "10"], 2),
+]
+
+
+class TestJsonErrorEnvelope:
+    def test_error_payloads_have_ok_and_code(self, ws, book):
+        for args, rc in ERROR_MATRIX:
+            p, data = ws.run_json(args + ["-w", str(book), "--json"])
+            assert p.returncode == rc, f"{args}: rc={p.returncode} stdout={p.stdout!r}"
+            assert data.get("ok") is False, f"{args}: {data}"
+            assert data.get("code"), f"{args}: missing code in {data}"
+            assert data.get("error"), f"{args}: missing error in {data}"
+

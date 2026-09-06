@@ -103,7 +103,8 @@ def cmd_sync(args) -> int:
     def _fail(msg: str, code: int = 1, hint: str = "", **extra) -> int:
         """统一失败出口：JSON 模式输出结构化错误（ P3-9），文本模式保留人话+修复指引。"""
         if js:
-            print(json.dumps({"chapter": ch, "error": msg, **({"hint": hint} if hint else {}), **extra},
+            print(json.dumps({"chapter": ch, "ok": False, "code": "sync_error",
+                              "error": msg, **({"hint": hint} if hint else {}), **extra},
                              ensure_ascii=False))
         else:
             print(f"❌ {msg}")
@@ -319,7 +320,8 @@ def cmd_sync(args) -> int:
 def _cmd_proposal_check(book: Path, ch: str, args) -> int:
     def _fail(msg: str) -> int:
         if getattr(args, "json", False):
-            print(json.dumps({"chapter": ch, "error": msg}, ensure_ascii=False))
+            print(json.dumps({"chapter": ch, "ok": False, "code": "proposal_error",
+                              "error": msg}, ensure_ascii=False))
         else:
             print(f"❌ {msg}")
         return 1
@@ -402,7 +404,8 @@ def _cmd_proposal_check(book: Path, ch: str, args) -> int:
 def _cmd_proposal_verify(book: Path, ch: str, args) -> int:
     def _fail(msg: str) -> int:
         if getattr(args, "json", False):
-            print(json.dumps({"chapter": ch, "error": msg}, ensure_ascii=False))
+            print(json.dumps({"chapter": ch, "ok": False, "code": "proposal_error",
+                              "error": msg}, ensure_ascii=False))
         else:
             print(f"❌ {msg}")
         return 1
@@ -1020,7 +1023,8 @@ def cmd_state(args) -> int:
     def _fail(msg: str, code: int = 1) -> int:
         """state 手术刀错误出口：--json 一律出 JSON 信封（与 state set 成功信封同契约）。"""
         if js:
-            print(json.dumps({"ok": False, "error": msg}, ensure_ascii=False))
+            print(json.dumps({"ok": False, "code": "state_error", "error": msg},
+                             ensure_ascii=False))
         else:
             print(f"❌ {msg}")
         return code
@@ -1191,9 +1195,7 @@ def _ledger_pool(book, args, _fail=None) -> int:
                 print(f"❌ {msg}")
             return code
     if getattr(args, "pool_action", None) != "add":
-        msg = "未知 pool 动作（合法: add）"
-        print(json.dumps({"ok": False, "error": msg}, ensure_ascii=False) if js else f"❌ {msg}")
-        return 2
+        return _fail("未知 pool 动作（合法: add）", code=2)
     pid = str(getattr(args, "pool_id", "") or "").strip()
     name = str(getattr(args, "name", "") or "").strip()
     unit = str(getattr(args, "unit", "") or "").strip()
@@ -1201,18 +1203,12 @@ def _ledger_pool(book, args, _fail=None) -> int:
     # 文档字符串自述的「initial 必填整数」相矛盾，也与提案端新规则不一致。
     _raw_initial = getattr(args, "initial", None)
     if _raw_initial is None:
-        msg = "池的 --initial 为必填（期初余额；省略会被当成 0 从而污染账本基准）"
-        print(json.dumps({"ok": False, "error": msg}, ensure_ascii=False) if js else f"❌ {msg}")
-        return 2
+        return _fail("池的 --initial 为必填（期初余额；省略会被当成 0 从而污染账本基准）", code=2)
     initial = int(_raw_initial)
     if not _POOL_ID_RE.match(pid):
-        msg = f"池 ID {pid!r} 非法：须为 2~32 位小写字母/数字/下划线，且以字母开头（如 lamp_ash）"
-        print(json.dumps({"ok": False, "error": msg}, ensure_ascii=False) if js else f"❌ {msg}")
-        return 2
+        return _fail(f"池 ID {pid!r} 非法：须为 2~32 位小写字母/数字/下划线，且以字母开头（如 lamp_ash）", code=2)
     if not name or not unit:
-        msg = "池的 --name 与 --unit 均为必填（显示名与计量单位）"
-        print(json.dumps({"ok": False, "error": msg}, ensure_ascii=False) if js else f"❌ {msg}")
-        return 2
+        return _fail("池的 --name 与 --unit 均为必填（显示名与计量单位）", code=2)
     try:
         led = state.load_state(book, "ledger")
     except ValueError as exc:
@@ -1361,7 +1357,11 @@ def cmd_milestone(args) -> int:
     try:
         tl = state.load_state(book, "timeline")
     except (ValueError, OSError) as exc:
-        print(f"❌ 时间线不可读: {exc}")
+        if js:
+            print(json.dumps({"ok": False, "code": "milestone_error",
+                              "error": f"时间线不可读: {exc}"}, ensure_ascii=False))
+        else:
+            print(f"❌ 时间线不可读: {exc}")
         return 1
 
     milestones = tl.setdefault("milestones", [])
@@ -1392,7 +1392,8 @@ def cmd_milestone(args) -> int:
         title = str(getattr(args, "title", "") or "").strip()
         if not title:
             msg = "里程碑的 --title 为必填"
-            print(json.dumps({"ok": False, "error": msg}, ensure_ascii=False) if js else f"❌ {msg}")
+            print(json.dumps({"ok": False, "code": "milestone_error", "error": msg},
+                             ensure_ascii=False) if js else f"❌ {msg}")
             return 2
 
         target_ch_raw = getattr(args, "target_ch", None)
@@ -1404,7 +1405,8 @@ def cmd_milestone(args) -> int:
                     raise ValueError()
             except (TypeError, ValueError):
                 msg = "--target-ch 必须为 ≥1 的正整数"
-                print(json.dumps({"ok": False, "error": msg}, ensure_ascii=False) if js else f"❌ {msg}")
+                print(json.dumps({"ok": False, "code": "milestone_error", "error": msg},
+                                 ensure_ascii=False) if js else f"❌ {msg}")
                 return 2
 
         mid = str(getattr(args, "id", "") or "").strip()
@@ -1420,7 +1422,8 @@ def cmd_milestone(args) -> int:
 
         if any(isinstance(m, dict) and m.get("id") == mid for m in milestones):
             msg = f"里程碑 ID {mid} 已存在"
-            print(json.dumps({"ok": False, "error": msg}, ensure_ascii=False) if js else f"❌ {msg}")
+            print(json.dumps({"ok": False, "code": "milestone_error", "error": msg},
+                             ensure_ascii=False) if js else f"❌ {msg}")
             return 1
 
         desc = str(getattr(args, "desc", "") or "").strip()
@@ -1454,6 +1457,7 @@ def cmd_milestone(args) -> int:
 
     else:
         msg = f"未知 milestone 动作: {action}（合法: list / add）"
-        print(json.dumps({"ok": False, "error": msg}, ensure_ascii=False) if js else f"❌ {msg}")
+        print(json.dumps({"ok": False, "code": "milestone_error", "error": msg},
+                         ensure_ascii=False) if js else f"❌ {msg}")
         return 2
 

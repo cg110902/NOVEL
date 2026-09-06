@@ -752,7 +752,8 @@ def cmd_critic(args) -> int:
     n = common.chapter_token_to_num(ch_arg)
     if not n:
         if getattr(args, "json", False):
-            print(json.dumps({"chapter": str(ch_arg), "error": f"无法解析章节号: {ch_arg!r}",
+            print(json.dumps({"chapter": str(ch_arg), "ok": False,
+                              "error": f"无法解析章节号: {ch_arg!r}",
                               "code": "usage"}, ensure_ascii=False))
         else:
             print(f"❌ 无法解析章节号: {ch_arg!r}")
@@ -786,7 +787,8 @@ def cmd_critic(args) -> int:
     final_files = common.find_chapter_files(book, "final", n)
     if not final_files:
         if getattr(args, "json", False):
-            print(json.dumps({"chapter": tok, "error": f"未找到 {tok} 的定稿（final），无法进行读者评测（需先由 Editor 定稿）",
+            print(json.dumps({"chapter": tok, "ok": False,
+                              "error": f"未找到 {tok} 的定稿（final），无法进行读者评测（需先由 Editor 定稿）",
                               "code": "no_final"}, ensure_ascii=False))
         else:
             print(f"❌ 未找到 {tok} 的定稿（final），无法进行读者评测（需先由 Editor 定稿）")
