@@ -10,7 +10,7 @@ from pathlib import Path
 
 from .. import checks, common, evidence, snapshot, state
 
-from ._shared import _norm_ch, ws_gate, ws_gate_code
+from ._shared import _norm_ch, usage_error, ws_gate, ws_gate_code
 
 
 # ---------------------------------------------------------------------------
@@ -89,7 +89,7 @@ def parse_audit_frontmatter(text: str) -> dict[str, Any] | None:
 
 
 def cmd_sync(args) -> int:
-    book = ws_gate(args)  #  P5：--json 错误路径也出 JSON 信封
+    book = ws_gate(args)  # --json 错误路径也出 JSON 信封
     if book is None:
         return ws_gate_code()
     ch = _norm_ch(args.chapter)
@@ -152,7 +152,7 @@ def cmd_sync(args) -> int:
                      hint=f"修改提案中的 `\"chapter\": \"{ch}\"` 字段使其与文件名完全一致")
 
     # 引文柔性接地 + Stage 5 机械对照电池（均为 advisory，只出候选提示、绝不阻断）
-    #  P1-2：--json 模式下 advisory 不再打印到 stdout 污染 JSON（数据本就在 payload 中）
+    # --json 模式下 advisory 不再打印到 stdout 污染 JSON（数据本就在 payload 中）
     quote_notes = checks.validate_quotes(book, ch, proposal_data)
     battery = checks.verify_candidates(book, ch, proposal_data)
     if not js:
@@ -239,7 +239,7 @@ def cmd_sync(args) -> int:
         common.debug(f"verify_state（状态体检，含前置因果闸门）: {len(verify_errors)} 错误"
                      + (f"（{verify_errors[0]}）" if verify_errors else ""))
         if not verify_errors:
-            #  P2：封存时刻对当章 final 盖章（漂移检测的事实基线）
+            # 封存时刻对当章 final 盖章（漂移检测的事实基线）
             _stamp_final_hash(book, ch)
             try:
                 snap_ok, snap_msg = snapshot.create_snapshot(book, f"{ch}_done")
@@ -253,7 +253,7 @@ def cmd_sync(args) -> int:
                "verify_errors": verify_errors, "snapshot": {"ok": snap_ok, "name": snap_msg}
                if not args.dry_run and overall["failed"] == 0 and applied_now > 0 else None}
     if verify_errors and not args.dry_run:
-        #  P3-15：合并已落盘但体检失败时的最小恢复指引（此前无任何出口提示）
+        # 合并已落盘但体检失败时的最小恢复指引（此前无任何出口提示）
         payload["recovery"] = ("状态已合并但体检未通过、快照未封存：修正数据后用 "
                                "`python studio.py snapshot create <name>` 手动补拍；"
                                "或 `python studio.py snapshot rollback <上一封存点>` 回退后修复提案重提。")
@@ -321,7 +321,7 @@ def _cmd_proposal_check(book: Path, ch: str, args) -> int:
             proposal_path = cand
             break
     if proposal_path is None:
-        #  P3：已合并归档的章不再误报「在途提案缺失」，给出准确指向
+        # 已合并归档的章不再误报「在途提案缺失」，给出准确指向
         try:
             merged = state.load_state(book, "synopsis").get("chapters", {}).get(ch)
         except (ValueError, OSError):
@@ -370,7 +370,7 @@ def _cmd_proposal_check(book: Path, ch: str, args) -> int:
         if facts.get("due_lines"):
             dl = "、".join(f"{d['id']}(target ch_{d['target_ch']:03d})" for d in facts["due_lines"])
             print(f"   到期未结线: {dl}")
-            #  P3-6：分列「推进/收束」与「新建」，避免把「本章只 plant 新线」显示成「（无）」
+            # 分列「推进/收束」与「新建」，避免把「本章只 plant 新线」显示成「（无）」
             ops = facts.get("lines_non_plant_ops_in_proposal") or []
             plants = facts.get("lines_plant_ops_in_proposal") or []
             print(f"   提案 lines 区操作（推进/收束）: {'、'.join(ops) if ops else '（无）'}")
@@ -404,7 +404,7 @@ def _cmd_proposal_verify(book: Path, ch: str, args) -> int:
             proposal_path = cand
             break
     if proposal_path is None:
-        #  P3：已合并归档的章不再误报「在途提案缺失」，给出准确指向
+        # 已合并归档的章不再误报「在途提案缺失」，给出准确指向
         try:
             merged = state.load_state(book, "synopsis").get("chapters", {}).get(ch)
         except (ValueError, OSError):
@@ -494,7 +494,7 @@ def _cmd_proposal_auto(book: Path, ch: str, args) -> int:
             name_m = re.search(r"[(（](.+?)[)）]", ln)
             name = name_m.group(1) if name_m else (m.group(0) if m else "新线索")
             lid = m.group(0) if m else None
-            #  P3-14：kind 判定优先以 ID 前缀为准（此前「伏笔」字样优先于 KNO-XXX 前缀，
+            # kind 判定优先以 ID 前缀为准（此前「伏笔」字样优先于 KNO-XXX 前缀，
             # 会把「KNO-003 伏笔：…」错配为 foreshadow）
             if lid and lid.startswith("GUN-"):
                 kind = "foreshadow"
@@ -582,7 +582,7 @@ def _cmd_proposal_auto(book: Path, ch: str, args) -> int:
         s = ln.strip().lstrip("-*· ").strip()
         if not s or s.startswith(("#", "<")):
             continue
-        #  P2-12：上面这行的 lstrip("-*· ") 会把行首的 `**` 一并吃掉
+        # 上面这行的 lstrip("-*· ") 会把行首的 `**` 一并吃掉
         # （"- **内容**：x" → "内容**：x"），于是紧随其后的 s.startswith("**内容")
         # 永远不可能命中——五种写法实测全部 False，该分支自始即是死代码
         # （把 **内容** 放宽成 **内容 也同样不命中）。
@@ -648,7 +648,7 @@ def _cmd_proposal_auto(book: Path, ch: str, args) -> int:
 
 
 def cmd_proposal(args) -> int:
-    book = ws_gate(args)  #  P5：--json 错误路径也出 JSON 信封
+    book = ws_gate(args)  # --json 错误路径也出 JSON 信封
     if book is None:
         return ws_gate_code()
     action = getattr(args, "pp_action", None)
@@ -657,8 +657,7 @@ def cmd_proposal(args) -> int:
         return 2
     n = common.chapter_token_to_num(args.chapter)
     if n is None:
-        print(f"❌ 无法解析章节号: {args.chapter}")
-        return 2
+        return usage_error(f"无法解析章节号: {args.chapter}", args, chapter=str(args.chapter))
     ch = f"ch_{n:03d}"
     if action == "check":
         return _cmd_proposal_check(book, ch, args)
@@ -671,7 +670,7 @@ def cmd_proposal(args) -> int:
         print(f"❌ {ch} 已有在途提案（state/inbox/{ch}.json）——先处理再建新骨架")
         return 1
     if (inbox / "failed" / f"{ch}.json").is_file():
-        #  P3-13：failed/ 同章旧提案与新建骨架并存易误判（check/verify 双查两处）
+        # failed/ 同章旧提案与新建骨架并存易误判（check/verify 双查两处）
         print(f"⚠️ {ch} 在 failed/ 存在失败提案（state/inbox/failed/{ch}.json）——"
               "sync 将优先取 inbox 新骨架；建议核对失败原因后删除或改名旧提案，避免双份混淆")
     from datetime import datetime
@@ -703,7 +702,7 @@ def cmd_proposal(args) -> int:
 # snapshot
 # ---------------------------------------------------------------------------
 def cmd_snapshot(args) -> int:
-    book = ws_gate(args)  #  P5：--json 错误路径也出 JSON 信封
+    book = ws_gate(args)  # --json 错误路径也出 JSON 信封
     if book is None:
         return ws_gate_code()
     action = getattr(args, "snap_action", None)
@@ -755,7 +754,7 @@ def cmd_snapshot(args) -> int:
             trash = common.workspace_root() / ".trash"
             if base:
                 def _quarantine(f, _book=book):
-                    #  P2-5：清理的稿件/细纲/注记不再直接 unlink，而是移入
+                    # 清理的稿件/细纲/注记不再直接 unlink，而是移入
                     # workspace/.trash/（快照只含 state 六表，稿件一旦误删不可恢复）
                     nonlocal removed
                     try:
@@ -803,7 +802,7 @@ def cmd_snapshot(args) -> int:
 
 
 def cmd_checkpoint(args) -> int:
-    book = ws_gate(args)  #  P5：--json 错误路径也出 JSON 信封
+    book = ws_gate(args)  # --json 错误路径也出 JSON 信封
     if book is None:
         return ws_gate_code()
 
@@ -933,7 +932,7 @@ def cmd_checkpoint(args) -> int:
 
 
 def cmd_state(args) -> int:
-    book = ws_gate(args)  #  P5：--json 错误路径也出 JSON 信封
+    book = ws_gate(args)  # --json 错误路径也出 JSON 信封
     if book is None:
         return ws_gate_code()
 
@@ -1033,7 +1032,7 @@ def cmd_state(args) -> int:
                                 if ":" in p:
                                     pk, pv = p.split(":", 1)
                                     pv = pv.strip().strip("'\"")
-                                    #  P3-12：宽松解析的内层纯数字转 int（此前静默字符串化，
+                                    # 宽松解析的内层纯数字转 int（此前静默字符串化，
                                     # 对 int 字段纠偏会被写闸门以「类型应为 int」拒回）
                                     if re.fullmatch(r"-?\d+", pv):
                                         pv = int(pv)
@@ -1058,7 +1057,7 @@ def cmd_state(args) -> int:
         else:
             st_data[sub_path] = val
 
-        #  P2-10：手术刀纠偏与 sync 合并同样持 state 锁，防并发交错撕裂
+        # 手术刀纠偏与 sync 合并同样持 state 锁，防并发交错撕裂
         try:
             with common.file_lock(state.state_dir(book), name=".state.lock"):
                 state.save_state(book, part_name, st_data)
@@ -1106,7 +1105,7 @@ def _ledger_pool(book, args, _fail=None) -> int:
     pid = str(getattr(args, "pool_id", "") or "").strip()
     name = str(getattr(args, "name", "") or "").strip()
     unit = str(getattr(args, "unit", "") or "").strip()
-    #  P0-3：口径与提案端一致——期初必填。原先这里 `or 0` 静默兜底，与本函数
+    # 口径与提案端一致——期初必填。原先这里 `or 0` 静默兜底，与本函数
     # 文档字符串自述的「initial 必填整数」相矛盾，也与提案端新规则不一致。
     _raw_initial = getattr(args, "initial", None)
     if _raw_initial is None:
@@ -1152,7 +1151,7 @@ def _ledger_pool(book, args, _fail=None) -> int:
 
 
 def cmd_ledger(args) -> int:
-    book = ws_gate(args)  #  P5：--json 错误路径也出 JSON 信封
+    book = ws_gate(args)  # --json 错误路径也出 JSON 信封
     if book is None:
         return ws_gate_code()
     js = bool(getattr(args, "json", False))
@@ -1185,7 +1184,7 @@ def cmd_ledger(args) -> int:
                 running[pid] = int(p.get("initial", 0))
             except (TypeError, ValueError):
                 return [], [], f"资源池 {pid} initial 非整数，拒绝重算（先用 state set 修复 initial）"
-        #  P0-1：重算按「章号」排序（同章内保持原有先后），否则后追加的他章流水
+        # 重算按「章号」排序（同章内保持原有先后），否则后追加的他章流水
         # 会排在时间序之后，balance_after 与章节编年史互相矛盾却仍被判定「自洽」。
         txs = led.get("transactions") or []
         order = sorted(range(len(txs)), key=lambda i: (common.chapter_token_to_num(
@@ -1218,7 +1217,7 @@ def cmd_ledger(args) -> int:
                 p["current"] = running[pid]
         return tx_fixed, pool_fixed, None
 
-    #  P2-10：账本重算的「读→算→写」全程持 state 锁——只锁写的话，
+    # 账本重算的「读→算→写」全程持 state 锁——只锁写的话，
     # recompute 基于旧快照的重算结果会静默覆盖 sync 并发提交的新流水
     with common.file_lock(state.state_dir(book), name=".state.lock"):
         led = state.load_state(book, "ledger")

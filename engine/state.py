@@ -51,7 +51,7 @@ _LINE_KIND_SPEC = {
                          "update_fields": {"status", "target_ch", "content", "truth", "level", "parties", "requires"}},
     "knowledge": {"id_re": KNO_ID_RE, "prefix": "KNO",
                   "statuses": ("Concealed", "Revealed"), "resolved": "Revealed",
-                  #  P17：holders = 知情圈（知情方实体名/别名列表，选填）——
+                  # holders = 知情圈（知情方实体名/别名列表，选填）——
                   # POV 推导对 holders 内角色不再误标「不应知情」，防吃书
                   "plant_fields": {"secret", "target_ch", "plant_ch", "note", "weight", "requires", "holders"},
                   "plant_need": ("secret",), "update_str": ("secret", "note"),
@@ -378,7 +378,7 @@ def validate_proposal(proposal, expected_chapter: str | None = None) -> tuple[li
         if k.startswith("candidate_"):
             errors.append(f"{k}: 候选字段仅供复核，禁止直接进入合并")
     null_hits: list[str] = []
-    for sec in ("current", "entities", "lines", "timeline", "ledger", "synopsis", "locked", "locked_candidates", "cognition", "cognition_delta", "consequences"):
+    for sec in ("current", "entities", "lines", "timeline", "ledger", "synopsis", "locked", "locked_candidates", "cognition", "cognition_delta"):
         if proposal.get(sec) is not None:
             _scan_nulls(proposal[sec], sec, null_hits)
     errors.extend(null_hits[:10])
@@ -655,7 +655,7 @@ def validate_proposal(proposal, expected_chapter: str | None = None) -> tuple[li
                     if not isinstance(p, dict):
                         errors.append(f"ledger.pools[{pid}] 必须为对象")
                         continue
-                    #  P0-3：资源池此前只校验「字段类型」，不校验「字段名」也不校验
+                    # 资源池此前只校验「字段类型」，不校验「字段名」也不校验
                     # 「必填与否」，与同一分区内 transactions 的严格度不一致——后者对未知键
                     # 一律拒收。后果实测：把 initial 打成 intial（探针 E）会被静默接受，
                     # 起始余额默默落为 0，账本从源头被污染且全程无任何提示。
@@ -705,7 +705,7 @@ def validate_proposal(proposal, expected_chapter: str | None = None) -> tuple[li
                     errors.append(f"ledger.transactions[{i}]: type=expense 但 delta={delta}（支出必须为负数）")
             if t.get("chapter") is not None and not re.fullmatch(r"ch_\d{3,}", str(t["chapter"])):
                 errors.append(f"ledger.transactions[{i}].chapter 须匹配 ch_NNN")
-            #  P0-1：跨章账本注入闸——流水只能记在提案所属章，禁止改写其他章的账。
+            # 跨章账本注入闸——流水只能记在提案所属章，禁止改写其他章的账。
             # 既有流水的修订走 ledger recompute / 显式修订通道，不走新提案追加。
             if (t.get("chapter") is not None and expected_chapter
                     and re.fullmatch(r"ch_\d{3,}", str(t["chapter"]))
@@ -972,7 +972,15 @@ def _merge_lines(state: dict, items: list[dict], ch_num: int, rep: dict) -> None
         arr = buckets[kind]
         idx = _index_by(arr, "id")
         if action == "plant":
-            gid = g.get("id") or _next_id(arr, "id", spec["prefix"])
+            gid = g.get("id")
+            if not gid:
+                # 无显式 ID 时先做内容指纹查重，命中则复用既有 ID（幂等重放保护）
+                for eid, eent in idx.items():
+                    if _same_line_content(kind, eent, g, ch_num):
+                        gid = eid
+                        break
+            if not gid:
+                gid = _next_id(arr, "id", spec["prefix"])
             if gid in idx:
                 # 幂等重放保护：内容逐字段一致 = 崩溃/归档后重放，跳过而非拒收
                 if _same_line_content(kind, idx[gid], g, ch_num):
@@ -1216,7 +1224,9 @@ def _tx_replay_key(t: dict, ch: str) -> tuple:
         delta = int(t["delta"])
     except (ValueError, TypeError):
         return ("__invalid__",)
-    return (str(t.get("chapter") or ch), str(t.get("pool")), delta,
+    tx_ch = t.get("chapter")
+    chapter_key = str(tx_ch) if tx_ch else "__legacy__"
+    return (chapter_key, str(t.get("pool")), delta,
             str(t.get("type") or ("income" if delta >= 0 else "expense")),
             str(t.get("subject", "")), str(t.get("counterparty") or ""), str(t.get("note") or ""))
 
@@ -1349,7 +1359,7 @@ def _merge_synopsis(state: dict, patch: dict, ch: str, rep: dict) -> None:
         chs = state.setdefault("chapters", {})
         ent = chs.get(c)
         if ent is None:
-            #  P21：跨章修订通道只认已登记章——指向未注册章整案报错，
+            # 跨章修订通道只认已登记章——指向未注册章整案报错，
             # 不再静默 no-op / 悄悄建占位（修订意图丢失无从追溯）
             rep["errors"].append(
                 f"synopsis.chapters.{c} 无既有梗概（跨章修订通道仅支持修订已登记章节；"
@@ -1434,13 +1444,9 @@ def _merge_cognition(state: dict, patch: list, ch: str, rep: dict) -> None:
         iid = item.get("id")
         action = item.get("action", "plant")
         if not iid:
-            max_id += 1
-            iid = f"COG-{max_id:03d}"
             char = str(item.get("character", "")).strip()
             content = str(item.get("learned") or item.get("doubted") or item.get("misread") or item.get("content") or "").strip()
             kind = "fact" if item.get("learned") else ("suspicion" if item.get("doubted") else ("misunderstanding" if item.get("misread") else "fact"))
-            quote = str(item.get("quote") or "").strip()
-            note = str(item.get("note") or "").strip()
             if not char or not content:
                 # 空认知条目（character 之外的字段全缺/全空）不落盘——静默吞掉会让
                 # 主控以为已登记，实际查无此条。显式警告后跳过，绝不写空行。
@@ -1448,6 +1454,21 @@ def _merge_cognition(state: dict, patch: list, ch: str, rep: dict) -> None:
                     f"🧠 cognition 条目缺内容（character={char or '∅'}），按无效跳过——"
                     "learned/doubted/misread/content 至少提供一个非空值")
                 continue
+            # 内容指纹去重：崩溃重放/归档重提时同一认知条目会再次出现，
+            # 但因无显式 ID 会生成新 COG-### → 重复认知条目。
+            # 以 (character, kind, content) 为指纹查既有条目，命中则 upsert。
+            existing = next((e for e in entries
+                             if isinstance(e, dict)
+                             and e.get("character") == char
+                             and e.get("kind") == kind
+                             and e.get("content") == content), None)
+            if existing:
+                iid = existing["id"]
+            else:
+                max_id += 1
+                iid = f"COG-{max_id:03d}"
+            quote = str(item.get("quote") or "").strip()
+            note = str(item.get("note") or "").strip()
             new_entry = {
                 "id": iid,
                 "character": char,
@@ -1458,9 +1479,13 @@ def _merge_cognition(state: dict, patch: list, ch: str, rep: dict) -> None:
             }
             if note:
                 new_entry["note"] = note
-            entries.append(new_entry)
-            entry_map[iid] = new_entry
-            rep["updated"].append(f"🧠 新增角色认知 {iid}「{char}」（{content[:20]}…）")
+            if existing:
+                existing.update(new_entry)
+                rep["updated"].append(f"🧠 角色认知 {iid} 已更新「{char}」（{content[:20]}…）")
+            else:
+                entries.append(new_entry)
+                entry_map[iid] = new_entry
+                rep["updated"].append(f"🧠 新增角色认知 {iid}「{char}」（{content[:20]}…）")
             continue
 
         if not COG_ID_RE.match(str(iid)):
@@ -1507,7 +1532,7 @@ def _merge_proposal_into(data: dict, proposal: dict, ch, ch_num, rep: dict) -> N
         _merge_current(data["current"], proposal["current"], rep)
     if proposal.get("entities"):
         _merge_entities(data["entities"], proposal["entities"], rep)
-        #  P22：退役与同案在场冲突 → 自动从 present 剔除并醒目提示
+        # 退役与同案在场冲突 → 自动从 present 剔除并醒目提示
         # （闪回/补叙章确需在场：请先在同案把该实体 status 改回 active 再声明 present）
         pcs = data["current"].get("present_characters")
         if pcs:
@@ -1540,12 +1565,6 @@ def _merge_proposal_into(data: dict, proposal: dict, ch, ch_num, rep: dict) -> N
         _merge_cognition(data["cognition"], cog_patch, ch, rep)
     if proposal.get("locked_candidates"):
         rep["updated"].append(f"🔒 记录 {len(proposal['locked_candidates'])} 条不可逆事实提名（待主控审定入账）")
-    if proposal.get("consequences"):
-        #  consequences 为历史遗留分区：只校验、无落盘目标（无对应状态表）。为避免
-        # 提案作者误以为因果存根已持久化，合并时显式降级提示（不静默吞掉，也不硬拒收）。
-        rep["warnings"].append(
-            f"⚠️ consequences 分区（{len(proposal['consequences'])} 条）不持久化：因果后果请改登记为 "
-            "cognition_delta（doubted/misread）或 timeline 事件，本分区内容仅提示、未落盘")
 
 
 def apply_proposal(book: Path, proposal: dict, expected_chapter: str | None = None,
@@ -1635,6 +1654,11 @@ def apply_proposal(book: Path, proposal: dict, expected_chapter: str | None = No
     newly_created: list[Path] = [] if existed_marker else [marker_path]
 
     try:
+        # 写入时序：状态文件先写、幂等登记簿后写。
+        # 崩溃窗口 = 状态已写但登记簿未写 → 重启后提案被重放。
+        # 安全前提：所有 _merge_* 函数对同一提案的重放须幂等
+        # （transactions: _tx_replay_key 去重；cognition: 内容指纹去重；
+        #  lines: _same_line_content 去重；entities/timeline/locked: by-key upsert）。
         for key in STATE_KEYS:
             save_state(book, key, data[key])
         marker[op] = proposal_hash
@@ -1899,14 +1923,14 @@ def _prereq_errors(lines: dict) -> list[str]:
 
 def verify_data(data: dict[str, dict]) -> list[str]:
     errors: list[str] = []
-    for sec in ("current", "entities", "lines", "timeline", "ledger", "locked"):
+    for sec in STATE_KEYS:
         if sec in data and isinstance(data[sec], dict):
             p_errors = models.validate_with_model(sec, data[sec], prefix=sec)
             for pe in p_errors:
                 if pe not in errors:
                     errors.append(pe)
 
-    #  P20：前置因果闸门并入写闸门——sync 合并时即拦截闭环/未决前置，
+    # 前置因果闸门并入写闸门——sync 合并时即拦截闭环/未决前置，
     # 不再等独立 check 才暴露（verify_state 的 sync「状态体检」同源覆盖）
     if isinstance(data.get("lines"), dict):
         errors.extend(_prereq_errors(data["lines"]))

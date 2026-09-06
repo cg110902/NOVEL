@@ -42,6 +42,31 @@ _STOP_WORDS = {
     "此时", "此刻", "当下", "只见", "只见那", "不知", "心中", "眼中", "手里", "身上"
 }
 
+# 死者"以活人身份发言/行动"的判定用词。用于替代原先过宽的「本行含任意左引号」判据。
+_SPEECH_VERBS = ("道", "说道", "答道", "问道", "喝道", "喊道", "冷笑", "说", "答", "问",
+                 "喝", "喊", "低声", "开口", "接口", "回道", "笑道", "沉声", "嘟囔", "嘀咕")
+
+
+def _deceased_speaks(content: str, name: str) -> bool:
+    """判定已故角色是否在正文行中「以活人身份发言」。
+
+    修复说明：原判据末段是 `f"「" in content or f"“" in content`——f-string 无占位符，
+    等价于「本行含任意左引号」，而中文小说几乎每行对白都带引号，于是任何提及死者
+    的行都会被判成 candidate_hard（硬矛盾），淹没真正的问题。
+
+    改为两条更贴近语义的判据：
+      1. 死者名紧跟发言动词（道/说/冷笑/…）——活人发言；
+      2. 死者名紧贴引号边界（「陆沉舟 / 陆沉舟」）——对白归属或直呼。
+    行内其余位置出现死者名不再单独构成硬矛盾候选。
+    """
+    if not name:
+        return False
+    if any(f"{name}{v}" in content for v in _SPEECH_VERBS):
+        return True
+    return (f"「{name}" in content or f"“{name}" in content
+            or f"{name}」" in content or f"{name}”" in content)
+
+
 _CN_NUM_MAP = {
     "零": 0, "一": 1, "二": 2, "两": 2, "三": 3, "四": 4, "五": 5,
     "六": 6, "七": 7, "八": 8, "九": 9, "十": 10, "百": 100, "千": 1000, "万": 10000
@@ -115,11 +140,20 @@ def probe_locked_facts(text: str, lines: list[str], n: int, locked_st: dict, ent
 
         if kind == "death":
             deceased_name = ""
+            # 修复：原条件 `name in fact or life_status == "deceased"` 会在遍历到第一个
+            # 已故实体时就 break，与 fact 讲的是谁完全无关——「张三已死」的事实会被
+            # 安到李四头上（张冠李戴）。改为先按事实文本精确匹配，匹配不上才用
+            # 「唯一/首个已故实体」兜底。
             for ent in ents_st:
                 name = ent.get("name", "")
-                if name and (name in fact or ent.get("life_status") == "deceased"):
+                if name and name in fact:
                     deceased_name = name
                     break
+            if not deceased_name:
+                for ent in ents_st:
+                    if ent.get("life_status") == "deceased":
+                        deceased_name = ent.get("name", "")
+                        break
             if not deceased_name:
                 m = re.search(r"([^已确认于在被]{2,4})(?:已|确认|在|身亡|死亡|殒落)", fact)
                 if m:
@@ -131,7 +165,7 @@ def probe_locked_facts(text: str, lines: list[str], n: int, locked_st: dict, ent
                     exempt_pats = ["回忆", "当年", "想起", "若是", "倘若", "墓", "碑", "死前", "遗物", "牌位", "尸首", "尸体", "魂魄", "英年早逝", "祭奠"]
                     if any(p in content for p in exempt_pats):
                         continue
-                    if f"{deceased_name}道" in content or f"{deceased_name}说" in content or f"{deceased_name}冷笑" in content or f"「" in content or f"“" in content:
+                    if _deceased_speaks(content, deceased_name):
                         candidates.append({
                             "probe": "locked_facts",
                             "severity": "candidate_hard",
@@ -401,7 +435,7 @@ def probe_cognition_stubs(text: str, lines: list[str], lines_st: dict, cog_st: d
         raw_parties = mis.get("parties")
         # 台账 parties 在 v2 schema 起为字符串（如「张彪与李玄」）；老书遗留可能为数组。
         # 一律归一成实体名列表再取前两个主体——绝不可把字符串当字符数组切片，
-        # 否则「陆沉舟与官差」会误拆成「陆」「沉」两个单字主体（ P 系列修复：见 test_）。
+        # 否则「陆沉舟与官差」会误拆成「陆」「沉」两个单字主体。
         if isinstance(raw_parties, str):
             plist = [x.strip() for x in re.split(r"[与和及、，,·×/\s]+", raw_parties) if x.strip()]
         elif isinstance(raw_parties, list):

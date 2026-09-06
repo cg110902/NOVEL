@@ -98,11 +98,11 @@ description: Universal director and orchestrator for Novel Studio. Coordinates w
 - **Librarian 十章大巡检（Stage 4D）**：每 10 章整数关口（如 ch_010、ch_020...）由驾驶舱雷达提示时，主控派发 Librarian 执行近 10 章长程事实补漏（次要实体建档、道具充能对账）。**修补并入当章在途提案 `state/inbox/ch_XXX.json`**（若 4C 已落盘则读回合并，绝不另建 `sweep_ch_XXX.json` 等第二文件——收件箱单文件制，非规范命名会被 sync 静默忽略），随 Stage 5 一并合并封存；另存巡检报告 `log/review/sweep_ch_XXX.md` 供主控留档。
 - **主控防膨胀纪律**：保持主控上下文绝对纯净——子代理只回 3 行回执单，严禁长篇抒情汇报。
 
-### 4. 极速状态同步与看板刷新（Stage 5）
+### 4. 极速状态同步（Stage 5）
 - **极简收口**：
   1. `python studio.py sync ch_XXX`：引擎直接执行原子合并、引文柔性接地提示、Stage 4C 一致性仲裁闸门核验（`audit_mode=strict` 下须 `log/audit/ch_XXX.md` 前置通过）、Stage 5 机械对照、事实体检与快照封存，秒级完成（`--dry-run` 可预演）；
   2. **sync 拒收自愈路径（标准预案）**：提案被拒（归档 failed/）时按报错逐条修复后重跑 sync（引擎自动从 failed/ 捡回重试）；字段级修不动时可 `python studio.py proposal auto ch_XXX --write` 重新装配草案再人工微调；**修正重提必须换新 operation_id**；
   3. **`state set` 使用边界**：仅限对**已定稿事实的字段级纠偏**（修正 AI 误判值），严禁用于登记新事实/新实体——一切新事实必须走提案通道（唯一写入口）；
   4. **审定存疑先取证**：对提案中某条事实拿不准时，`python studio.py ask <关键词>` 只读取证后再裁决；账目存疑时 `python studio.py ledger recompute` 按流水全量重算修复；
-  5. `python studio.py dashboard`：默认每 5 章（如 ch_005、ch_010）或用户明确要求时才执行一次，平时不刷；
+
 - **全流程终极交付**：主控直接向人类作者交付 final 章节成品与本章看点摘要，邀请人类终审！

@@ -5,6 +5,7 @@
 """
 from __future__ import annotations
 
+import os
 import re
 from pathlib import Path
 
@@ -41,14 +42,40 @@ def _beats_text(book: Path, ch: str) -> str:
     return files[-1].read_text(encoding="utf-8", errors="replace")
 
 
-def _prev_final_tail(book: Path, ch_num: int) -> str:
-    if ch_num <= 1:
+def _prev_final_tail(book: Path, ch_num: int, cur_vol: str | None = None) -> str:
+    """上一章定稿的尾部（Drafter 接戏用，约 PREV_TAIL_CHARS 字）。
+
+    修复：旧实现 `find_chapter_files(book, "final", ch_num - 1)` 只按章号过滤、不按卷，
+    多卷各卷独立编号时会串卷——`pack vol_02/ch_005` 拿到 `vol_01/ch_004` 的尾巴；
+    卷首 `ch_001` 直接判「无上一章」，跨卷续写的上一章末尾彻底丢失。
+    改为按 (卷, 章号) 阅读序取「小于当前位置的最大一个」，与 evidence.dup/prev_contrast 同源。
+    """
+    finals = common.find_chapter_files(book, "final")
+    if not finals:
         return ""
-    files = common.find_chapter_files(book, "final", ch_num - 1)
-    if not files:
+    cur_vol_num = 0
+    if cur_vol:
+        m = common.VOL_RE.search(cur_vol)
+        if m:
+            cur_vol_num = int(m.group(1))
+    target = (cur_vol_num, ch_num)
+    prev = None
+    # find_chapter_files 已按 natural_chapter_sort_key=(卷,章,版本,名) 升序
+    for f in finals:
+        fvol = 0
+        for part in f.parts:
+            m = common.VOL_RE.search(part)
+            if m:
+                fvol = int(m.group(1))
+                break
+        fch = common.chapter_number_from_name(f.name) or 0
+        if (fvol, fch) < target:
+            prev = f
+        else:
+            break
+    if prev is None:
         return ""
-    text = files[-1].read_text(encoding="utf-8", errors="replace")
-    return text[-PREV_TAIL_CHARS:]
+    return prev.read_text(encoding="utf-8", errors="replace")[-PREV_TAIL_CHARS:]
 
 
 def _deviation_lines(book: Path) -> list[str]:
@@ -116,23 +143,46 @@ def _volume_phase_milestone(book: Path, ch_num: int) -> str:
             text = outline_path.read_text(encoding="utf-8", errors="replace")
         except OSError:
             continue
-        phases = re.findall(
-            r"-\s*\*\*([^\n*]+?)\s*[（(]\s*(?:ch_?)?(\d+)\s*[—\-–~至到]+\s*(?:ch_?)?(\d+)\s*(?:[｜|]\s*([^\n*]+?))?[)）]\s*\*\*",
-            text
-        )
-        for name, start_s, end_s, feat in phases:
-            s_num, e_num = int(start_s), int(end_s)
+        phase_entries: list[tuple[str, int, int, str]] = []
+        for ln in text.splitlines():
+            # 1. 标准双界: 阶段名(ch_001—ch_003 | 功能)
+            m_range = re.search(
+                r"-\s*\*\*([^\n*]+?)\s*[（(]\s*(?:ch_?)?(\d+)\s*[—\-–~至到]+\s*(?:ch_?)?(\d+)\s*(?:[｜|]\s*([^\n*]+?))?[)）]\s*\*\*",
+                ln
+            )
+            if m_range:
+                name, s_s, e_s, feat = m_range.groups()
+                phase_entries.append((name.strip(), int(s_s), int(e_s), feat.strip() if feat else ""))
+                continue
+            # 2. 开放区间: 阶段名(ch_004 起... [| 功能])
+            m_open = re.search(
+                r"-\s*\*\*([^\n*]+?)\s*[（(]\s*(?:ch_?)?(\d+)\s*(?:起|以[上来后]|\+)[^）)]*?(?:[｜|]\s*([^\n*]+?))?[)）]\s*\*\*",
+                ln
+            )
+            if m_open:
+                name, s_s, feat = m_open.groups()
+                desc = ""
+                after = re.sub(r"^.*?-\s*\*\*[^*]+\*\*\s*[:：]?\s*", "", ln).strip()
+                if feat:
+                    desc = feat.strip()
+                elif after:
+                    desc = after
+                phase_entries.append((name.strip(), int(s_s), 999999, desc))
+
+        for idx, (name, s_num, e_num, feat) in enumerate(phase_entries):
+            if e_num == 999999 and idx + 1 < len(phase_entries):
+                e_num = max(s_num, phase_entries[idx + 1][1] - 1)
             if s_num <= ch_num <= e_num:
-                feat_str = f" ｜ {feat.strip()}" if feat else ""
+                feat_str = f" ｜ {feat}" if feat else ""
                 ch_tok = f"ch_{ch_num:03d}"
                 ch_line = ""
-                # 修复：移除 \b 边界，\b 对中文无效，改用更宽松的匹配，兼容“第7章：”等中文写法
                 for ln in text.splitlines():
                     if re.search(rf"(?:{re.escape(ch_tok)}|ch_{ch_num}|第\s*{ch_num}\s*章)\s*[:：]", ln):
                         ch_line = re.sub(rf"^[\s\-*·]*(?:{re.escape(ch_tok)}|ch_{ch_num}|第\s*{ch_num}\s*章)\s*[:：]\s*", "", ln).strip()
                         break
                 ch_plan = f"\n  - 当章预定规划：{ch_line}" if ch_line else ""
-                return f"{name.strip()}（ch_{s_num:03d}—ch_{e_num:03d}{feat_str}）{ch_plan}"
+                range_str = f"ch_{s_num:03d}—ch_{e_num:03d}" if e_num < 999999 else f"ch_{s_num:03d} 起"
+                return f"{name}（{range_str}{feat_str}）{ch_plan}"
     return ""
 
 
@@ -256,6 +306,9 @@ def _hard_reminders(book: Path, ch: str, ch_num: int) -> list[str]:
                 line_msgs.append((2, sk, f"⏳【即将揭示】知识线 {kid}《{ksecret}》距揭示仅剩 {t - ch_num} 章"))
 
     line_msgs.sort(key=lambda x: (x[0], x[1]))
+    # 修复：此前 line_msgs 排序后从未并入 out，导致伏笔逾期/闲置催还/因果前置未达成
+    # 等全部硬提醒被静默丢弃（主控永远看不到伏笔催还，直接造成伏笔烂尾）。
+    out.extend(msg for _, _, msg in line_msgs)
     try:
         locked_state = state.load_state(book, "locked")
         for le in locked_state.get("entries", []):
@@ -273,7 +326,7 @@ def _hard_reminders(book: Path, ch: str, ch_num: int) -> list[str]:
 
 
 # ---------------------------------------------------------------------------
-# P1 触发装配
+# 触发装配
 # ---------------------------------------------------------------------------
 def _entity_block(book: Path, name: str, cur: dict, lines: dict, full: bool) -> dict:
     ents = {e["name"]: e for e in cur["entities"].get("entries", [])}
@@ -370,7 +423,7 @@ def build_pack(book: Path, ch: str, lean: bool = False, full: bool = False) -> d
         "volume_phase": _volume_phase_milestone(book, ch_num),
         "world_anchors": _bible_core_anchors(book),
         "beats": beats,
-        "prev_tail": _prev_final_tail(book, ch_num),
+        "prev_tail": _prev_final_tail(book, ch_num, cur_vol),
         "hard_reminders": _hard_reminders(book, ch, ch_num),
     }
     if aftershock:
@@ -643,11 +696,11 @@ def render_pack(payload: dict) -> str:
     b = payload["budget_report"]
     out = [f"# pack {payload['chapter']}" + (" [lean]" if payload["lean"] else "")
            + (" [full]" if payload["full"] else ""), "",
-           "## P0 热层（恒给）", render_layer("p0", payload["p0"], full=payload["full"])]
+           "## 热层（恒给）", render_layer("p0", payload["p0"], full=payload["full"])]
     if payload["p1"] is not None:
-        out += ["", "## P1 温层（别名触发）", render_layer("p1", payload["p1"], full=payload["full"])]
+        out += ["", "## 温层（别名触发）", render_layer("p1", payload["p1"], full=payload["full"])]
     if payload["p2"] is not None:
-        out += ["", "## P2 冷层（索引）", render_layer("p2", payload["p2"], full=payload["full"])]
+        out += ["", "## 冷层（索引）", render_layer("p2", payload["p2"], full=payload["full"])]
     out += ["", f"budget: p0={b['p0']} p1={b.get('p1', 0)} p2={b.get('p2', 0)} "
                 f"total={b['total']}/{b['cap']} tokens（超预算={b['over_budget']}）"]
     if b.get("trimmed_file_index"):
@@ -657,7 +710,7 @@ def render_pack(payload: dict) -> str:
     return "\n".join(out)
 
 
-#  P0-2：`pack --open` 的角色禁读网关。
+# `pack --open` 的角色禁读网关。
 # 原先 --open 只防越出工作区根，任何被授权跑 pack 的子代理都能一条命令读到
 # state/*、log/critic/*、bible/*、characters/* 与他章正文——AGENTS 第四节的
 # 「铁血准读/禁读清单」在机械层面等于零防护。现按 AGENTS 禁读清单逐角色落地：
@@ -688,10 +741,16 @@ ROLE_ALLOW_EXTRA: dict[str, tuple[str, ...]] = {
 
 def deny_reason(book: Path, rel: str, role: str) -> str | None:
     """返回禁读理由；None 表示该角色可读。未知角色一律按最严格处理。"""
+    # 规范化路径段：消解边界内的 `.` 与 `..`、统一斜杠，防
+    # `./bible/style.md`、`manuscript/../bible/style.md`、`bible\\style.md` 等
+    # 变体绕过前缀/精确匹配网关。越界 `..` 逃逸仍由 open_file 的 safe_child_path 兜底。
     norm = rel.replace("\\", "/").lstrip("/")
+    norm = os.path.normpath(norm).replace(os.sep, "/").lstrip("./").lstrip("/")
     if role not in ROLE_DENY:
         return f"未知角色「{role}」（合法: {'/'.join(sorted(ROLE_DENY))}）"
-    if any(norm == a or norm.startswith(a) for a in ROLE_ALLOW_EXTRA.get(role, ())):
+    # ROLE_ALLOW_EXTRA 是「精确允许的单文件白名单」，必须精确相等，不可 startswith
+    # （否则 `state/current.json.bak` / `state/current.json/../../x` 会被放行）。
+    if any(norm == a for a in ROLE_ALLOW_EXTRA.get(role, ())):
         return None
     for pre in ROLE_DENY.get(role, ()):
         if norm == pre.rstrip("/") or norm.startswith(pre):

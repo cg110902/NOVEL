@@ -11,12 +11,12 @@
 |---|---|---|
 | `models/` | 状态机领域对象与语义原子补丁强类型模型 | **Pydantic V2**（严格禁止未知键注入 `extra='forbid'`，支持 `SemanticEntityPatch`） |
 | `cli.py` | 29 命令薄壳调度：参数解析 + help 目录 + `main`（命令实现下沉至 `commands/`） | argparse |
-| `commands/` | 命令实现层五模块：`book_setup`（init/status/cockpit/config/errcodes）、`chapter_flow`（pack/beats/evidence/check/review/critic/graph/export/dashboard/audit/index + ask/pov/calendar 只读取证）、`state_sync`（sync/proposal/snapshot/checkpoint/state/ledger/milestone）、`recall`（残酷四问自证）、`simulate`（剧情推演沙盒）；共享助手在 `_shared` | **Rich**（高保真圆角面板、彩色 Markdown 渲染、老白读者评分卡与状态流） |
+| `commands/` | 命令实现层五模块：`book_setup`（init/status/cockpit/config/errcodes）、`chapter_flow`（pack/beats/evidence/check/review/critic/graph/export/audit/index + ask/pov/calendar 只读取证）、`state_sync`（sync/proposal/snapshot/checkpoint/state/ledger/milestone）、`recall`（残酷四问自证）、`simulate`（剧情推演沙盒）；共享助手在 `_shared` | **Rich**（高保真圆角面板、彩色 Markdown 渲染、老白读者评分卡与状态流） |
 | `cockpit.py` | 主控态势驾驶舱：工作流导航、戏剧动力学（余震/悬顶危机/信息差机锋）、伏笔暗线分类雷达、角色活跃度与自愈处方 | 确定性聚合（秒级出报） |
 | `audit.py` | 确定性机械审计探针：7大探针（不可逆事实违背/在场与死亡/道具充能/金额一致/知情差泄露/认知差冲突/别名漂移） | 确定性跨域比对算法 |
 | `db.py` | SQLite3 双平面投影与 FTS5 检索加速：BM25 段落级语义召回与角色 POV 聚合（支持优雅降级） | **sqlite3**（FTS5 全文索引）+ **jieba**（专名切词） |
 | `migrations.py` | 状态机版本化与迁移器：`state/state_schema.json` 版本戳；老书首次读取自动迁移（迁移前强制快照 + 闸门预验 + JSONL 审计日志 `state/migrations.log`）；只修结构不碰事实 | 快照回滚双保险 |
-| `errcodes.py` | 错误码注册表：全部体检码的 severity/人话解释/修复建议（`python studio.py errcodes`，--json 供 Agent 自助修复）；`checks.DEFAULT_REMEDIES` 由它派生 | 单一真源 + 守卫测试 |
+| `errcodes.py` | 错误码注册表：全部体检码的 severity/人话解释/修复建议（`python studio.py errcodes`，--json 供 Agent 自助修复）；`checks.DEFAULT_REMEDIES` 由它派生 | 单一真源 |
 | `graph.py` | 实体拓扑与叙事中介寻路分析（`studio graph`） | **NetworkX**（最短破局链路、中介中心度排名、孤立资产排查） |
 | `common.py` | 工作区定位、章节号解析、front-matter、原子写、Windows 并发重试、规范哈希 | 标准库（Windows 重试微退避机制，四层回滚保护） |
 | `state.py` | 八表真值管理（含 locked/cognition）、语义补丁合并、复式记账重算、幂等登记簿、落盘前一致性体检、高危状态迁移守卫与时间线回退警示（advisory） | 确定性复式平衡算法与实体关系闭合校验 |
@@ -25,7 +25,6 @@
 | `evidence.py` | 机械证据（all 汇总 / words / style / file / dup / mentions / gaps / candidates / prev / names / index）与 ask 全书检索、pov 角色视角包（只读取证）只出数、零裁决 | **Jieba**（`posseg` 提取专有名词 NER 候选 + `analyse` 关键词口癖雷达） |
 | `pack.py` | 三层上下文装配（P0 现场 / P1 动态触发 / P2 冷索引） | **NetworkX**（全书实体持有与归属拓扑图，1-Hop 强相关子图动态剪枝） |
 | `snapshot.py` | 快照管理（create / list / rollback，支持 `--clean-drafts` 清理超前稿件与旧版表补齐） | 原子目录快照与事务安全 |
-| `dashboard.py` | 全景可视化看板 HTML 导出（人物关系图谱、伏笔看板、情绪心电图） | 静态单文件 HTML 独立运行 |
 
 ---
 
@@ -57,7 +56,7 @@
 `engine/models/*`（Pydantic）是字段结构、类型、枚举与约束的**唯一真源**：
 
 1. **改模型后必须重新生成**：`python -m engine.models.schema_gen`；
-2. `engine/schemas/*.json` 是构建产物，**禁止手改**（守卫测试会拦下不一致）；
+2. `engine/schemas/*.json` 是构建产物，**禁止手改**；
 3. 闸门补丁层（`schema_gen._gate_patch` + `_strip_null_branches`）显式保留「落盘必完整」类约束
    （台账条目必带 `status`、顶层 `pools/transactions/events/arcs/chapters` 必填、**全部 Optional
    字段拒绝显式 null**——生成器级全局规则）——这是有意比模型更严的持久层完整性闸门，勿删；

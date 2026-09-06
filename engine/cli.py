@@ -1,19 +1,20 @@
-"""CLI 薄壳：24 命令参数解析与总调度；命令实现分置于 engine/commands/* 三模块。
+"""CLI 薄壳：23 命令参数解析与总调度；命令实现分置于 engine/commands/* 三模块。
 
 status / init / cockpit / pack / evidence / check / checkpoint / state / config / sync / snapshot / export /
-dashboard / proposal / review / beats / critic / graph / errcodes / help / ask / pov / calendar / ledger。
+proposal / review / beats / critic / graph / errcodes / help / ask / pov / calendar / ledger。
 退出码：0=ok / 1=阻断（含 check errors、sync 失败）/ 2=用法错。
 """
 from __future__ import annotations
 
 import argparse
 import json
+import sys
 
 from . import __version__, common
 from .commands._shared import _add_common_opts
 from .commands.book_setup import cmd_config, cmd_cockpit, cmd_errcodes, cmd_init, cmd_status
 from .commands.chapter_flow import (cmd_ask, cmd_audit, cmd_beats, cmd_calendar, cmd_check, cmd_critic,
-                                    cmd_dashboard, cmd_evidence, cmd_export, cmd_graph, cmd_index, cmd_pack,
+                                    cmd_evidence, cmd_export, cmd_graph, cmd_index, cmd_pack,
                                     cmd_pov, cmd_review)
 from .commands.recall import cmd_recall
 from .commands.simulate import cmd_simulate
@@ -47,7 +48,6 @@ COMMAND_HELP = {
     "snapshot": "快照 list / create NAME / rollback NAME [--clean-drafts]",
     "export": "全书编译：--txt 拼接正文，--views 渲染状态视图",
     "proposal": "提案：new 骨架 ｜ auto 自动装配 ｜ check 结构预检+三方事实对照 ｜ verify 算法版Stage4.5机械对照",
-    "dashboard": "生成交互式全景看板 HTML（人物关系网/伏笔看板/情绪心电图）",
     "review": "校对注记：new <章节>（骨架预填验收条目+机器数据，--write 写 log/review/）",
     "beats": "细纲脚手架：new [章节]（Stage 1 智能生成带字数预算与情绪蓄水泵的 beats 任务书）",
     "critic": "老白读者催更便签：查看 Stage 4B 便签或落盘 SKELETON 预填骨架（骨架不替代子代理评审）",
@@ -82,8 +82,8 @@ STAGE_MAP = {
     },
     "Stage 5 (同步与封存)": {
         "role": "Director",
-        "description": "状态原子合并、全书机械体检、快照归档与全景看板",
-        "commands": ["sync", "check", "checkpoint", "snapshot", "dashboard", "export", "state"],
+        "description": "状态原子合并、全书机械体检、快照归档",
+        "commands": ["sync", "check", "checkpoint", "snapshot", "export", "state"],
     },
 }
 
@@ -387,10 +387,10 @@ def _build_subparsers(sub: argparse._SubParsersAction) -> None:
     r.add_argument("-w", "--workspace", default=argparse.SUPPRESS)
     r.add_argument("--json", action="store_true", default=argparse.SUPPRESS)
     r.set_defaults(func=cmd_ledger)
-    #  P3-1：Stage 0 原先没有任何 CLI 通道声明资源池（config guide 不含池键、
+    # Stage 0 原先没有任何 CLI 通道声明资源池（config guide 不含池键、
     # state set 禁登新事实），池只能靠 Stage 5 提案或读源码试出来。
     pa = lg.add_parser("pool", help="资源池管理")
-    #  P3-1：pool 子解析器必须自带 -w/--json，否则 `-w <书>` 的值会被 argparse
+    # pool 子解析器必须自带 -w/--json，否则 `-w <书>` 的值会被 argparse
     # 当成 pool_action 正向参数吃掉（实测 invalid choice: 'workspace/probe'）。
     pa.add_argument("-w", "--workspace", default=argparse.SUPPRESS)
     pa.add_argument("--json", action="store_true", default=argparse.SUPPRESS)
@@ -412,10 +412,6 @@ def _build_subparsers(sub: argparse._SubParsersAction) -> None:
     q.add_argument("--txt", action="store_true", help="导出 export/<书名>.txt")
     q.add_argument("--views", action="store_true", help="导出 export/views/state_view.md")
     q.set_defaults(func=cmd_export)
-
-    q = sub.add_parser("dashboard", help="全景可视化看板：导出 HTML 交互式人物图谱与伏笔看板")
-    _add_common_opts(q)
-    q.set_defaults(func=cmd_dashboard)
 
     q = sub.add_parser("proposal", help="提案：new 骨架 ｜ auto 自动装配 ｜ check 结构预检+三方对照")
     _add_common_opts(q)
@@ -508,12 +504,27 @@ def _build_subparsers(sub: argparse._SubParsersAction) -> None:
     q.set_defaults(func=cmd_graph)
 
     q = sub.add_parser("help", help="命令目录")
+    q.add_argument("-w", "--workspace", default=argparse.SUPPRESS, help=argparse.SUPPRESS)
     q.add_argument("--json", action="store_true")
     q.set_defaults(func=cmd_help)
 
     q = sub.add_parser("errcodes", help="错误码注册表速查（severity/解释/修复建议）")
+    q.add_argument("-w", "--workspace", default=argparse.SUPPRESS, help=argparse.SUPPRESS)
     q.add_argument("--json", action="store_true", help="结构化 JSON 输出（Agent 首选）")
     q.set_defaults(func=cmd_errcodes)
+
+
+def _wants_json(args: argparse.Namespace) -> bool:
+    """本条命令是否要求 stdout 纯 JSON（供顶层错误出口决定要不要补信封）。"""
+    return bool(getattr(args, "json", False))
+
+
+def _emit_json_failure(code: str, msg: str, extra: dict | None = None) -> None:
+    """--json 契约兜底：即使命令内部崩了，stdout 也必须是一枚可 json.loads 的信封。"""
+    payload: dict = {"ok": False, "code": code, "error": msg}
+    if extra:
+        payload.update(extra)
+    print(json.dumps(payload, ensure_ascii=False))
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -523,12 +534,31 @@ def main(argv: list[str] | None = None) -> int:
     try:
         return args.func(args) or 0
     except KeyboardInterrupt:
-        print("\n⏸ 已中断（状态文件有原子写保护，重跑 status 看现场）")
+        print("\n⏸ 已中断（状态文件有原子写保护，重跑 status 看现场）", file=sys.stderr)
         return 130
     except (ValueError, TimeoutError) as exc:
-        print(f"❌ {exc}")
+        # 契约修复：错误正文一律走 stderr；--json 时 stdout 补一枚信封。
+        # 此前 print 到 stdout，导致 `audit ch_ABC --json` 输出「❌ 无法解析章节号」
+        # 纯文本，Agent 侧 json.loads 直接失败。
+        if _wants_json(args):
+            _emit_json_failure("blocked", str(exc) or exc.__class__.__name__)
+        print(f"❌ {exc}", file=sys.stderr)
         return 1
     except OSError as exc:
-        print(f"❌ 文件系统错误: {exc}")
-        print("   💡 Windows 下常见于文件被占用（杀毒/索引/同步盘）。稍候重试，或关闭占用方后重跑。")
+        if _wants_json(args):
+            _emit_json_failure("filesystem_error", str(exc))
+        print(f"❌ 文件系统错误: {exc}", file=sys.stderr)
+        print("   💡 Windows 下常见于文件被占用（杀毒/索引/同步盘）。稍候重试，或关闭占用方后重跑。",
+              file=sys.stderr)
+        return 1
+    except Exception as exc:  # 最后防线：任何漏网异常都不许裸栈穿透到调用方
+        # 调试模式下仍把 traceback 打到 stderr（便于排查），但 stdout 保持契约纯净。
+        if common.debug_enabled():
+            import traceback
+            traceback.print_exc(file=sys.stderr)
+        if _wants_json(args):
+            _emit_json_failure("internal_error", str(exc) or exc.__class__.__name__,
+                               {"error_type": type(exc).__name__})
+        print(f"❌ 引擎内部错误（{type(exc).__name__}）: {exc}", file=sys.stderr)
+        print("   💡 开 NOVEL_STUDIO_DEBUG=1 重跑可看到完整堆栈。", file=sys.stderr)
         return 1

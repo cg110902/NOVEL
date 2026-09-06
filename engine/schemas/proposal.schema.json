@@ -40,6 +40,13 @@
     "locked": {
       "type": "array"
     },
+    "locked_candidates": {
+      "items": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "type": "array"
+    },
     "cognition": {
       "type": "array"
     },

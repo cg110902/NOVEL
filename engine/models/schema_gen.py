@@ -12,7 +12,7 @@
 唯一允许「schema 比模型严」的地方，每一处都写明理由。
 
 重新生成：python -m engine.models.schema_gen
-守卫测试：（产物 ≠ 生成结果即报警）
+
 """
 from __future__ import annotations
 

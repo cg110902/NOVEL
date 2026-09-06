@@ -6,7 +6,7 @@ remedy（可执行的修复建议）。
 
 单一真源约定：
 - `checks.DEFAULT_REMEDIES` 由本注册表派生（`_err` 的 remedy 兜底），禁止在别处再手写 remedy；
-- 守卫测试：checks.py 源码中出现的每个 `_err("code"` 字面量
+- checks.py 源码中出现的每个 `_err("code"` 字面量
   必须已注册，新增错误码漏注册会当场报警。
 
 severity 为数据驱动：按 run_checks 实际把错误码投递到 errors/warnings/infos 哪条通道归类。
@@ -101,8 +101,9 @@ REGISTRY: dict[str, ErrCode] = {c.code: c for c in (
          "在 state/entities.json 中把冲突别名改为唯一，或改用 aliases 归并到同一实体名下。"),
     _reg("relation_target_unknown", "warning", "实体关系指向未登记的实体（关系图悬空边）",
          "在 state/entities.json 补登目标实体，或修正 relations.target 的名称拼写。"),
-    _reg("line_action_missing", "warning", "细纲声明的线索动作类型缺失",
-         "细纲中声明的线索动作类型缺失，请明确为 plant/advance/remind/reveal/resolve 之一。"),
+    _reg("line_action_missing", "warning", "到期/逾期线未在细纲「线动作」栏登记",
+         "该线已到/已过 target_ch 且仍未闭环，但 beats 未在「线动作」栏给出处理。"
+         "请在 beats 写明其动作（plant/advance/remind/reveal/resolve）或写明顺延理由，归主控 Stage 1 裁决。"),
     _reg("line_quota_exceeded", "warning", "活跃线索数量超出配额（主线被稀释）",
          "当前活跃线索过多，建议在后续章节逐步收网已成熟的伏笔，保持主线清爽。"),
     _reg("line_overdue", "warning", "线索已逾期（target_ch 小于已定稿章数，仍未收束）",
@@ -124,19 +125,6 @@ REGISTRY: dict[str, ErrCode] = {c.code: c for c in (
          "针对本章特色编写独有的 style_notes，避免完全复制模板文本。"),
     _reg("acceptance_empty_criterion", "warning", "验收标准是空判词（无具体事实信息点）",
          "细纲验收标准（acceptance）必须包含具体的剧情动作或事实信息点，避免假大空。"),
-    # ---- 节奏与字数 ----
-    _reg("words_band_crowded", "info", "预计字数区间与整体规划脱节",
-         "调整细纲中的预计字数区间，避免与整体规划脱节。"),
-    _reg("word_band_deviation", "info", "定稿字数偏离目标字数带（轻度）",
-         "字数偏离目标带，精修师 Editor 在润色时可精简冗余或扩充细节。"
-         "口径说明：字数按剥离首行章题的正文计 CJK，压线章请多留 5~10 字余量。"),
-    _reg("word_band_breach", "warning", "定稿字数显著偏离目标带（低于下限 85% 或高于上限 115%）",
-         "定稿字数显著出带：低于下限 15% 以上请扩写核心场景（beats 硬合同口径），高于上限 15% 以上请精简冗余支线。"),
-    _reg("beats_words_unmet", "warning", "定稿字数显著偏离**细纲自报**的 words 带（超出 15% 容差）",
-         "细纲 front-matter 的 words 带是 Stage 1 对 Stage 2/3 的硬合同：低于下限请扩写核心场景，"
-         "高于上限请精简支线；若确属自报带定错，请回 Stage 1 修订自报带并在 form_reason/验收要点写明理由。"),
-    _reg("beats_words_drift", "info", "定稿字数落在细纲自报 words 带之外，但在 15% 容差内",
-         "轻微出带属正常波动；若持续同向偏离，请核对自报带是否定得不合实际篇幅。"),
     _reg("form_share_over_limit", "warning", "单一章型全书占比超限（>40%；统计自该卷第 5 章起，小样本不计数）",
          "该章型在全书中占比超过 40%（≥5 章样本才参与统计），建议在后续章节丰富其他类型的叙事章型。"),
     _reg("final_drift", "warning", "已封存章节的 final 定稿在 sync 后被改动（内容哈希漂移）",

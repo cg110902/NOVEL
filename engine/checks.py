@@ -24,7 +24,7 @@ except ImportError:
 
 SLOT_RE = re.compile(r"\{\{\s*slot:")
 CANDIDATE_RE = re.compile(r"candidate_[0-9A-Za-z_*]")
-#  P3-9：中文稿里的拉丁残留（起草时夹带的英文词，如「比他想的是 harder 谈」）。
+# 中文稿里的拉丁残留（起草时夹带的英文词，如「比他想的是 harder 谈」）。
 # 只认 ≥2 个连续拉丁字母，避免误伤单个字母与数字编号。
 LATIN_RESIDUE_RE = re.compile(r"[A-Za-z]{2,}")
 FORM_SHARE_LIMIT = 0.40
@@ -245,13 +245,13 @@ def verify_candidates(book: Path, ch: str, proposal: dict) -> dict:
         add("warn", "ledger_unreadable", f"ledger 不可读，金额对照跳过: {exc}")
         led = {}
     amounts = evidence._amount_scan(text, led.get("pools"))
-    #  P1-2：比对一律用全量集合 all_values（展示用的 values 可能被截断）
+    # 比对一律用全量集合 all_values（展示用的 values 可能被截断）
     cand_vals = {v for a in amounts for v in (a.get("all_values") or a.get("values") or [])}
     txs = [t for t in (led.get("transactions") or []) if t.get("chapter") == ch]
     new_txs = [t for t in ((proposal.get("ledger") or {}).get("transactions") or [])
                if isinstance(t, dict) and (t.get("chapter") or ch) == ch]
     tx_vals = {abs(int(t.get("delta", 0))) for t in txs + new_txs if isinstance(t.get("delta"), int)}
-    #  P2-8：本章既无流水、提案也未带账目时，正文里的数字多半是债务总额/他人数字/修辞，
+    # 本章既无流水、提案也未带账目时，正文里的数字多半是债务总额/他人数字/修辞，
     # 没有可对账的对象，降为 info 而不是每章刷一条「疑似漏账」的 warn。
     _no_ledger_ctx = not tx_vals
     for a in amounts:
@@ -302,7 +302,7 @@ def verify_candidates(book: Path, ch: str, proposal: dict) -> dict:
                         if e.get("type", "person") == "person"}
         except (ValueError, FileNotFoundError):
             _persons = set()
-        #  P2-4：`present_characters` 的定义是「章末在场」，而 `per` 数的是**全章**提及。
+        # `present_characters` 的定义是「章末在场」，而 `per` 数的是**全章**提及。
         # 二者语义天然不等价，于是任何中途退场的角色每章必报（实测 ch_002 裴九提及 15 次、
         # ch_003 沈砚秋提及 9 次，都是正常早退）。原实现只用次数分档（≥4 就 warn），
         # 次数高恰恰说明他在本章前中段戏份重、之后离场——与「漏报」正好相反。
@@ -346,7 +346,7 @@ def verify_candidates(book: Path, ch: str, proposal: dict) -> dict:
         for term in terms:
             if not (isinstance(term, str) and term in text and term not in active_val):
                 continue
-            #  P2-6：单字词纯字符串命中在中文里几乎必然误报（实测 ["断"] 命中
+            # 单字词纯字符串命中在中文里几乎必然误报（实测 ["断"] 命中
             # 「断了的线头」、["血"] 命中「咳血」）。新配置已在 config set 入口被拦，
             # 这里是给存量配置的兜底：降为 info 并说明该词形不可用。
             if len(term.strip()) < 2:
@@ -375,7 +375,7 @@ def verify_candidates(book: Path, ch: str, proposal: dict) -> dict:
                               if isinstance(w, str) and w.strip()}
     segs = [s for s in re.split(r"[^\u4e00-\u9fff]+", text) if len(s) >= 2]
     grams: dict[str, int] = {}
-    #  P3：候选最小长度 3（2 字碎片「了半/樵把/的声」纯语法噪声，不再上报）
+    # 候选最小长度 3（2 字碎片「了半/樵把/的声」纯语法噪声，不再上报）
     for seg in segs:
         for L in (3, 4):
             for i in range(len(seg) - L + 1):
@@ -386,7 +386,7 @@ def verify_candidates(book: Path, ch: str, proposal: dict) -> dict:
         _pools = state.load_state(book, "ledger").get("pools", {})
     except (ValueError, FileNotFoundError):
         _pools = {}
-    #  P3：账本池名/单位并入已知词——「灵通」类池名片段不再当候选（如 灵通石→灵通）
+    # 账本池名/单位并入已知词——「灵通」类池名片段不再当候选（如 灵通石→灵通）
     for p in _pools.values():
         for t in (p.get("name"), p.get("unit")):
             if t:
@@ -394,7 +394,7 @@ def verify_candidates(book: Path, ch: str, proposal: dict) -> dict:
     for g, c in grams.items():
         if c < 3 or g in cand_stop or any(s in g for s in cand_stop):
             continue
-        #  P3-10：传入已知实体名，启用「实体名片段 + 尾随动词」过滤（沉舟说/沉舟把）
+        # 传入已知实体名，启用「实体名片段 + 尾随动词」过滤（沉舟说/沉舟把）
         if evidence.is_candidate_noise(g, _pools, known):
             continue
         if any((g in k) or (k in g and len(k) >= 2) for k in known):
@@ -461,7 +461,7 @@ def verify_candidates(book: Path, ch: str, proposal: dict) -> dict:
                         add("warn", "critical_mutation", f"🚨【高危状态变更】主角伤势出现严重伤残描述「{inj}」，请核实是否为正文真实设定！")
                         break
             if cur_p.get("power_level"):
-                #  P1-1：与存量值比对——Reader 契约要求「无变动则维持原样」，
+                # 与存量值比对——Reader 契约要求「无变动则维持原样」，
                 # 于是照章办事的提案每章都带同一个 power_level 串；不与存量比对就会
                 # 每章误报一次 ⭐ 级提示，真突破时反而没人信。
                 try:
@@ -483,7 +483,7 @@ def verify_candidates(book: Path, ch: str, proposal: dict) -> dict:
 
 
 # 错误码与修复文案的唯一真源在 errcodes.REGISTRY（含 severity 与人话解释，供 Agent 消费）；
-# 此处仅派生兜底 remedy 字典，禁止在本文件再手写新条目（守卫测试 test_errcodes 拦截漂移）。
+# 此处仅派生兜底 remedy 字典，禁止在本文件再手写新条目。
 DEFAULT_REMEDIES: dict[str, str] = {c.code: c.remedy for c in errcodes.REGISTRY.values()
                                     if c.remedy}
 
@@ -518,7 +518,7 @@ PARAM_SPEC: dict[str, dict] = {
         "desc": "验收条目空判词（check acceptance_empty_criterion 档）",
         "example": ["读者", "沉浸感"]},
     "hook_words": {"shape": "hook_tiers", "gap": True,
-        "desc": "章尾钩子分档词表（prev/dashboard；strong/suspense/anticlimax 三键，值各为词表）",
+        "desc": "章尾钩子分档词表（strong/suspense/anticlimax 三键，值各为词表）",
         "example": {"strong": ["案发", "强敌登门"], "suspense": ["尾随", "深夜来电"], "anticlimax": ["虚惊一场"]}},
     "candidate_stopwords": {"shape": "str_list", "gap": False,
         "desc": "候选新实体追加降噪词（verify 候选清单过滤，追加到语言功能词底表；可选增配，不配不提示）",
@@ -583,13 +583,13 @@ def param_suggestions(book: Path, top: int = 12) -> dict:
         _sugg_pools = state.load_state(book, "ledger").get("pools", {})
     except (ValueError, FileNotFoundError):
         _sugg_pools = {}
-    #  P3：账本池名/单位并入已知词（与 verify_candidates 同口径，防「灵通」类片段误报）
+    # 账本池名/单位并入已知词（与 verify_candidates 同口径，防「灵通」类片段误报）
     for p in _sugg_pools.values():
         for t in (p.get("name"), p.get("unit")):
             if t:
                 known.append(str(t))
     grams: dict[str, int] = {}
-    #  P3：候选最小长度 3（2 字碎片「了一 ×35」类语法噪声不再进入候选）
+    # 候选最小长度 3（2 字碎片「了一 ×35」类语法噪声不再进入候选）
     for seg in re.split(r"[^\u4e00-\u9fff]+", full):
         if len(seg) >= 2:
             for L in (3, 4):
@@ -609,7 +609,7 @@ def param_suggestions(book: Path, top: int = 12) -> dict:
     sugg["candidate_stopwords"] = [
         {"word": g, "count": c} for g, c in sorted(cands, key=lambda x: -x[1])[:top]]
 
-    #  P2-3：`evidence names` 与本命令原先阈值互不相交（3 vs 6）、输出零重叠，
+    # `evidence names` 与本命令原先阈值互不相交（3 vs 6）、输出零重叠，
     # 而真正可执行的「某高频写法应挂到既有实体当别名」两边都不给——names 只把它列进
     # unregistered/known_variants 而不说该怎么办，suggest 的 generic_stopwords 又只统计
     # **已登记**别名，永远提不出新别名。现直接复用 evidence.names 的结果，保证两个入口
@@ -707,14 +707,6 @@ def validate_param_value(key: str, value) -> str | None:
         if not isinstance(value, str) or value not in choices:
             return f"「{key}」必须为 {'/'.join(choices)} 之一（收到 {value!r}）"
     return None
-
-_WORDS_BAND_RE = re.compile(r"(\d+)\s*[-–—~～]\s*(\d+)")
-
-
-def _words_band(s: str) -> tuple[int | None, int | None]:
-    m = _WORDS_BAND_RE.search(s or "")
-    return (int(m.group(1)), int(m.group(2))) if m else (None, None)
-
 
 def _style_knobs(s: str) -> tuple[str, ...]:
     return tuple(p.strip() for p in re.split(r"[|｜]", s or "") if p.strip())
@@ -862,7 +854,7 @@ def proposal_cross_facts(book: Path, ch: str, proposal: dict) -> dict:
             if str(g.get("status", "")).strip().lower() != resolved.lower() and isinstance(t, int) and t <= n:
                 due.append({"id": g["id"], "target_ch": t})
     facts["due_lines"] = due
-    #  P3-6：字段名 `lines_ops_in_proposal` 暗示「提案里的全部线操作」，实际按设计
+    # 字段名 `lines_ops_in_proposal` 暗示「提案里的全部线操作」，实际按设计
     # 排除 `plant`（plant 是新建线，不是对到期线的操作），于是 ch_001 有 4 条线操作、
     # 该字段却为空，读起来像提案漏写。现拆成两个名副其实的事实，并保留旧键做兼容别名。
     _line_ops = sorted({str(g.get("id")) for g in (proposal.get("lines") or [])
@@ -930,7 +922,7 @@ def run_checks(book: Path) -> dict:
     for msg in state.verify_state(book):
         errors.append(_err("state_inconsistent", msg))
 
-    #  P0-1：账本流水必须按章号单调不减——否则 balance_after 与编年史互相矛盾，
+    # 账本流水必须按章号单调不减——否则 balance_after 与编年史互相矛盾，
     # 而 recompute 按列表顺序重算会判定「自洽」，无人能发现。
     try:
         _led = state.load_state(book, "ledger")
@@ -943,7 +935,7 @@ def run_checks(book: Path) -> dict:
                 "ledger_tx_order",
                 f"账本流水章节顺序错乱：第 {_i} 笔属 ch_{_cur:03d}，却排在 ch_{_prev:03d} 之后"
                 f"（共 {len(_bad)} 处倒序）——balance_after 已与编年史矛盾"))
-        #  P3-11：`check` 自称「算术体检」，实际对跨文档数字闭合零覆盖——实测 ch_003
+        # `check` 自称「算术体检」，实际对跨文档数字闭合零覆盖——实测 ch_003
         # 写「债从二百四十七变成二百三十四」（正确应为二百一十七），beats 验收要点里
         # 也是 234，`check` 全程 ok=True。现补两层机械算术闸门。
         # ① 账本内部：balance_after 必须等于 initial + 累计 delta，末笔必须等于 current。
@@ -1131,6 +1123,16 @@ def run_checks(book: Path) -> dict:
     for md in sorted(book.rglob("*.md")):
         if md.is_symlink():
             continue
+        # 修复：排除 log/ 与 export/ 产物目录。这些是引擎/子代理生成的报告（仲裁、
+        # 催更、校对），会引用 beats/正文片段——若片段含 {{slot:}} 残留，会
+        # 反向触发 unfilled_slot 阻断级 error，属误报（Stage 0 模板检查只该覆盖
+        # 创作资产目录）。
+        try:
+            rel_parts = md.relative_to(book).parts
+        except ValueError:
+            continue
+        if rel_parts and rel_parts[0] in ("log", "export", "state"):
+            continue
         try:
             # 防越界：resolve 后仍需在 book 内
             if md.resolve() != book and book.resolve() not in md.resolve().parents:
@@ -1143,7 +1145,7 @@ def run_checks(book: Path) -> dict:
         errors.append(_err("unfilled_slot", f"{rel} 存在未填充槽位 {{{{slot:...}}}}（Stage 0 未完成）"))
 
     ms = book / "manuscript"
-    #  P3-9：中文稿的拉丁残留原先无任何闸门——`residue` 只数 `{{slot:` 与 `candidate_`，
+    # 中文稿的拉丁残留原先无任何闸门——`residue` 只数 `{{slot:` 与 `candidate_`，
     # 实测 beats/正文里留一句「说这小子比他想的是 harder 谈」全程无反应。现补机械检出，
     # 白名单走 project.json.latin_allowlist（外文专名/品牌等合法情形由主控声明）。
     _latin_allow = {str(w).strip().lower() for w in (proj.get("latin_allowlist") or [])
@@ -1258,8 +1260,6 @@ def run_checks(book: Path) -> dict:
     empty_words = [w for w in (proj.get("empty_criteria_words") or [])
                    if isinstance(w, str) and w.strip()]
     prev_by_vol: dict[str, dict] = {}
-    # 工艺问题 2：{(vol, 章号): (自报下限, 自报上限)}
-    declared_band: dict[tuple[str, int], tuple[int | None, int | None]] = {}
     locked_entries = []
     try:
         locked_entries = state.load_state(book, "locked").get("entries", [])
@@ -1279,7 +1279,6 @@ def run_checks(book: Path) -> dict:
         if not form:
             errors.append(_err("beats_missing_form", f"{f.name}: front-matter 缺 form 字段（Stage 1 未选章型）"))
         cur_notes = _style_knobs(fm.get("style_notes"))
-        cur_lo, _ = _words_band(fm.get("words"))
         last = prev_by_vol.get(vol)
         if last and last["num"] == num - 1:
             if form and last.get("form") == form and not fm.get("form_reason"):
@@ -1289,27 +1288,11 @@ def run_checks(book: Path) -> dict:
                 warnings.append(_err("style_notes_copy",
                                      f"{f.name}: style_notes 旋钮与上一章全同「{fm.get('style_notes','')}」"
                                      "（建议根据当章冲突焦点与情境动态配置 style_notes）"))
-            prev_lo = _words_band(last.get("words"))[0]
-            #  P2-9：原判定 `0 < |Δ下限| < 400` 把 2200 → 2400 这种完全正常的
-            # 章间微调判成「微调幅度过小」，等于逼主控要么一字不改、要么大幅跳档。
-            # 现改为相对阈值：只有当 Δ 小于上一章下限的 5%（且不低于 50 字）时才提示，
-            # 即只针对 2000 → 2050 这类无意义抖动。
-            if prev_lo is not None and cur_lo is not None:
-                _delta = abs(cur_lo - prev_lo)
-                _slack = max(50, round(prev_lo * 0.05))
-                if 0 < _delta < _slack:
-                    warnings.append(_err("words_band_crowded",
-                                         f"{f.name}: words 带下限 {cur_lo} 与上一章 {prev_lo} 仅差 "
-                                         f"{_delta}（< 上一章下限的 5%＝{_slack}，属无意义抖动；"
-                                         "建议维持同级或按篇幅需要实质调整）"))
-        prev_by_vol[vol] = {"num": num, "form": form,
-                            "notes": fm.get("style_notes", ""), "words": fm.get("words", "")}
-        # 工艺问题 2：收集细纲自报的字数带，供后文与定稿实际字数比对
-        declared_band[(vol, num)] = _words_band(fm.get("words", ""))
+        prev_by_vol[vol] = {"num": num, "form": form, "notes": fm.get("style_notes", "")}
         crit_hits: list[str] = []
         for sec_pat in (r"^##\s*(?:.*目标|核心目标)", r"^##\s*(?:.*验收|.*契约)"):
             for ln in common.md_section(text, sec_pat):
-                #  P2-5：引擎自带模板 templates/beats.md 的交付契约行是
+                # 引擎自带模板 templates/beats.md 的交付契约行是
                 # `- **核心看点**：<!-- 明确本章必须呈现给读者的核心爽点与看点 -->`，
                 # 行首是 `-` 而非 `<`，旧的 startswith("<") 跳过逻辑失效，于是注释里的
                 # 占位措辞被当成主控写的判据扫描——**每份未改写的脚手架 beats 必报**，
@@ -1328,7 +1311,7 @@ def run_checks(book: Path) -> dict:
                                  "（判据建议使用具体可验证的动词与实体名词）"))
         action_sec = "\n".join(common.md_section(text, r"^##\s*.*线(索)?动作"))
         planned_plants = set(re.findall(r"plant\s+((?:GUN|MIS|KNO)-\d{3,})", action_sec))
-        #  P2-1：原来唯一的豁免写法是「plant GUN-XXX」，可细纲想说「本章不涉及某条
+        # 原来唯一的豁免写法是「plant GUN-XXX」，可细纲想说「本章不涉及某条
         # 未 plant 的线」时，写 plant 等于撒谎，不写 ID 又丢了可核对性——没有合法写法。
         # 现补一组显式「本章不推进」标记：skip / hold / defer / 不涉及 / 不推进 / 顺延。
         planned_skips = set(re.findall(
@@ -1429,40 +1412,6 @@ def run_checks(book: Path) -> dict:
             warnings.append(_err("final_without_raw", f"{tok}: 有定稿但无 raw 草稿（流程事实，供核对）"))
         if (vol, n) not in beats_nums:
             warnings.append(_err("final_without_beats", f"{tok}: 有定稿但无 beats 细纲（流程事实，供核对）"))
-
-    if band_ok:
-        lo, hi = band
-        for tok, _, text in evidence.final_chapters(book):
-            c = common.cjk_count(text)
-            #  P4：字数带双层判定——出带 15% 容差内 = info（软约束），
-            # 显著出带（<下限 85% 或 >上限 115%）= warning（beats 硬合同口径）
-            if c < lo * 0.85 or c > hi * 1.15:
-                warnings.append(_err("word_band_breach",
-                                     f"{tok}: 字数 {c} 显著偏离目标带 [{lo}, {hi}]（超出 15% 容差）"))
-            elif c < lo or c > hi:
-                infos.append(_err("word_band_deviation", f"{tok}: 字数 {c} 在目标带 [{lo}, {hi}] 之外"))
-
-    # 工艺问题 2：细纲 front-matter 自报的 `words` 带原先**无任何强制力**——`check` 只按
-    # project.json.words_target 判定，自报的 2200-2800 从不与定稿实际字数比对，主控可以随便报。
-    # 现补机械复核：显著偏离自报带（>15% 容差）= warning，轻微出带 = info。
-    for f in common.find_chapter_files(book, "final"):
-        _n = common.chapter_number_from_name(f.name)
-        if not _n:
-            continue
-        _decl = next((declared_band[k] for k in declared_band if k[1] == _n), None)
-        if not _decl or _decl[0] is None or _decl[1] is None:
-            continue
-        _dlo, _dhi = _decl
-        _c = common.cjk_count(f.read_text(encoding="utf-8", errors="replace"))
-        _tok = f"ch_{_n:03d}"
-        if _c < _dlo * 0.85 or _c > _dhi * 1.15:
-            warnings.append(_err("beats_words_unmet",
-                                 f"{_tok}: 定稿 {_c} 字显著偏离细纲自报带 [{_dlo}, {_dhi}]"
-                                 "（超出 15% 容差）——自报带是 Stage 1 对 Stage 2/3 的硬合同，"
-                                 "请扩写/压缩到带内，或回 Stage 1 修订自报带并写明理由"))
-        elif _c < _dlo or _c > _dhi:
-            infos.append(_err("beats_words_drift",
-                              f"{_tok}: 定稿 {_c} 字在细纲自报带 [{_dlo}, {_dhi}] 之外（15% 容差内）"))
 
     for f in common.find_chapter_files(book, "final"):
         try:
@@ -1701,7 +1650,7 @@ def get_self_healing_remedies(book: Path, ch: str | None = None) -> list[dict]:
         }
         if "recompute" in rem or "ledger" in code:
             item["action_command"] = "python studio.py ledger recompute"
-        #  P1：旧 remedy 曾指向不存在的 `entity add` 命令，自愈指令解析分支一并移除；
+        # 旧 remedy 曾指向不存在的 `entity add` 命令，自愈指令解析分支一并移除；
         # 实体登记的唯一通道是 Reader 提案（remedy 文案已在 errcodes 更正）。
         out.append(item)
 

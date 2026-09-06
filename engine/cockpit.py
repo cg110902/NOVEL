@@ -13,7 +13,7 @@ import re
 from pathlib import Path
 from typing import Any
 
-from . import checks, common, graph, state
+from . import checks, common, evidence, graph, state
 
 
 def _infer_active_chapter(book: Path) -> str:
@@ -150,7 +150,7 @@ def _get_critic_radar(book: Path, ch_num: int) -> dict[str, str]:
                 return kw
         return ""
 
-    #  P6：每字段关键词变体容错（最长优先）——Critic 子代理的标签写法漂移
+    # 每字段关键词变体容错（最长优先）——Critic 子代理的标签写法漂移
     # （如「体感」vs「本章体感」）不再静默丢失该维度
     _FIELD_KWS = (
         ("vibe", ("本章体感", "阅读体感", "体感")),
@@ -214,7 +214,7 @@ def _get_critic_radar(book: Path, ch_num: int) -> dict[str, str]:
     except OSError:
         pass  # 便签不可读：雷达字段留空（：不再吞全部异常）
 
-    #  P6：便签存在但雷达字段全空 → 明示「格式疑似偏离模板」，不再让主控误读为「无反馈」
+    # 便签存在但雷达字段全空 → 明示「格式疑似偏离模板」，不再让主控误读为「无反馈」
     try:
         _text = critic_path.read_text(encoding="utf-8", errors="replace")
         _is_skeleton = "SKELETON" in _text[:400] or "（待评）" in _text[:1200]
@@ -254,7 +254,7 @@ def _extract_dramatic_irony(lines: dict, scene_chars: list[str]) -> list[str]:
             continue
         kid = k.get("id", "KNO")
         secret = str(k.get("secret", ""))
-        #  P3-8：原写法 k.get("note", "保密中") 对**空串**失效——state.py 落盘时写的
+        # 原写法 k.get("note", "保密中") 对**空串**失效——state.py 落盘时写的
         # 是 "note": ""，于是默认值取不到，dramatic_irony 输出留下空尾巴「知情边界：」。
         # beats 里同一信息用 `or "保密中"` 显示正常，两处口径现统一。
         note = str(k.get("note") or "保密中")
@@ -363,18 +363,13 @@ def _extract_lines_radar(lines: dict, ch_num: int) -> dict[str, Any]:
 def _load_final_texts(book: Path, current_ch: int) -> dict[int, str]:
     """一次性预读 1..current_ch-1 的定稿文本（键=章号）。
 
-    供角色沉寂/死库存雷达共用：避免每个实体各自重新 glob+read 全部 final
-    （原实现为 O(章数×实体数) 次文件读取，长书会把"0.1 秒出报"拖成数秒）。
+    供角色沉寂/死库存雷达共用：避免每个实体各自重新 glob+read 全部 final。
+    走 evidence.final_chapters 口径，天然支持多卷、版本择优及首行章题剥离。
     """
     texts: dict[int, str] = {}
-    for ch_idx in range(1, current_ch):
-        ch_tok = f"ch_{ch_idx:03d}"
-        final_files = list((book / "manuscript").glob(f"*/final/{ch_tok}*.md"))
-        if final_files:
-            # 多版本时取最高版本（与 evidence.final_chapters 口径一致， P3-22）
-            best = max(final_files, key=lambda f: (common.chapter_version_from_name(f.name),
-                                                   common.chapter_number_from_name(f.name) or 0))
-            texts[ch_idx] = best.read_text(encoding="utf-8", errors="ignore")
+    for tok, n, text in evidence.final_chapters(book):
+        if n < current_ch:
+            texts[n] = text
     return texts
 
 
@@ -390,22 +385,43 @@ def _compute_character_dormancy(book: Path, current_ch: int,
     char_files = list((book / "characters").glob("*.md"))
     char_names = [f.stem for f in char_files if not f.stem.startswith(".")]
 
+    entity_aliases: dict[str, list[str]] = {}
     try:
         entries = state.load_state(book, "entities").get("entries", [])
         for edata in entries:
-            if edata.get("type") == "person":
-                cname = edata.get("name")
-                if cname and cname not in char_names:
-                    char_names.append(cname)
+            cname = str(edata.get("name", "")).strip()
+            if not cname:
+                continue
+            aliases = [str(a).strip() for a in edata.get("aliases", []) if a and str(a).strip()]
+            entity_aliases[cname] = aliases
+            if edata.get("type") == "person" and cname not in char_names:
+                char_names.append(cname)
     except (ValueError, OSError):
         pass  # 实体账本损坏：退化为仅 characters/ 目录名册
 
     char_last_seen = {c: 0 for c in char_names}
 
+    # 1. 扫描各章正文（含别名）
     for ch_idx, text in final_texts.items():
         for c in char_names:
-            if c in text:
+            names_to_check = [c] + entity_aliases.get(c, [])
+            if any(nm and nm in text for nm in names_to_check):
                 char_last_seen[c] = ch_idx
+
+    # 2. 补核 timeline 事实事件（防止首次出场以代称入戏，但事实台账已明确登记）
+    try:
+        events = state.load_state(book, "timeline").get("events", [])
+        for ev in events:
+            ch_num = common.chapter_number_from_name(str(ev.get("chapter", "")))
+            if ch_num and ch_num in final_texts:
+                ev_str = str(ev.get("event", ""))
+                for c in char_names:
+                    names_to_check = [c] + entity_aliases.get(c, [])
+                    if any(nm and nm in ev_str for nm in names_to_check):
+                        if ch_num > char_last_seen.get(c, 0):
+                            char_last_seen[c] = ch_num
+    except (ValueError, OSError):
+        pass
 
     proj = common.load_json(book / "project.json", default={}) or {}
     protagonist = proj.get("protagonist", "主角名")
@@ -463,14 +479,23 @@ def _compute_dead_inventory(book: Path, current_ch: int,
 
     try:
         entries = state.load_state(book, "entities").get("entries", [])
+        tl_events = state.load_state(book, "timeline").get("events", [])
         for edata in entries:
             if edata.get("type") == "item":
-                iname = edata.get("name")
+                iname = str(edata.get("name", "")).strip()
                 if iname and iname not in ("我悟了，你随意",):
+                    aliases = [iname] + [str(a).strip() for a in edata.get("aliases", []) if a and str(a).strip()]
                     last_seen_ch = 0
                     for ch_idx, text in final_texts.items():
-                        if iname in text:
+                        if any(a in text for a in aliases):
                             last_seen_ch = ch_idx
+                    for ev in tl_events:
+                        ch_num = common.chapter_number_from_name(str(ev.get("chapter", "")))
+                        if ch_num and ch_num in final_texts:
+                            ev_str = str(ev.get("event", ""))
+                            if any(a in ev_str for a in aliases):
+                                if ch_num > last_seen_ch:
+                                    last_seen_ch = ch_num
                     if last_seen_ch > 0 and (current_ch - 1 - last_seen_ch) >= 3:
                         alerts.append(f"🎒 [沉睡道具提醒] 道具/词条「{iname}」已连续 {current_ch - 1 - last_seen_ch} 章未登场(上次使用: ch_{last_seen_ch:03d})，可考虑在后续战力推演、融合升华或剧情破局时调用。")
     except (ValueError, OSError):
@@ -491,7 +516,7 @@ def get_algorithmic_guidance(book: Path, current_ch: int) -> list[str]:
 
 def build_cockpit_briefing(book: Path, ch: str | None = None) -> dict[str, Any]:
     """计算并构建主控态势驾驶舱完整数据模型。"""
-    #  G1：NOVEL_STUDIO_DEBUG=1 时聚合各节耗时（briefing.debug_timing_ms + stderr）
+    # NOVEL_STUDIO_DEBUG=1 时聚合各节耗时（briefing.debug_timing_ms + stderr）
     import time as _time
     timings: dict[str, float] = {}
     t_start = _time.perf_counter()
@@ -500,7 +525,7 @@ def build_cockpit_briefing(book: Path, ch: str | None = None) -> dict[str, Any]:
     ch_num = common.chapter_token_to_num(target_ch) or 1
     ch_tok = f"ch_{ch_num:03d}"
     vol = _find_chapter_vol(book, ch_tok)
-    #  P1-4：游离的超前工件只提示，不参与指针推断
+    # 游离的超前工件只提示，不参与指针推断
     stray = stray_artifacts(book, ch_tok)
     if stray:
         common.debug(f"cockpit: 工序指针 {ch_tok}；游离超前工件 {stray}")
@@ -517,7 +542,7 @@ def build_cockpit_briefing(book: Path, ch: str | None = None) -> dict[str, Any]:
     _cf = book / "log" / "critic" / f"{ch_tok}.md"
     if _cf.is_file():
         try:
-            #  P2-7：引擎预填的 SKELETON 骨架不代表 Stage 4B 已完成，防「假便签」阻断真子代理派发
+            # 引擎预填的 SKELETON 骨架不代表 Stage 4B 已完成，防「假便签」阻断真子代理派发
             critic_file = "SKELETON" not in _cf.read_text(encoding="utf-8", errors="replace")[:400]
         except OSError:
             critic_file = True
@@ -795,7 +820,7 @@ def render_cockpit_terminal(briefing: dict[str, Any]) -> None:
             f"[bold green]👉 下一步执行指令：[/bold green][bold white]{act['instruction']}[/bold white]\n"
             f"[dim]   建议操作/命令：{act['command']} ｜ 交付目标：{act['target_file']}[/dim]"
         )
-        #  P1-4：游离的超前工件显式提示，避免主控误以为指针跳章
+        # 游离的超前工件显式提示，避免主控误以为指针跳章
         if wf.get("stray_ahead_artifacts"):
             wf_text += ("\n\n[bold yellow]⚠️ 游离超前工件（不参与指针推断）：[/bold yellow]"
                         + "、".join(wf["stray_ahead_artifacts"][:6])

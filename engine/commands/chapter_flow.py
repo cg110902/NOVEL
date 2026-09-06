@@ -1,11 +1,11 @@
-"""章节流转命令：pack / beats / evidence / check / review / critic / graph / export / dashboard。"""
+"""章节流转命令：pack / beats / evidence / check / review / critic / graph / export。"""
 from __future__ import annotations
 
 import json
 import re
 import sys
 
-from .. import audit, checks, common, dashboard, evidence, state
+from .. import audit, checks, common, evidence, state
 from .. import pack as pack_mod
 from .. import graph as graph_mod
 from .. import cockpit as cockpit_mod
@@ -20,14 +20,14 @@ except ImportError:
     _HAS_RICH = False
     console = None
 
-from ._shared import _norm_ch, ws_gate, ws_gate_code
+from ._shared import _norm_ch, usage_error, ws_gate, ws_gate_code
 
 
 # ---------------------------------------------------------------------------
 # pack
 # ---------------------------------------------------------------------------
 def cmd_pack(args) -> int:
-    book = ws_gate(args)  #  P5：--json 错误路径也出 JSON 信封
+    book = ws_gate(args)  # --json 错误路径也出 JSON 信封
     if book is None:
         return ws_gate_code()
     js = bool(getattr(args, "json", False))
@@ -53,7 +53,7 @@ def cmd_pack(args) -> int:
             payload["opened"] = pack_mod.open_file(book, args.open_path,
                                                    role=getattr(args, "as_role", "drafter"))
     except PermissionError as exc:
-        #  P0-2：禁读网关拦截——不是业务失败，是越权，单列退出码语义仍归 1（阻断）
+        # 禁读网关拦截——不是业务失败，是越权，单列退出码语义仍归 1（阻断）
         if js:
             print(json.dumps({"error": "forbidden", "path": args.open_path,
                               "as": getattr(args, "as_role", "drafter"),
@@ -79,7 +79,7 @@ def cmd_pack(args) -> int:
 # evidence
 # ---------------------------------------------------------------------------
 def cmd_evidence(args) -> int:
-    book = ws_gate(args)  #  P5：--json 错误路径也出 JSON 信封
+    book = ws_gate(args)  # --json 错误路径也出 JSON 信封
     if book is None:
         return ws_gate_code()
     kind, rest = args.kind, list(args.args or [])
@@ -163,7 +163,7 @@ def cmd_index(args) -> int:
 # check
 # ---------------------------------------------------------------------------
 def cmd_check(args) -> int:
-    book = ws_gate(args)  #  P5：--json 错误路径也出 JSON 信封
+    book = ws_gate(args)  # --json 错误路径也出 JSON 信封
     if book is None:
         return ws_gate_code()
     report = checks.run_checks(book)
@@ -259,7 +259,7 @@ def _render_review_md(d: dict) -> str:
 
 
 def cmd_review(args) -> int:
-    book = ws_gate(args)  #  P5：--json 错误路径也出 JSON 信封
+    book = ws_gate(args)  # --json 错误路径也出 JSON 信封
     if book is None:
         return ws_gate_code()
     js = bool(getattr(args, "json", False))
@@ -388,8 +388,7 @@ def cmd_audit(args) -> int:
         ch_arg = f"ch_{latest:03d}"
     n = common.chapter_token_to_num(ch_arg)
     if not n:
-        print(f"❌ 无法解析章节号: {ch_arg!r}")
-        return 2
+        return usage_error(f"无法解析章节号: {ch_arg!r}", args, chapter=str(ch_arg))
     tok = f"ch_{n:03d}"
 
     payload = audit.run_audit(book, tok)
@@ -480,7 +479,7 @@ def _consistency_section(book, n: int, cur: dict, ents: list[dict], lines_st: di
             if str(g.get("status", "")).strip().lower() in ("resolved", "revealed"):
                 continue
             t = g.get("target_ch")
-            #  P2-2：原过滤只收 `isinstance(t, int) and t <= n+3`，于是 `target_ch:
+            # 原过滤只收 `isinstance(t, int) and t <= n+3`，于是 `target_ch:
             # "longline"` 的全书级线索被整条剔除——那往往正是本书最重要的道具/主线
             # （实测《沧澜拾灯》的「无主空灯」规范名根本没进名册）。不跑 pack 的 Drafter
             # 只读 beats + 上章 final，就拿不到道具规范名，只能自己造词。
@@ -525,7 +524,7 @@ def _consistency_section(book, n: int, cur: dict, ents: list[dict], lines_st: di
         for ent in roster:
             aliases = "、".join(str(a) for a in (ent.get("aliases") or []) if a)
             name_part = f"{ent['name']}（别名：{aliases}）" if aliases else str(ent["name"])
-            #  P2-15：截断统一带省略号（无省略号硬截断会丢关键信息且像坏句）
+            # 截断统一带省略号（无省略号硬截断会丢关键信息且像坏句）
             summary = _clip(str(ent.get("summary", "") or ""), 60)
             out.append(f"- {name_part} ｜ {ent.get('type', 'other')} ｜ {summary}")
         out.append("")
@@ -546,7 +545,7 @@ def _clip(s: str, n: int) -> str:
 
 
 def cmd_beats(args) -> int:
-    book = ws_gate(args)  #  P5：--json 错误路径也出 JSON 信封
+    book = ws_gate(args)  # --json 错误路径也出 JSON 信封
     if book is None:
         return ws_gate_code()
     js = bool(getattr(args, "json", False))
@@ -563,7 +562,7 @@ def cmd_beats(args) -> int:
     if not ch:
         latest = common.latest_chapter_number(book, "final") or 0
         ch = f"ch_{latest + 1:03d}"
-    #  P3-3：归一化不再静默——`ch_7` 会被改写成 `ch_007` 并明确告知，
+    # 归一化不再静默——`ch_7` 会被改写成 `ch_007` 并明确告知，
     # 避免与提案端（`target_ch` 必须是规范 ch_NNN）的严格度形成无声落差。
     tok, _rewrote = common.normalize_chapter_arg(ch)
     if not tok:
@@ -596,7 +595,7 @@ def cmd_beats(args) -> int:
     proj = common.load_json(book / "project.json", default={}) or {}
     protagonist = proj.get("protagonist", "主角名")
 
-    #  P8：form 默认值不再硬编码——上一章用了默认章型时切换推荐值，
+    # form 默认值不再硬编码——上一章用了默认章型时切换推荐值，
     # 防「连续同章型无理由」在脚手架阶段就已埋雷
     default_form = "暗流汇聚"
     if n > 1:
@@ -663,7 +662,7 @@ def cmd_beats(args) -> int:
     text = text.replace("{{slot:tension_curve|动态起伏}}", "危机逼近 → 试探博弈 → 动作破局")
     text = text.replace("{{slot:tension_score|6}}", "6")
     text = text.replace("{{slot:stage_mode|Simmering}}", "Simmering")
-    #  P7：「所属阶段 + 上章现场」注入——此前 replace 的模板标记不存在，属静默 no-op 死代码；
+    # 「所属阶段 + 上章现场」注入——此前 replace 的模板标记不存在，属静默 no-op 死代码；
     # 现在模板补了标记，并保留锚点回退，任何路径注入失败都走 stderr 警告（绝不静默）
     coord_block = (f"- **所属阶段**：{milestone or '（未匹配到分卷阶段，请核对 outlines/*/outline.md）'}\n"
                    f"- **上章现场**：{str(sit).strip() or '（暂无现场快照，按首章/转场处理）'}")
@@ -734,7 +733,7 @@ def cmd_beats(args) -> int:
 # critic
 # ---------------------------------------------------------------------------
 def cmd_critic(args) -> int:
-    book = ws_gate(args)  #  P5：--json 错误路径也出 JSON 信封
+    book = ws_gate(args)  # --json 错误路径也出 JSON 信封
     if book is None:
         return ws_gate_code()
     ch_arg = getattr(args, "chapter", None)
@@ -754,7 +753,7 @@ def cmd_critic(args) -> int:
 
     if critic_file.is_file():
         text = critic_file.read_text(encoding="utf-8", errors="ignore")
-        #  P2-7：骨架明示为「未评测」，不再以正式报告的口吻回显
+        # 骨架明示为「未评测」，不再以正式报告的口吻回显
         is_skeleton = "SKELETON" in text[:400]
         panel_title = (f"🧐 [催更便签骨架 · 未评测（Stage 4B 待 Critic 子代理改写）] {tok}"
                        if is_skeleton else f"🧐 [老白读者催更便签] {tok}")
@@ -865,7 +864,7 @@ def cmd_critic(args) -> int:
 # graph
 # ---------------------------------------------------------------------------
 def cmd_graph(args) -> int:
-    book = ws_gate(args)  #  P5：--json 错误路径也出 JSON 信封
+    book = ws_gate(args)  # --json 错误路径也出 JSON 信封
     if book is None:
         return ws_gate_code()
     return graph_mod.run_graph(
@@ -885,7 +884,7 @@ def cmd_graph(args) -> int:
 # export
 # ---------------------------------------------------------------------------
 def cmd_export(args) -> int:
-    book = ws_gate(args)  #  P5：--json 错误路径也出 JSON 信封
+    book = ws_gate(args)  # --json 错误路径也出 JSON 信封
     if book is None:
         return ws_gate_code()
     if not args.txt and not args.views:
@@ -908,32 +907,11 @@ def cmd_export(args) -> int:
     return 0
 
 
-def cmd_dashboard(args) -> int:
-    book = ws_gate(args)  #  P5：--json 错误路径也出 JSON 信封
-    if book is None:
-        return ws_gate_code()
-    try:
-        out_file = dashboard.export_dashboard(book)
-    except Exception as exc:
-        print(f"❌ 看板生成失败: {exc}")
-        return 1
-    if getattr(args, "json", False):
-        print(json.dumps({"dashboard": str(out_file.relative_to(book)), "url": str(out_file.resolve())}, ensure_ascii=False))
-    else:
-        print("=" * 70)
-        proj = common.load_json(book / "project.json", default={})
-        print(f" 📊 [全景交互看板] 《{proj.get('title','')}》")
-        print("=" * 70)
-        print(f" 🌐 看板 HTML 文件已生成: {out_file.resolve()}")
-        print("    可直接在浏览器打开预览人物关系网、伏笔看板与情绪心电图！")
-        return 0
-
-
 # ---------------------------------------------------------------------------
 # ask / pov / calendar（只读取证三件套：写作前先问书，严禁凭记忆脑补）
 # ---------------------------------------------------------------------------
 def cmd_ask(args) -> int:
-    book = ws_gate(args)  #  P5：--json 错误路径也出 JSON 信封
+    book = ws_gate(args)  # --json 错误路径也出 JSON 信封
     if book is None:
         return ws_gate_code()
     query = str(getattr(args, "query", "") or "").strip()
@@ -943,7 +921,7 @@ def cmd_ask(args) -> int:
 
 
 def cmd_pov(args) -> int:
-    book = ws_gate(args)  #  P5：--json 错误路径也出 JSON 信封
+    book = ws_gate(args)  # --json 错误路径也出 JSON 信封
     if book is None:
         return ws_gate_code()
     payload = evidence.pov(book, str(getattr(args, "name", "") or ""))
@@ -1013,7 +991,7 @@ def _calendar_payload(book, span: int) -> dict:
 
 
 def cmd_calendar(args) -> int:
-    book = ws_gate(args)  #  P5：--json 错误路径也出 JSON 信封
+    book = ws_gate(args)  # --json 错误路径也出 JSON 信封
     if book is None:
         return ws_gate_code()
     try:

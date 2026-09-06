@@ -126,7 +126,7 @@ workspace/<书名>/
 ├── log/audit/ch_XXX.md       # 一致性仲裁报告（Stage 4C 产出；audit_mode=strict 下为 sync 前置闸门）
 ├── log/branches/ch_XXX.md    # simulate branch 分支参谋单（可选，主控工件）
 ├── log/review/               # 校对注记 + Librarian 长程巡检报告 sweep_ch_XXX.md（可选，主控工件）
-└── export/                   # 全书编译产物（--txt / --views / views/dashboard.html）
+└── export/                   # 全书编译产物（--txt / --views 状态视图）
 ```
 
 - 仓库根另含：`studio.py`（CLI 入口）、`engine/`（确定性引擎源码，**黑盒禁读**）、`templates/`（模板库）、`engine/README.md`（引擎维护文档，主控与子代理无需读取）。

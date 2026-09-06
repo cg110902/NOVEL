@@ -8,8 +8,8 @@ from pathlib import Path
 
 from .. import checks, common, errcodes, evidence, snapshot, state
 
-from ._shared import (SLOT_RE, _norm_ch, _resolve_and_validate, resolve_note_shown, ws_gate,
-                      ws_gate_code)
+from ._shared import (SLOT_RE, _norm_ch, _resolve_and_validate, resolve_note_shown, usage_error,
+                      ws_gate, ws_gate_code)
 
 
 # ---------------------------------------------------------------------------
@@ -272,7 +272,7 @@ def _next_actions(brief: dict | None) -> list[str]:
 
 
 def cmd_status(args) -> int:
-    #  P5：--json 模式解析层不打文本（stdout 只出 JSON 信封）
+    # --json 模式解析层不打文本（stdout 只出 JSON 信封）
     js = bool(getattr(args, "json", False))
     book = _resolve_and_validate(args.workspace, suppress_text=js)
     # 若显式指定 -w 但解析失败（越界或不存在），_resolve_and_validate 已打印越界错误；补充不存在提示
@@ -303,7 +303,7 @@ def cmd_status(args) -> int:
                              ensure_ascii=False, indent=2))
         else:
             if len(books) > 1:
-                #  P12：解析层已打印过多书清单时不再二次打印
+                # 解析层已打印过多书清单时不再二次打印
                 if not resolve_note_shown():
                     print("📚 存在多本书，请用 -w 指定其一：")
                     for b in books:
@@ -311,7 +311,7 @@ def cmd_status(args) -> int:
             else:
                 print("（工作区还没有书。开局第一步见下一步提示。）")
                 print('👉 python studio.py init -w workspace/<slug> -t "书名" -g "题材"')
-        #  P3-4：此处原为 `return 0`，与 check/cockpit/sync 的 1 互相矛盾，且违反
+        # 此处原为 `return 0`，与 check/cockpit/sync 的 1 互相矛盾，且违反
         # engine/README.md 自述的退出码契约——按退出码判读的 Agent 会把「什么都没做」
         # 当成功。现统一：多书歧义（调用缺 -w，属用法错误）→ 2；未初始化 → 1。
         return 2 if len(books) > 1 else 1
@@ -345,17 +345,18 @@ def cmd_status(args) -> int:
 
 
 def cmd_cockpit(args) -> int:
-    book = ws_gate(args)  #  P5：--json 错误路径也出 JSON 信封
+    book = ws_gate(args)  # --json 错误路径也出 JSON 信封
     if book is None:
         return ws_gate_code()
     ch = None
     if getattr(args, "chapter", None):
-        #  P3-10：显式传入非法章号直接报用法错（此前被静默吞掉自动推断，
+        # 显式传入非法章号直接报用法错（此前被静默吞掉自动推断，
         # 主控拿到错误坐标的驾驶舱报而不知情）
         ch = _norm_ch(args.chapter)
         if ch is None:
-            print(f"❌ 无法解析章节号: {args.chapter!r}（示例: 2 或 ch_002；缺省可自动推断活跃章）")
-            return 2
+            return usage_error(
+                f"无法解析章节号: {args.chapter!r}（示例: 2 或 ch_002；缺省可自动推断活跃章）",
+                args, chapter=str(args.chapter))
     from .. import cockpit
     briefing = cockpit.build_cockpit_briefing(book, ch)
     if args.json:
@@ -383,7 +384,7 @@ def _status_debts(book) -> None:
                                  x["target_ch"] - cur, str(x.get("id", ""))))
         for x in soon[:2]:
             nid = x.get("id", "?")
-            #  P16：复用 cockpit 雷达口径——基准取「下一章」（已定稿章数+1），
+            # 复用 cockpit 雷达口径——基准取「下一章」（已定稿章数+1），
             # 逾期/本章引爆/倒计时三分措辞，不再出现「距到期 0 章」的含糊表述
             left = x["target_ch"] - (cur + 1)
             if left < 0:
@@ -427,7 +428,7 @@ def _merge_param_value(shape: str, old, new):
 
 
 def cmd_config(args) -> int:
-    book = ws_gate(args)  #  P5：--json 错误路径也出 JSON 信封
+    book = ws_gate(args)  # --json 错误路径也出 JSON 信封
     if book is None:
         return ws_gate_code()
     proj_path = book / "project.json"
@@ -495,7 +496,7 @@ def cmd_config(args) -> int:
             print("=" * 74)
             print(f" 🧮 供参候选工作单（机械计数 {payload['final_chapters_scanned']} 章定稿；采纳与否归主控裁决）")
             print("=" * 74)
-            #  P2-3：alias_suggestions 是派生建议、不是 PARAM_SPEC 里的配置键，
+            # alias_suggestions 是派生建议、不是 PARAM_SPEC 里的配置键，
             # 直接 spec[k] 会 KeyError（实测崩在文本渲染路径）。分开渲染。
             for k, items in payload["suggestions"].items():
                 if k not in spec:
@@ -554,7 +555,7 @@ def cmd_config(args) -> int:
         try:
             val = json.loads(raw)
         except json.JSONDecodeError:
-            #  P24：区间类键容忍裸字符串 "2000,3000"（避免让主控先学 JSON 语法再谈形状）
+            # 区间类键容忍裸字符串 "2000,3000"（避免让主控先学 JSON 语法再谈形状）
             val = None
             if spec[key]["shape"] == "int_pair":
                 parts = [x for x in re.split(r"[,，\s]+", raw.strip()) if x]
@@ -563,7 +564,7 @@ def cmd_config(args) -> int:
             if val is None:
                 return _cfg_err('值必须是合法 JSON 字面量（区间类键如 words_target 也可裸写 "2000,3000"）')
         if getattr(args, "merge", False):
-            #  P1-6：合并前先校验新值形状——此前标量进 merge 会被逐字拆分静默落盘，
+            # 合并前先校验新值形状——此前标量进 merge 会被逐字拆分静默落盘，
             # 且 dict 形状键收到标量会触发裸 TypeError/AttributeError
             pre_err = checks.validate_param_value(key, val)
             if pre_err:
@@ -571,11 +572,11 @@ def cmd_config(args) -> int:
             val = _merge_param_value(spec[key]["shape"], proj.get(key), val)
         shape_err = checks.validate_param_value(key, val)
         if shape_err:
-            #  P3-5：形状非法是**用法错误**，不是被闸门阻断的作业。同一函数里
+            # 形状非法是**用法错误**，不是被闸门阻断的作业。同一函数里
             # 「值必须是合法 JSON」与 --merge 前置校验都返 2，只有这里返 1，
             # 与 README 自述的「1=阻断 / 2=用法错」矛盾，按退出码判读的 Agent 会误判。
             return _cfg_err(f"参数形状非法：project.json.{shape_err}")
-        #  P2-6：写入入口的质量守卫（单字守望词等）。只拦新写入，不影响存量配置体检。
+        # 写入入口的质量守卫（单字守望词等）。只拦新写入，不影响存量配置体检。
         guard_err = checks.param_write_guard(key, val)
         if guard_err:
             return _cfg_err(f"参数值不可用：project.json.{guard_err}")

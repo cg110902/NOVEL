@@ -89,7 +89,7 @@ def create_snapshot(book: Path, snapshot_name: str) -> tuple[bool, str]:
                 shutil.copy2(f, folder / f.name)
                 copied.append(f.name)
             manifest = _manifest_of(folder)
-            #  P2：manifest 不再只有状态六表——记录快照时刻全部 final 定稿的内容哈希，
+            # manifest 不再只有状态六表——记录快照时刻全部 final 定稿的内容哈希，
             # 回滚核对与「定稿是否在封存后被改过」的追溯有了机械依据
             finals: dict[str, str] = {}
             for f in common.find_chapter_files(book, "final"):
@@ -204,7 +204,7 @@ def rollback_snapshot(book: Path, target: str) -> tuple[bool, str, str]:
             for f in list(sd.iterdir()):
                 if not f.is_file() or f.name in restored_names:
                     continue
-                if f.name in {".state.lock", ".engine.lock", MANIFEST_NAME}:
+                if f.name in {".state.lock", ".engine.lock", MANIFEST_NAME, state.MARKER_NAME}:
                     continue
                 if f.name.startswith(".") and f.name != state.MARKER_NAME:
                     continue

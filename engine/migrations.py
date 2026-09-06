@@ -288,7 +288,7 @@ def ensure_state_version(book: Path) -> dict:
 
         for k, d in raw.items():
             state_mod.save_state(book, k, d)
-        #  P3-7：原实现整表重写版本戳，迁移前 {created_at, version} 里的 created_at
+        # 原实现整表重写版本戳，迁移前 {created_at, version} 里的 created_at
         # 被丢掉，变成 {from_version, migrated_at, version}——建档时间这个不可再生的
         # 事实就此消失。现保留既有键，只更新版本相关字段。
         _prev_stamp = common.load_json(version_path(book), default={}) or {}

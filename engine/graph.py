@@ -194,7 +194,7 @@ def cmd_summary(G: nx.Graph, as_json: bool = False) -> None:
 
 
 def cmd_path(G: nx.Graph, source: str, target: str, as_json: bool = False) -> int:
-    #  P13：节点缺失/无路径返回非零退出码（advisory 命令放宽为 1）
+    # 节点缺失/无路径返回非零退出码（advisory 命令放宽为 1）
     if as_json:
         if source not in G or target not in G:
             reason = "source_missing" if source not in G else "target_missing"
@@ -250,7 +250,7 @@ def cmd_path(G: nx.Graph, source: str, target: str, as_json: bool = False) -> in
 
 
 def cmd_neighbors(G: nx.Graph, node: str, depth: int = 1, as_json: bool = False) -> int:
-    #  P13：节点缺失返回非零退出码（advisory 命令放宽为 1）
+    # 节点缺失返回非零退出码（advisory 命令放宽为 1）
     if node not in G:
         if as_json:
             print(json.dumps({"node": node, "found": False}, ensure_ascii=False))

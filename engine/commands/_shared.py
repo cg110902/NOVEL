@@ -13,7 +13,7 @@ SLOT_RE = re.compile(r"\{\{\s*slot:(\w+)(?:\|[^}]*)?\s*\}\}")
 # _resolve_and_validate 是否已自行打印过失败说明（多书歧义 / -w 越界）。
 # 置位后 print_ws_not_found() 抑制误导性的二次报错（ P2-2 / P3-11）。
 _RESOLVE_NOTE_SHOWN = False
-#  P5/P12：解析失败原因登记（JSON 错误信封与「二次打印去重」共用同一事实源）。
+# /P12：解析失败原因登记（JSON 错误信封与「二次打印去重」共用同一事实源）。
 _RESOLVE_REASON: str | None = None
 
 
@@ -35,6 +35,23 @@ def print_ws_not_found(msg: str = "❌ 未找到书工作区或其 project.json�
     if _RESOLVE_NOTE_SHOWN:
         return
     print(msg)
+
+
+def usage_error(msg: str, args: argparse.Namespace | None = None,
+                code: str = "usage", **extra) -> int:
+    """统一的用法错误出口（返回 2），保证 `--json` 下 stdout 仍是一枚可 json.loads 的信封。
+
+    各命令此前各自 `print("❌ ...")` 到 stdout 再 return 2：文本模式没问题，但 `--json`
+    时 stdout 变成纯文本，Agent 侧 `json.loads` 直接失败（实测 audit / proposal / cockpit
+    三条路径违约）。此处收口，杜绝该类回归。
+    """
+    if args is not None and getattr(args, "json", False):
+        payload: dict = {"ok": False, "code": code, "error": msg}
+        payload.update(extra)
+        print(json.dumps(payload, ensure_ascii=False))
+    else:
+        print(f"❌ {msg}")
+    return 2
 
 
 def resolve_note_shown() -> bool:
@@ -88,7 +105,7 @@ def ws_gate(args) -> Path | None:
     不混文本）；文本模式保持人话提示；两种模式均只打印一次说明（ P12 去重）。
     返回 None 时调用方 `return ws_gate_code()`（ P3-4：按原因区分 1/2）。
     """
-    #  P3-4 修正：下面第 94 行给 _RESOLVE_REASON 赋值却没声明 global，Python 因此把
+    # 修正：下面第 94 行给 _RESOLVE_REASON 赋值却没声明 global，Python 因此把
     # 整个函数内的该名字都视为局部变量，导致两个真实缺陷：
     #   ① 走「非 project_missing」分支时（如 -w 指向不存在的目录），该局部名从未绑定，
     #      第 100 行读取即 UnboundLocalError——本该输出结构化错误信封的 --json 路径直接崩栈；

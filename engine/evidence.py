@@ -31,7 +31,7 @@ SENT_SPLIT_RE = re.compile(r"[。！？!?…；\n]+")
 QUOTE_LINE_RE = re.compile(r"^\s*[「“\"『]")
 SHINGLE_N = 12
 REP_MIN = 8
-#  P2-3：专名扫描的入选下限，evidence.names 与 checks.param_suggestions 共用同一常量，
+# 专名扫描的入选下限，evidence.names 与 checks.param_suggestions 共用同一常量，
 # 避免两个工具阈值互不相交（实测 names 门槛 3 / suggest 门槛 6，输出零重叠，无可采纳项）。
 NAME_SCAN_MIN_COUNT = 3
 
@@ -239,7 +239,7 @@ def _cn_num_to_int(s: str) -> int | None:
 
 _GENERIC_UNITS = {"块", "枚", "张", "个", "粒", "颗", "只", "道", "本", "卷", "盒", "条", "段"}
 
-#  P3/P18：候选噪声增强——
+# /P18：候选噪声增强——
 # 语法碎片字符（专名/实体名中几乎不可能出现，出现即碎片）
 _GRAMMAR_NOISE_CHARS = set("的了着过")
 # 通用地貌/方位词作词头的「普通名词」（山脚/水口/石边…），不当专名候选
@@ -378,7 +378,7 @@ def _amount_scan(text: str, pools: dict) -> list[dict]:
                 sample = f"{m}{unit or name}"
                 if sample not in samples:
                     samples.append(sample)
-            #  P1-2：原实现是 sorted(distinct)[:8]——静默丢掉最大的金额，而大额恰恰是
+            # 原实现是 sorted(distinct)[:8]——静默丢掉最大的金额，而大额恰恰是
             # 金额对照最该看的。改为「最小 4 + 最大 4」保序展示，并显式给出截断标记与
             # 全量集合（checks 的 amount_unmatched / amount_by_quote 一律用全量比对）。
             distinct = sorted({v for v, _ in recs})
@@ -564,7 +564,7 @@ def prev_contrast(book: Path, ch: str) -> dict:
         fm = common.parse_front_matter(text)
 
         def _clean(ln: str) -> str:
-            #  P2-10：原实现只 lstrip("-*· ")，只吃掉行首记号，粗体的**闭合** `**`
+            # 原实现只 lstrip("-*· ")，只吃掉行首记号，粗体的**闭合** `**`
             # 会残留（`- **核心看点**：…` → `核心看点**：…`），把 markdown 记号当正文
             # 喂给下游。现剥注释、剥列表记号、剥成对强调记号。
             s = re.sub(r"<!--.*?-->", "", ln, flags=re.S)
@@ -981,7 +981,7 @@ def ask(book: Path, query: str) -> dict:
         out["entities"] = ent_hits[:8]
 
     # 2) 线索命中
-    #  P1-5：原实现只对 name/plan/secret/parties/... 做字面子串匹配，于是主角的
+    # 原实现只对 name/plan/secret/parties/... 做字面子串匹配，于是主角的
     # 全书驱动力线（如 GUN-003「娘的半缕残魂」——name 与 plan 里都没有主角名字）
     # 在 `ask 陆沉舟` 时整条漏掉；而 SKILL 的取证纪律是「凡要落笔一个旧数字且它不在
     # 眼前 → 必须先 ask」，漏召回直接导致主控凭印象编数。现补一层反向索引：
@@ -1240,7 +1240,7 @@ def pov(book: Path, name: str) -> dict:
         if str(k.get("status", "")).strip().lower() == "revealed":
             knows["public_knowledge"].append({"id": k.get("id"), "secret": str(k.get("secret", ""))[:50]})
     knows["public_knowledge"] = knows["public_knowledge"][-8:]
-    #  P1-3：原实现把「该角色登场章节的全部编年史」一律算作他「应知」，于是主角独自
+    # 原实现把「该角色登场章节的全部编年史」一律算作他「应知」，于是主角独自
     # 在家的私密场景也会被标给同章出场过的配角——正好把知情差喂反。现按事件文本是否
     # 点到该角色（名字/别名）分两档：lived_events = 事件里有他，可当亲历；
     # same_chapter_events = 仅同章发生，明确不保证亲历。
@@ -1257,7 +1257,7 @@ def pov(book: Path, name: str) -> dict:
     knows["lived_events"] = knows["lived_events"][-8:]
     knows["same_chapter_events"] = knows["same_chapter_events"][-8:]
     out["knows"] = knows
-    #  P17：holders 知情圈——秘密线的知情方角色不再被误标「不应知情」
+    # holders 知情圈——秘密线的知情方角色不再被误标「不应知情」
     def _in_holders(k: dict) -> bool:
         holders = [str(h).strip() for h in (k.get("holders") or []) if str(h).strip()]
         if not holders:
@@ -1327,7 +1327,7 @@ def names(book: Path) -> dict:
     known: set[str] = {str(proj.get("protagonist", "")).strip()}
     for names_list in lookup.values():
         known.update(nm for nm in names_list if nm)
-    #  P2-3：别名 → 规范实体名反查表。`known` 混装规范名与别名，命中别名时必须
+    # 别名 → 规范实体名反查表。`known` 混装规范名与别名，命中别名时必须
     # 解析回规范名，否则给出的 `state set 'entities.<别名>.aliases'` 手势执行即失败。
     _canonical: dict[str, str] = {}
     for primary, names_list in lookup.items():
@@ -1357,7 +1357,7 @@ def names(book: Path) -> dict:
             for seg in re.split(r"[^\u4e00-\u9fff]+", text):
                 if len(seg) < 3:
                     continue
-                #  P3/P18：n-gram 退化路径同样最小长度 3（2 字碎片不再入候选）
+                # /P18：n-gram 退化路径同样最小长度 3（2 字碎片不再入候选）
                 for L in (3, 4):
                     for i in range(len(seg) - L + 1):
                         g = seg[i:i + L]
@@ -1372,7 +1372,7 @@ def names(book: Path) -> dict:
         raw_cands.append((w, total, sorted(chs)))
 
     known_variants, unregistered = [], []
-    #  P2-3：称谓类变体（周叔 ↔ 老周头、陈嫂 ↔ 陈家的）既不互相包含、首字也不同，
+    # 称谓类变体（周叔 ↔ 老周头、陈嫂 ↔ 陈家的）既不互相包含、首字也不同，
     # 旧 host 判定三条全部落空 → 掉进 unregistered，于是「周叔 = 老周头别名」这条唯一
     # 可执行的建议两边都不给。补一条：共享一个非通用汉字 + 候选是 2~3 字称谓词。
     _APPELLATION_TAIL = "叔伯婆嫂爷娘哥姐师公姑婶舅姨"
@@ -1392,7 +1392,7 @@ def names(book: Path) -> dict:
                         (k in w or w in k or
                          (k[0] == w[0] and difflib.SequenceMatcher(None, w, k).ratio() >= 0.5))})
         hosts = sorted(set(hosts) | set(_appellation_host(w)))
-        #  P2-3 修正：`known` 混装了规范实体名与别名，于是 host 可能落到**别名**上
+        # 修正：`known` 混装了规范实体名与别名，于是 host 可能落到**别名**上
         # （实测「周叔」被判给「周大年」，而 周大年 只是 老周头 的别名）。据此给出的
         # `state set 'entities.周大年.aliases'` 手势执行即失败（「实体不存在，拒绝猜测」），
         # 等于给出一条跑不通的建议。现统一解析回规范实体名。
