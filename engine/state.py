@@ -763,8 +763,12 @@ def validate_proposal(proposal, expected_chapter: str | None = None) -> tuple[li
                 if not fact or len(str(fact).strip()) < 4:
                     errors.append(f"locked[{i}].fact 至少需要 4 字有效陈述")
                 kind = l.get("kind")
-                if kind not in ("death", "irreversible_action", "rule", "promise"):
-                    errors.append(f"locked[{i}].kind 必须 ∈ ['death', 'irreversible_action', 'rule', 'promise']")
+                # 与 models.locked.LockedKind / schemas/locked.schema.json 全量对齐（7 类），
+                # 此前闸门只放行 4 类，destruction/disbandment/pact 被误杀
+                if kind not in ("death", "destruction", "disbandment", "irreversible_action",
+                                "rule", "promise", "pact"):
+                    errors.append(f"locked[{i}].kind 必须 ∈ ['death', 'destruction', 'disbandment', "
+                                  "'irreversible_action', 'rule', 'promise', 'pact']")
             elif act == "retire":
                 if not l.get("reason"):
                     errors.append(f"locked[{i}] 归档退役必须提供 reason")
@@ -802,7 +806,8 @@ def validate_proposal(proposal, expected_chapter: str | None = None) -> tuple[li
 
     cons = proposal.get("consequences")
     if isinstance(cons, list):
-        _plan("consequences", len(cons))
+        # 历史遗留分区：仅校验提示、不落盘（无对应状态表；合并时另有显式降级警告）
+        plan["consequences"] = f"提示不落盘 × {len(cons)}（已废弃：因果后果请走 cognition_delta / timeline）"
         allowed_cons_keys = {"subject", "change", "irreversible", "quote"}
         for i, item in enumerate(cons):
             if not isinstance(item, dict):
@@ -1531,6 +1536,12 @@ def _merge_proposal_into(data: dict, proposal: dict, ch, ch_num, rep: dict) -> N
         _merge_cognition(data["cognition"], cog_patch, ch, rep)
     if proposal.get("locked_candidates"):
         rep["updated"].append(f"🔒 记录 {len(proposal['locked_candidates'])} 条不可逆事实提名（待主控审定入账）")
+    if proposal.get("consequences"):
+        #  consequences 为历史遗留分区：只校验、无落盘目标（无对应状态表）。为避免
+        # 提案作者误以为因果存根已持久化，合并时显式降级提示（不静默吞掉，也不硬拒收）。
+        rep["warnings"].append(
+            f"⚠️ consequences 分区（{len(proposal['consequences'])} 条）不持久化：因果后果请改登记为 "
+            "cognition_delta（doubted/misread）或 timeline 事件，本分区内容仅提示、未落盘")
 
 
 def apply_proposal(book: Path, proposal: dict, expected_chapter: str | None = None,
