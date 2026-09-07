@@ -14,7 +14,7 @@ import json
 import re
 from pathlib import Path
 
-from . import common, errcodes, evidence, state
+from . import common, errcodes, evidence, state, vocab
 
 try:
     from rapidfuzz import fuzz
@@ -152,11 +152,7 @@ def _char_shingles(text: str, n: int) -> set[str]:
     return {z[i:i + n] for i in range(0, max(0, len(z) - n + 1))}
 
 
-_CAND_STOP = set("他们的自己一个没有什么这个那个已经现在时候知道看着起来出来东西地方一声到底怎么这样那样不是之后就是不过还是这个那般一般".split()) | {
-    "他们", "自己", "一个", "没有", "什么", "这个", "那个", "已经", "现在", "时候", "知道",
-    "看着", "起来", "出来", "东西", "地方", "一声", "怎么", "这样", "那样", "不是", "之后",
-    "就是", "不过", "还是", "一般", "那些", "有些", "一声", "顿时", "随即", "然后", "所以",
-    "但是", "如果", "因为", "可是", "心中", "目光", "声音", "身体", "脸上", "手中", "顿时"}
+_CAND_STOP = vocab.CANDIDATE_STOP_WORDS
 
 
 def verify_candidates(book: Path, ch: str, proposal: dict) -> dict:
@@ -968,8 +964,7 @@ def run_checks(book: Path) -> dict:
     try:
         _led2 = state.load_state(book, "ledger")
         _pools2 = _led2.get("pools") or {}
-        _CN = {"零": 0, "一": 1, "二": 2, "两": 2, "三": 3, "四": 4, "五": 5,
-               "六": 6, "七": 7, "八": 8, "九": 9}
+        _CN = vocab.CN_DIGITS
 
         def _cn2int(s: str) -> int | None:
             s = s.strip()

@@ -34,17 +34,12 @@ except ImportError:
     _HAS_RAPIDFUZZ = False
 
 
-_STOP_WORDS = {
-    "的", "了", "在", "是", "我", "有", "和", "就", "不", "人", "都", "一", "一个",
-    "上", "也", "很", "到", "说", "要", "去", "你", "会", "着", "没有", "看", "好",
-    "自己", "这", "那", "他", "她", "它", "他们", "她们", "它们", "么", "之", "与",
-    "并", "及", "且", "但", "而", "或", "如果", "虽然", "因为", "所以", "之后", "之前",
-    "此时", "此刻", "当下", "只见", "只见那", "不知", "心中", "眼中", "手里", "身上"
-}
+from engine import vocab
 
+_STOP_WORDS = vocab.STOP_WORDS
 # 死者"以活人身份发言/行动"的判定用词。用于替代原先过宽的「本行含任意左引号」判据。
-_SPEECH_VERBS = ("道", "说道", "答道", "问道", "喝道", "喊道", "冷笑", "说", "答", "问",
-                 "喝", "喊", "低声", "开口", "接口", "回道", "笑道", "沉声", "嘟囔", "嘀咕")
+_SPEECH_VERBS = vocab.SPEECH_VERBS
+
 
 
 def _deceased_speaks(content: str, name: str) -> bool:
@@ -67,10 +62,8 @@ def _deceased_speaks(content: str, name: str) -> bool:
             or f"{name}」" in content or f"{name}”" in content)
 
 
-_CN_NUM_MAP = {
-    "零": 0, "一": 1, "二": 2, "两": 2, "三": 3, "四": 4, "五": 5,
-    "六": 6, "七": 7, "八": 8, "九": 9, "十": 10, "百": 100, "千": 1000, "万": 10000
-}
+_CN_NUM_MAP = vocab.CN_NUM_MAP
+
 
 
 def _parse_cn_number(s: str) -> int | None:
@@ -162,8 +155,7 @@ def probe_locked_facts(text: str, lines: list[str], n: int, locked_st: dict, ent
             if deceased_name:
                 hits = _find_mentions_with_lines(lines, deceased_name)
                 for line_no, content in hits:
-                    exempt_pats = ["回忆", "当年", "想起", "若是", "倘若", "墓", "碑", "死前", "遗物", "牌位", "尸首", "尸体", "魂魄", "英年早逝", "祭奠"]
-                    if any(p in content for p in exempt_pats):
+                    if any(p in content for p in vocab.DEATH_EXEMPT_PATTERNS):
                         continue
                     if _deceased_speaks(content, deceased_name):
                         candidates.append({
@@ -189,8 +181,7 @@ def probe_locked_facts(text: str, lines: list[str], n: int, locked_st: dict, ent
             if target_name:
                 hits = _find_mentions_with_lines(lines, target_name)
                 for line_no, content in hits:
-                    active_pats = ["走进", "来到", "灯火", "坐下", "营业", "客人", "如常", "落脚"]
-                    if any(p in content for p in active_pats):
+                    if any(p in content for p in vocab.FACILITY_ACTIVE_PATTERNS):
                         candidates.append({
                             "probe": "locked_facts",
                             "severity": "candidate_hard",
@@ -220,9 +211,7 @@ def probe_location_presence(text: str, lines: list[str], cur_st: dict, ents_st: 
                 # 多为死亡报道、回忆或吊唁，不应判为「活人出场」；真正“复活登场”通常无此类词。
                 # 列表须与 probe_locked_facts 的 exempt_pats 精神一致，但比其更宽：
                 # locked_facts 只对发言/引号句判硬矛盾，本探针按纯提及判，必须把死亡叙事排除干净。
-                if any(p in content for p in ["墓", "死", "尸", "遗", "昔日", "想起", "当年",
-                                              "被杀", "被刺", "遇害", "身亡", "毙命", "丧命", "殒",
-                                              "死讯", "出殡", "入殓", "灵堂", "棺", "坟", "上香", "祭"]):
+                if any(p in content for p in vocab.DEATH_CONTEXT_PATTERNS):
                     continue
                 candidates.append({
                     "probe": "location_presence",
@@ -239,11 +228,11 @@ def probe_location_presence(text: str, lines: list[str], cur_st: dict, ents_st: 
 
         ent_loc = str(ent.get("location", "") or "").strip()
         status = str(ent.get("status", "") or "").strip()
-        if status in ("imprisoned", "sealed", "isolated") or any(k in ent_loc for k in ["牢", "绝壁", "禁地", "极北", "深渊"]):
+        if status in ("imprisoned", "sealed", "isolated") or any(k in ent_loc for k in vocab.ISOLATED_LOC_KEYWORDS):
             hits = _find_mentions_with_lines(lines, name)
             if hits:
                 for line_no, content in hits:
-                    if not any(k in content for k in ["逃出", "解封", "传讯", "虚影", "提审"]):
+                    if not any(k in content for k in vocab.ISOLATED_EXEMPT_KEYWORDS):
                         candidates.append({
                             "probe": "location_presence",
                             "severity": "candidate_soft",
@@ -262,7 +251,7 @@ def probe_location_presence(text: str, lines: list[str], cur_st: dict, ents_st: 
 def probe_charges_possession(text: str, lines: list[str], ents_st: list[dict], cur_st: dict) -> list[dict]:
     """探针 3：道具与充能探针（检查零充能或已消耗道具的违规使用）。"""
     candidates = []
-    use_verbs = ["祭出", "催动", "服下", "吞下", "拔出", "挥动", "激发", "启动", "激活", "施展", "掏出", "掷出", "捏碎", "使用"]
+    use_verbs = vocab.ITEM_USE_VERBS
     for ent in ents_st:
         etype = ent.get("type", "")
         if etype not in ("item", "artifact", "weapon", "consumable", "prop"):
@@ -300,7 +289,9 @@ def probe_amount_ledger(text: str, lines: list[str], led_st: dict) -> list[dict]
     """探针 4：账本金额一致性（检查正文交易支出与账本余额矛盾）。"""
     candidates = []
     pools = led_st.get("pools", {}) if isinstance(led_st, dict) else {}
-    money_pat = re.compile(r"(?:花费|支出|花了|付了|掏出|收下|得到|入账|买下|价值|结余|还剩)\s*([0-9一二两三四五六七八九十百千万]+)\s*(两|文|块|枚|两银子|铜钱|灵石|金币)")
+    _verbs_pat = "|".join(vocab.MONEY_VERBS)
+    _units_pat = "|".join(vocab.CURRENCY_UNITS)
+    money_pat = re.compile(rf"(?:{_verbs_pat})\s*([0-9一二两三四五六七八九十百千万]+)\s*({_units_pat})")
     for line_no, line in enumerate(lines, start=1):
         for m in money_pat.finditer(line):
             raw_num, unit = m.group(1), m.group(2)
@@ -308,13 +299,13 @@ def probe_amount_ledger(text: str, lines: list[str], led_st: dict) -> list[dict]
             if val is None or val <= 0:
                 continue
             pool_key = None
-            if "两" in unit or "银" in unit:
+            if "两" in unit or "银" in unit or "白银" in unit:
                 pool_key = "silver" if "silver" in pools else None
-            elif "灵石" in unit:
+            elif "灵石" in unit or "灵晶" in unit or "仙玉" in unit or "玄晶" in unit:
                 pool_key = "spirit_stone" if "spirit_stone" in pools else None
             elif "铜钱" in unit or "文" in unit:
                 pool_key = "copper" if "copper" in pools else None
-            elif "金" in unit:
+            elif "金" in unit or "黄金" in unit:
                 pool_key = "gold" if "gold" in pools else None
 
             if pool_key and pool_key in pools:
@@ -330,7 +321,7 @@ def probe_amount_ledger(text: str, lines: list[str], led_st: dict) -> list[dict]
                     bal = None
                 if bal is None:
                     continue
-                if any(k in line for k in ["花费", "支出", "花了", "付了", "买下"]) and val > bal:
+                if any(k in line for k in vocab.SPENDING_VERBS) and val > bal:
                     candidates.append({
                         "probe": "amount_ledger",
                         "severity": "candidate_soft",
@@ -345,7 +336,7 @@ def probe_amount_ledger(text: str, lines: list[str], led_st: dict) -> list[dict]
     return candidates
 
 
-_SPEAKER_MODS = r"(?:冷声|厉声|轻声|沉声|颤声|怒|含笑|淡然|森然|高声|低声|咬牙|皱眉|怒斥|嗤笑|失笑)"
+_SPEAKER_MODS = vocab.SPEAKER_MODS_PATTERN
 
 
 def probe_secret_leakage(text: str, lines: list[str], lines_st: dict,
@@ -404,10 +395,10 @@ def probe_secret_leakage(text: str, lines: list[str], lines_st: dict,
                         speaker = best[0]
                     # 2) 兜底：旧正则启发（去修饰词）
                     if speaker is None:
-                        m_spk = re.search(r"([^，。！？\s]{2,6}?)(?:冷声|厉声|轻声|沉声|颤声|怒|含笑|淡然|森然|高声|低声|咬牙|皱眉|怒斥)*(?:道|说|笑|叹|喝|问)[:：]", line)
+                        m_spk = re.search(rf"([^，。！？\s]{{2,6}}?)(?:{_SPEAKER_MODS})*(?:道|说|笑|叹|喝|问)[:：]", line)
                         if m_spk:
                             speaker = m_spk.group(1).strip()
-                            speaker = re.sub(r"(?:冷声|厉声|轻声|沉声|颤声|怒|含笑|淡然|森然|高声|低声|咬牙|皱眉|怒斥)+$", "", speaker).strip()
+                            speaker = re.sub(rf"(?:{_SPEAKER_MODS})+$", "", speaker).strip()
                     if speaker and knower and speaker not in knower:
                         candidates.append({
                             "probe": "secret_leakage",
@@ -447,7 +438,7 @@ def probe_cognition_stubs(text: str, lines: list[str], lines_st: dict, cog_st: d
         p1, p2 = plist[0], plist[1]
         content = mis.get("content", "")
         if (len(p1) >= 2 and p1 in text) and (len(p2) >= 2 and p2 in text):
-            coop_words = ["相视一笑", "并肩作战", "默契无间", "托付后背", "感激涕零", "冰释前嫌", "毫无保留", "握手言和"]
+            coop_words = vocab.COOP_WORDS
             for line_no, line in enumerate(lines, start=1):
                 if (p1 in line or p2 in line) and any(w in line for w in coop_words):
                     candidates.append({
@@ -471,7 +462,7 @@ def probe_cognition_stubs(text: str, lines: list[str], lines_st: dict, cog_st: d
             kind = cog.get("kind")
             content = cog.get("content", "")
             if kind == "misunderstanding" and char and char in text:
-                contradict_words = ["早已心知肚明", "心如明镜", "一眼看穿了真相", "知道并非如此"]
+                contradict_words = vocab.CONTRADICT_WORDS
                 for line_no, line in enumerate(lines, start=1):
                     if char in line and any(w in line for w in contradict_words):
                         candidates.append({

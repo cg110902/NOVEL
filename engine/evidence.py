@@ -11,7 +11,7 @@ import math
 import re
 from pathlib import Path
 
-from . import common, state
+from . import common, state, vocab
 
 try:
     import jieba
@@ -212,9 +212,8 @@ def gaps(book: Path) -> dict:
     return out
 
 
-_CN_DIGITS = {"零": 0, "一": 1, "二": 2, "两": 2, "両": 2, "三": 3, "四": 4,
-              "五": 5, "六": 6, "七": 7, "八": 8, "九": 9}
-_CN_UNITS = {"十": 10, "百": 100, "千": 1000}
+_CN_DIGITS = vocab.CN_DIGITS
+_CN_UNITS = vocab.CN_UNITS
 _NUM_RE = r"[0-9][0-9,，]*|[零一二两両三四五六七八九十百千]{1,6}"
 
 
@@ -237,7 +236,7 @@ def _cn_num_to_int(s: str) -> int | None:
     return total + num
 
 
-_GENERIC_UNITS = {"块", "枚", "张", "个", "粒", "颗", "只", "道", "本", "卷", "盒", "条", "段"}
+_GENERIC_UNITS = vocab.GENERIC_UNITS
 
 # /P18：候选噪声增强——
 # 语法碎片字符（专名/实体名中几乎不可能出现，出现即碎片）
@@ -261,12 +260,12 @@ def is_generic_locutive_noise(g: str) -> bool:
     return False
 
 
-_NUM_CHARS = "零一二两三四五六七八九十百千半"
-_MEASURE_CHARS = "个只盏枚条张块份人日天年月次趟遍回桩件颗粒道本卷盒段片层批群堆串束成倍分厘"
-_LEAD_VERBS = "笞打骂问答笑哭走跑坐站看听说讲想念算数拿提搬推拉拆装找等送收买卖借还赔抵拘罚跪拜刨挖捡拾"
-_TIME_HEADS = ("去年", "今年", "明年", "前年", "上季", "下季", "昨", "今早", "今儿", "明儿")
+_NUM_CHARS = vocab.NUM_CHARS
+_MEASURE_CHARS = vocab.MEASURE_CHARS
+_LEAD_VERBS = vocab.LEAD_VERBS
+_TIME_HEADS = vocab.TIME_HEADS
 # 时间词（子串命中，兼容 n-gram 切片如「年冬天」）
-_TIME_WORDS = ("冬天", "夏天", "春天", "秋天", "开春", "入冬", "年关", "月底", "年初", "年尾")
+_TIME_WORDS = vocab.TIME_WORDS
 
 
 def is_candidate_noise(g: str, ledger_pools: dict | None = None,
@@ -749,11 +748,7 @@ def dup(book: Path, ch: str | None = None) -> dict:
             "within": within, "adjacent_pairs": pairs}
 
 
-DEFAULT_AI_TELL_WORDS = [
-    "嘴角微微上扬", "嘴角勾起", "深吸一口气", "倒吸一口凉气", "眼眸深处",
-    "不由得", "眼神一凝", "宛如", "仿佛", "这一刻", "赫然", "与此同时",
-    "空气仿佛凝固", "闪过一丝", "心中一凛", "殊不知"
-]
+DEFAULT_AI_TELL_WORDS = vocab.DEFAULT_AI_TELL_WORDS
 
 
 def get_ai_tell_words(book: Path) -> list[str]:
@@ -1375,7 +1370,7 @@ def names(book: Path) -> dict:
     # 称谓类变体（周叔 ↔ 老周头、陈嫂 ↔ 陈家的）既不互相包含、首字也不同，
     # 旧 host 判定三条全部落空 → 掉进 unregistered，于是「周叔 = 老周头别名」这条唯一
     # 可执行的建议两边都不给。补一条：共享一个非通用汉字 + 候选是 2~3 字称谓词。
-    _APPELLATION_TAIL = "叔伯婆嫂爷娘哥姐师公姑婶舅姨"
+    _APPELLATION_TAIL = vocab.APPELLATION_TAILS
     _GENERIC_CHARS = set("的了一是个人在中有大这上不为和与到说就把被从向他她它")
 
     def _appellation_host(w: str) -> list[str]:

@@ -39,8 +39,7 @@ description: Universal factual auditor and state proposal generator for Novel St
    `timeline.events[].event` 等所有叙述性字段，**必须以 `final/ch_XXX.md` 的原句为源改写**，
    **严禁照抄细纲 `beats` 的任务书措辞**（核心看点、验收要点、线动作栏的原文）。
    引擎对此有机械闸门 `beats_overlap`：提案文字与 `synopsis.text` / `lines.plan` / `lines.content` /
-   `lines.truth` / `timeline.events` 的既有措辞高度重合即判「疑似照抄任务书」——
-   历史实测三章累计触发 8 次（ch_003 一章就 6 次），全部源于直接搬运细纲句。
+   `lines.truth` / `timeline.events` 的既有措辞高度重合即判「疑似照抄任务书」。
    正确做法：先读 final，用正文里**真实发生过的动作与说法**重述；细纲只用于核对"该发生的是否发生了"，
    不是文案素材库。**写完自查一遍：这句话在 final 里能找到出处吗？找不到就是照抄。**
 1. **章题逐字拷贝（铁律）**：`synopsis.title` 必须从 `final/ch_XXX.md` 首行标题（去除 `# ` 标记）逐字精准拷贝，严禁主观篡改、缩略或拼写错漏！

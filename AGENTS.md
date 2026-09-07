@@ -3,7 +3,6 @@
 Novel Studio 是专为 **Google Antigravity** 深度定制的长篇商业小说多智能体创作流水线框架（全题材通用）。
 架构哲学：**大模型全权掌控创意脑洞、生动情节与文学重塑；确定性引擎负责事实底座与数据台账；原生 Subagents 实现高效工序接力与闭环归档。**
 
-> **文档体系（AI 向，仅 2 份）**：本宪法（全角色共同遵守，随工作区自动注入）+ 各角色自完备技能卡（`.agents/skills/`，岗位手册，含主控操作细则）。
 > **事实与创作分离铁律**：创作可以脑补，事实必须对账——事实唯一源头 = `final` 定稿正文；状态唯一真值 = `state/` 八表（含不可逆事实表与认知差表）；一致性由引擎闸门与机械体检兜底。
 
 ---
@@ -23,7 +22,7 @@ Novel Studio 是专为 **Google Antigravity** 深度定制的长篇商业小说�
 | 角色 | 形式 | 负责阶段 | 核心职责与严格边界 |
 |---|---|---|---|
 | **主控 (Director)** | 宿主主代理 | Stage 0 / 1 / 5 | **全局统筹、自主裁决与状态封存**：世界观与主线把控；细纲装配（**吸纳上章催更便签**）；使用**标准极简派发令**调度流水线（**严禁大段拷贝细纲与上章正文，给主控彻底减负**）；审定 Reader 提案并一键执行 `sync` 封存快照。人类作者免受中间过程打扰，负责最终成品验收。 |
-| **起草员 (Drafter)** | 原生子代理 (`inherit`) | Stage 2 | **剧情爆发起草**：放飞算力与想象力；承接上章情境与细纲，自由展开核心场景，将戏剧目标转化为充满冲突、对白生动、动作见肉的初稿毛坯 `raw/ch_XXX_v1.md`（字数 2000~3000+）。恪守准读清单，落盘即交卷。 |
+| **起草员 (Drafter)** | 原生子代理 (`inherit`) | Stage 2 | **剧情爆发起草**：放飞算力与想象力；承接上章情境与细纲，自由展开核心场景，将戏剧目标转化为有血有肉的初稿毛坯 `raw/ch_XXX_v1.md`（字数 2000~3000+）。恪守准读清单，落盘即交卷。 |
 | **精修师 (Editor)** | 原生子代理 (`inherit`) | Stage 3 | **文学重塑与定稿**：以读感顺畅、节奏明快、欲罢不能为唯一导向；首行规范输出章题；全力保留黄金细节，彻底剔除 4 大解释性反刍与同质复读，一次精修成型直接落盘 `final/ch_XXX.md`。恪守准读清单，落盘即交卷。 |
 | **审计员 (Reader)** | 原生子代理 (`inherit`) | Stage 4 (并行轨 A) | **精益事实审计与提案装配**：以 final 为唯一事实源，清晰提取核心事实（现场在场、关键新实体、主线伏笔、大额收支、不可逆事实、认知差），装配标准增量提案 JSON (`state/inbox/ch_XXX.json`)。恪守准读清单，落盘即交卷。 |
 | **催更员 (Critic)** | 原生子代理 (`inherit`) | Stage 4 (并行轨 B) | **追更老白催更便签（专供下章参考）**：扮演十年老白**追更读者**盲审 final 正文（脑中自带前情记忆 = `state/current.json` 现场快照），输出 200~500 字便签 `log/critic/ch_XXX.md`，**仅供下一章细纲构思参考，无一票否决权，当章流水线直通**。落盘即交卷。 |
@@ -53,24 +52,9 @@ graph TD
 主控各 Stage 的操作细则与取证工具，见 `.agents/skills/director/SKILL.md`（主控岗位手册）；子代理各 Stage 心法见各自技能卡。
 
 ---
+ 
 
-## 四、铁血文件权限网关（准读清单 vs 禁读清单）
-
-为杜绝“乱翻文件导致过度思考”与“漏看关键信息导致偷懒吃书”，所有 Agent 必须严格执行文件准读与禁读网关：
-
-| 角色 | 负责工序 | 🟢 准读清单（Strict Whitelist · 必读且仅能读） | 🔴 禁读清单（Strict Blacklist · 绝对禁止读取） |
-|---|---|---|---|
-| **主控 Director** | Stage 0, 1, 5 | • `state/*`（当前状态与伏笔账本）<br/>• `outlines/`（大纲与细纲）<br/>• `log/critic/ch_{前一章}.md`（吸纳读者期待）<br/>• `templates/`（模板） | ❌ 严禁读取或修改 `engine/*.py` 源码（黑盒铁律） |
-| **起草员 Drafter** | Stage 2 | 1. `outlines/vol_XX/beats/ch_XXX.md`（戏剧任务书）<br/>2. `manuscript/vol_XX/final/ch_{prev}.md`（上一章尾部约 1000 字，接戏动作；ch_001 跳过）<br/>*(或仅运行一次 `python studio.py pack ch_XXX --full` 替代上述两者，含登场角色卡全文)* | ❌ 严禁读取 `engine/*`<br/>❌ 严禁读取 `bible/*`、`characters/*`（细纲已提炼所需，防止信息过载）<br/>❌ 严禁读取 prev 之前的旧章正文<br/>❌ 严禁读取 `state/*` |
-| **精修师 Editor** | Stage 3 | 1. `outlines/vol_XX/beats/ch_XXX.md`（核验戏剧目标与章末刀口）<br/>2. `manuscript/vol_XX/raw/ch_XXX_v1.md`（起草员初稿毛坯） | ❌ 严禁读取 `engine/*`<br/>❌ 严禁读取 `bible/*`、`characters/*`、`state/*`、`log/*`<br/>❌ 严禁读取其他章节正文 |
-| **审计员 Reader** | Stage 4A | 1. `manuscript/vol_XX/final/ch_XXX.md`（当章定稿纯正文，事实唯一源头）<br/>2. `outlines/vol_XX/beats/ch_XXX.md`（核对伏笔与收支预期） | ❌ 严禁读取 `raw/*`（严禁以初稿为准！）<br/>❌ 严禁读取 `engine/*`<br/>❌ 严禁读取 `bible/*`、`characters/*`、旧章正文 |
-| **催更员 Critic** | Stage 4B | 1. `manuscript/vol_XX/final/ch_XXX.md`（当章定稿纯正文）<br/>2. `state/current.json`（**前情记忆**：上一章末现场快照 = 追更老白脑中对前文的记忆，仅此一份 state 文件） | ❌ 严禁读取 `beats/*`（读者严禁偷看作者大纲！）<br/>❌ 严禁读取 `raw/*`、`state/*` 其余七表、`bible/*`、`characters/*`、`engine/*` |
-| **仲裁员 Auditor** | Stage 4C | 1. `manuscript/vol_XX/final/ch_XXX.md`（当章定稿纯正文）<br/>2. `state/locked.json` + `current.json` + `entities.json`<br/>3. `python studio.py audit ch_XXX --json` 输出 | ❌ 严禁读取 `outlines/*`<br/>❌ 严禁读取 `raw/*`<br/>❌ 严禁读取 `engine/*.py` 源码 |
-| **图书管理员 Librarian** | Stage 4D | 1. `manuscript/vol_XX/final/ch_{N-9..N}.md`（近 10 章定稿正文）<br/>2. `state/*.json`（当前全量状态真值）<br/>3. `studio ask` / `evidence mentions` 结果 | ❌ 严禁读取 `outlines/*`<br/>❌ 严禁读取 `raw/*`<br/>❌ 严禁读取 `engine/*.py` 源码 |
-
----
-
-## 五、双向极简工序协议（跨角色 · canonical）
+## 四、双向极简工序协议（跨角色 · canonical）
 
 > 💡 **双向极简铁律**：主控下发 4 行派发令（严禁拷贝细纲全文或重复背诵工艺规则）；子代理上报 3 行回执单（严禁长篇汇报闲聊，杜绝主控上下文膨胀）。子代理技能卡内的回执细则以本协议为总纲。
 
@@ -93,7 +77,7 @@ graph TD
 
 ---
 
-## 六、开工认知协议（冷启动校准 / 热启动直通）
+## 五、开工认知协议（冷启动校准 / 热启动直通）
 
 - ❄️ **新窗口冷启动（每个会话窗口首次开工 · 读且仅读 1 次）**：
   主控在当前会话窗口第一次收到人类指令时，前 2 个 Tool Calls 依序通读两份底座文档：
@@ -106,7 +90,7 @@ graph TD
 
 ---
 
-## 七、workspace 文件地图（`<repo>/workspace/<书名>/`）
+## 六、workspace 文件地图（`<repo>/workspace/<书名>/`）
 
 ```text
 workspace/<书名>/
@@ -133,7 +117,7 @@ workspace/<书名>/
 
 ---
 
-## 八、跨角色铁律（任何 Stage 不可逾越）
+## 七、跨角色铁律（任何 Stage 不可逾越）
 
 1. **引擎黑盒铁律**：严禁任何角色读取或修改 `engine/*.py` 源码；命令用法以 `python studio.py help`（`--json` 供 Agent）为唯一自查入口；
 2. **零脚本铁律**：子代理严禁编写/运行任何统计、验证或测试脚本；状态同步与体检全权归主控 Stage 5；
@@ -144,7 +128,7 @@ workspace/<书名>/
 
 ---
 
-## 九、架构分工与协议导航（单 SKILL 强内聚）
+## 八、架构分工与协议导航（单 SKILL 强内聚）
 
 - **单一真理源**：所有业务心法、工艺规范与权限清单已 100% 熔炼进各角色的自完备技能卡。子代理启动即具备本岗位全部心法，无需在运行时读取任何外部规则文档：
   - 主控调度技能：`.agents/skills/director/SKILL.md`（全局统筹、极简派发与状态同步）
