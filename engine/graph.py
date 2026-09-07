@@ -225,7 +225,7 @@ def cmd_path(G: nx.Graph, source: str, target: str, as_json: bool = False) -> in
         for i in range(len(shortest) - 1):
             u, v = shortest[i], shortest[i + 1]
             edge_data = G.get_edge_data(u, v, default={})
-            rel = edge_data.get("label", edge_data.get("relation", "关联"))
+            rel = edge_data.get("label") or edge_data.get("relation") or "关联"
             chain.append(f"[{u}] ──({rel})──> ")
         chain.append(f"[{shortest[-1]}]")
         print("   " + "".join(chain))
@@ -236,7 +236,7 @@ def cmd_path(G: nx.Graph, source: str, target: str, as_json: bool = False) -> in
         for i in range(len(shortest) - 1):
             u, v = shortest[i], shortest[i + 1]
             edge_data = G.get_edge_data(u, v, default={})
-            rel = edge_data.get("label", edge_data.get("relation", "关联"))
+            rel = edge_data.get("label") or edge_data.get("relation") or "关联"
             edges.append({"from": u, "relation": rel, "to": v})
         print(json.dumps({
             "source": source, "target": target, "found": True,
@@ -263,7 +263,7 @@ def cmd_neighbors(G: nx.Graph, node: str, depth: int = 1, as_json: bool = False)
         neighbor_items = []
         for n in G.neighbors(node):
             edge = G.get_edge_data(node, n, default={})
-            rel = edge.get("label", edge.get("relation", "关联"))
+            rel = edge.get("label") or edge.get("relation") or "关联"
             ntype = G.nodes[n].get("entity_type", G.nodes[n].get("node_type", ""))
             summary = G.nodes[n].get("summary", G.nodes[n].get("content", ""))
             neighbor_items.append({"name": n, "relation": rel, "type": ntype,
@@ -287,7 +287,7 @@ def cmd_neighbors(G: nx.Graph, node: str, depth: int = 1, as_json: bool = False)
             return 0
         for n in neighbors:
             edge = G.get_edge_data(node, n, default={})
-            rel = edge.get("label", edge.get("relation", "关联"))
+            rel = edge.get("label") or edge.get("relation") or "关联"
             ntype = G.nodes[n].get("entity_type", G.nodes[n].get("node_type", ""))
             summary = G.nodes[n].get("summary", G.nodes[n].get("content", ""))
             print(f"   • ({rel}) ──> [{n}] ({ntype}): {summary[:40]}")
