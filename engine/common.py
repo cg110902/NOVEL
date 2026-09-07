@@ -121,13 +121,23 @@ def list_books(root: Path | None = None) -> list[Path]:
 def resolve_workspace(arg: str | None, root: Path | None = None) -> Path | None:
     """解析书工作区路径。
 
-    显式 -w 优先（相对路径锚定仓库根）；未指定时若 workspace/ 下恰有一本书则自动选中，
+    显式 -w 优先。相对路径先按命令行惯例锚定**当前工作目录（cwd）**解析——这样
+    `cd <书目录> && studio.py status -w .`（README「在书目录所在工作区内运行」的直觉用法）
+    才能成立；若锚定 cwd 后落点不在工作区根之下（例如从仓库根用 -w workspace/xxx 的文档式写法），
+    再回退锚定仓库根，保持向后兼容。未指定 -w 时若 workspace/ 下恰有一本书则自动选中，
     0 本或多本返回 None——由调用方给出可读提示，绝不猜测。
     """
     if arg:
         p = Path(arg).expanduser()
         if not p.is_absolute():
-            p = (root or project_root()) / p
+            wr = workspace_root(root).resolve()
+            cwd_candidate = (Path.cwd() / p).resolve()
+            # 锚定 cwd 且落点在工作区根之下（或就是书目录）→ 采用
+            if cwd_candidate == wr or wr in cwd_candidate.parents:
+                p = cwd_candidate
+            else:
+                # 回退：锚定仓库根（兼容 -w workspace/<slug> 文档写法）
+                p = (root or project_root()) / p
         return p
     books = list_books(root)
     return books[0] if len(books) == 1 else None
