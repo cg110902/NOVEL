@@ -52,7 +52,7 @@ editor_extra:
 
 ## 本章法定事实与称谓对校清单（Pre-extracted Fact & Address Matrix）
 
-<!-- ★ 核心机制：主控在 Stage 1 预先提炼并锁死，Drafter 严格继承，Editor/Auditor 专司后置对校！ -->
+<!-- ★ 核心机制：主控在 Stage 1 预先提炼并锁死，Drafter 严格继承，Editor/Stylist/Auditor 专司后置对校！ -->
 
 ### 1. 现场在场角色动态称谓基准（当前生效称谓）
 <!-- 明确当章登场角色之间的法定称谓，严禁临场漂移：

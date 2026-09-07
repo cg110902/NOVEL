@@ -21,18 +21,16 @@ python3.11 -m venv .venv-novel && .venv-novel/bin/pip install -e ".[dev]"
 
 | 文档 | 受众 | 内容 |
 |---|---|---|
-| `AGENTS.md` | AI 主控 + 全部角色 | 核心宪法：角色矩阵、工序流水线（Stage 0–5）、准读/禁读清单、状态写入纪律 |
-| `.agents/skills/` | 各子代理 | 岗位自完备技能卡（reader / drafter / editor / critic / auditor / librarian / director） |
+| `AGENTS.md` | AI 主控 + 全部角色 | 核心宪法：角色矩阵、双阶精修工序流水线（Stage 0–5）、准读/禁读清单、状态写入纪律 |
+| `.agents/skills/` | 各子代理 | 岗位自完备技能卡（reader / drafter / editor / stylist / critic / auditor / librarian / director） |
 | `engine/README.md` | 引擎开发者 | 模块职责、输出契约、幂等语义、校验单一真源（Pydantic 模型 → schema 构建产物） |
-
 
 ## 核心机制一句话
 
 - **事实与创作分离**：事实唯一源头 = `manuscript/*/final/ch_XXX.md` 定稿正文；状态唯一真值 = `state/` 八表；二者经 Stage 4 审计提案 → Stage 5 `sync` 原子合并。
+- **双阶精修架构**：Stage 3A Editor 专职做足剧情加法与骨肉重塑（`raw_v2`） $\rightarrow$ Stage 3B Stylist 专职做足文学减法与去油脱水（`final`），彻底解决大模型注意力过载与反刍套话问题。
 - **提案单文件制**：每章在途提案仅一份 `state/inbox/ch_XXX.json`（`novel-studio.state-mutation/v2`）；过 schema 校验、引文柔性接地、幂等登记、复式记账重算四道闸后落盘。
 - **只读取证三件套**：`studio ask` / `pov` / `calendar`——写作前取证严禁凭记忆脑补。
-
-
 
 ## 结构速览
 
@@ -40,5 +38,5 @@ python3.11 -m venv .venv-novel && .venv-novel/bin/pip install -e ".[dev]"
 AGENTS.md             # AI 宪法（入口文档）
 engine/               # 确定性引擎（cli 薄壳 + commands/ + 状态机 + 图/检索/审计）
 templates/            # init 实例化的创作模板（project_bible / style / main_plot / volume_outline / character_card / beats / reader_review）
-schema / 审计注入 / 探针类断言 / 多卷邻前章）
+.agents/skills/       # 8大原生子代理技能卡（director / drafter / editor / stylist / reader / critic / auditor / librarian）
 ```
