@@ -15,5 +15,13 @@ dependencies = [
 ]
 dynamic = ["version"]
 
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+]
+
 [tool.setuptools.dynamic]
 version = {attr = "engine.__version__"}
+
+[tool.setuptools.packages.find]
+include = ["engine*"]
