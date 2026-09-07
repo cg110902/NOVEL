@@ -22,7 +22,7 @@ python3.11 -m venv .venv-novel && .venv-novel/bin/pip install -e ".[dev]"
 | 文档 | 受众 | 内容 |
 |---|---|---|
 | `AGENTS.md` | AI 主控 + 全部角色 | 核心宪法：角色矩阵、双阶精修工序流水线（Stage 0–5）、准读/禁读清单、状态写入纪律 |
-| `.agents/skills/` | 各子代理 | 岗位自完备技能卡（reader / drafter / editor / stylist / critic / auditor / librarian / director） |
+| `.agents/skills/` | 各子代理 | 岗位自完备技能卡（architect / director / drafter / editor / stylist / reader / critic / auditor / librarian） |
 | `engine/README.md` | 引擎开发者 | 模块职责、输出契约、幂等语义、校验单一真源（Pydantic 模型 → schema 构建产物） |
 
 ## 核心机制一句话
@@ -37,6 +37,7 @@ python3.11 -m venv .venv-novel && .venv-novel/bin/pip install -e ".[dev]"
 ```
 AGENTS.md             # AI 宪法（入口文档）
 engine/               # 确定性引擎（cli 薄壳 + commands/ + 状态机 + 图/检索/审计）
-templates/            # init 实例化的创作模板（project_bible / style / main_plot / volume_outline / character_card / beats / reader_review）
-.agents/skills/       # 8大原生子代理技能卡（director / drafter / editor / stylist / reader / critic / auditor / librarian）
+templates/            # 创作模板库（project_bible / style / main_plot / volume_outline / character_card / beats）
+.agents/skills/       # 9大原生子代理技能卡（director / architect / drafter / editor / stylist / reader / critic / auditor / librarian）
 ```
+

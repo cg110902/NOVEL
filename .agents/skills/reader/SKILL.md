@@ -115,14 +115,16 @@ description: Universal factual auditor and state proposal generator for Novel St
 ```
 
 ### 2. 字段类型避坑铁律（防 Schema 校验失败）：
-1. **`entities[].relations` 必须为对象数组**：`[{"target": "...", "type": "..."}]`，严禁写成字典 `{"林牧": "道侣"}`！
-2. **`locked[].id` 必须符合 `^LOCK-\d{3,}$`**（如 `LOCK-005`），严禁使用 `LOCK-007-01` 等变体！
-3. **`locked[].kind` 严格枚举**：只能在 `['death', 'destruction', 'disbandment', 'irreversible_action', 'rule', 'promise', 'pact']` 中选择！
-4. **`lines[].kind` 与 `action` 严格对应**：
+1. **`ledger` 账本严格规范**：默认必须为 `{"transactions": []}`。若无实体资产与货币流水变动，**严禁手造非法字段（如 entity, direction, unit, amount）**！仅在有确凿数字交易且已注册 resource pool 时方可填入标准的 `[{"pool": "...", "subject": "...", "delta": -30000000, "reason": "...", "quote": "..."}]`。
+2. **`entities[].relations` 必须为对象数组**：`[{"target": "...", "type": "..."}]`，严禁写成字典 `{"林牧": "道侣"}`！
+3. **`current.present_characters` 规范**：必须使用 entities 实体名册中的法定全名（如 `萧美人`），严禁使用未经注册的临时绰号。
+4. **`locked[].id` 必须符合 `^LOCK-\d{3,}$`**（如 `LOCK-005`），严禁使用 `LOCK-007-01` 等变体！
+5. **`locked[].kind` 严格枚举**：只能在 `['death', 'destruction', 'disbandment', 'irreversible_action', 'rule', 'promise', 'pact']` 中选择！
+6. **`lines[].kind` 与 `action` 严格对应**：
    - `foreshadow`（伏笔）：action 可选 `plant` / `remind` / `resolve`；
    - `knowledge`（秘密）：action 可选 `plant` / `update` / `resolve`；
    - `misunderstanding`（误会）：action 可选 `plant` / `escalate` / `resolve`。
-5. **章题必须逐字拷贝**：`synopsis.title` 必须从 `final` 第一行标题精准拷贝。
+7. **章题必须逐字拷贝**：`synopsis.title` 必须从 `final` 第一行标题精准拷贝。
 
 ---
 
@@ -140,3 +142,4 @@ description: Universal factual auditor and state proposal generator for Novel St
    - 产出路径：state/inbox/ch_XXX.json
    - 核心指标：章题逐字对齐 ｜ Schema 规范无误 ｜ 零脚本直接落盘
    ```
+

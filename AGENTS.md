@@ -25,7 +25,8 @@ Novel Studio 是专为 **Google Antigravity** 深度定制的通俗网络小说�
 
 | 角色 | 形式 | 负责阶段 | 核心职责与严格边界 |
 |---|---|---|---|
-| **主控 (Director)** | 宿主主代理 | Stage 0 / 1 / 5 | **全局统筹、前置事实提炼与状态封存**：世界观与主线把控；细纲装配（**吸纳上章催更便签，先问书取证并提炼「本章法定事实与称谓对校清单」**）；使用**标准极简派发令**调度流水线；审定 Reader 提案并一键执行 `sync` 封存快照。 |
+| **主控 (Director)** | 宿主主代理 | 全局统筹 / Stage 1 / Stage 5 | **全局统筹、意图分流、前置事实提炼与状态封存**：识别用户意图（【开新书】派发 Architect，【继续写】核验 workspace 智能接入/多书询问）；细纲构思（80% 核心算力：真人总编剧三步破局心法）；轻量调度流水线；一键执行 `sync` 封存快照。 |
+| **架构师 (Architect)** | 原生子代理 (`inherit`) | Stage 0 | **世界观筑基与全书脚手架**：承接开书脑洞，独立沙盒运行；产出 `project.json`、`bible/`、`characters/`、`outlines/`、八表状态初始化与主线里程碑播种，资产直接落盘。落盘即交卷，为主控保持 100% 纯净上下文。 |
 | **起草员 (Drafter)** | 原生子代理 (`inherit`) | Stage 2 | **剧情爆发起草**：放飞算力与想象力；**严格继承细纲预提炼的称谓与前情事实**，以通俗大白话自由展开核心场景，将戏剧目标转化为初稿毛坯 `raw/ch_XXX_v1.md`（字数 2000~3000+）。恪守准读清单，落盘即交卷。 |
 | **精修师 (Editor)** | 原生子代理 (`inherit`) | Stage 3A | **骨肉重塑与事实对账**：以充实剧情血肉为导向；**负责做足剧情加法**（场景展开、人物互动温度、对话潜台词、转折气口缝合）；**严格对照细纲法定清单核查对话称谓与修饰词**，产出通俗大白话初修骨肉稿 `raw/ch_XXX_v2.md`。 |
 | **脱水师 (Stylist)** | 原生子代理 (`inherit`) | Stage 3B | **通俗脱水、去面瘫与扫读优化**：以极度易读、好扫读、通俗直白为导向；首行规范输出章题；**负责做足减法与表情动作去僵化**（坚决切除动作后反刍总结、消除主角面瘫与神色淡然套路、比喻脱水白描化、Gemini高频套话置换、确保造句准确与成语自然运用、句式音律变奏），直接落盘法定定稿 `final/ch_XXX.md`。 |
@@ -36,11 +37,11 @@ Novel Studio 是专为 **Google Antigravity** 深度定制的通俗网络小说�
 
 ---
 
-## 三、创作工序流水线（前置提炼 + 骨肉重塑 + 通俗脱水 + 双轨仲裁闭环）
+## 三、创作工序流水线（设定筑基 + 前置提炼 + 骨肉重塑 + 通俗脱水 + 双轨仲裁闭环）
 
 ```mermaid
 graph TD
-    S0["Stage 0: 设定构想<br/>(主控: 世界观/人物/主线)"] --> S1["Stage 1: 细纲构思与前置事实提炼<br/>(主控: 目标/冲突/预提炼称谓基准与前情锚点)"]
+    S0["Stage 0: 设定构想与筑基<br/>(Architect 子代理: bible/人物卡/大纲)"] --> S1["Stage 1: 细纲构思与前置事实提炼<br/>(主控: 80%脑力·真人三步破局心法)"]
     S1 --> S2["Stage 2: 初稿起草<br/>(Drafter: 场景展开 + 继承事实 -> raw_v1)"]
     S2 --> S3A["Stage 3A: 骨肉重塑<br/>(Editor: 剧情做加法 + 对话/气口/事实对账 -> raw_v2)"]
     S3A --> S3B["Stage 3B: 通俗脱水与扫读优化<br/>(Stylist: 减法去油 + 去面瘫/去反刍/精准白描 -> final)"]
@@ -65,34 +66,37 @@ graph TD
   【章节工序派发令】
   - 书籍工作区：workspace/<书名>
   - 分卷与章节：vol_XX / ch_XXX
-  - 执行阶段：Stage X (Drafter / Editor / Stylist / Reader / Critic / Auditor)
+  - 执行阶段：Stage X (Architect / Drafter / Editor / Stylist / Reader / Critic / Auditor)
   - 执行纪律：严格按你的 SKILL.md 执行。恪守准读清单与准写路径，落盘即止，严禁自查与编写脚本。
   ```
 - **上报 · 3 行标准完工回执单**（Subagent 交卷给主控）：
   ```text
   【章节工序完工回执】
-  - 完工阶段：Stage X (Drafter / Editor / Stylist / Reader / Critic / Auditor)
+  - 完工阶段：Stage X (Architect / Drafter / Editor / Stylist / Reader / Critic / Auditor)
   - 产出路径：[目标文件相对路径]
   - 核心指标：[字数/规范指标/矛盾指标] ｜ 零脚本直接落盘 ｜ 验收达标无滞留
   ```
-- **派发时序（每章 4 次递进）**：
-  1. `beats` 落盘 $\rightarrow$ Stage 2 派发（Drafter $\rightarrow$ `raw/ch_XXX_v1.md`）；
-  2. Drafter 回执唤醒主控 $\rightarrow$ Stage 3A 派发（Editor $\rightarrow$ `raw/ch_XXX_v2.md`）；
-  3. Editor 回执唤醒主控 $\rightarrow$ Stage 3B 派发（Stylist $\rightarrow$ `final/ch_XXX.md`）；
-  4. Stylist 回执唤醒主控 $\rightarrow$ **单次调用同时并发派发 Reader、Critic 与 Auditor**（原生三轨并发，Zero Polling）。
-  若 Auditor 检出 🔴 确凿硬矛盾，主控调度 Stylist 执行局部手术刀修复；否则直通 Stage 5。
 
 ---
 
-## 五、开工认知协议（冷启动校准 / 热启动直通）
+## 五、开工认知与意图分流协议（开新书 vs 继续写）
 
-- ❄️ **新窗口冷启动（每个会话窗口首次开工 · 读且仅读 1 次）**：
-  主控在当前会话窗口第一次收到人类指令时，前 2 个 Tool Calls 依序通读两份底座文档：
-  1. ⚖️ 核心宪法（本文档）：角色矩阵、权限网关、工序协议与全局铁律；
-  2. 🎬 主控岗位手册：`.agents/skills/director/SKILL.md`；
-  第 3 个 Tool Call 执行 `python studio.py cockpit --json` 接入实时战况。
-- 🔥 **同会话热启动（连续写下一章 / 推进剧情）**：
-  底座已在校准记忆中，**严禁重复 `view_file` 冗余回读**；主控收到指令后直接执行第一反射动作：运行 `python studio.py cockpit --json` 秒级接入。
+主控在收到人类作者指令时，按以下认知与意图网关执行分流：
+
+### 1. 🌟 意图 A：【开新书 / 新建项目 / 构思新设定】（及类似表述）
+- 主控接收人类作者的核心脑洞（书名、题材、主角金手指、核心爽点）；
+- 主控下发 **Stage 0 派发令给 `Architect` 子代理**；
+- `Architect` 在独立的纯净沙盒中完成 `project.json`、`bible/`、`characters/`、`outlines/` 及初始状态与里程碑落盘；
+- `Architect` 交卷后，主控运行 `python studio.py cockpit --json` 接入新书驾驶舱，向人类呈现世界观纲要供终审确认。主控上下文实现**零污染**！
+
+### 2. 🚀 意图 B：【继续写 / 创作下一章 / 推进工程】（及类似表述）
+- **核验 `workspace/` 目录**：
+  - ⚠️ 若 `workspace/` 为空 ➔ 提示用户当前尚无工程，引导发起“开新书”；
+  - ❓ 若 `workspace/` 下存在**多本书籍目录** ➔ 列出所有书名，主动询问用户：“检测到当前有以下多部作品：[书名A, 书名B...]，请问您想继续创作哪一本？”
+  - ✅ 若 `workspace/` 下仅有**单本书**（或用户已指定书名） ➔ 
+    - ❄️ **新窗口冷启动**：依序读底座（`AGENTS.md` → `director/SKILL.md`），执行 `python studio.py cockpit --json` 秒级接入；
+    - 🔥 **同会话热启动**：直接运行 `python studio.py cockpit --json`，直通 Stage 1 细纲构思！
+
 
 ---
 
@@ -130,9 +134,11 @@ workspace/<书名>/
 3. **防污染原则**：稿件严禁工程痕迹（未填槽位 `{{slot:...}}`、候选字段 `candidate_*`）；
 4. **单向推进铁律**：各 Stage 落盘即交卷，严禁回读自查、严禁跨 Stage 停留内耗；
 5. **分工不交叉铁律**：Stage 3A Editor 专职做足剧情加法与骨架，Stage 3B Stylist 专职做足通俗脱水与扫读优化；
-6. **Critic 直通铁律**：催更便签仅供下章细纲参考，无一票否决权，当章流水线直通 Stage 5；
-7. **动态演进与闭环铁律**：正文发生的称谓与关系演变由 Reader 提炼并封存入账，入账后自动成为后续章节新基准，严禁无故随机漂移；
-8. **人类终审铁律**：全程跑通后，主控向人类作者交付定稿成品与本章核心看点，最终裁决权 100% 归人类作者。
+6. **反套路与章型差异化铁律**：主控 80% 算力死死锁定在 Stage 1 创意脑洞，强制执行《真人总编剧三步破局心法》（扫雷排除平庸套路、三维反差推演、招牌记忆物象），坚决打破概率滑梯与路径依赖，拒绝连续章节套路复读；
+7. **Critic 直通铁律**：催更便签仅供下章细纲参考，无一票否决权，当章流水线直通 Stage 5；
+8. **动态演进与闭环铁律**：正文发生的称谓与关系演变由 Reader 提炼并封存入账，入账后自动成为后续章节新基准，严禁无故随机漂移；
+9. **人类终审铁律**：全程跑通后，主控向人类作者交付定稿成品与本章核心看点，最终裁决权 100% 归人类作者。
+
 
 ---
 
@@ -140,6 +146,7 @@ workspace/<书名>/
 
 - **单一真理源**：所有业务心法、工艺规范与权限清单已 100% 熔炼进各角色的自完备技能卡：
   - 主控调度技能：`.agents/skills/director/SKILL.md`（全局统筹、前置事实提炼与状态同步）
+  - 设定架构技能：`.agents/skills/architect/SKILL.md`（Stage 0 独立沙盒世界观筑基、人物卡与大纲落盘）
   - 起草先锋技能：`.agents/skills/drafter/SKILL.md`（场景推进、严格继承细纲事实，产出 `raw_v1`）
   - 骨肉重塑技能：`.agents/skills/editor/SKILL.md`（剧情做加法、人物交互、气口缝合、事实对账，产出 `raw_v2`）
   - 风格雕琢技能：`.agents/skills/stylist/SKILL.md`（通俗脱水、去面瘫活力注入、去反刍说教、比喻脱水、遣词准确、扫读优化，产出 `final`）
@@ -147,3 +154,4 @@ workspace/<书名>/
   - 读者催更技能：`.agents/skills/critic/SKILL.md`（十年老白纯盲审催更便签）
   - 一致性仲裁技能：`.agents/skills/auditor/SKILL.md`（双轨核验、机械探针+语义对账、定向手术刀指令）
   - 长程巡检技能：`.agents/skills/librarian/SKILL.md`（十年长程事实巡检、词频与实体平账）
+

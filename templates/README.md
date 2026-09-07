@@ -14,7 +14,7 @@
 | `character_card.md` | init 自动（仅主角） | `characters/protagonist.md` | Stage 0 起 | 主控 | 后续角色**手工复制改名**（如 `characters/林编辑.md`——按本书角色自定）；人设卡（Want/Fear、性格与说话风格） |
 | `style.md` | init 自动 | `bible/style.md` | Stage 0 | 主控 | 文风与语感基线卡（POV/句式/语域/禁用词黑名单）；禁用词表被 `evidence style` 漂移监控读取，`## 禁用词表与 AI 味黑名单` 节名勿改 |
 | `beats.md` | `studio.py beats new [章节] --write` 自动生成 | `outlines/vol_XX/beats/ch_XXX.md` | Stage 1 | 主控 | 单章细纲任务书（自动注入阶段目标、现场情境、到期线索、情绪蓄水泵、通用场景脉络、新面孔速写插槽与交付契约） |
-| `reader_review.md` | 手工参考（主控查阅；Reader 准读清单不含 templates/，由主控转述要点） | 状态提案骨架，落盘为 `state/inbox/ch_XXX.json` | Stage 4 | 主控 | **标准增量状态提案骨架 (Proposal Skeleton)**：Reader 客观审计事实后装配为纯 JSON 提案（注：本文件为 .md 承载的 JSON 结构，落盘须存为 .json；勿与 Stage 5 的 `log/review/` 校对注记混淆） |
+
 
 ---
 
