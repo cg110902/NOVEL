@@ -312,6 +312,13 @@ def _build_subparsers(sub: argparse._SubParsersAction) -> None:
     r.add_argument("-w", "--workspace", default=argparse.SUPPRESS)
     r.add_argument("--json", action="store_true", default=argparse.SUPPRESS)
     r.set_defaults(func=cmd_milestone)
+
+    r = ms_sub.add_parser("achieve", help="核销里程碑为已达成（记录实际达成章节）")
+    r.add_argument("milestone_id", help="里程碑编号（如 MS-001）")
+    r.add_argument("--chapter", "-c", help="实际达成章节（如 ch_010 或 10；省略取当前最新定稿章）")
+    r.add_argument("-w", "--workspace", default=argparse.SUPPRESS)
+    r.add_argument("--json", action="store_true", default=argparse.SUPPRESS)
+    r.set_defaults(func=cmd_milestone)
     q.set_defaults(func=cmd_milestone)
 
     q = sub.add_parser("state", help="状态速查与手术刀纠偏：show ｜ get <表.字段> ｜ set <表.字段> <值>")

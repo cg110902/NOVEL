@@ -1455,8 +1455,62 @@ def cmd_milestone(args) -> int:
                 print(f"   说明: {desc}")
         return 0
 
+    elif action == "achieve":
+        mid = str(getattr(args, "milestone_id", "") or "").strip()
+        if not mid:
+            msg = "achieve 需要里程碑编号（如 MS-001）"
+            print(json.dumps({"ok": False, "code": "milestone_error", "error": msg},
+                             ensure_ascii=False)) if js else print(f"❌ {msg}")
+            return 2
+        target = None
+        for m in milestones:
+            if isinstance(m, dict) and m.get("id") == mid:
+                target = m
+                break
+        if target is None:
+            msg = f"未找到里程碑 {mid}（先用 milestone add 播种 / milestone list 查看）"
+            print(json.dumps({"ok": False, "code": "milestone_error", "error": msg},
+                             ensure_ascii=False)) if js else print(f"❌ {msg}")
+            return 1
+        # 实际达成章节：显式 --chapter 优先，否则取最新定稿章
+        achieved_ch = None
+        ch_raw = getattr(args, "chapter", None)
+        if ch_raw:
+            n = common.chapter_token_to_num(ch_raw)
+            achieved_ch = f"ch_{n:03d}" if n else None
+            if not n:
+                msg = f"非法章节号: {ch_raw}"
+                print(json.dumps({"ok": False, "code": "milestone_error", "error": msg},
+                                 ensure_ascii=False)) if js else print(f"❌ {msg}")
+                return 2
+        else:
+            finals = common.find_chapter_files(book, "final")
+            if finals:
+                achieved_ch = f"ch_{max(common.chapter_token_to_num(f.name) or 0 for f in finals):03d}"
+        already = target.get("status") == "achieved"
+        target["status"] = "achieved"
+        if achieved_ch:
+            target["achieved_ch"] = achieved_ch
+        try:
+            state.save_state(book, "timeline", tl)
+        except ValueError as exc:
+            if js:
+                print(json.dumps({"ok": False, "code": "milestone_error",
+                                  "error": f"写入被结构闸门拒绝: {exc}"}, ensure_ascii=False))
+            else:
+                print(f"❌ 写入被结构闸门拒绝: {exc}")
+            return 1
+        payload = {"ok": True, "milestone": target, "already_achieved": already}
+        if js:
+            print(json.dumps(payload, ensure_ascii=False))
+        else:
+            verb = "已确认（本就处于达成态）" if already else "已核销为达成"
+            print(f"🚩 [{mid}] {verb}：{target.get('title','')}"
+                  + (f"（达成于 {achieved_ch}）" if achieved_ch else ""))
+        return 0
+
     else:
-        msg = f"未知 milestone 动作: {action}（合法: list / add）"
+        msg = f"未知 milestone 动作: {action}（合法: list / add / achieve）"
         print(json.dumps({"ok": False, "code": "milestone_error", "error": msg},
                          ensure_ascii=False) if js else f"❌ {msg}")
         return 2
