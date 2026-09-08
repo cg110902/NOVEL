@@ -85,8 +85,8 @@
 3. **机械防重与体检闸门**：
    - `models/entities.py`: Pydantic V2 模型校验器 `check_unique_ids` 拦截任何重复 ID；
    - `checks.py`: 体检探针 `entity_id_duplicate` 机械扫描八表，杜绝 ID 碰撞。
-4. **13 大物理通用字段**：
-   - `id`, `name`, `type`, `tier`, `state`, `card`, `current_location`, `faction`, `current_owner`, `charge_state`, `bound_to`, `disposition`, `aliases`。
+4. **物理通用字段标准（与 Pydantic 模型完全一致）**：
+   - `id`, `name`, `type`, `tier_rank`, `tier_name`, `power_benchmark`, `status`, `life_status`, `card`, `location`, `faction`, `attitude`, `holder`, `charges`, `max_charges`, `cost_per_use`, `durability`, `sensory_anchor`, `address_matrix`, `aliases`。
 
 ---
 

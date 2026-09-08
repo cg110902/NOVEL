@@ -84,8 +84,6 @@ REGISTRY: dict[str, ErrCode] = {c.code: c for c in (
          "检查正文末尾是否因生成中断被强行截断，补全未完语句或闭合双引号。"),
     _reg("workspace_permission_error", "error", "工作区目录无写入权限或磁盘写入受阻",
          "检查 workspace 目录及子目录的读写权限，确保进程有权创建与修改文件。"),
-    _reg("cliche_overload", "warning", "章节正文中套路化套话/冷脸微表情频率超标",
-         "检测到「神色淡然/嘴角微微上扬/倒吸一口凉气」等高频套路词密集出现，建议脱水重写为动态行动白描。"),
     # ---- 提案与候选 ----
     _reg("candidate_leak", "error", "candidate_* 候选字段泄漏进正式数据",
          "将未定命名 candidate_* 替换为具体的角色名或地名。"),

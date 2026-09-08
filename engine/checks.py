@@ -46,13 +46,6 @@ RUNTIME_DEPENDENCIES: list[tuple[str, str]] = [
 ABRUPT_PUNCTUATION: tuple[str, ...] = ("，", ",", "、", "：", ":", "“", "‘", "（", "(", "——", "……")
 TRUNCATED_CONNECTORS: tuple[str, ...] = ("但", "因", "因为", "由于", "然后", "接着", "若是", "倘若", "如果", "只见", "却见")
 
-CLICHE_PATTERNS: list[str] = [
-    "神色淡然", "神色微凝", "脸色微变", "嘴角微微上扬", "嘴角勾起一抹",
-    "倒吸一口凉气", "眼神微凝", "眸中闪过一丝", "深吸一口气，缓缓道",
-    "深吸了一口气", "不知不觉间", "宛如神明", "恐怖如斯", "心中不由一紧",
-    "瞳孔猛然收缩", "整个人都不好了",
-]
-
 SYSTEM_CHECK_CODES: set[str] = {
     "project_missing",
     "project_corrupt",
@@ -586,9 +579,6 @@ PARAM_SPEC: dict[str, dict] = {
         "desc": "活跃线索配额 {active_foreshadows, longline_foreshadows, active_knowledge, active_misunderstandings}",
         "example": {"active_foreshadows": 8, "longline_foreshadows": 5,
                     "active_knowledge": 5, "active_misunderstandings": 4}},
-    "ai_tell_words": {"shape": "str_list", "gap": False,
-        "desc": "AI 味套话与陈词滥调监控词表（evidence style / 结算单监控）：如「嘴角微微上扬」「深吸一口气」「眼神一凝」等",
-        "example": ["嘴角微微上扬", "深吸一口气", "倒吸一口凉气", "眼眸深处", "不由得", "眼神一凝", "宛如", "仿佛", "这一刻", "赫然", "与此同时"]},
     "audit_mode": {"shape": "str_choice", "gap": False,
         "choices": ["strict", "advisory", "off"],
         "desc": "Stage 4C 事实一致性审校闸门模式（strict: 必须有 log/audit 报告且 hard=0 或已裁定才能 sync；advisory: 存在硬矛盾仅出 warning；off: 关闭检查）",
@@ -855,8 +845,6 @@ def review_skeleton(book: Path, ch: str) -> dict:
         "ledger_now": {pid: p for pid, p in (led.get("pools") or {}).items()},
         "quote_balance": evidence.quote_balance(ftext),
         "style_info": (lambda st: {
-            "ai_tell_total": st.get("drift", {}).get("ai_tell_total", 0),
-            "ai_tell_hits": st.get("stats", {}).get("ai_tell_hits", []),
             "len_mean": st.get("stats", {}).get("len_mean", 0),
             "len_mean_delta": st.get("drift", {}).get("len_mean_delta", 0),
             "dialogue_ratio": st.get("stats", {}).get("dialogue_line_ratio", 0),
@@ -1681,23 +1669,6 @@ def run_checks(book: Path) -> dict:
                 chs_desc = "、".join(f"{t}（{r:.0%}）" for t, r in low_streak)
                 warnings.append(_err("protagonist_pov_drift",
                                      f"主角视角失焦警报：最近连续 {len(low_streak)} 章 {chs_desc} 主角「{protagonist}」登场段落率低于 15%，疑似配角戏份喧宾夺主！建议在下一章强化主角的主动破局与核心对白！"))
-
-        # 套路化套话与冷脸微表情密集度体检 (Cliche Overload Check)
-        for tok, path, text in finals[-5:]:
-            hits = {}
-            for c in CLICHE_PATTERNS:
-                cnt = text.count(c)
-                if cnt >= 2:
-                    hits[c] = cnt
-            total_cliche = sum(text.count(c) for c in CLICHE_PATTERNS)
-            if total_cliche >= 5 or any(cnt >= 3 for cnt in hits.values()):
-                top_hits = sorted(hits.items(), key=lambda x: -x[1])[:3]
-                desc = "、".join(f"「{k}」({v}次)" for k, v in top_hits) if top_hits else f"套路短语共 {total_cliche} 次"
-                warnings.append(_err(
-                    "cliche_overload",
-                    f"{tok} 检测到套路化套话/冷脸微表情密集超标（共 {total_cliche} 处，样本 {desc}），极易引发读者审美疲劳！",
-                    remedy="由 Stage 3B Stylist 脱水重修，将冷脸神态与惯性套话改写为生动具体的环境与动作白描。"
-                ))
 
     for vol_dir in sorted((book / "outlines").glob("vol_*")):
         beats_files = sorted(vol_dir.glob("beats/ch_*.md"))

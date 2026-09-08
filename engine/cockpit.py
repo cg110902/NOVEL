@@ -158,9 +158,32 @@ def _get_critic_radar(book: Path, ch_num: int) -> dict[str, str]:
         ("fatigue", ("阅读疲劳度", "疲劳度", "疲劳")),
         ("foreshadow_info", ("伏笔与信息差", "信息差")),
         ("protagonist_liveliness", ("主角活人感", "活人感")),
-        ("character_sympathy", ("角色路人缘", "路人缘")),
+        ("character_sympathy", ("配角路人缘", "角色路人缘", "路人缘")),
     )
-    _ANTICIPATION_KWS = ("最想看", "迫切期待")
+    _ANTICIPATION_KWS = ("下章最想看", "最想看", "迫切期待")
+
+    # 优先解析便签中可能附带的 JSON 结构化块 ```json { ... } ```
+    try:
+        text = critic_path.read_text(encoding="utf-8", errors="replace")
+        m_json = re.search(r"```json\s*(\{.*?\})\s*```", text, re.DOTALL)
+        if m_json:
+            try:
+                c_data = json.loads(m_json.group(1))
+                if isinstance(c_data, dict):
+                    for k in ("vibe", "fatigue", "foreshadow_info", "protagonist_liveliness", "character_sympathy", "continuity"):
+                        if c_data.get(k):
+                            _put(k, str(c_data[k]))
+                    if c_data.get("anticipation"):
+                        ants = c_data["anticipation"]
+                        _put("anticipation", "；".join(ants) if isinstance(ants, list) else str(ants))
+                    if c_data.get("taboos"):
+                        _put("taboos", str(c_data["taboos"]))
+                    if c_data.get("water_level"):
+                        radar["water_level"] = str(c_data["water_level"])
+            except json.JSONDecodeError:
+                pass
+    except OSError:
+        pass
 
     section = None  # 标题开启的分区（anticipation/taboos），供列表项回填
     try:

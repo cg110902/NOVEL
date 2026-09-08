@@ -363,11 +363,93 @@ def _scan_nulls(node, path: str, out: list[str]) -> None:
             _scan_nulls(v, f"{path}[{i}]", out)
 
 
+def normalize_proposal_aliases(proposal: Any) -> Any:
+    """柔性归一化提案字段别名（Aliasing Normalizer）。
+
+    容忍大模型常见的同义或习惯性键名漂移，将其无损映射为系统法定规范字段：
+    - current:
+      current_location -> location, place -> location, current_time -> time
+    - entities[]:
+      current_location -> location, place -> location
+      current_owner -> holder, owner -> holder
+      disposition -> attitude, stance -> attitude
+      tier -> tier_name, level -> tier_name, rank -> tier_rank
+      charge_state -> charges, remaining_charges -> charges
+    - lines[]:
+      target -> target_ch, due_ch -> target_ch
+    - locked[]:
+      type -> kind
+    """
+    if not isinstance(proposal, dict):
+        return proposal
+
+    # 1. 归一化 current
+    cur = proposal.get("current")
+    if isinstance(cur, dict):
+        cur_map = {
+            "current_location": "location",
+            "place": "location",
+            "current_time": "time",
+            "pressures": "active_pressures",
+        }
+        for old_k, new_k in cur_map.items():
+            if old_k in cur and new_k not in cur:
+                cur[new_k] = cur.pop(old_k)
+
+    # 2. 归一化 entities
+    ents = proposal.get("entities")
+    if isinstance(ents, list):
+        ent_map = {
+            "current_location": "location",
+            "place": "location",
+            "current_owner": "holder",
+            "owner": "holder",
+            "disposition": "attitude",
+            "stance": "attitude",
+            "charge_state": "charges",
+            "remaining_charges": "charges",
+        }
+        for e in ents:
+            if isinstance(e, dict):
+                for old_k, new_k in ent_map.items():
+                    if old_k in e and new_k not in e:
+                        e[new_k] = e.pop(old_k)
+                if "tier" in e and "tier_name" not in e:
+                    val = e.pop("tier")
+                    if isinstance(val, int) and "tier_rank" not in e:
+                        e["tier_rank"] = val
+                    else:
+                        e["tier_name"] = str(val)
+
+    # 3. 归一化 lines
+    lines = proposal.get("lines")
+    if isinstance(lines, list):
+        for g in lines:
+            if isinstance(g, dict):
+                if "target" in g and "target_ch" not in g:
+                    g["target_ch"] = g.pop("target")
+                if "due_ch" in g and "target_ch" not in g:
+                    g["target_ch"] = g.pop("due_ch")
+
+    # 4. 归一化 locked
+    locked = proposal.get("locked")
+    if isinstance(locked, list):
+        for l in locked:
+            if isinstance(l, dict):
+                if "type" in l and "kind" not in l:
+                    l["kind"] = l.pop("type")
+
+    return proposal
+
+
 def validate_proposal(proposal, expected_chapter: str | None = None) -> tuple[list[str], dict]:
     errors: list[str] = []
     plan: dict[str, str] = {}
     if not isinstance(proposal, dict):
         return ["提案必须是 JSON 对象"], plan
+
+    # 提案进入强类型校验前，先行做柔性别名归一化
+    normalize_proposal_aliases(proposal)
 
     errors.extend(validator.validate(proposal, _schema("proposal")))
     pydantic_errors = models.validate_with_model("proposal", proposal)

@@ -285,8 +285,7 @@ def _render_review_md(d: dict) -> str:
           f"- **格式残留**：{{{{slot}}}}={d['residue']['slot']} ｜ candidate_*={d['residue']['candidate']}"]
     if d.get("style_info"):
         si = d["style_info"]
-        ai_hits_str = "、".join(f"{h['word']}×{h['count']}" for h in si.get("ai_tell_hits", [])[:5]) or "0 处"
-        L.append(f"- **文风雷达**：平均句长 {si.get('len_mean', 0)} 字（偏离 {si.get('len_mean_delta', 0):+}） ｜ 对话占比 {si.get('dialogue_ratio', 0)} ｜ AI 套话命中：{ai_hits_str}")
+        L.append(f"- **文风雷达**：平均句长 {si.get('len_mean', 0)} 字（偏离 {si.get('len_mean_delta', 0):+}） ｜ 对话占比 {si.get('dialogue_ratio', 0)}")
     L += ["- **核定结果**：", ""]
     return "\n".join(L) + "\n"
 

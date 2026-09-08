@@ -791,9 +791,6 @@ def _stats_one(text: str) -> dict:
         "para_head_repeat": len(heads) - len(set(heads)),
         "para_count": len(paras),
         "top_keywords": top_tags,
-        "ai_tell_total": 0,
-        "ai_tell_density": 0.0,
-        "ai_tell_hits": [],
         "pos_profile": {"top_verbs": top_verbs, "top_adverbs": top_adverbs},
     }
 
@@ -838,13 +835,10 @@ def style(book: Path, ch: str | None = None) -> dict:
         baseline = {
             "len_mean": round(sum(x["len_mean"] for x in other_stats) / n_other, 1) if n_other else 20.0,
             "dialogue_line_ratio": round(sum(x["dialogue_line_ratio"] for x in other_stats) / n_other, 3) if n_other else 0.4,
-            "ai_tell_density": round(sum(x["ai_tell_density"] for x in other_stats) / n_other, 2) if n_other else 0.0,
         }
         drift = {
             "len_mean_delta": round(target_item["len_mean"] - baseline["len_mean"], 1),
             "dialogue_ratio_delta": round(target_item["dialogue_line_ratio"] - baseline["dialogue_line_ratio"], 3),
-            "ai_tell_density": target_item["ai_tell_density"],
-            "ai_tell_total": target_item["ai_tell_total"],
         }
         clean_ch = {k: v for k, v in target_item.items() if k != "num"}
         return {
@@ -862,7 +856,6 @@ def style(book: Path, ch: str | None = None) -> dict:
     baseline = {
         "len_mean": round(sum(x["len_mean"] for x in all_stats) / n_all, 1) if n_all else 20.0,
         "dialogue_line_ratio": round(sum(x["dialogue_line_ratio"] for x in all_stats) / n_all, 3) if n_all else 0.4,
-        "ai_tell_density": round(sum(x["ai_tell_density"] for x in all_stats) / n_all, 2) if n_all else 0.0,
     }
     clean_chapters = [{k: v for k, v in x.items() if k != "num"} for x in all_stats]
     return {
