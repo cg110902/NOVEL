@@ -981,3 +981,52 @@ class TestReplayIdempotency(unittest.TestCase):
         self.assertEqual(rep2["errors"], [])
         self.assertEqual(len(data["lines"].get("foreshadows", [])), 1,
                          "重放同一伏笔不得产生重复条目")
+
+
+class TestTensionStreakBreak(unittest.TestCase):
+    """张力连击守卫：未评分/乱值的章必须断开连击。
+
+    原实现把判定整块包在 `if t_score is not None:` 里，缺分章直接跳过、
+    不重置连击，于是 2/缺分/2/2 被算成「ch_001—ch_004 连续 3 章 ≤3 分」——
+    既误报，报出的章区间（跨 4 章）与章数（3 章）还自相矛盾。
+    """
+
+    @staticmethod
+    def _seed(tb, spec):
+        for n in range(1, len(spec) + 1):
+            tb.run("beats", "new", f"ch_{n:03d}", "--write")
+        d = tb.path("outlines", "vol_01", "beats")
+        for i, sc in enumerate(spec, start=1):
+            f = d / f"ch_{i:03d}.md"
+            t = f.read_text(encoding="utf-8")
+            if sc is None:                       # 整行删掉 → 该章未评分
+                t = re.sub(r"(?m)^tension_score:.*\n", "", t)
+            elif "tension_score:" in t:
+                t = re.sub(r"(?m)^tension_score:.*$", f"tension_score: {sc}", t)
+            else:
+                t = re.sub(r"(?m)^(form:.*\n)", f"tension_score: {sc}\n" + r"\1", t, count=1)
+            f.write_text(t, encoding="utf-8")
+
+    @staticmethod
+    def _flatline(tb):
+        return [w for w in checks.run_checks(tb.book)["warnings"]
+                if w["code"] == "tension_flatline"]
+
+    def test_unscored_chapter_breaks_streak(self):
+        with TempBook() as tb:
+            self._seed(tb, [2, None, 2, 2])
+            self.assertEqual(self._flatline(tb), [],
+                             "缺分章必须断开连击，不得把 2 章误报成「连续 3 章」")
+
+    def test_unparsable_score_breaks_streak(self):
+        with TempBook() as tb:
+            self._seed(tb, [2, "xx", 2, 2])
+            self.assertEqual(self._flatline(tb), [],
+                             "无法解析的张力分同样须断开连击")
+
+    def test_true_consecutive_streak_still_fires(self):
+        with TempBook() as tb:
+            self._seed(tb, [2, 2, 2])
+            hits = self._flatline(tb)
+            self.assertEqual(len(hits), 1, "真·连续 3 章 ≤3 分仍须告警")
+            self.assertIn("ch_001—ch_003", hits[0]["msg"])

@@ -1109,7 +1109,7 @@ def run_checks(book: Path) -> dict:
         _pat = re.compile(
             rf"(?:{'|'.join(re.escape(str(p.get('name'))) for p in _pools2.values() if p.get('name'))})"
             rf"[^。！？\n]{{0,12}}?由\s*{_NUMPAT}\s*(?:盏|枚|个)?\s*"
-            rf"(?:变为|变成|减为|降到|降到|涨到|升到|回落到)\s*{_NUMPAT}",
+            rf"(?:变为|变成|减为|降到|涨到|升到|回落到)\s*{_NUMPAT}",
             re.S)
         for _ft in common.find_chapter_files(book, "final"):
             _ch_tok = f"ch_{common.chapter_number_from_name(_ft.name) or 0:03d}"
@@ -1762,7 +1762,13 @@ def run_checks(book: Path) -> dict:
                         t_score = float(str(raw_score).strip())
                     except ValueError:
                         pass
-                if t_score is not None:
+                if t_score is None:
+                    # 未评分或分数无法解析：该章张力未知，不能当作「延续上一章的连击」，
+                    # 否则 ch_001=2 / ch_002=缺分 / ch_003=2 / ch_004=2 会被算成
+                    # 「ch_001—ch_004 连续 3 章 ≤3 分」——既误报，区间与章数还自相矛盾。
+                    flatline_streak = []
+                    burnout_streak = []
+                else:
                     ch_tok = bf.stem
                     if t_score <= 3:
                         flatline_streak.append(ch_tok)
