@@ -1,9 +1,27 @@
 # Novel Studio V3.1 深度审查报告（文档 × 架构 × 代码 交叉核验）
 
-> **状态说明（提交时补记）**：本报告是审查阶段的快照，正文按「发现问题时」的口吻陈述。
-> 报告列出的 P0/P1/P2 各项**已在本分支全部实施修复**，回归锁定在 `tests/test_engine.py`
-> （38 个用例，`python -m unittest discover -s tests`）。阅读时请把每条结论当作
-> 「修复前的事实」；修复后的口径以代码、`AGENTS.md`、`README.md` 与本报告第七节的修复顺序为准。
+> **状态说明（修订于 2026-09-08）**：本报告是审查阶段的快照，正文按「发现问题时」的口吻陈述。
+>
+> **本报告列出的 P0/P1/P2 各项已逐条修复并逐条验证**，回归锁定在 `tests/test_engine.py`
+> （**62 个用例**，`python -m unittest discover -s tests` 全绿）。
+>
+> **但本报告的覆盖面有限，不等于「本项目已无问题」**——它只覆盖审查阶段读到的代码。
+> 此后对**此前从未通读的模块**做了补充深读，又发现了报告未覆盖的真实缺陷，均已修复：
+>
+> | 补充发现 | 位置 | 性质 |
+> |---|---|---|
+> | 货币单位正则短词遮蔽长词 | `engine/vocab.py` / `engine/audit.py` | 探针 4 对「九十两银子／九十块灵石」等最常见写法**完全失效** |
+> | 资源池键硬编码为 4 个英文名 | `engine/audit.py` | 引擎内置池叫 `standard_currency`、书里池键由作者自定 → 探针形同不存在 |
+> | 道具类型/状态判据用了枚举里不存在的值 | `engine/audit.py` | `artifact/weapon/consumable/prop`、`exhausted/consumed/destroyed/lost` 全是**死分支** |
+> | 两处 `also_flagged_by` 指向不存在的错误码 | `engine/audit.py` | 幽灵码（同类问题在别处已出现过 3 次） |
+> | 模块自述支持 8 个 schema 关键字、实际实现 15 个 | `engine/validator.py` | 文档与代码不一致 |
+> | 迁移路径与 schema 同步不变量零测试覆盖 | `engine/migrations.py`、`engine/schemas/` | 唯一会改写用户全部数据的代码没有回归锁 |
+>
+> 阅读时请把每条结论当作「修复前的事实」；修复后的口径以代码、`AGENTS.md`、
+> `README.md` 与本报告第七节的修复顺序为准。**仍有约 1.5 万行引擎代码
+> （`state.py`、`checks.py`、`state_sync.py`、`evidence.py`、`cockpit.py`、`pack.py`、
+> `chapter_flow.py`、`book_setup.py` 等）只做过报告驱动的定点修复，尚未通读**，
+> 不能据此认定其中不存在同类缺陷。
 
 审查对象：`cg110902/NOVEL` @ `f9ae899`（分支 `arena/01a08184-novel`，工作树未改动）
 审查方式：**不靠通读印象，全部结论都在沙箱里跑出来**。
@@ -21,7 +39,7 @@
 | `engine/schemas/*.json` 与 Pydantic 模型**零漂移** | `python -m engine.models.schema_gen` 后 `git diff -- engine/schemas` 为空 |
 | 老书迁移链 v0→v4 真的能跑 | 删掉 `state_schema.json`+`locked/cognition`、注入未知键与显式 null，`status` 懒触发迁移：`from 0 → to 4`，快照 `pre_migration_v0` 落地，`migrations.log` 记录「裁掉未知字段 / 丢弃显式 null / 初始化第七、八表」 |
 | 幂等契约成立 | 同 `operation_id` 同内容 → `duplicate: True` 跳过；同 id 异内容 → 「已用于不同内容，拒绝复用」 |
-| `errcodes` 注册表与 `checks.py` 实际产出的 58 个 `_err()` 码**一一对应**，无漏注册 | 脚本比对（仅 `stage0_onboarding` 走 `e["code"]=` 赋值路径，也已注册） |
+| `errcodes` 注册表覆盖全部实际产出码，无漏注册 | 脚本比对：REGISTRY 86 条（全为体检码），代码实际产出 61 个体检码，`61 ⊆ 86` 成立。*（审查当时为 58 个；此后修复又新增了若干码，此数字已随代码更新。）* |
 | 账本「余额只由流水重算」在 `verify_data` 里是真闸门 | 读 `state.py:2074+`，并实测 `ledger pool add` 拒绝 `current` |
 
 下面是问题。按「会不会当场把流水线卡死」排序。
