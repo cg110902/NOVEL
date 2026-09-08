@@ -346,6 +346,35 @@ class TestRoleGateway(unittest.TestCase):
         self.assertIsNotNone(deny_reason(book, "outlines/vol_01/beats/ch_001.md", "librarian"))
         self.assertIn("state/ledger.json", ROLE_ALLOW_EXTRA["librarian"])
 
+    def test_report_p13_table_document_authorized_files_readable(self):
+        """报告 P1-3 表格逐行复核：SKILL 准读清单授权的文件，机械层必须放行。
+
+        此前只修了 Stylist/Critic 两行，Reader/Editor 两行仍被拒——
+        「双层防御」名不副实：真按网关走，Editor 连文风宪法都拿不到。
+        """
+        book = Path("/tmp/book")
+        for role, allowed in (
+            ("reader", ["state/entities.json"]),
+            ("editor", ["bible/06_style_guidelines.md"]),
+            ("stylist", ["bible/06_style_guidelines.md"]),
+            ("critic", ["state/current.json"]),
+        ):
+            for path in allowed:
+                self.assertIsNone(deny_reason(book, path, role),
+                                  f"{role} 的文档授权文件 {path} 仍被禁读")
+
+    def test_whitelist_does_not_leak_siblings(self):
+        """白名单是精确单文件，不得顺带放行同目录的其它状态表/圣经表。"""
+        book = Path("/tmp/book")
+        for role, denied in (
+            ("reader", ["state/ledger.json", "state/lines.json", "state/locked.json"]),
+            ("editor", ["bible/01_world_axioms.md", "bible/02_power_system.md"]),
+            ("critic", ["state/entities.json", "state/synopsis.json"]),
+        ):
+            for path in denied:
+                self.assertIsNotNone(deny_reason(book, path, role),
+                                     f"{role} 越权读取 {path} 未被拦截")
+
     def test_cli_as_choices_derive_from_gateway(self):
         with TempBook() as tb:
             proc = tb.run("pack", "--help")
@@ -541,6 +570,13 @@ class TestMiscFixes(unittest.TestCase):
 # ---------------------------------------------------------------------------
 # P2-6 errcodes 注册表完备性
 # ---------------------------------------------------------------------------
+# 文档里用反引号标注、但不是错误码的合法 token（字段名/命令名/路径片段）
+_NON_CODE_TOKENS = {
+    "spirit_stone", "standard_currency", "locked_entry_id_reuse",
+    "kind_set", "action_retire", "overwrite_true",
+}
+
+
 class TestErrcodeRegistry(unittest.TestCase):
     def test_every_emitted_code_is_registered(self):
         src = (Path(__file__).resolve().parents[1] / "engine/checks.py").read_text(encoding="utf-8")
@@ -549,6 +585,37 @@ class TestErrcodeRegistry(unittest.TestCase):
         emitted |= set(re.findall(r'_err\(\s*\n?\s*"([a-z0-9_]+)"', src))
         missing = sorted(c for c in emitted if c not in errcodes.REGISTRY)
         self.assertEqual(missing, [], f"checks.py 产出但未注册的错误码: {missing}")
+
+    def test_codes_referenced_in_docs_and_injection_actually_exist(self):
+        """文档/注入文案里点名的错误码必须真实存在。
+
+        本次修复中我自己犯过这个错：把 `locked_entry_id_reuse` 写进 beats 注入
+        与 Reader SKILL，但注册表里没有这个码，守卫报错也不带码名——
+        Agent 照着 `errcodes` 查不到，等于给了个假线索。
+        """
+        root = Path(__file__).resolve().parents[1]
+        # 1) state.py 里 [code] 前缀的报错必须注册
+        src = (root / "engine/state.py").read_text(encoding="utf-8")
+        prefixed = set(re.findall(r'f?"\[([a-z][a-z0-9_]+)\]', src))
+        for code in prefixed:
+            self.assertIn(code, errcodes.REGISTRY, f"报错前缀 [{code}] 未注册")
+        self.assertIn("locked_entry_id_reuse", prefixed)
+        self.assertIn("cognition_entry_id_reuse", prefixed)
+
+        # 2) beats 注入小节与 Reader SKILL 点名的码必须注册
+        cf = (root / "engine/commands/chapter_flow.py").read_text(encoding="utf-8")
+        block = cf[cf.index("资源池与 ID 水位线"):cf.index("不可逆事实台账")]
+        skill = (root / ".agents/skills/reader/SKILL.md").read_text(encoding="utf-8")
+        named = set(re.findall(r"`([a-z][a-z0-9_]{5,})`", block)) | \
+                set(re.findall(r"`([a-z][a-z0-9_]{5,})`", skill))
+        for token in named:
+            # 只校验长得像错误码的（含下划线、非字段名/命令名）
+            if "_" not in token:
+                continue
+            if token in _NON_CODE_TOKENS:
+                continue
+            self.assertIn(token, errcodes.REGISTRY,
+                          f"文档点名 `{token}` 但注册表里没有这个错误码")
 
     def test_registry_entries_well_formed(self):
         for code, entry in errcodes.REGISTRY.items():

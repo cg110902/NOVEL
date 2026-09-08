@@ -124,7 +124,6 @@ description: Universal factual auditor and state proposal generator for Novel St
   },
   "cognition": [
     {
-      "id": "COG-002",
       "character": "知情或猜疑角色名",
       "content": "当章确立的认知/猜疑/机密知晓",
       "kind": "fact",
@@ -140,7 +139,14 @@ description: Universal factual auditor and state proposal generator for Novel St
 2. **`entities[].relations` 必须为对象数组**：`[{"target": "...", "type": "..."}]`，严禁写成对象映射；
 3. **`entities[].id` 唯一物理 ID 规范**：角色赋 `p_XXX`（主角恒定 `p_001`）、道具 `it_XXX`、势力 `fac_XXX`、地点 `loc_XXX`；更新已有实体时必须继承原 ID；
 4. **二八实体分级落地**：仅核心主配角/关键重器保留对应 `card: "..."` 路径，次要路人小角色留空 `card: ""`，杜绝碎卡膨胀；
-5. **`locked[].id` 格式**：严格匹配 `^LOCK-\d{3,}$`（如 `LOCK-001`），`kind` 仅限 `['death', 'destruction', 'disbandment', 'irreversible_action', 'rule', 'promise', 'pact']`；
+5. **`locked[].id` 与 `cognition[].id` 口径不对称（实测，务必照做）**：
+   - `locked`：**必须**显式给 ID，严格匹配 `^LOCK-\d{3,}$`（如 `LOCK-001`）；省略即整案拒收
+     （`locked 条目 ID 非法: None`）。ID 请从 beats 的「💰 资源池与 ID 水位线」小节取水位线之后起号。
+   - `cognition`：**建议省略 `id`**，引擎自动编号（COG-###）并按 (character, kind, content) 指纹去重；
+     自己猜 ID 反而容易撞上既有条目。
+   - 两表都**禁止**用已存在的 ID 覆写他人/旧条目：命中既有 ID 且 fact/character/content 变了会被
+     拒绝（`locked_entry_id_reuse` 等）；改写历史走 `action:"retire"` 留痕后另立新 ID。
+   - `locked[].kind` 仅限 `['death', 'destruction', 'disbandment', 'irreversible_action', 'rule', 'promise', 'pact']`；
 6. **`lines[].kind` 与 `action` 对应**：
    - `foreshadow`（伏笔）：action 可选 `plant` / `remind` / `resolve`；
    - `knowledge`（秘密）：action 可选 `plant` / `update` / `resolve`；

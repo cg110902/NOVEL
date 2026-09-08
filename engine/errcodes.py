@@ -158,6 +158,16 @@ REGISTRY: dict[str, ErrCode] = {c.code: c for c in (
     # ---- 世界圣经版本 ----
     _reg("bible_drift", "info", "世界圣经（project_bible.md）自上次封存后发生改动",
          "有意修订则忽略本提示；涉及世界规则/战力标尺的修订建议在后续 beats 注明适用范围，回溯旧章时对照 state/bible_log.jsonl。"),
+    _reg("ledger_pool_undeclared", "error", "流水引用了未声明的资源池键（账本无此池）",
+         "先建池再记流水：本章合法池键名见 beats 的「💰 资源池与 ID 水位线」小节，"
+         "流水 pool 必须逐字等于其中一个键；确需新池请在提案 ledger.pools 里声明"
+         "（name/unit/initial 三项必填，严禁写 current）。"),
+    _reg("locked_entry_id_reuse", "error", "提案复用既有 LOCK ID 改写不可逆事实（静默改史被拦）",
+         "不可逆事实禁止就地覆写：改写历史请用 action=\"retire\" 留痕后另立新 ID；"
+         "同 ID 同事实属幂等重放会自动跳过；确认要就地覆写请在该条目显式加 \"overwrite\": true。"),
+    _reg("cognition_entry_id_reuse", "error", "提案复用既有 COG ID 改写他人/旧认知（静默覆盖被拦）",
+         "认知修正请另立新 COG ID 保留认知演进链（或直接省略 id 让引擎自动编号）；"
+         "换角色归属一律拒绝；确认要就地覆写请在该条目显式加 \"overwrite\": true。"),
     # ---- 不可逆事实台账 ----
     _reg("locked_injection_missing", "error", "beats 任务书缺少不可逆台账注入小节（防吃书硬闸门）",
          "运行 python studio.py beats new 重新生成细纲脚手架，或手动在 beats 正文中补充「🔒 不可逆事实台账」小节。"),

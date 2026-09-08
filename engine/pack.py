@@ -799,7 +799,11 @@ ROLE_DENY_SEGMENT: dict[str, tuple[str, ...]] = {
 # critic 的唯一 state 例外（前情记忆）
 ROLE_ALLOW_EXTRA: dict[str, tuple[str, ...]] = {
     "critic": ("state/current.json",),
-    # Stylist 的 state 例外＝全书文风宪法（准读清单第 3 项）
+    # Reader 准读清单第 3 项：state/entities.json 仅用于核对既有实体物理 ID，防新赋 ID 碰撞
+    "reader": ("state/entities.json",),
+    # Editor / Stylist 准读清单第 3 项：全书文风宪法（此前文档授权、机械层一律拒绝，
+    # 「双层防御」名不副实——真按网关走 Editor 连文风宪法都拿不到）
+    "editor": ("bible/06_style_guidelines.md",),
     "stylist": ("bible/06_style_guidelines.md",),
     # Auditor 的三张事实台账（准读清单第 3~5 项）
     "auditor": ("state/locked.json", "state/current.json", "state/entities.json"),

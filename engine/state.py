@@ -1474,7 +1474,7 @@ def _merge_ledger(state: dict, patch: dict, ch: str, rep: dict) -> None:
     for t in patch.get("transactions", []) or []:
         pool = t["pool"]
         if pool not in pools:
-            rep["errors"].append(f"流水引用未声明资源池 '{pool}'")
+            rep["errors"].append(f"[ledger_pool_undeclared] 流水引用未声明资源池 '{pool}'")
             continue
         try:
             delta = int(t["delta"])
@@ -1580,7 +1580,7 @@ def _merge_locked(state: dict, patch: list, ch: str, rep: dict) -> None:
                     continue
                 if action == "plant" or not item.get("overwrite"):
                     rep["errors"].append(
-                        f"locked 条目 {iid} 已存在且事实不同（旧：{old_fact[:24]}… → 新：{new_entry['fact'][:24]}…）——"
+                        f"[locked_entry_id_reuse] locked 条目 {iid} 已存在且事实不同（旧：{old_fact[:24]}… → 新：{new_entry['fact'][:24]}…）——"
                         "不可逆事实禁止静默覆盖：改写历史请改用 action=\"retire\" 留痕后另立新 ID，"
                         "确认要就地覆写请在该条目显式加 \"overwrite\": true")
                     return
@@ -1700,7 +1700,7 @@ def _merge_cognition(state: dict, patch: list, ch: str, rep: dict) -> None:
                 if old_char and char and old_char != char:
                     # 认知条目以「谁的认知」为身份：换人就换条，绝不覆盖他人认知。
                     rep["errors"].append(
-                        f"cognition 条目 {iid} 属于「{old_char}」，提案却写成「{char}」——"
+                        f"[cognition_entry_id_reuse] cognition 条目 {iid} 属于「{old_char}」，提案却写成「{char}」——"
                         "认知归属不可覆盖，请为新角色另立新 COG ID")
                     return
                 if old_content == new_entry["content"]:
@@ -1709,7 +1709,7 @@ def _merge_cognition(state: dict, patch: list, ch: str, rep: dict) -> None:
                     continue
                 if action == "plant" or not item.get("overwrite"):
                     rep["errors"].append(
-                        f"cognition 条目 {iid} 已存在且内容不同（旧：{old_content[:24]}… → 新：{new_entry['content'][:24]}…）——"
+                        f"[cognition_entry_id_reuse] cognition 条目 {iid} 已存在且内容不同（旧：{old_content[:24]}… → 新：{new_entry['content'][:24]}…）——"
                         "禁止静默覆盖：认知修正请另立新 COG ID 保留认知演进链，"
                         "确认要就地覆写请在该条目显式加 \"overwrite\": true")
                     return
