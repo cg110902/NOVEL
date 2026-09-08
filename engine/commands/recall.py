@@ -381,7 +381,7 @@ def render_recall_markdown(d: dict) -> str:
             L.append(f"  - 🚩 **[{ms['id']}] {ms['title']}**（目标 ch_{ms.get('target_ch'):03d}{overdue_str}）")
     L.append("")
 
-    L.append(f"## ❓ 问四：下一章 ({next_ch}) 允许改变什么？绝对禁止触碰什么？")
+    L.append(f"## ❓ 问四：下一章 ({next_ch}) 允许改变什么？禁止触碰什么？")
     L.append("### ✅ 允许与建议改变（剧情突破口）")
     for da in bound["allowed_and_encouraged"]["due_lines_for_action"]:
         L.append(f"- 🎯 **应答动作**：{da}")
@@ -396,7 +396,7 @@ def render_recall_markdown(d: dict) -> str:
         L.append(f"- 💰 **账面资产可用额**：{res_str}")
 
     L.append("")
-    L.append("### ❌ 绝对禁止触碰（叙事红线）")
+    L.append("### ❌ 禁止触碰（叙事红线）")
     for fb in bound["strictly_forbidden"]:
         L.append(f"- 🚫 {fb}")
 

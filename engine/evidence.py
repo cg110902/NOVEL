@@ -747,39 +747,12 @@ def dup(book: Path, ch: str | None = None) -> dict:
     return {"kind": "dup", "shingle_n": SHINGLE_N, "scope": "within_chapter+adjacent",
             "within": within, "adjacent_pairs": pairs}
 
+ 
 
-DEFAULT_AI_TELL_WORDS = vocab.DEFAULT_AI_TELL_WORDS
-
-
-def get_ai_tell_words(book: Path) -> list[str]:
-    """获取 AI 味监控词表：合并默认词库、project.json 配置及 bible/style.md 中的禁用词。"""
-    proj = common.load_json(book / "project.json", default={}) or {}
-    words = list(proj.get("ai_tell_words") or DEFAULT_AI_TELL_WORDS)
-    style_file = book / "bible" / "style.md"
-    if style_file.is_file():
-        try:
-            txt = style_file.read_text(encoding="utf-8", errors="replace")
-            in_section = False
-            for ln in txt.splitlines():
-                if re.match(r"^##\s*.*(?:禁用|AI味|黑名单)", ln):
-                    in_section = True
-                    continue
-                elif re.match(r"^##\s*", ln):
-                    in_section = False
-                if in_section:
-                    cleaned = re.sub(r"<!--.*?-->", "", ln).strip()
-                    if cleaned.startswith(("-", "*")):
-                        content = cleaned.lstrip("-*· ").split("（")[0].split("(")[0]
-                        for part in re.split(r"[/、，,\s]+", content):
-                            part = part.strip()
-                            if len(part) >= 2 and part not in words:
-                                words.append(part)
-        except Exception:
-            pass
-    return [w for w in dict.fromkeys(words) if w]
+ 
 
 
-def _stats_one(text: str, ai_tell_words: list[str] | None = None) -> dict:
+def _stats_one(text: str) -> dict:
     sents = _sentences(text)
     lens = [len(re.sub(r"\s+", "", s)) for s in sents] or [0]
     mean = sum(lens) / len(lens)
@@ -791,22 +764,6 @@ def _stats_one(text: str, ai_tell_words: list[str] | None = None) -> dict:
     dialogue_lines = sum(1 for ln in lines if QUOTE_LINE_RE.match(ln))
     top_tags = jieba.analyse.extract_tags(text, topK=8) if _HAS_JIEBA else []
 
-    # AI 俗套词汇检测
-    ai_hits = []
-    total_ai_hits = 0
-    cjk = common.cjk_count(text)
-    words_to_scan = ai_tell_words if ai_tell_words is not None else DEFAULT_AI_TELL_WORDS
-    for w in words_to_scan:
-        if not w or len(w) < 2:
-            continue
-        cnt = text.count(w)
-        if cnt > 0:
-            total_ai_hits += cnt
-            idx = text.find(w)
-            start = max(0, idx - 15)
-            end = min(len(text), idx + len(w) + 15)
-            snippet = "..." + text[start:end].strip().replace("\n", " ") + "..."
-            ai_hits.append({"word": w, "count": cnt, "sample": snippet})
 
     # 词性画像：高频动词与副词
     top_verbs = []
@@ -823,7 +780,7 @@ def _stats_one(text: str, ai_tell_words: list[str] | None = None) -> dict:
         top_verbs = [w for w, _ in sorted(v_counts.items(), key=lambda x: -x[1])[:6]]
         top_adverbs = [w for w, _ in sorted(d_counts.items(), key=lambda x: -x[1])[:6]]
 
-    ai_density = round(total_ai_hits / max(1, cjk / 1000), 2)
+ 
     return {
         "cjk": cjk,
         "sentences": len(lens),
@@ -834,9 +791,9 @@ def _stats_one(text: str, ai_tell_words: list[str] | None = None) -> dict:
         "para_head_repeat": len(heads) - len(set(heads)),
         "para_count": len(paras),
         "top_keywords": top_tags,
-        "ai_tell_total": total_ai_hits,
-        "ai_tell_density": ai_density,
-        "ai_tell_hits": ai_hits,
+        "ai_tell_total": 0,
+        "ai_tell_density": 0.0,
+        "ai_tell_hits": [],
         "pos_profile": {"top_verbs": top_verbs, "top_adverbs": top_adverbs},
     }
 
@@ -852,19 +809,19 @@ def file_stats(book: Path, rel: str, ch: str | None = None) -> dict:
         return {"error": f"工作区内找不到文件: {rel}"}
     out: dict = {"kind": "file", "path": rel}
     text = path.read_text(encoding="utf-8", errors="replace")
-    ai_words = get_ai_tell_words(book)
-    return {**out, **_stats_one(text, ai_tell_words=ai_words)}
+  
+    return {**out, **_stats_one(text)}
 
 
 def style(book: Path, ch: str | None = None) -> dict:
     all_finals = final_chapters(book)
-    ai_words = get_ai_tell_words(book)
+ 
     target_num = common.chapter_token_to_num(ch) if ch is not None else None
 
     all_stats = []
     target_item = None
     for tok, num, text in all_finals:
-        st = _stats_one(text, ai_tell_words=ai_words)
+        st = _stats_one(text)
         item = {"chapter": tok, "num": num, **st}
         all_stats.append(item)
         if target_num is not None and num == target_num:

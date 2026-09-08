@@ -2,13 +2,14 @@
 from __future__ import annotations
 from enum import Enum
 from typing import Optional
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class EntityType(str, Enum):
     PERSON = "person"
     ITEM = "item"
     PLACE = "place"
+    LOCATION = "location"
     FACTION = "faction"
     OTHER = "other"
 
@@ -42,21 +43,51 @@ class EntityRelation(BaseModel):
 class EntityEntry(BaseModel):
     model_config = ConfigDict(extra="forbid", populate_by_name=True, str_strip_whitespace=True)
 
+    id: Optional[str] = Field(None, pattern=r"^[a-zA-Z0-9_#-]+$", description="实体全局稳定唯一业务主键编号，如 p_001, it_001, fac_001, loc_001")
     name: str = Field(..., description="实体唯一名称")
     type: Optional[EntityType] = Field(None, description="实体类别")
     aliases: list[str] = Field(default_factory=list, description="别名列表")
-    card: Optional[str] = Field(None, description="对应人物卡路径，如 protagonist.md")
+    card: Optional[str] = Field(None, description="对应卡片路径，如 characters/protagonist.md")
     summary: Optional[str] = Field(None, description="一句话实体简介")
     status: Optional[EntityStatus] = Field(None, description="活跃/退场状态")
-    realm: Optional[str] = Field(None, description="人物境界/阶位/社会职务")
+
+    # 实力与层级标尺（全题材通用）
+    tier_rank: Optional[int] = Field(None, ge=1, le=12, description="标准化实力/阶层档位(1-12数字标尺，便于跨题材比大小)")
+    tier_name: Optional[str] = Field(None, description="阶层全称（如：辟海境后期 / S级战略异能者 / 集团执行总裁）")
+    power_benchmark: Optional[str] = Field(None, description="破坏力/表现力物理实物标尺（如：单手掷出万斤巨石，剑气裂百米悬崖）")
+    realm: Optional[str] = Field(None, description="人物境界/阶位/社会职务（兼容旧版字段）")
+
+    # 记忆物象与微动作
+    sensory_anchor: Optional[str] = Field(None, description="感官外貌/标志性穿戴/物象记忆点")
+    micro_actions: list[str] = Field(default_factory=list, description="习惯微动作与神态库")
+
+    # 闭环称谓矩阵（全书恒定防吃书）
+    address_matrix: dict[str, str] = Field(default_factory=dict, description="对特定实体的法定锁定称谓映射 {目标名: 我称呼对方}")
+
+    # 人物与生命状态
     faction: Optional[str] = Field(None, description="人物所属势力组织名")
     life_status: Optional[LifeStatus] = Field(None, description="生命状态")
     attitude: Optional[FactionAttitude] = Field(None, description="势力政治阵营立场")
+
+    # 资产与道具专属字段
     holder: Optional[str] = Field(None, description="道具当前持有者名")
     location: Optional[str] = Field(None, description="道具当前所在地点")
     condition: Optional[str] = Field(None, description="道具当前完损状态")
     charges: Optional[int] = Field(None, ge=0, description="道具剩余使用次数/充能")
     max_charges: Optional[int] = Field(None, ge=1, description="道具最大使用次数/上限")
+    cost_per_use: Optional[str] = Field(None, description="道具单次催动代价/消耗")
+    durability: Optional[str] = Field(None, description="道具耐久/材质物象")
+
+    # 势力专属字段
+    scale_tier: Optional[int] = Field(None, ge=1, le=10, description="势力规模等级(1-10)")
+    core_assets: list[str] = Field(default_factory=list, description="势力核心垄断资产与王牌")
+    diplomacy: dict[str, str] = Field(default_factory=dict, description="势力外交拓扑 {势力名: ally/hostile/neutral}")
+
+    # 地标/场景专属字段
+    danger_tier: Optional[int] = Field(None, ge=1, le=10, description="地点危险度(1-10)")
+    environment_rules: list[str] = Field(default_factory=list, description="地点特殊环境律则")
+
+    # 叙事元数据
     dossier: Optional[str] = Field(None, description="恩怨羁绊、历史过节与交互备忘")
     scope: Optional[str] = Field(None, description="所属分卷生命周期（如 vol_01；省略表示全书通用）")
     golden_quote: Optional[str] = Field(None, description="首次高光定稿切片（100~200字物象细节）")
@@ -67,3 +98,12 @@ class EntitiesState(BaseModel):
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
     entries: list[EntityEntry] = Field(default_factory=list, description="全书注册实体清单")
+
+    @model_validator(mode="after")
+    def check_unique_ids(self) -> EntitiesState:
+        ids = [e.id for e in self.entries if e.id]
+        if len(ids) != len(set(ids)):
+            from collections import Counter
+            dups = [k for k, v in Counter(ids).items() if v > 1]
+            raise ValueError(f"存在重复的实体 ID: {', '.join(dups)}")
+        return self

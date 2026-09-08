@@ -10,20 +10,20 @@
 | 模块 / 子包 | 核心职责 | 强援技术接入 |
 |---|---|---|
 | `models/` | 状态机领域对象与语义原子补丁强类型模型 | **Pydantic V2**（严格禁止未知键注入 `extra='forbid'`，支持 `SemanticEntityPatch`） |
-| `cli.py` | 28 命令薄壳调度：参数解析 + help 目录 + `main`（命令实现下沉至 `commands/`） | argparse |
-| `commands/` | 命令实现层五模块：`book_setup`（init/status/cockpit/config/errcodes）、`chapter_flow`（pack/beats/evidence/check/review/critic/graph/export/audit/index + ask/pov/calendar 只读取证）、`state_sync`（sync/proposal/snapshot/checkpoint/state/ledger/milestone）、`recall`（残酷四问自证）、`simulate`（剧情推演沙盒）；共享助手在 `_shared` | **Rich**（高保真圆角面板、彩色 Markdown 渲染、老白读者评分卡与状态流） |
+| `cli.py` | 29 命令薄壳调度：参数解析 + help 目录 + `main`（命令实现下沉至 `commands/`） | argparse |
+| `commands/` | 命令实现层五模块：`book_setup`（init/status/cockpit/config/errcodes/lore）、`chapter_flow`（pack/beats/evidence/check/review/critic/graph/export/audit/index + ask/pov/calendar 只读取证）、`state_sync`（sync/proposal/snapshot/checkpoint/state/ledger/milestone）、`recall`（残酷四问自证）、`simulate`（剧情推演沙盒）；共享助手在 `_shared` | **Rich**（高保真圆角面板、彩色 Markdown 渲染、老白读者评分卡与状态流） |
 | `cockpit.py` | 主控态势驾驶舱：工作流导航、戏剧动力学（余震/悬顶危机/信息差机锋）、伏笔暗线分类雷达、角色活跃度与自愈处方 | 确定性聚合（秒级出报） |
-| `audit.py` | 确定性机械审计探针：7大探针（不可逆事实违背/在场与死亡/道具充能/金额一致/知情差泄露/认知差冲突/别名漂移） | 确定性跨域比对算法 |
+| `audit.py` | 确定性机械审计探针：**8大探针**（不可逆事实违背/在场与死亡/道具充能/金额一致/知情差泄露/认知差冲突/别名漂移/称谓与修饰词对账 `address_mismatch`） | 确定性跨域比对算法 |
 | `db.py` | SQLite3 双平面投影与 FTS5 检索加速：BM25 段落级语义召回与角色 POV 聚合（支持优雅降级） | **sqlite3**（FTS5 全文索引）+ **jieba**（专名切词） |
 | `migrations.py` | 状态机版本化与迁移器：`state/state_schema.json` 版本戳；老书首次读取自动迁移（迁移前强制快照 + 闸门预验 + JSONL 审计日志 `state/migrations.log`）；只修结构不碰事实 | 快照回滚双保险 |
-| `errcodes.py` | 错误码注册表：全部体检码的 severity/人话解释/修复建议（`python studio.py errcodes`，--json 供 Agent 自助修复）；`checks.DEFAULT_REMEDIES` 由它派生 | 单一真源 |
+| `errcodes.py` | 错误码注册表：全部体检码的 severity/人话解释/修复建议（`python studio.py errcodes`，--json 供 Agent 自助修复，含 `entity_id_duplicate` 探针）；`checks.DEFAULT_REMEDIES` 由它派生 | 单一真源 |
 | `graph.py` | 实体拓扑与叙事中介寻路分析（`studio graph`） | **NetworkX**（最短破局链路、中介中心度排名、孤立资产排查） |
 | `common.py` | 工作区定位、章节号解析、front-matter、原子写、Windows 并发重试、规范哈希 | 标准库（Windows 重试微退避机制，四层回滚保护） |
-| `state.py` | 八表真值管理（含 locked/cognition）、语义补丁合并、复式记账重算、幂等登记簿、落盘前一致性体检、高危状态迁移守卫与时间线回退警示（advisory） | 确定性复式平衡算法与实体关系闭合校验 |
+| `state.py` | 八表真值管理（含 locked/cognition）、**双键实体寻址合并（ID优先）**、语义补丁合并、复式记账重算、幂等登记簿、落盘前一致性体检、高危状态迁移守卫与时间线回退警示（advisory） | 确定性复式平衡算法与实体关系闭合校验 |
 | `validator.py` + `schemas/` | mini JSON Schema 子集机械校验器（load/save 读写闸门 + 提案顶层）；`schemas/*.json` 为**构建产物**，由 `models/schema_gen.py` 从 Pydantic 模型生成（`python -m engine.models.schema_gen`），anyOf 失败时报告最接近分支的具体错误 | 模型唯一真源 + 闸门补丁层（落盘必完整） |
-| `checks.py` | 叙事 AST 编译器体检、伏笔饥饿告警 (`plotline_starvation`)、引文接地柔性容错、MIS/KNO 配额执法、bible 版本盖章对照 (`bible_drift`) | **RapidFuzz**（引文模糊接地，消除语气助词偏差误报） |
+| `checks.py` | 叙事 AST 编译器体检、伏笔饥饿告警 (`plotline_starvation`)、引文接地柔性容错、MIS/KNO 配额执法、bible 版本盖章对照 (`bible_drift`)、实体 ID 重复校验 (`entity_id_duplicate`) | **RapidFuzz**（引文模糊接地，消除语气助词偏差误报） |
 | `evidence.py` | 机械证据（all 汇总 / words / style / file / dup / mentions / gaps / candidates / prev / names / index）与 ask 全书检索、pov 角色视角包（只读取证）只出数、零裁决 | **Jieba**（`posseg` 提取专有名词 NER 候选 + `analyse` 关键词口癖雷达） |
-| `pack.py` | 三层上下文装配（P0 现场 / P1 动态触发 / P2 冷索引） | **NetworkX**（全书实体持有与归属拓扑图，1-Hop 强相关子图动态剪枝） |
+| `pack.py` | 三层上下文装配（P0 现场 / P1 动态触发 / P2 冷索引），自动注入实体唯一物理 ID（`[ID: p_001]`）与称谓对校矩阵 | **NetworkX**（全书实体持有与归属拓扑图，1-Hop 强相关子图动态剪枝） |
 | `snapshot.py` | 快照管理（create / list / rollback，支持 `--clean-drafts` 清理超前稿件与旧版表补齐） | 原子目录快照与事务安全 |
 
 ---
@@ -65,3 +65,43 @@
 5. **状态机演进纪律**：改动数据模型/闸门导致老书文件不兼容时，必须在
    `migrations.MIGRATIONS` 追加迁移函数并把 `CURRENT_STATE_VERSION` +1——老书首次读取
    会自动迁移（先快照、后迁移、闸门预验、最后落盘），只修结构、绝不碰事实。
+
+---
+
+## 统一实体 ID 与双键寻址机制 (Dual-Key Indexing & Canonical IDs)
+
+为彻底解决长篇小说由于实体同名、别名多、重铸改名导致的状态断裂与生命周期丢失问题，引擎实施**双键联合寻址机制**：
+
+1. **唯一物理 ID 编码规范**：
+   - 角色：`p_001`, `p_002`...（`p_001` 恒定为主角）
+   - 物品/法宝：`it_001`, `it_002`...
+   - 势力/门派：`fac_001`, `fac_002`...
+   - 地点/场景：`loc_001`, `loc_002`...
+2. **`_merge_entities` 双键合并解析策略**：
+   - 合并 Reader 提案时，引擎优先检查 `item.id`（ID 索引）；
+   - 若 `id` 命中已有实体，即便中文 `name` 发生变更（如“断水剑”被重铸为“断水龙吟剑”），也会精准就地更新该实体的属性与演化轨迹，绝不裂变为两个实体；
+   - 若 `item.id` 未指定，则降级按 `item.name` 寻址，并将已有实体的 `id` 继承给更新条目；
+   - 若 ID 与 Name 均未命中，则作为全新实体入册。
+3. **机械防重与体检闸门**：
+   - `models/entities.py`: Pydantic V2 模型校验器 `check_unique_ids` 拦截任何重复 ID；
+   - `checks.py`: 体检探针 `entity_id_duplicate` 机械扫描八表，杜绝 ID 碰撞。
+4. **13 大物理通用字段**：
+   - `id`, `name`, `type`, `tier`, `state`, `card`, `current_location`, `faction`, `current_owner`, `charge_state`, `bound_to`, `disposition`, `aliases`。
+
+---
+
+## 底层词典速查指令集 (studio lore CLI)
+
+`studio lore` 系列命令为人类作者与各 Stage 子代理（Director, Drafter, Editor, Auditor）提供零成本的秒级设定对账与事实检索能力：
+
+```bash
+python studio.py lore list [-w BOOK]                         # 全量查看已注册实体 ID、名称与卡片状态
+python studio.py lore entity <id/name> [-w BOOK]             # 穿透调阅实体 13 大物理属性与关联卡片
+python studio.py lore compare <idA/nameA> <idB/nameB>        # 秒级对校两实体阶梯差距与法定互称矩阵
+python studio.py lore scale [-w BOOK]                        # 查看战力/实力位阶实物破坏力标尺
+python studio.py lore rules [-w BOOK]                        # 查看世界运转物理与逻辑公理
+python studio.py lore address <角色名> [-w BOOK]             # 提取该角色对外与被叫的完整称谓矩阵
+python studio.py lore query <实体> <属性名> [-w BOOK]        # 提取实体的单项字段（如 charges, tier 等）
+python studio.py lore get <主题/实体/文件> [-w BOOK]         # 模糊检索或直接提取对应设定全文
+```
+

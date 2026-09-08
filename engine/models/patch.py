@@ -31,21 +31,51 @@ class EntityMutation(BaseModel):
     model_config = ConfigDict(extra="forbid", populate_by_name=True, str_strip_whitespace=True)
 
     action: Literal["upsert", "register", "retire"] = Field(default="upsert", description="操作动作")
+    id: Optional[str] = Field(None, pattern=r"^[a-zA-Z0-9_#-]+$", description="实体全局稳定唯一业务主键编号")
     name: str = Field(..., description="实体名称")
     type: Optional[EntityType] = Field(None, description="实体类别")
     summary: Optional[str] = Field(None, description="实体简介")
     aliases: list[str] = Field(default_factory=list, description="别名清单")
-    card: Optional[str] = Field(None, description="对应人物卡路径")
+    card: Optional[str] = Field(None, description="对应卡片路径")
     status: Optional[EntityStatus] = Field(None, description="状态")
-    realm: Optional[str] = Field(None, description="境界/职级")
+
+    # 实力与层级标尺（全题材通用）
+    tier_rank: Optional[int] = Field(None, ge=1, le=12, description="标准化实力/阶层档位(1-12)")
+    tier_name: Optional[str] = Field(None, description="阶层全称")
+    power_benchmark: Optional[str] = Field(None, description="破坏力/表现力物理实物标尺")
+    realm: Optional[str] = Field(None, description="境界/职级（兼容旧版字段）")
+
+    # 记忆物象与微动作
+    sensory_anchor: Optional[str] = Field(None, description="感官外貌/标志性穿戴/物象记忆点")
+    micro_actions: list[str] = Field(default_factory=list, description="习惯微动作与神态库")
+
+    # 闭环称谓矩阵（全书恒定防吃书）
+    address_matrix: dict[str, str] = Field(default_factory=dict, description="对特定实体的法定锁定称谓映射 {目标名: 我称呼对方}")
+
+    # 人物与生命状态
     faction: Optional[str] = Field(None, description="所属势力")
     life_status: Optional[LifeStatus] = Field(None, description="生命状态")
     attitude: Optional[FactionAttitude] = Field(None, description="政治立场")
+
+    # 资产与道具专属字段
     holder: Optional[str] = Field(None, description="道具持有者")
     location: Optional[str] = Field(None, description="道具所在地点")
     condition: Optional[str] = Field(None, description="道具完好状态")
     charges: Optional[int] = Field(None, ge=0, description="道具剩余充能")
     max_charges: Optional[int] = Field(None, ge=1, description="道具最大充能")
+    cost_per_use: Optional[str] = Field(None, description="道具单次催动代价/消耗")
+    durability: Optional[str] = Field(None, description="道具耐久/材质物象")
+
+    # 势力专属字段
+    scale_tier: Optional[int] = Field(None, ge=1, le=10, description="势力规模等级(1-10)")
+    core_assets: list[str] = Field(default_factory=list, description="势力核心垄断资产与王牌")
+    diplomacy: dict[str, str] = Field(default_factory=dict, description="势力外交拓扑 {势力名: ally/hostile/neutral}")
+
+    # 地标/场景专属字段
+    danger_tier: Optional[int] = Field(None, ge=1, le=10, description="地点危险度(1-10)")
+    environment_rules: list[str] = Field(default_factory=list, description="地点特殊环境律则")
+
+    # 叙事元数据
     dossier: Optional[str] = Field(None, description="恩怨羁绊备忘")
     scope: Optional[str] = Field(None, description="所属分卷生命周期（如 vol_01；省略表示全书通用）")
     golden_quote: Optional[str] = Field(None, description="首次高光定稿切片（100~200字物象细节）")

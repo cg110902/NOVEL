@@ -44,13 +44,24 @@ def _stamp_final_hash(book: Path, ch: str) -> None:
 
 
 def _append_bible_journal(book: Path, ch: str) -> None:
-    """bible 版本盖章：每次成功封存向 state/bible_log.jsonl 追加一条 project_bible.md 哈希。
+    """bible 版本盖章：每次成功封存向 state/bible_log.jsonl 追加一条 bible/ 设定哈希。
 
     用途：日后修订 bible 时可精确定位「哪些章是在旧版世界规则下写成」，回溯修订不瞎猜。
     盖章失败不阻断封存主流程。
     """
-    bible = book / "bible" / "project_bible.md"
-    sha = hashlib.sha256(bible.read_bytes()).hexdigest()[:16] if bible.is_file() else ""
+    bible_dir = book / "bible"
+    single = bible_dir / "project_bible.md"
+    if single.is_file():
+        sha = hashlib.sha256(single.read_bytes()).hexdigest()[:16]
+    elif bible_dir.is_dir():
+        b_mds = sorted(bible_dir.glob("*.md"))
+        h = hashlib.sha256()
+        for bm in b_mds:
+            h.update(bm.name.encode("utf-8"))
+            h.update(bm.read_bytes())
+        sha = h.hexdigest()[:16] if b_mds else ""
+    else:
+        sha = ""
     entry = {"chapter": ch, "bible_sha": sha,
              "ts": datetime.datetime.now().isoformat(timespec="seconds")}
     try:
@@ -1455,8 +1466,62 @@ def cmd_milestone(args) -> int:
                 print(f"   说明: {desc}")
         return 0
 
+    elif action == "achieve":
+        mid = str(getattr(args, "milestone_id", "") or "").strip()
+        if not mid:
+            msg = "achieve 需要里程碑编号（如 MS-001）"
+            print(json.dumps({"ok": False, "code": "milestone_error", "error": msg},
+                             ensure_ascii=False)) if js else print(f"❌ {msg}")
+            return 2
+        target = None
+        for m in milestones:
+            if isinstance(m, dict) and m.get("id") == mid:
+                target = m
+                break
+        if target is None:
+            msg = f"未找到里程碑 {mid}（先用 milestone add 播种 / milestone list 查看）"
+            print(json.dumps({"ok": False, "code": "milestone_error", "error": msg},
+                             ensure_ascii=False)) if js else print(f"❌ {msg}")
+            return 1
+        # 实际达成章节：显式 --chapter 优先，否则取最新定稿章
+        achieved_ch = None
+        ch_raw = getattr(args, "chapter", None)
+        if ch_raw:
+            n = common.chapter_token_to_num(ch_raw)
+            achieved_ch = f"ch_{n:03d}" if n else None
+            if not n:
+                msg = f"非法章节号: {ch_raw}"
+                print(json.dumps({"ok": False, "code": "milestone_error", "error": msg},
+                                 ensure_ascii=False)) if js else print(f"❌ {msg}")
+                return 2
+        else:
+            finals = common.find_chapter_files(book, "final")
+            if finals:
+                achieved_ch = f"ch_{max(common.chapter_token_to_num(f.name) or 0 for f in finals):03d}"
+        already = target.get("status") == "achieved"
+        target["status"] = "achieved"
+        if achieved_ch:
+            target["achieved_ch"] = achieved_ch
+        try:
+            state.save_state(book, "timeline", tl)
+        except ValueError as exc:
+            if js:
+                print(json.dumps({"ok": False, "code": "milestone_error",
+                                  "error": f"写入被结构闸门拒绝: {exc}"}, ensure_ascii=False))
+            else:
+                print(f"❌ 写入被结构闸门拒绝: {exc}")
+            return 1
+        payload = {"ok": True, "milestone": target, "already_achieved": already}
+        if js:
+            print(json.dumps(payload, ensure_ascii=False))
+        else:
+            verb = "已确认（本就处于达成态）" if already else "已核销为达成"
+            print(f"🚩 [{mid}] {verb}：{target.get('title','')}"
+                  + (f"（达成于 {achieved_ch}）" if achieved_ch else ""))
+        return 0
+
     else:
-        msg = f"未知 milestone 动作: {action}（合法: list / add）"
+        msg = f"未知 milestone 动作: {action}（合法: list / add / achieve）"
         print(json.dumps({"ok": False, "code": "milestone_error", "error": msg},
                          ensure_ascii=False) if js else f"❌ {msg}")
         return 2

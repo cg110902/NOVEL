@@ -31,7 +31,7 @@
             "type": "string"
           },
           "kind": {
-            "description": "不可逆类型：death (死亡) | irreversible_action (不可逆动作) | rule (规则铁律) | promise (死契承诺)",
+            "description": "不可逆类型：death (死亡) | irreversible_action (不可逆动作) | rule (规则规范) | promise (死契承诺)",
             "enum": [
               "death",
               "destruction",

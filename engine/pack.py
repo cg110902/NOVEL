@@ -74,9 +74,13 @@ def _prev_final_tail(book: Path, ch_num: int, cur_vol: str | None = None) -> str
 
 
 def _deviation_lines(book: Path) -> list[str]:
-    """bible/project_bible.md 的「本书偏离清单」小节 bullet 行（权威层级的中间层，恒注入）。"""
-    p = book / "bible" / "project_bible.md"
-    if not p.exists():
+    """提取「本书偏离清单」小节 bullet 行（支持 bible/07_deviations.md 与 legacy bible/project_bible.md）。"""
+    targets = [
+        book / "bible" / "07_deviations.md",
+        book / "bible" / "project_bible.md",
+    ]
+    p = next((t for t in targets if t.is_file()), None)
+    if not p:
         return []
     out, inside = [], False
     for ln in p.read_text(encoding="utf-8", errors="replace").splitlines():
@@ -94,37 +98,46 @@ def _deviation_lines(book: Path) -> list[str]:
 
 
 def _bible_core_anchors(book: Path) -> str:
-    """提取 bible/project_bible.md 中的世界规则、战力标尺与核心势力分布（恒常注入 P0）。"""
-    p = book / "bible" / "project_bible.md"
-    if not p.is_file():
+    """提取 bible/ 中的世界规则、战力标尺、势力分布与特殊机制（恒常注入 P0）。"""
+    bible_dir = book / "bible"
+    if not bible_dir.is_dir():
         return ""
-    text = p.read_text(encoding="utf-8", errors="replace")
+    files = sorted(bible_dir.glob("*.md"))
+    if not files:
+        return ""
     sections = []
-    current_title = None
-    current_lines = []
-    target_keywords = ("世界与规则", "境界", "标尺", "power scale", "势力与地理", "世界底层", "战力")
+    target_keywords = ("世界与规则", "运转公理", "境界", "标尺", "power scale", "势力与地理",
+                       "势力网络", "世界底层", "战力", "特异机制", "特殊机制", "经济通货")
 
-    for line in text.splitlines():
-        m = re.match(r"^(#{1,3})\s+(.*)$", line)
-        if m:
-            if current_title and current_lines:
-                content = "\n".join(current_lines).strip()
-                if content:
-                    sections.append(f"### {current_title}\n{content}")
-            title = m.group(2).strip()
-            if any(kw in title.lower() for kw in target_keywords) and "偏离" not in title:
-                current_title = title
-                current_lines = []
-            else:
-                current_title = None
-                current_lines = []
-        elif current_title is not None:
-            current_lines.append(line)
-
-    if current_title and current_lines:
-        content = "\n".join(current_lines).strip()
-        if content:
-            sections.append(f"### {current_title}\n{content}")
+    for p in files:
+        if "07_deviations" in p.name or "06_style_guidelines" in p.name or "style.md" in p.name:
+            continue
+        try:
+            text = p.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        current_title = None
+        current_lines = []
+        for line in text.splitlines():
+            m = re.match(r"^(#{1,3})\s+(.*)$", line)
+            if m:
+                if current_title and current_lines:
+                    content = "\n".join(current_lines).strip()
+                    if content:
+                        sections.append(f"### {current_title}\n{content}")
+                title = m.group(2).strip()
+                if any(kw in title.lower() for kw in target_keywords) and "偏离" not in title:
+                    current_title = title
+                    current_lines = []
+                else:
+                    current_title = None
+                    current_lines = []
+            elif current_title is not None:
+                current_lines.append(line)
+        if current_title and current_lines:
+            content = "\n".join(current_lines).strip()
+            if content:
+                sections.append(f"### {current_title}\n{content}")
 
     return "\n\n".join(sections)
 
@@ -329,9 +342,19 @@ def _entity_block(book: Path, name: str, cur: dict, lines: dict, full: bool) -> 
     block = {"name": name, "type": e.get("type", "other"), "summary": e.get("summary", ""),
              "status": e.get("status", "active"),
              "on_stage": name in cur["current"].get("present_characters", [])}
-    for attr in ("realm", "faction", "life_status", "attitude"):
-        if e.get(attr):
+    if e.get("id"):
+        block["id"] = e["id"]
+    for attr in ("realm", "tier_name", "tier_rank", "power_benchmark", "sensory_anchor",
+                 "faction", "life_status", "attitude", "cost_per_use", "durability",
+                 "scale_tier", "danger_tier"):
+        if e.get(attr) is not None:
             block[attr] = e[attr]
+    if e.get("address_matrix"):
+        block["address_matrix"] = e["address_matrix"]
+    if e.get("core_assets"):
+        block["core_assets"] = e["core_assets"]
+    if e.get("environment_rules"):
+        block["environment_rules"] = e["environment_rules"]
     if e.get("charges") is not None:
         max_c = e.get("max_charges")
         block["charges"] = f"{e['charges']}/{max_c}" if max_c else str(e["charges"])
@@ -367,12 +390,30 @@ def _entity_block(book: Path, name: str, cur: dict, lines: dict, full: bool) -> 
         block["carries"] = carried
     if full:
         card = str(e.get("card", "")).strip()
+        card_p = None
         if card:
             try:
-                p = common.safe_child_path(book, card)
-                block["card_text"] = p.read_text(encoding="utf-8", errors="replace")
+                card_p = common.safe_child_path(book, card)
             except (ValueError, OSError):
-                block["card_text"] = f"（卡文件缺失或越界: {card}）"
+                card_p = None
+        else:
+            candidates = [
+                book / "characters" / f"{name}.md",
+                book / "entities" / "items" / f"{name}.md",
+                book / "entities" / "factions" / f"{name}.md",
+                book / "entities" / "locations" / f"{name}.md",
+            ]
+            for cand in candidates:
+                if cand.is_file():
+                    card_p = cand
+                    break
+        if card_p and card_p.is_file():
+            try:
+                block["card_text"] = card_p.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                block["card_text"] = f"（卡文件读取失败: {card_p}）"
+        elif card:
+            block["card_text"] = f"（卡文件缺失或越界: {card}）"
     return block
 
 
@@ -656,6 +697,8 @@ def render_layer(name: str, obj, full: bool = False) -> str:
         lines = []
         for b in obj["entities"]:
             extra_tags = []
+            if b.get("id"):
+                extra_tags.append(f"ID:{b['id']}")
             if b.get("realm"):
                 extra_tags.append(b["realm"])
             if b.get("faction"):

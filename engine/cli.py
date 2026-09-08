@@ -13,7 +13,8 @@ import sys
 
 from . import __version__, common
 from .commands._shared import _add_common_opts
-from .commands.book_setup import cmd_config, cmd_cockpit, cmd_errcodes, cmd_init, cmd_status
+from .commands.book_setup import (cmd_config, cmd_cockpit, cmd_errcodes, cmd_init, cmd_status,
+                                  cmd_lore)
 from .commands.chapter_flow import (cmd_ask, cmd_audit, cmd_beats, cmd_calendar, cmd_check, cmd_critic,
                                     cmd_evidence, cmd_export, cmd_graph, cmd_index, cmd_pack,
                                     cmd_pov, cmd_review)
@@ -40,6 +41,7 @@ COMMAND_HELP = {
     "evidence": "机械证据：all|mentions|gaps|names|dup|style|words|file|candidates|prev|index（纯 JSON，零裁决）",
     "index": "SQLite3 双平面投影索引：构建/重建 FTS5 BM25 全文检索与关系表缓存",
     "check": "结构/schema/算术体检（errors 只允许事实级；有 errors 退出码 1；新书 Stage 0 待办不阻断）",
+    "doctor": "全息双核健康体检与问诊（系统运行时健康 + 商业小说叙事健康，含自愈处方）",
     "checkpoint": "宏观航向校准点（每5章复盘分卷四分位里程碑与主线偏航）",
     "milestone": "主线里程碑管理：list ｜ add（Stage 0 播种主线里程碑与预期达成章节）",
     "state": "状态速查与手术刀纠偏：state show ｜ get <表.字段> ｜ set <表.字段> <值>（如 state get current.time；防真值幻觉）",
@@ -52,24 +54,25 @@ COMMAND_HELP = {
     "review": "校对注记：new <章节>（骨架预填验收条目+机器数据，--write 写 log/review/）",
     "beats": "细纲脚手架：new [章节]（Stage 1 智能生成带字数预算与情绪蓄水泵的 beats 任务书）",
     "critic": "老白读者催更便签：查看 Stage 4B 便签或落盘 SKELETON 预填骨架（骨架不替代子代理评审）",
-    "audit": "确定性矛盾排查探针（7大机械探针：在场/充能/金额/KNO/不可逆/认知差/别名漂移；0 Token 候选清单）",
+    "audit": "确定性矛盾排查探针（8大机械探针：在场/充能/金额/KNO/不可逆/认知差/别名漂移/称谓对账；0 Token 候选清单）",
     "recall": "知乎残酷四问 0 Token 机械自证（主要人物知道什么/哪三条不能改/伏笔未兑现/下章红线）",
     "simulate": "剧情推演沙盒与走向假说（impact 因果链测算 ｜ branch 多分支走向参谋件）",
     "graph": "实体拓扑沙盘与叙事中介寻路（NetworkX 强力赋能：path/neighbors/isolated/centrality）",
     "errcodes": "错误码注册表速查：全部体检码的 severity/解释/修复建议（--json 供 Agent）",
+    "lore": "底层词典与实体知识库速查对账：list（ID总览）｜ entity（实体属性）｜ compare（位阶互称）｜ scale/rules ｜ address",
     "help": "本命令目录与实战配方（--json 供 Agent 解析速查）",
 }
 
 STAGE_MAP = {
     "Stage 0 (设定构想)": {
-        "role": "Director",
-        "description": "确立世界观法则、人物卡、分卷大纲与词表供参",
-        "commands": ["init", "config", "milestone"],
+        "role": "Architect 0A/B",
+        "description": "确立世界观法则、人物卡、分卷大纲与词表供参等等",
+        "commands": ["init", "config", "milestone", "lore"],
     },
     "Stage 1 (细纲装配)": {
         "role": "Director",
         "description": "吸收上章 Critic 建议、装配戏剧冲突、细纲任务书与拓扑破局",
-        "commands": ["beats", "graph", "recall", "simulate"],
+        "commands": ["beats", "lore", "graph", "recall", "simulate"],
     },
     "Stage 2-3 (起草与重塑)": {
         "role": "Drafter & Editor",
@@ -83,8 +86,8 @@ STAGE_MAP = {
     },
     "Stage 5 (同步与封存)": {
         "role": "Director",
-        "description": "状态原子合并、全书机械体检、快照归档",
-        "commands": ["sync", "check", "checkpoint", "snapshot", "export", "state"],
+        "description": "状态原子合并、全书双核机械体检、快照归档",
+        "commands": ["sync", "check", "doctor", "checkpoint", "snapshot", "export", "state"],
     },
 }
 
@@ -226,7 +229,7 @@ def _build_subparsers(sub: argparse._SubParsersAction) -> None:
     q.add_argument("--open", dest="open_path",
                    help="取工作区内文件原文（相对路径）；受角色禁读网关约束，默认 --as drafter")
     q.add_argument("--as", dest="as_role", default="drafter",
-                   choices=("director", "drafter", "editor", "reader", "critic"),
+                   choices=("architect","director", "drafter", "editor", "reader", "critic"),
                    help="--open 的准读角色（默认 drafter=最严格；主控用 director 才有全量准读权）")
     q.set_defaults(func=cmd_pack)
 
@@ -257,7 +260,7 @@ def _build_subparsers(sub: argparse._SubParsersAction) -> None:
     q.add_argument("--rebuild", "-r", action="store_true", help="强制从头全量清空并重建索引")
     q.set_defaults(func=cmd_index)
 
-    q = sub.add_parser("audit", help="确定性矛盾排查探针（7大机械探针：在场/充能/金额/KNO/不可逆/认知差/别名漂移）")
+    q = sub.add_parser("audit", help="确定性矛盾排查探针（8大机械探针：在场/充能/金额/KNO/不可逆/认知差/别名漂移/称谓对账）")
     _add_common_opts(q)
     q.add_argument("chapter", nargs="?", default="", help="章节标识（如 ch_005，缺省默认最新章）")
     q.add_argument("--write", action="store_true", help="生成并落盘 log/audit/ch_XXX.md 仲裁初稿")
@@ -287,7 +290,11 @@ def _build_subparsers(sub: argparse._SubParsersAction) -> None:
     p_br.set_defaults(func=cmd_simulate)
     q.set_defaults(func=cmd_simulate)
 
-    q = sub.add_parser("check", help="结构/schema/算术体检（errors 只允许事实级）")
+    q = sub.add_parser("check", help="全息双核健康体检（errors 只允许事实级）")
+    _add_common_opts(q)
+    q.set_defaults(func=cmd_check)
+
+    q = sub.add_parser("doctor", help="全息双核健康体检与问诊（系统运行时健康 + 商业小说叙事健康，含处方）")
     _add_common_opts(q)
     q.set_defaults(func=cmd_check)
 
@@ -309,6 +316,13 @@ def _build_subparsers(sub: argparse._SubParsersAction) -> None:
     r.add_argument("--target-ch", "-c", type=int, required=True, help="预期达成章节（正整数）")
     r.add_argument("--id", help="指定里程碑编号（如 MS-001，省略自动生成）")
     r.add_argument("--desc", "-d", default="", help="里程碑详细描述")
+    r.add_argument("-w", "--workspace", default=argparse.SUPPRESS)
+    r.add_argument("--json", action="store_true", default=argparse.SUPPRESS)
+    r.set_defaults(func=cmd_milestone)
+
+    r = ms_sub.add_parser("achieve", help="核销里程碑为已达成（记录实际达成章节）")
+    r.add_argument("milestone_id", help="里程碑编号（如 MS-001）")
+    r.add_argument("--chapter", "-c", help="实际达成章节（如 ch_010 或 10；省略取当前最新定稿章）")
     r.add_argument("-w", "--workspace", default=argparse.SUPPRESS)
     r.add_argument("--json", action="store_true", default=argparse.SUPPRESS)
     r.set_defaults(func=cmd_milestone)
@@ -513,6 +527,60 @@ def _build_subparsers(sub: argparse._SubParsersAction) -> None:
     q.add_argument("-w", "--workspace", default=argparse.SUPPRESS, help=argparse.SUPPRESS)
     q.add_argument("--json", action="store_true", help="结构化 JSON 输出（Agent 首选）")
     q.set_defaults(func=cmd_errcodes)
+
+    q = sub.add_parser("lore", help="底层词典与实体知识库速查对账：list ｜ entity ｜ query ｜ compare ｜ address ｜ scale ｜ rules ｜ get")
+    _add_common_opts(q)
+    lore_sub = q.add_subparsers(dest="lore_action")
+
+    r = lore_sub.add_parser("list", help="查看全部词典模块与实体卡全景清单（默认动作）")
+    r.add_argument("-w", "--workspace", default=argparse.SUPPRESS)
+    r.add_argument("--json", action="store_true", default=argparse.SUPPRESS)
+    r.set_defaults(func=cmd_lore)
+
+    r = lore_sub.add_parser("entity", help="查询单个实体的全息结构化档案与卡片物象")
+    r.add_argument("name", help="角色/道具/势力/地标名称")
+    r.add_argument("-w", "--workspace", default=argparse.SUPPRESS)
+    r.add_argument("--json", action="store_true", default=argparse.SUPPRESS)
+    r.set_defaults(func=cmd_lore)
+
+    r = lore_sub.add_parser("query", help="精准字段寻值（如 query 林牧 tier_rank）")
+    r.add_argument("name", help="实体名称")
+    r.add_argument("field", help="查询属性（如 tier_rank, power_benchmark, address_matrix, charges, holder 等）")
+    r.add_argument("-w", "--workspace", default=argparse.SUPPRESS)
+    r.add_argument("--json", action="store_true", default=argparse.SUPPRESS)
+    r.set_defaults(func=cmd_lore)
+
+    r = lore_sub.add_parser("compare", help="两角色/实体间实力位阶、法定称谓与外交关系侧对侧对校")
+    r.add_argument("char_a", help="实体A名称")
+    r.add_argument("char_b", help="实体B名称")
+    r.add_argument("-w", "--workspace", default=argparse.SUPPRESS)
+    r.add_argument("--json", action="store_true", default=argparse.SUPPRESS)
+    r.set_defaults(func=cmd_lore)
+
+    r = lore_sub.add_parser("scale", help="提取世界观位阶体系与物理破坏力标尺（来自 02_power_system）")
+    r.add_argument("-w", "--workspace", default=argparse.SUPPRESS)
+    r.add_argument("--json", action="store_true", default=argparse.SUPPRESS)
+    r.set_defaults(func=cmd_lore)
+
+    r = lore_sub.add_parser("rules", help="提取世界观底层不可违背客观公理（来自 01_world_axioms）")
+    r.add_argument("-w", "--workspace", default=argparse.SUPPRESS)
+    r.add_argument("--json", action="store_true", default=argparse.SUPPRESS)
+    r.set_defaults(func=cmd_lore)
+
+    r = lore_sub.add_parser("address", help="速查两角色之间的法定称谓对账矩阵")
+    r.add_argument("topic", help="角色A名称")
+    r.add_argument("extra", nargs="?", default="", help="角色B名称（可选）")
+    r.add_argument("-w", "--workspace", default=argparse.SUPPRESS)
+    r.add_argument("--json", action="store_true", default=argparse.SUPPRESS)
+    r.set_defaults(func=cmd_lore)
+
+    r = lore_sub.add_parser("get", help="查看指定词典模块或实体卡全文")
+    r.add_argument("topic", help="词典主题(axioms/power/factions/economy/mechanics/style/deviations)或角色/实体名")
+    r.add_argument("-w", "--workspace", default=argparse.SUPPRESS)
+    r.add_argument("--json", action="store_true", default=argparse.SUPPRESS)
+    r.set_defaults(func=cmd_lore)
+
+    q.set_defaults(func=cmd_lore)
 
 
 def _wants_json(args: argparse.Namespace) -> bool:

@@ -35,7 +35,7 @@ description: Universal long-range consistency sweep librarian and retroactive le
   4. `state/locked.json`（不可逆事实台账）；
   5. `state/cognition.json`（角色认知台账）；
   6. `state/ledger.json`（财务与资金池流水）。
-- 🔴 **禁读清单（Strict Blacklist · 绝对禁止打开）**：
+- 🔴 **禁读清单（Strict Blacklist · 禁止打开）**：
   - ❌ **严禁读取 `outlines/*`（细纲与大纲）**：读者不看大纲，只看定稿事实；
   - ❌ **严禁读取 `manuscript/vol_XX/raw/*`**（草稿）；
   - ❌ **严禁读取 `engine/*.py` 源码**。
@@ -48,7 +48,8 @@ description: Universal long-range consistency sweep librarian and retroactive le
 
 ### 1. 实体名册漏网之鱼 (Missing Entities)
 - **判定标准**：某人物/地点在最近 10 章中出场 ≥2 次或有台词交流，但 `entities.json` 中查无此人；
-- **处理方式**：在提案中以 `action="register"` 录入，补齐 `name`, `type`, `summary`, `status="active"`。
+- **处理方式**：在提案中以 `action="register"` 录入，赋以唯一物理 ID（`p_XXX`, `it_XXX`, `fac_XXX`, `loc_XXX`），补齐 `name`, `type`, `tier_name`, `tier_rank`, `summary`, `status="active"`。
+- **二八分级规范**：次要/辅助角色（如执事、掌柜、仆从）`card` 保持留空字符串 `""`，**坚决不建 `.md` 冗余卡片**，杜绝文件爆炸；仅在确认为长程核心人物时方建卡。可先运行 `python studio.py lore list` 查看已有 ID 避免冲突。
 
 ### 2. 道具充能与损耗核对 (Charges Reconciliation)
 - **判定标准**：某法宝在近 10 章被祭出使用或受损，但 `entities.json` 中 `charges` 依旧为满格，或 `condition` 仍为完好；
@@ -67,9 +68,7 @@ description: Universal long-range consistency sweep librarian and retroactive le
 ## 📄 四、 输出规范与格式契约（在途提案单文件制）
 
 **收件箱契约（engine 硬性规定，违反即静默丢弃）**：每章在途提案只有一份，文件名必须恰为
-`ch_XXX.json`（与 `sync` 目标章完全同名）；`ch_XXX.librarian.json`、`sweep_ch_XXX.json`
-等任何其他命名都是**非规范命名**——`sync` 门闸不认它作正式提案，即使与正式提案并存也会被
-引擎忽略、绝不合并，也不会报错提醒。**修补封存章（已 sync 过的更早章节）时，把修订并入
+`ch_XXX.json`（与 `sync` 目标章完全同名）；**修补封存章（已 sync 过的更早章节）时，把修订并入
 "下一章"的在途提案随 sync 合并**，绝不另开文件。
 
 你必须且仅能产出以下两份工件，落盘即完工：
@@ -87,27 +86,38 @@ section 后覆写**，绝不另建第二个文件）：
   "operation_id": "ch_XXX.librarian.4d",
   "entities": [
     {
-      "action": "register",
+      "id": "p_010",
       "name": "灰袍老仆",
       "type": "person",
+      "tier_name": "凡夫",
+      "tier_rank": 1,
+      "card": "",
       "summary": "李府门房老仆，聋哑但忠心耿耿",
-      "status": "active"
+      "status": "active",
+      "life_status": "alive",
+      "faction": "李府",
+      "attitude": "friendly",
+      "quote": "final 正文出处原句"
     },
     {
-      "action": "upsert",
+      "id": "it_005",
       "name": "青竹令",
       "type": "item",
+      "tier_name": "一阶信物",
+      "tier_rank": 1,
+      "card": "",
+      "holder": "主角名",
       "charges": 2,
-      "condition": "轻微裂纹"
+      "condition": "轻微裂纹",
+      "status": "active",
+      "quote": "final 正文出处原句"
     }
   ],
   "cognition": []
 }
 ```
 
-注意：只放入你确有把握的修补项；可并入的文件 section 与字段合法集以
-`.agents/skills/reader/SKILL.md` 的实体/认知契约为准（严禁 `category`/`description`/
-`power_level` 等非法字段，type 仅 `person|place|faction|item|other`）。
+注意：只放入你确有把握的修补项；可并入的文件 section 与字段合法集严格遵循 `.agents/skills/reader/SKILL.md` 与 `engine/schemas/entities.schema.json`（严禁 `action`/`category`/`description`/`power_level` 等非法悬空字段，type 严格为 `person|place|faction|item|location|other`；实体由引擎按 `id` 自动合并/更新）。
 
 ### 2. 巡查报告：`log/review/sweep_ch_XXX.md`
 ```markdown

@@ -415,10 +415,15 @@ def validate_proposal(proposal, expected_chapter: str | None = None) -> tuple[li
     ents = proposal.get("entities")
     if isinstance(ents, list):
         _plan("entities", len(ents))
-        allowed_entity_keys = {"action", "name", "type", "card", "summary", "status", "aliases",
-                               "holder", "location", "condition", "quote",
-                               "realm", "faction", "life_status", "attitude", "charges", "max_charges",
-                               "dossier", "scope", "golden_quote", "relations"}
+        allowed_entity_keys = {
+            "action", "id", "name", "type", "card", "summary", "status", "aliases",
+            "holder", "location", "condition", "quote",
+            "realm", "faction", "life_status", "attitude", "charges", "max_charges",
+            "cost_per_use", "durability", "scale_tier", "core_assets", "diplomacy",
+            "danger_tier", "environment_rules", "tier_rank", "tier_name",
+            "power_benchmark", "sensory_anchor", "micro_actions", "address_matrix",
+            "dossier", "scope", "golden_quote", "relations"
+        }
         for i, e in enumerate(ents):
             if not isinstance(e, dict):
                 errors.append(f"entities[{i}] 必须为对象")
@@ -894,19 +899,25 @@ def _merge_current(state: dict, patch: dict, rep: dict) -> None:
 
 
 def _merge_entities(state: dict, items: list[dict], rep: dict) -> None:
-    idx = _index_by(state["entries"], "name")
+    id_idx = {ent["id"]: ent for ent in state["entries"] if ent.get("id")}
+    name_idx = _index_by(state["entries"], "name")
     valid_types = _ENTITY_TYPES
     for e in items:
         action, name = e.get("action", "upsert"), e["name"]
+        eid = e.get("id")
+        ent = None
+        if eid and eid in id_idx:
+            ent = id_idx[eid]
+        elif name in name_idx:
+            ent = name_idx[name]
+
         if action == "retire":
-            ent = idx.get(name)
             if ent is None:
                 rep["errors"].append(f"retire 未登记实体「{name}」")
                 continue
             ent["status"] = "retired"
             rep["updated"].append(f"🗂️ 实体退役：{name}")
             continue
-        ent = idx.get(name)
         etype = e.get("type", "other")
         if etype not in valid_types:
             rep["errors"].append(f"实体「{name}」type 非法: {etype}")
@@ -934,17 +945,35 @@ def _merge_entities(state: dict, items: list[dict], rep: dict) -> None:
             _guard_entity_transitions(name, ent, e, rep)
         if ent is None:
             ent = {"name": name, "type": etype, "aliases": [], "card": "", "summary": "", "status": "active"}
+            if eid:
+                ent["id"] = eid
+                id_idx[eid] = ent
             state["entries"].append(ent)
-            idx[name] = ent
-        for f in ("type", "card", "summary", "holder", "location", "condition",
+            name_idx[name] = ent
+        else:
+            if eid:
+                ent["id"] = eid
+                id_idx[eid] = ent
+        for f in ("id", "type", "card", "summary", "holder", "location", "condition",
                   "realm", "faction", "life_status", "attitude", "charges", "max_charges", "dossier",
-                  "scope", "golden_quote"):
-            if f in e:
+                  "scope", "golden_quote", "tier_rank", "tier_name", "power_benchmark", "sensory_anchor",
+                  "cost_per_use", "durability", "scale_tier", "danger_tier"):
+            if f in e and e[f] is not None:
                 ent[f] = e[f]
         if "status" in e:
             ent["status"] = e["status"]
         if "aliases" in e:
             ent["aliases"] = sorted(set(ent.get("aliases", [])) | {str(a) for a in e["aliases"]})
+        if "address_matrix" in e and isinstance(e["address_matrix"], dict):
+            ent.setdefault("address_matrix", {}).update({str(k): str(v) for k, v in e["address_matrix"].items()})
+        if "micro_actions" in e and isinstance(e["micro_actions"], list):
+            ent["micro_actions"] = sorted(set(ent.get("micro_actions", [])) | {str(a) for a in e["micro_actions"]})
+        if "core_assets" in e and isinstance(e["core_assets"], list):
+            ent["core_assets"] = sorted(set(ent.get("core_assets", [])) | {str(a) for a in e["core_assets"]})
+        if "diplomacy" in e and isinstance(e["diplomacy"], dict):
+            ent.setdefault("diplomacy", {}).update({str(k): str(v) for k, v in e["diplomacy"].items()})
+        if "environment_rules" in e and isinstance(e["environment_rules"], list):
+            ent["environment_rules"] = sorted(set(ent.get("environment_rules", [])) | {str(a) for a in e["environment_rules"]})
         if "relations" in e and isinstance(e["relations"], list):
             existing_rels = ent.setdefault("relations", [])
             for new_r in e["relations"]:

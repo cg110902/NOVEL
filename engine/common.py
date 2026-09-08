@@ -121,13 +121,23 @@ def list_books(root: Path | None = None) -> list[Path]:
 def resolve_workspace(arg: str | None, root: Path | None = None) -> Path | None:
     """解析书工作区路径。
 
-    显式 -w 优先（相对路径锚定仓库根）；未指定时若 workspace/ 下恰有一本书则自动选中，
+    显式 -w 优先。相对路径先按命令行惯例锚定**当前工作目录（cwd）**解析——这样
+    `cd <书目录> && studio.py status -w .`（README「在书目录所在工作区内运行」的直觉用法）
+    才能成立；若锚定 cwd 后落点不在工作区根之下（例如从仓库根用 -w workspace/xxx 的文档式写法），
+    再回退锚定仓库根，保持向后兼容。未指定 -w 时若 workspace/ 下恰有一本书则自动选中，
     0 本或多本返回 None——由调用方给出可读提示，绝不猜测。
     """
     if arg:
         p = Path(arg).expanduser()
         if not p.is_absolute():
-            p = (root or project_root()) / p
+            wr = workspace_root(root).resolve()
+            cwd_candidate = (Path.cwd() / p).resolve()
+            # 锚定 cwd 且落点在工作区根之下（或就是书目录）→ 采用
+            if cwd_candidate == wr or wr in cwd_candidate.parents:
+                p = cwd_candidate
+            else:
+                # 回退：锚定仓库根（兼容 -w workspace/<slug> 文档写法）
+                p = (root or project_root()) / p
         return p
     books = list_books(root)
     return books[0] if len(books) == 1 else None
@@ -298,6 +308,88 @@ def parse_front_matter(text: str) -> dict[str, str]:
                 v = re.split(r"\s+#", v, maxsplit=1)[0].strip()
             out[k.strip()] = v.strip("\"'")
     return out
+
+
+def parse_yaml_front_matter(text: str) -> dict:
+    """纯 Python YAML 子集解析器：支持标量、整数、列表（`- item`）与一层嵌套字典（`  key: value`）。
+
+    兼容 UTF-8 BOM，零第三方依赖。用于解析卡片全息 Front-matter（tier_rank, address_matrix 等）。
+    """
+    out: dict = {}
+    lines = (text or "").lstrip("\ufeff").splitlines()
+    i = 0
+    while i < len(lines) and not lines[i].strip():
+        i += 1
+    if i >= len(lines) or lines[i].strip() != "---":
+        return out
+
+    current_key: str | None = None
+    container_type: str | None = None  # "list" or "dict"
+
+    for ln in lines[i + 1:]:
+        stripped = ln.strip()
+        if stripped == "---":
+            break
+        if not stripped or stripped.startswith("#"):
+            continue
+
+        # 顶层键
+        if not ln.startswith((" ", "\t")):
+            if ":" in ln:
+                k, _, v = ln.partition(":")
+                k = k.strip()
+                v = v.strip()
+                if v.startswith("#"):
+                    v = ""
+                else:
+                    v = re.split(r"\s+#", v, maxsplit=1)[0].strip()
+
+                if not v:
+                    # 容器起始（列表或字典由后续缩进行决定）
+                    current_key = k
+                    container_type = None
+                    out[k] = None
+                else:
+                    current_key = None
+                    container_type = None
+                    cleaned_v = v.strip("\"'")
+                    if cleaned_v.isdigit():
+                        out[k] = int(cleaned_v)
+                    elif cleaned_v.lower() == "true":
+                        out[k] = True
+                    elif cleaned_v.lower() == "false":
+                        out[k] = False
+                    else:
+                        out[k] = cleaned_v
+            continue
+
+        # 缩进行（容器元素）
+        if current_key:
+            # 列表元素
+            if stripped.startswith("- "):
+                val = stripped[2:].strip().strip("\"'")
+                if container_type != "list":
+                    out[current_key] = []
+                    container_type = "list"
+                out[current_key].append(val)
+            # 字典元素
+            elif ":" in stripped:
+                sub_k, _, sub_v = stripped.partition(":")
+                sub_k = sub_k.strip().strip("\"'")
+                sub_v = sub_v.strip().strip("\"'")
+                if container_type != "dict":
+                    out[current_key] = {}
+                    container_type = "dict"
+                if sub_v.isdigit():
+                    out[current_key][sub_k] = int(sub_v)
+                elif sub_v.lower() == "true":
+                    out[current_key][sub_k] = True
+                elif sub_v.lower() == "false":
+                    out[current_key][sub_k] = False
+                else:
+                    out[current_key][sub_k] = sub_v
+    return out
+
 
 
 def md_section(text: str, title_pat: str) -> list[str]:

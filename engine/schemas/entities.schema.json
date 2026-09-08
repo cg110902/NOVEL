@@ -6,6 +6,10 @@
       "items": {
         "additionalProperties": false,
         "properties": {
+          "id": {
+            "pattern": "^[a-zA-Z0-9_#-]+$",
+            "type": "string"
+          },
           "name": {
             "description": "实体唯一名称",
             "title": "Name",
@@ -16,6 +20,7 @@
               "person",
               "item",
               "place",
+              "location",
               "faction",
               "other"
             ],
@@ -44,8 +49,38 @@
             "title": "EntityStatus",
             "type": "string"
           },
+          "tier_rank": {
+            "maximum": 12,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "tier_name": {
+            "type": "string"
+          },
+          "power_benchmark": {
+            "type": "string"
+          },
           "realm": {
             "type": "string"
+          },
+          "sensory_anchor": {
+            "type": "string"
+          },
+          "micro_actions": {
+            "description": "习惯微动作与神态库",
+            "items": {
+              "type": "string"
+            },
+            "title": "Micro Actions",
+            "type": "array"
+          },
+          "address_matrix": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "对特定实体的法定锁定称谓映射 {目标名: 我称呼对方}",
+            "title": "Address Matrix",
+            "type": "object"
           },
           "faction": {
             "type": "string"
@@ -85,6 +120,46 @@
           "max_charges": {
             "minimum": 1,
             "type": "integer"
+          },
+          "cost_per_use": {
+            "type": "string"
+          },
+          "durability": {
+            "type": "string"
+          },
+          "scale_tier": {
+            "maximum": 10,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "core_assets": {
+            "description": "势力核心垄断资产与王牌",
+            "items": {
+              "type": "string"
+            },
+            "title": "Core Assets",
+            "type": "array"
+          },
+          "diplomacy": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "势力外交拓扑 {势力名: ally/hostile/neutral}",
+            "title": "Diplomacy",
+            "type": "object"
+          },
+          "danger_tier": {
+            "maximum": 10,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "environment_rules": {
+            "description": "地点特殊环境律则",
+            "items": {
+              "type": "string"
+            },
+            "title": "Environment Rules",
+            "type": "array"
           },
           "dossier": {
             "type": "string"

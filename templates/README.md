@@ -1,48 +1,139 @@
-# templates/ — 创作模板库
+# templates/ — 全题材底层词典与设定规范库（Canonical Lore & Correction Templates）
 
-本目录是创作模板库：其中 **5 份由 `studio.py init` 自动实例化**到书工作区（init 仅预填 title/genre/protagonist 三个槽位，其余 `{{slot:...}}` 保留原位待 Stage 0 人工填实），细纲任务书支持 `studio.py beats new` 自动脚手架生成。
+本目录是 Novel Studio 的**全题材底层世界观、实体知识库与对账规范模板库**。
+不仅是一次性脚手架，更是全书在 Stage 0 筑基后沉淀为 10,000+ 字全景物理定律的**底层词典与机械矫正器**。后续全流水线的增删改查对账均以此为基准锚点。
 
----
-
-## 模板与阶段对照
-
-| 模板文件 | 实例化方式 | 目标路径 | 填写阶段 | 负责角色 | 说明 |
-|---|---|---|---|---|---|
-| `project_bible.md` | init 自动 | `bible/project_bible.md` | Stage 0 | 主控 | 世界观背景、核心规则与战力实物标尺（其中核心规则、地理与境界标尺会被 pack 自动恒常注入 P0 时空胶囊） |
-| `main_plot.md` | init 自动 | `outlines/main_plot.md` | Stage 0 | 主控 | 全书主线脊柱、开局/中继/终局设定 |
-| `volume_outline.md` | init 自动（仅 vol_01） | `outlines/vol_XX/outline.md` | Stage 0 / 开新卷 | 主控 | 开新卷时**手工复制改名**（模板已适配 `{{slot:vol_id}}`） |
-| `character_card.md` | init 自动（仅主角） | `characters/protagonist.md` | Stage 0 起 | 主控 | 后续角色**手工复制改名**（如 `characters/林编辑.md`——按本书角色自定）；人设卡（Want/Fear、性格与说话风格） |
-| `style.md` | init 自动 | `bible/style.md` | Stage 0 | 主控 | 文风与语感基线卡（POV/句式/语域/禁用词黑名单）；禁用词表被 `evidence style` 漂移监控读取，`## 禁用词表与 AI 味黑名单` 节名勿改 |
-| `beats.md` | `studio.py beats new [章节] --write` 自动生成 | `outlines/vol_XX/beats/ch_XXX.md` | Stage 1 | 主控 | 单章细纲任务书（自动注入阶段目标、现场情境、到期线索、情绪蓄水泵、通用场景脉络、新面孔速写插槽与交付契约） |
-
+**【agent填写注意事项】**模板中的预填信息仅为占位，agent请根据当前题材与设定灵活填写，可自行补充更多！
 
 ---
 
-## beats front-matter 合法键清单（引擎强制，超键报错 `beats_fm_extra_keys`）
+## 目录与模块全景架构
 
-| 键 | 用途 |
-|---|---|
-| `chapter` / `vol` | 章号 / 卷号（如 `ch_007` / `vol_01`） |
-| `form` | 章型（生死博弈/战后清点/暗流汇聚/危机逼近）；连章同 form 必须给 `form_reason` |
-| `form_reason` | 与上一章同 form 的理由声明 |
-| `pov` | 视角角色 |
-| `words` | 本章自报字数带（如 `2000-2500`，在 `2000-3000+` 自由舒展）；与上一章带下限仅差 < max(50, 上一章下限×5%) 的无意义抖动会触发 `words_band_crowded` 警告 |
-| `style_notes` | 风格旋钮（竖线分隔）；禁止与上一章全同（`style_notes_copy` 警告） |
-| `editor_extra` | 传递给 Editor 的附加约束 |
-| `tension_curve` | 张力曲线宏观描述 |
-| `tension_score` | 冲突张力分值（1~10） |
-| `stage_mode` | 叙事阶段模式（`Suppression` 蓄水打压 / `Simmering` 试探对峙 / `Eruption` 爆发反杀 / `Harvest` 战后清点） |
-| `suppression_factors` | 蓄水模式（stage_mode=Suppression）建议填写：反派跋扈压制或外部阻碍（引擎仅白名单放行、不强制） |
-| `release_trigger` | 爆发模式（stage_mode=Eruption）建议填写：掀开致命底牌或破局绝招瞬间（引擎仅白名单放行、不强制） |
+```text
+templates/
+├── project.json                   # 全题材通用词表种子配置（含停用词、防AI套话、伤残监测等高灵敏度探针）
+├── beats.md                       # 单章细纲任务书模板（含反套路推演、场景脉络、法定事实清单、交付契约）
+├── bible/                         # 全书世界观与运转公理词典模块（Stage 0 深度筑基）
+│   ├── 01_world_axioms.md         # 世界底色、底层公理与运转机制（含金手指运转逻辑）
+│   ├── 02_power_system.md         # 阶层/实力梯阶与物理/社会实物标尺（防表现力通胀）
+│   ├── 03_factions_geography.md   # 地缘区划、各方势力矩阵与利益冲突拓扑
+│   ├── 04_economy_items.md        # 经济通货、购买力锚点与物资道具品阶
+│   ├── 05_special_mechanics.md    # 特殊机制、体质/血脉/职业谱系与代偿惩戒法则
+│   ├── 06_style_guidelines.md     # 文风基线、微动作多样性库（防冷脸）
+│   └── 07_deviations.md           # 本书偏离清单与核心创作红线（推翻传统套路声明）
+├── characters/                    # 角色全息卡模板
+│   ├── protagonist.md             # 主角高维专属全息卡（含万古底蕴、心理四维、防冷脸微动作、绝对称谓矩阵）
+│   └── character_card_standard.md # 标准重要角色/女主/宿敌全息卡模板
+├── entities/                      # 非人物类实体全息卡模板（彻底终结道具势力无卡裸奔顽疾）
+│   ├── item_card.md               # 核心资产/装备/道具/载具卡模板（品阶、材质物象、能耗代价、充能流转）
+│   ├── faction_card.md            # 核心势力/宗门/组织卡模板（权力架构、镇派底蕴、敌友网络、变迁轨迹）
+│   └── location_card.md           # 关键地标/秘境/场景卡模板（空间氛围、感官细节、环境法则、历史节点）
+└── outlines/                      # 全书与分卷剧情大纲模板
+    ├── main_plot.md               # 全书主线脊柱与长程宏观架构（开局/终局/动力引擎/里程碑）
+    └── volume_outline.md          # 分卷大纲模板（本卷承诺、主冲突驱动力、四分位阶段规划、埋还线清单）
+```
 
 ---
 
-## 填写与生命周期规范
+## 模板实例化与目标路径对照
 
-1. **槽位填充**：模板中的 `{{slot:xxx}}` 为初始化占位符，完成 Stage 0 设定后填实。`python studio.py check` 会自动检查未填槽位。
-2. **细纲智能生成**：Stage 1 推荐直接执行 `python studio.py beats new [章节] --write`，引擎会自动提取大纲规划、上章现场、到期线索并填充通用场景脉络与情绪蓄水模式。
-3. **人物卡与实体分级建立机制**：
-   - **主要/核心角色**：在 `characters/<角色名>.md` 建立独立人物卡，并在 `state/entities.json` 注册；
-   - **次要/临时实体（杂兵/无名狱卒/传令兵等背景板）**：**不建人物卡也不建实体**（Reader 契约：杂兵坚决不建卡）；确有复现价值的次要实体才由 Reader 提案 `entities upsert` 入账，机械计数候选见 `python studio.py evidence candidates`。
-4. **动态细纲任务书格式**：单章 beats 文件头部为 YAML Front-matter（合法键见上表），正文包含 `## 核心冲突与场景脉络`、`## 伏笔与线索动作` 与 `## 交付契约`（引擎按标题关键字提取；另 `## 本章一致性速查` 由 `beats new` 自动注入，主控可增删，勿改节名结构）。
-5. **三轨质检落地**：Stage 4 由 Reader 提取事实装配 `state/inbox/ch_XXX.json`、Critic 输出老白催更便签 `log/critic/ch_XXX.md`、Auditor 输出一致性仲裁报告 `log/audit/ch_XXX.md`（audit_mode=strict 下为 sync 前置闸门）。
+| 模板源文件 | `studio.py init` 目标路径 | 负责角色 | 核心功能与引擎联动 |
+|---|---|---|---|
+| `project.json` | `project.json` | 引擎自动 | 播种全题材通用停用词、AI味黑名单、高压章型、伤残监测等探针 |
+| `bible/01_world_axioms.md` | `bible/01_world_axioms.md` | Architect | 世界底层物理与逻辑公理，金手指运转机制 |
+| `bible/02_power_system.md` | `bible/02_power_system.md` | Architect | 力量/社会地位实物标尺，被 `pack` 恒常注入 P0 时空胶囊 |
+| `bible/03_factions_geography.md` | `bible/03_factions_geography.md` | Architect | 地缘版图与势力利益冲突拓扑，被 `pack` 恒常注入 P0 |
+| `bible/04_economy_items.md` | `bible/04_economy_items.md` | Architect | 货币购买力平价锚点，道具品阶与损耗充能账本 |
+| `bible/05_special_mechanics.md` | `bible/05_special_mechanics.md` | Architect | 独家机制、体质相生相克与反噬走火入魔代偿法则 |
+| `bible/06_style_guidelines.md` | `bible/06_style_guidelines.md` | Architect | 通俗直白大白话规范、微表情多样性库 |
+| `bible/07_deviations.md` | `bible/07_deviations.md` | Architect | 本书偏离清单（`pack` 强制提取注入 P0 时空胶囊） |
+| `characters/protagonist.md` | `characters/protagonist.md` | Architect | 主角全息卡（含绝对称谓矩阵，被 `pack` 恒常注入） |
+| `characters/character_card_standard.md` | 按需手工复制到 `characters/<角色名>.md` | 主控 / Architect | 重要角色/女主/宿敌全息卡（锁定法定称谓对账表） |
+| `entities/item_card.md` | 按需手工复制到 `entities/items/<道具名>.md` | 主控 / Architect | 核心道具/装备/神舟卡（追踪充能、持有者流转） |
+| `entities/faction_card.md` | 按需手工复制到 `entities/factions/<势力名>.md` | 主控 / Architect | 核心势力卡（组织架构与对外关系） |
+| `entities/location_card.md` | 按需手工复制到 `entities/locations/<地名>.md` | 主控 / Architect | 核心地标与第一案发现场空间格局 |
+| `outlines/main_plot.md` | `outlines/main_plot.md` | Architect | 全书主线脊柱、核心三幕与长线里程碑 |
+| `outlines/volume_outline.md` | `outlines/vol_01/outline.md` | Architect | 首卷分卷大纲与四分位剧情航标 |
+| `beats.md` | `studio.py beats new [章节] --write` 自动装配生成 | 主控 (Director) | 单章细纲任务书（反套路推演、场景脉络、法定事实对校） |
+
+---
+
+## 填写、增删改查与生命周期规范
+
+1. **Stage 0 深度筑基规范**：
+   - 执行 `python studio.py init -w workspace/<书名> -t "书名" -g "题材" -p "主角名"` 后，模板自动全量实例化；
+   - 由 `Architect`（架构师）在独立纯净沙盒中完成全部 `{{slot:...}}` 的深度填充，字数规模应达到 **10,000+ 字**；
+   - 填实后运行 `python studio.py check`，未填槽位将由 `unfilled_slot` 闸门机械拦截。
+
+2. **全局统一物理 ID 编码前缀矩阵 (Canonical Entity ID Matrix)**：
+   全书所有实体均拥有全生命周期不可变唯一物理 ID，作为底层持久化与跨章精准检索键：
+   - 👤 **角色 (person)**：`p_001`（主角恒定为 `p_001`）, `p_002`, `p_003`...
+   - ⚔️ **物品与法宝 (item)**：`it_001`, `it_002`, `it_003`...
+   - 🏰 **势力与组织 (faction)**：`fac_001`, `fac_002`, `fac_003`...
+   - 🗺️ **地点与关节点 (location)**：`loc_001`, `loc_002`, `loc_003`...
+
+3. **二八实体分级管理法则 (Tiered Entity Management)**：
+   彻底杜绝长篇小说中“路人甲都要建个卡片”导致的千张碎卡爆炸灾难：
+   - 🌟 **核心实体（占 20%，决定 80% 叙事）**：主角、核心女主、长线宿敌、宗门重臣、本命重器、首府要塞。
+     - **标准**：必须在 `characters/` 或 `entities/` 建立独立的 `.md` 全息卡，锁定称谓矩阵、Want/Fear 与物象；
+     - **台账**：在 `state/entities.json` 中配置对应 `card: "characters/<名字>.md"` 路径。
+   - 🍃 **次要/临时实体（占 80%，服务即时情节）**：客栈掌柜、巡逻守卫、传话执事、临时消耗符箓、路过村庄。
+     - **标准**：**坚决不建 `.md` 冗余卡片**，避免文件污染与磁盘膨胀；
+     - **台账**：直接由 Reader 在 Stage 4 提案中登记入 `state/entities.json`（设置 `card: ""`），记录其姓名、ID、境界、阵营与正文引文即可。
+
+4. **强类型物理通用字段（Entities Schema 核心白名单）**：
+   底层状态表 `state/entities.json` 开启了 `"additionalProperties": false` 强类型闸门。各角色向状态表登记实体时，**必须严格使用以下法定字段**：
+   - 🆔 **标识与类型**：
+     - `id`: 唯一物理 ID（终身不可变：`p_001`, `it_001`, `fac_001`, `loc_001`）
+     - `name`: 实体中文法定全名（唯一主键）
+     - `type`: 实体类型（严格枚举：`person`, `item`, `location`, `place`, `faction`, `other`）
+     - `aliases`: 别名、代号、尊号列表（`array[str]`）
+     - `card`: 对应全息卡相对路径（核心实体如 `"characters/主角.md"`，次要路人留空 `""`）
+     - `summary`: 实体一句话核心定位（`str`）
+   - ⚡ **战力与位阶（防通胀标尺）**：
+     - `tier_rank`: 实力/品阶梯阶整数（`1 ~ 12` 级，用于侧对侧数值对比）
+     - `tier_name`: 境界/职级法定称号（如 `"通玄境后期"`、`"玄阶中品"`、`"A级"`）
+     - `realm`: 修炼大境界划分（`str`）
+     - `power_benchmark`: 破坏力与防御物理实物标尺（`str`）
+   - 🩺 **生命与存在状态**：
+     - `status`: 实体活跃状态（严格枚举：`active` 活跃, `retired` 隐退/沉睡）
+     - `life_status`: 生命体生死状态（严格枚举：`alive` 在世, `deceased` 阵亡, `missing` 失踪）
+     - `condition`: 肉身或物性状态（如 `"重伤"`、`"经脉受损"`、`"完好"`）
+   - 🗺️ **地缘与归属**：
+     - `location`: 当前具体所在空间/据点（`str`，严禁用 `current_location`）
+     - `faction`: 所属门派、势力或组织名称（`str`）
+     - `attitude`: 对主角/阵营的政治态度（严格枚举：`hostile` 敌对, `neutral` 中立, `friendly` 友善, `allied` 结盟，严禁用 `disposition`）
+   - ⚔️ **道具与重器专用**：
+     - `holder`: 当前实际支配/持有者角色名（`str`，严禁用 `current_owner`）
+     - `charges`: 剩余可用充能/催动次数（`int >= 0`，-1 表示非计数型）
+     - `max_charges`: 最大充能上限（`int >= 1`）
+     - `cost_per_use`: 单次催动代价/消耗说明（`str`）
+     - `durability`: 物理磨损/耐久度（`str`）
+   - 🏰 **势力与据点专用**：
+     - `scale_tier`: 势力规模梯级（`1 ~ 10`）
+     - `core_assets`: 核心垄断王牌资产清单（`array[str]`）
+     - `diplomacy`: 势力外交网络映射（`{"势力名": "allied"|"hostile"|"neutral"}`）
+     - `danger_tier`: 地点危险系数（`1 ~ 10`）
+     - `environment_rules`: 地理环境法则与准入门槛（`array[str]`）
+   - 🎭 **感官物象与称谓锁（防冷脸与防吃书）**：
+     - `sensory_anchor`: 标志性外观、穿戴、气味与视觉记忆物象（`str`）
+     - `micro_actions`: 标志性习惯微动作与神态库（`array[str]`）
+     - `address_matrix`: 对特定实体的法定称谓映射（`{"目标名": "我称呼对方"}`）
+     - `relations`: 与特定实体的动态张力网络（`[{"target": "角色名", "type": "rival", "desc": "宿敌"}]`）
+
+   > ⚠️ **【重要：Markdown 卡片 vs 数据库状态表分界规范】**：
+   > - **Markdown 卡片（`characters/*.md`, `entities/*/*.md`）**：是面向大模型创作的**全息感官档案**，其正文允许有丰富的 Want/Fear、生平轶事、背景设定等自然语言描述；
+   > - **数据库状态表（`state/entities.json`）**：是面向确定性引擎的**强类型检索台账**。提案中向 `entities.json` 写入的字段**必须且仅能来自上述白名单**，严禁私自添加未经 Schema 许可的字段（如 `leader`, `headquarters`, `bound_to` 等），否则会被引擎机械闸门直接拒绝！
+
+5. **长篇增删改查（CRUD）对账机制**：
+   - **增（新实体出场）**：在 beats 中声明，核心角色建卡，次要角色免建卡；由 Reader 在提案 `entities.json` 中分配递增 ID 注册；
+   - **删（战死/毁损/退场）**：由 Reader 在提案中附原句引文，登记为 `deceased` 或 `destroyed`，并生成 `state/locked.json` 锁定；
+   - **改（境界突破/道具流转/称谓变更）**：通过 beats 声明演进，Reader 提取更新（引擎以 `id` 为第一主键优先索引，即使改名改换品阶也绝不丢失生命周期）；
+   - **查（对校核验）**：Auditor 结合细纲预提炼清单、人物卡称谓矩阵与机械探针，逐行对账正文，杜绝任何擅自越级或漂移。
+
+6. **CLI 底层词典秒级查询工具链 (Studio Lore CLI)**：
+   - `python studio.py lore list`：全景列出所有已注册实体的物理 ID、名称与卡片状态；
+   - `python studio.py lore entity <id/name>`：按 ID 或名称穿透调阅实体 13 大物理属性；
+   - `python studio.py lore compare <idA/nameA> <idB/nameB>`：秒级对校两实体位阶差距与法定互称矩阵；
+   - `python studio.py lore scale`：查看阶梯破坏力与实物标尺；
+   - `python studio.py lore rules`：查看不可违背的世界物理与设定公理。

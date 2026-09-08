@@ -173,25 +173,56 @@ def cmd_check(args) -> int:
         print(json.dumps(report, ensure_ascii=False, indent=2))
     else:
         print("=" * 70)
-        print(f" 🩺 [体检] {book.name}")
+        print(f" 🩺 [全息双核体检] {book.name}")
         print("=" * 70)
-        for e in report["errors"]:
-            print(f" ❌ [{e['code']}] {e['msg']}")
-            if e.get("remedy"):
-                print(f"    💡 [自愈方案] {e['remedy']}")
-        for w in report["warnings"]:
-            print(f" ⚠️ [{w['code']}] {w['msg']}")
-            if w.get("remedy"):
-                print(f"    💡 [建议处理] {w['remedy']}")
-        for i in report.get("infos", []):
-            print(f" ℹ️ [{i['code']}] {i['msg']}")
+
+        sys_h = report.get("system_health", {})
+        sys_errs = sys_h.get("errors", [])
+        sys_warns = sys_h.get("warnings", [])
+        sys_infos = sys_h.get("infos", [])
+
+        print(" 🖥️  【内核一：系统工程运行时健康 (System & Runtime Health)】")
+        if not sys_errs and not sys_warns and not sys_infos:
+            print("    ✅ 运行环境、依赖完整性与工件链健康")
+        else:
+            for e in sys_errs:
+                print(f"    ❌ [{e['code']}] {e['msg']}")
+                if e.get("remedy"):
+                    print(f"       💡 [自愈方案] {e['remedy']}")
+            for w in sys_warns:
+                print(f"    ⚠️ [{w['code']}] {w['msg']}")
+                if w.get("remedy"):
+                    print(f"       💡 [建议处理] {w['remedy']}")
+            for i in sys_infos:
+                print(f"    ℹ️ [{i['code']}] {i['msg']}")
+
+        print("\n 📖  【内核二：商业小说叙事与网文体感 (Narrative & Commercial Health)】")
+        nar_h = report.get("narrative_health", {})
+        nar_errs = nar_h.get("errors", [])
+        nar_warns = nar_h.get("warnings", [])
+        nar_infos = nar_h.get("infos", [])
+
+        if not nar_errs and not nar_warns and not nar_infos:
+            print("    ✅ 剧情张力、人设聚焦、伏笔与账本完全自洽")
+        else:
+            for e in nar_errs:
+                print(f"    ❌ [{e['code']}] {e['msg']}")
+                if e.get("remedy"):
+                    print(f"       💡 [自愈方案] {e['remedy']}")
+            for w in nar_warns:
+                print(f"    ⚠️ [{w['code']}] {w['msg']}")
+                if w.get("remedy"):
+                    print(f"       💡 [建议处理] {w['remedy']}")
+            for i in nar_infos:
+                print(f"    ℹ️ [{i['code']}] {i['msg']}")
+
         if report.get("onboarding"):
-            print(" 📋 新书 Stage 0 待办：填实 bible/ 与 outlines/ 中的 {{slot:}} 后体检自动转绿"
+            print("\n 📋 新书 Stage 0 待办：填实 bible/ 与 outlines/ 中的 {{slot:}} 后体检自动转绿"
                   "（开写后未填槽位将恢复阻断）")
-        if not report["errors"] and not report["warnings"]:
-            print(" ✅ 无事实级问题")
-        print(f" 汇总：errors {len(report['errors'])} ｜ warnings {len(report['warnings'])}"
-              f" ｜ infos {len(report.get('infos', []))}"
+
+        print("-" * 70)
+        print(f" 📊 汇总：System errors {len(sys_errs)}, warnings {len(sys_warns)}"
+              f" ｜ Narrative errors {len(nar_errs)}, warnings {len(nar_warns)}"
               f" ｜ 定稿章数 {report['stats'].get('final_chapters', 0)}")
     return 0 if report["ok"] else 1
 
@@ -226,7 +257,7 @@ def _render_review_md(d: dict) -> str:
           "- **关键道具 charges 消耗**：",
           "- **核定结果**：", ""]
 
-    L += ["## 块三：因果与不可逆事实结算（LOCK 铁律与线索闭环）", ""]
+    L += ["## 块三：因果与不可逆事实结算（LOCK 规范与线索闭环）", ""]
     if d.get("locked_now"):
         L += ["- **不可逆事实清单（LOCK 刚性约束）**："]
         L += [f"  - {lk}" for lk in d["locked_now"][:10]]
@@ -512,7 +543,7 @@ def _consistency_section(book, n: int, cur: dict, ents: list[dict], lines_st: di
         return ""
     out = ["## 本章一致性速查（引擎自动注入 · 主控可增删）", ""]
     if locked_entries:
-        out += ["### 🔒 不可逆事实台账（LOCK 引擎铁律 · 严禁吃书/逆转）", ""]
+        out += ["### 🔒 不可逆事实台账（LOCK 引擎规范 · 严禁吃书/逆转）", ""]
         for le in locked_entries[:15]:
             lid = le.get("id", "LOCK")
             kind = le.get("kind", "fact")
@@ -524,11 +555,19 @@ def _consistency_section(book, n: int, cur: dict, ents: list[dict], lines_st: di
     if roster:
         out += ["### 实体名册（含既有别名——正文沿用既有写法，严禁另立新名碎片化实体）", ""]
         for ent in roster:
+            eid_part = f"[{ent['id']}] " if ent.get("id") else ""
             aliases = "、".join(str(a) for a in (ent.get("aliases") or []) if a)
             name_part = f"{ent['name']}（别名：{aliases}）" if aliases else str(ent["name"])
-            # 截断统一带省略号（无省略号硬截断会丢关键信息且像坏句）
+            tier_info = ""
+            tr = ent.get("tier_rank")
+            tname = ent.get("tier_name") or ent.get("realm")
+            if tr is not None or tname:
+                tier_info = f" [Tier {tr if tr is not None else '?'}: {tname or '未定'}]"
+            anchor_info = ""
+            if ent.get("sensory_anchor"):
+                anchor_info = f" ｜ 物象: {ent['sensory_anchor']}"
             summary = _clip(str(ent.get("summary", "") or ""), 60)
-            out.append(f"- {name_part} ｜ {ent.get('type', 'other')} ｜ {summary}")
+            out.append(f"- {eid_part}{name_part}{tier_info} ｜ {ent.get('type', 'other')}{anchor_info} ｜ {summary}")
         out.append("")
     if kno_list:
         out += ["### 知情差边界（KNO 未揭示——对手戏严防「不该知道却说漏」穿帮）", ""]
@@ -702,6 +741,31 @@ def cmd_beats(args) -> int:
     cons_section = _consistency_section(book, n, cur, ents_st, lines_st, plan_line=plan_line, locked_st=locked_st)
     if cons_section:
         text = text.replace("## 本章新登场实体速写", cons_section.rstrip() + "\n\n## 本章新登场实体速写")
+
+    # 自动对校并注入现场在场角色的法定互称矩阵
+    try:
+        from . import book_setup as book_setup_mod
+        pres = list(cur.get("present_characters") or [])
+        if protagonist and protagonist not in pres:
+            pres.insert(0, protagonist)
+        addr_lines = []
+        if len(pres) >= 2:
+            for i in range(len(pres)):
+                for j in range(len(pres)):
+                    if i != j:
+                        p_from = book_setup_mod._get_entity_full_profile(book, pres[i])
+                        p_to = book_setup_mod._get_entity_full_profile(book, pres[j])
+                        if p_from and p_to:
+                            addr = book_setup_mod._resolve_mutual_address(p_from, p_to)
+                            if addr and addr != "(未在卡片登记)":
+                                addr_lines.append(f"- 【{pres[i]} -> {pres[j]}】唯一指定法定称谓：「{addr}」")
+        if addr_lines:
+            addr_block = "\n".join(addr_lines)
+            target_addr_marker = "- （若无特殊人物互动，保持默认；否则在此显式填写）"
+            if target_addr_marker in text:
+                text = text.replace(target_addr_marker, addr_block)
+    except Exception:
+        pass
 
     algo_str = ""
     try:

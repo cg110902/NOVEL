@@ -25,7 +25,7 @@ class LockedEntry(BaseModel):
     fact: str = Field(..., min_length=4, description="事实简明陈述")
     since_ch: str = Field(..., pattern=r"^ch_\d{3,}$", description="确立生效章号 (如 ch_003)")
     kind: LockedKind = Field(
-        ..., description="不可逆类型：death (死亡) | irreversible_action (不可逆动作) | rule (规则铁律) | promise (死契承诺)"
+        ..., description="不可逆类型：death (死亡) | irreversible_action (不可逆动作) | rule (规则规范) | promise (死契承诺)"
     )
     quote: str = Field(..., min_length=2, description="final 原文佐证句 (经 RapidFuzz 柔性接地)")
     note: Optional[str] = Field(None, description="写作红线执行提示 (如 '严禁再次出场，回忆除外')")

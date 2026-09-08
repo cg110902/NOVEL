@@ -31,6 +31,56 @@ FORM_SHARE_LIMIT = 0.40
 QUOTE_PASS_RATIO = 85.0   # 模糊相似度 ≥85 视为命中（静默通过）
 QUOTE_NEAR_RATIO = 60.0   # [60, 85) 提示「近似命中」；< 60 提示「存疑」；全程不阻断
 
+# ---------------------------------------------------------------------------
+# 双核健康体检矩阵配置 (Dual-Core Health Check Specs)
+# ---------------------------------------------------------------------------
+RUNTIME_DEPENDENCIES: list[tuple[str, str]] = [
+    ("pydantic", "状态机与强类型 Schema 校验"),
+    ("jieba", "专名抽取与词频统计"),
+    ("networkx", "实体拓扑沙盘与因果图寻路"),
+    ("rapidfuzz", "引文柔性模糊比对"),
+    ("rich", "终端态势驾驶舱渲染"),
+    ("sqlite3", "SQLite3 FTS5 全文索引"),
+]
+
+ABRUPT_PUNCTUATION: tuple[str, ...] = ("，", ",", "、", "：", ":", "“", "‘", "（", "(", "——", "……")
+TRUNCATED_CONNECTORS: tuple[str, ...] = ("但", "因", "因为", "由于", "然后", "接着", "若是", "倘若", "如果", "只见", "却见")
+
+CLICHE_PATTERNS: list[str] = [
+    "神色淡然", "神色微凝", "脸色微变", "嘴角微微上扬", "嘴角勾起一抹",
+    "倒吸一口凉气", "眼神微凝", "眸中闪过一丝", "深吸一口气，缓缓道",
+    "深吸了一口气", "不知不觉间", "宛如神明", "恐怖如斯", "心中不由一紧",
+    "瞳孔猛然收缩", "整个人都不好了",
+]
+
+SYSTEM_CHECK_CODES: set[str] = {
+    "project_missing",
+    "project_corrupt",
+    "project_field_empty",
+    "project_field_type",
+    "wordlist_unconfigured",
+    "param_shape_invalid",
+    "state_unreadable",
+    "state_inconsistent",
+    "duplicate_final",
+    "final_gap_chapters",
+    "final_without_raw",
+    "final_without_beats",
+    "unfilled_slot",
+    "stage0_onboarding",
+    "encoding_replacement_chars",
+    "candidate_leak",
+    "latin_residue",
+    "beats_fm_extra_keys",
+    "lines_state_unreadable",
+    "runtime_dependency_missing",
+    "manuscript_truncation",
+    "workspace_permission_error",
+    "final_drift",
+    "bible_drift",
+}
+
+
 _QUOTE_SLOTS: list[tuple[str, object]] = [
     ("locked", lambda p: p.get("locked") or []),
     ("entities", lambda p: p.get("entities") or []),
@@ -885,6 +935,74 @@ def run_checks(book: Path) -> dict:
     infos: list[dict] = []
     stats: dict = {}
 
+    # -----------------------------------------------------------------------
+    # 内核一：系统工程运行时健康检查 (Runtime System Health)
+    # -----------------------------------------------------------------------
+    missing_deps = []
+    for mod_name, desc in RUNTIME_DEPENDENCIES:
+        try:
+            __import__(mod_name)
+        except ImportError:
+            missing_deps.append(f"{mod_name}（{desc}）")
+    if missing_deps:
+        errors.append(_err(
+            "runtime_dependency_missing",
+            f"运行环境缺少关键依赖: {', '.join(missing_deps)}，部分确定性探针可能降级或失效",
+            remedy="请运行 pip install -r requirements.txt 安装必要运行时依赖。"
+        ))
+
+    if book.is_dir():
+        for sub in ("state", "manuscript", "outlines"):
+            p = book / sub
+            if p.is_dir():
+                test_file = p / ".probe_write_test"
+                try:
+                    test_file.write_text("ok", encoding="utf-8")
+                    test_file.unlink(missing_ok=True)
+                except OSError as exc:
+                    errors.append(_err(
+                        "workspace_permission_error",
+                        f"工作区目录 {sub}/ 无法写入: {exc}",
+                        remedy=f"请检查并赋予 {book}/{sub} 的读写权限。"
+                    ))
+
+    ms_dir = book / "manuscript"
+    if ms_dir.is_dir():
+        for f in sorted(ms_dir.rglob("*.md")):
+            if f.is_symlink():
+                continue
+            try:
+                rel = f.relative_to(book).as_posix()
+                txt = f.read_text(encoding="utf-8", errors="replace").strip()
+                if not txt:
+                    continue
+                lines = [line.strip() for line in txt.splitlines() if line.strip()]
+                if not lines:
+                    continue
+                last_line = lines[-1]
+                if any(last_line.endswith(punct) for punct in ABRUPT_PUNCTUATION):
+                    errors.append(_err(
+                        "manuscript_truncation",
+                        f"{rel} 正文末尾以未完结标点「{last_line[-2:]}」结尾，疑似被截断！末句: \"{last_line[-30:]}\"",
+                        remedy=f"检查 {rel} 正文末尾，补全未写完的情节段落并以正常句号/感叹号收尾。"
+                    ))
+                elif any(last_line.endswith(conn) for conn in TRUNCATED_CONNECTORS):
+                    errors.append(_err(
+                        "manuscript_truncation",
+                        f"{rel} 正文末尾以连接词「{last_line[-4:]}」结尾，疑似生成中断！末句: \"{last_line[-30:]}\"",
+                        remedy=f"检查 {rel} 正文末尾，补全后续句子。"
+                    ))
+                double_quote_open = txt.count("“")
+                double_quote_close = txt.count("”")
+                if abs(double_quote_open - double_quote_close) > 1:
+                    warnings.append(_err(
+                        "manuscript_truncation",
+                        f"{rel} 中文双引号数量失衡（“: {double_quote_open} 处，”: {double_quote_close} 处），疑似存在未闭合对话或截断！",
+                        remedy=f"核对 {rel} 中所有人物对话的引号开闭，确保每句对话均正常闭合。"
+                    ))
+            except OSError:
+                pass
+
     proj_path = book / "project.json"
     proj: dict = {}
     if not proj_path.exists():
@@ -1055,6 +1173,27 @@ def run_checks(book: Path) -> dict:
                     warnings.append(_err("relation_target_unknown",
                                          f"实体「{e.get('name','')}」的关系指向未登记实体「{tgt}」"
                                          "（关系图悬空边：补登目标实体或修正拼写）"))
+
+        # 实体卡片与底层属性机械对账
+        for e in ents:
+            ename = str(e.get("name", ""))
+            card_rel = e.get("card")
+            if card_rel and str(card_rel).strip():
+                card_p = book / card_rel
+                if not card_p.is_file():
+                    warnings.append(_err("entity_card_missing",
+                                         f"实体「{ename}」登记的卡片不存在: {card_rel}（建议补齐卡片或修正路径）"))
+            tr = e.get("tier_rank")
+            if tr is not None:
+                if not isinstance(tr, int) or tr < 1 or tr > 12:
+                    errors.append(_err("entity_tier_invalid",
+                                       f"实体「{ename}」的 tier_rank={tr} 超出合法区间 [1, 12]"))
+            if e.get("type") == "item":
+                chg = e.get("charges")
+                mchg = e.get("max_charges")
+                if isinstance(chg, int) and isinstance(mchg, int) and chg > mchg:
+                    errors.append(_err("item_charges_overflow",
+                                       f"道具「{ename}」的剩余充能 charges={chg} 超出上限 max_charges={mchg}"))
     except (ValueError, FileNotFoundError) as exc:
         errors.append(_err("state_unreadable", str(exc)))
 
@@ -1356,6 +1495,21 @@ def run_checks(book: Path) -> dict:
         except (ValueError, OSError):
             pass
 
+    # 检查实体 ID 重复
+    try:
+        cur_ents = state.load_state(book, "entities").get("entries", [])
+        seen_ids = {}
+        for ent in cur_ents:
+            eid = ent.get("id")
+            if eid:
+                if eid in seen_ids:
+                    errors.append(_err("entity_id_duplicate",
+                                       f"实体 ID 重复：实体「{ent.get('name')}」与「{seen_ids[eid]}」共用 ID {eid}！"))
+                else:
+                    seen_ids[eid] = ent.get("name")
+    except (ValueError, OSError):
+        pass
+
     # 检查主线里程碑逾期
     try:
         cur_timeline = state.load_state(book, "timeline")
@@ -1528,6 +1682,23 @@ def run_checks(book: Path) -> dict:
                 warnings.append(_err("protagonist_pov_drift",
                                      f"主角视角失焦警报：最近连续 {len(low_streak)} 章 {chs_desc} 主角「{protagonist}」登场段落率低于 15%，疑似配角戏份喧宾夺主！建议在下一章强化主角的主动破局与核心对白！"))
 
+        # 套路化套话与冷脸微表情密集度体检 (Cliche Overload Check)
+        for tok, path, text in finals[-5:]:
+            hits = {}
+            for c in CLICHE_PATTERNS:
+                cnt = text.count(c)
+                if cnt >= 2:
+                    hits[c] = cnt
+            total_cliche = sum(text.count(c) for c in CLICHE_PATTERNS)
+            if total_cliche >= 5 or any(cnt >= 3 for cnt in hits.values()):
+                top_hits = sorted(hits.items(), key=lambda x: -x[1])[:3]
+                desc = "、".join(f"「{k}」({v}次)" for k, v in top_hits) if top_hits else f"套路短语共 {total_cliche} 次"
+                warnings.append(_err(
+                    "cliche_overload",
+                    f"{tok} 检测到套路化套话/冷脸微表情密集超标（共 {total_cliche} 处，样本 {desc}），极易引发读者审美疲劳！",
+                    remedy="由 Stage 3B Stylist 脱水重修，将冷脸神态与惯性套话改写为生动具体的环境与动作白描。"
+                ))
+
     for vol_dir in sorted((book / "outlines").glob("vol_*")):
         beats_files = sorted(vol_dir.glob("beats/ch_*.md"))
         flatline_streak = []
@@ -1588,8 +1759,8 @@ def run_checks(book: Path) -> dict:
     # bible 版本盖章对照（info）：世界圣经在封存后又被改动 → 新旧章适用的世界规则可能不同
     try:
         jpath = book / "state" / "bible_log.jsonl"
-        bible_path = book / "bible" / "project_bible.md"
-        if jpath.is_file() and bible_path.is_file():
+        bible_dir = book / "bible"
+        if jpath.is_file() and bible_dir.is_dir():
             last_ch, last_sha = "", ""
             for jline in jpath.read_text(encoding="utf-8", errors="replace").splitlines():
                 jline = jline.strip()
@@ -1601,10 +1772,19 @@ def run_checks(book: Path) -> dict:
                     continue
                 if isinstance(rec, dict) and rec.get("bible_sha"):
                     last_ch, last_sha = str(rec.get("chapter", "")), str(rec["bible_sha"])
-            cur_sha = hashlib.sha256(bible_path.read_bytes()).hexdigest()[:16]
-            if last_ch and last_sha and cur_sha != last_sha:
+            single_p = bible_dir / "project_bible.md"
+            if single_p.is_file():
+                cur_sha = hashlib.sha256(single_p.read_bytes()).hexdigest()[:16]
+            else:
+                b_mds = sorted(bible_dir.glob("*.md"))
+                h = hashlib.sha256()
+                for bm in b_mds:
+                    h.update(bm.name.encode("utf-8"))
+                    h.update(bm.read_bytes())
+                cur_sha = h.hexdigest()[:16] if b_mds else ""
+            if last_ch and last_sha and cur_sha and cur_sha != last_sha:
                 infos.append(_err("bible_drift",
-                                  f"bible/project_bible.md 自 {last_ch} 封存后有改动——其后旧章系旧版规则所写，"
+                                  f"bible/ 设定文件自 {last_ch} 封存后有改动——其后旧章系旧版规则所写，"
                                   "回溯修订或新设定生效时请对照 state/bible_log.jsonl 与「本书偏离清单」"))
     except OSError:
         pass
@@ -1625,8 +1805,36 @@ def run_checks(book: Path) -> dict:
     stats["errors"] = len(errors)
     stats["warnings"] = len(warnings)
     stats["infos"] = len(infos)
-    return {"schema": "novel-studio.check/v1", "ok": not errors, "onboarding": onboarding,
-            "errors": errors, "warnings": warnings, "infos": infos, "stats": stats}
+
+    sys_errs = [e for e in errors if e.get("code") in SYSTEM_CHECK_CODES]
+    sys_warns = [w for w in warnings if w.get("code") in SYSTEM_CHECK_CODES]
+    sys_infos = [i for i in infos if i.get("code") in SYSTEM_CHECK_CODES]
+
+    nar_errs = [e for e in errors if e.get("code") not in SYSTEM_CHECK_CODES]
+    nar_warns = [w for w in warnings if w.get("code") not in SYSTEM_CHECK_CODES]
+    nar_infos = [i for i in infos if i.get("code") not in SYSTEM_CHECK_CODES]
+
+    return {
+        "schema": "novel-studio.check/v2",
+        "ok": not errors,
+        "onboarding": onboarding,
+        "errors": errors,
+        "warnings": warnings,
+        "infos": infos,
+        "stats": stats,
+        "system_health": {
+            "ok": not sys_errs,
+            "errors": sys_errs,
+            "warnings": sys_warns,
+            "infos": sys_infos,
+        },
+        "narrative_health": {
+            "ok": not nar_errs,
+            "errors": nar_errs,
+            "warnings": nar_warns,
+            "infos": nar_infos,
+        },
+    }
 
 
 def get_self_healing_remedies(book: Path, ch: str | None = None) -> list[dict]:

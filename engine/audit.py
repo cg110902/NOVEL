@@ -1,4 +1,4 @@
-"""engine/audit.py: 确定性矛盾排查探针（7大机械探针：在场/充能/金额/KNO/不可逆/认知差/别名漂移）。
+"""engine/audit.py: 确定性矛盾排查探针（8大机械探针：在场/充能/金额/KNO/不可逆/认知差/别名漂移/称谓与修饰词对账）。
 
 设计原则：
 1. 0 Token 消耗、极速（<0.2s）、确定性机械计算；
@@ -533,12 +533,58 @@ def probe_alias_drift(text: str, lines: list[str], ents_st: list[dict]) -> list[
     return candidates
 
 
+def probe_address_mismatch(text: str, lines: list[str], book: Path, ch_num: int, ents_st: list[dict]) -> list[dict]:
+    """探针 8：法定称谓漂移与禁忌称呼探针（防人设/称谓吃书）。"""
+    candidates = []
+    char_dir = book / "characters"
+    if not char_dir.is_dir():
+        return candidates
+
+    seen_evidence = set()
+    for f in char_dir.glob("*.md"):
+        if f.name.endswith(".example.md") or f.stem == "character_card_standard":
+            continue
+        ctext = f.read_text(encoding="utf-8", errors="replace")
+        for forbidden_match in re.finditer(r"(?:严禁|禁止)(?:出现|称呼|使用)?\s*([^\n。；]+)", ctext):
+            fpart = forbidden_match.group(1)
+            quotes = re.findall(r"[“\"「]([^”\"」]+)[”\"」]", fpart)
+            if not quotes:
+                continue
+
+            for bad_term in quotes:
+                if len(bad_term) < 2:
+                    continue
+                for idx, line in enumerate(lines, start=1):
+                    dialogues = re.findall(r"[「“]([^」”]+)[」”]", line)
+                    for diag in dialogues:
+                        if bad_term in diag:
+                            ev_key = (idx, bad_term)
+                            if ev_key in seen_evidence:
+                                continue
+                            seen_evidence.add(ev_key)
+                            clean_line = line.strip()
+                            if len(clean_line) > 80:
+                                clean_line = clean_line[:77] + "…"
+                            candidates.append({
+                                "probe": "address_mismatch",
+                                "severity": "candidate_hard",
+                                "line_no": idx,
+                                "also_flagged_by": None,
+                                "title": f"法定称谓禁忌触犯：对白出现严禁称呼「{bad_term}」",
+                                "description": f"卡片「{f.name}」明文锁定严禁使用称谓「{bad_term}」，但正文对白中出现该词汇，构成违规称谓漂移。",
+                                "evidence": f"L{idx}: {clean_line}",
+                                "state_ref": f"characters/{f.name}",
+                                "suggestion": f"请对照细纲法定称谓清单，使用唯一指定称谓替换违禁词「{bad_term}」。"
+                            })
+    return candidates
+
+
 # ---------------------------------------------------------------------------
 # 聚合入口
 # ---------------------------------------------------------------------------
 
 def run_audit(book: Path, ch: str) -> dict[str, Any]:
-    """执行全部 7 项确定性机械审计探针，输出候选矛盾点汇总。"""
+    """执行全部 8 项确定性机械审计探针，输出候选矛盾点汇总。"""
     n = common.chapter_token_to_num(ch)
     tok = f"ch_{n:03d}" if n else ch
     if not n:
@@ -576,6 +622,7 @@ def run_audit(book: Path, ch: str) -> dict[str, Any]:
     raw_candidates.extend(probe_secret_leakage(text, lines, lines_st, ents_st))
     raw_candidates.extend(probe_cognition_stubs(text, lines, lines_st, cog_st))
     raw_candidates.extend(probe_alias_drift(text, lines, ents_st))
+    raw_candidates.extend(probe_address_mismatch(text, lines, book, n, ents_st))
 
     candidates = []
     for idx, c in enumerate(raw_candidates, start=1):
@@ -593,6 +640,7 @@ def run_audit(book: Path, ch: str) -> dict[str, Any]:
         "secret_leakage": sum(1 for c in candidates if c.get("probe") == "secret_leakage"),
         "cognition_stubs": sum(1 for c in candidates if c.get("probe") == "cognition_stubs"),
         "alias_drift": sum(1 for c in candidates if c.get("probe") == "alias_drift"),
+        "address_mismatch": sum(1 for c in candidates if c.get("probe") == "address_mismatch"),
     }
 
     rel_path = target_file.relative_to(book).as_posix()
