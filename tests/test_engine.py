@@ -860,3 +860,61 @@ class TestSchemaModelSync(unittest.TestCase):
         for key in MODEL_REGISTRY:
             self.assertTrue((schema_gen.SCHEMA_DIR / f"{key}.schema.json").is_file(),
                             f"模型 {key} 没有对应的已提交 schema")
+
+
+class TestVocabAlternationSafety(unittest.TestCase):
+    """被拼进正则交替的词表必须「长者优先」，否则短词会遮蔽长词。
+
+    此 bug 曾让账本探针对最常见写法完全失效：「九十两银子」只捕获 "两"、
+    「九十块灵石」只捕获 "块"，后续按单位找资源池的分支全部落空。
+    """
+
+    def test_currency_units_longest_first(self):
+        from engine import vocab
+        units = vocab.CURRENCY_UNITS
+        self.assertEqual(units, sorted(units, key=len, reverse=True),
+                         "CURRENCY_UNITS 必须按长度降序排列（防短词遮蔽长词）")
+
+    def test_regex_alternation_captures_longest_unit(self):
+        """拼进正则后，长单位必须整体命中，而非被前缀短词截断。"""
+        import re
+        from engine import vocab
+        pat = re.compile(r"([零一二两三四五六七八九十百千]+)(" + "|".join(vocab.CURRENCY_UNITS) + ")")
+        # 「九十块灵石」的量词确实是「块」（灵石是名词），「三枚极品灵石」的量词是「枚」——
+        # 这是中文量词结构本身，探针正是靠它对齐资源池的 unit 字段。
+        for text, expected in [("付了九十两银子", "两银子"), ("付了九十两白银", "两白银"),
+                               ("付了九十两黄金", "两黄金"), ("付了九十块灵石", "块"),
+                               ("花了三枚极品灵石", "枚"), ("付了九十两", "两")]:
+            m = pat.search(text)
+            self.assertIsNotNone(m, f"「{text}」应能匹配出金额+单位")
+            self.assertEqual(m.group(2), expected,
+                             f"「{text}」应捕获单位「{expected}」，实际「{m.group(2)}」")
+
+    def test_shadowing_pairs_in_regex_lists_are_harmless_or_sorted(self):
+        """有遮蔽对的词表，其消费方式必须安全（子串 any() 或已排序）。"""
+        import itertools
+        from engine import vocab
+        # SPEAKER_MODS_LIST 有遮蔽对（怒/怒斥、咬牙/咬牙切齿），但消费点是带 * 的
+        # 正则交替，Python 回溯会兜住 —— 此处锁定该行为不被破坏。
+        import re
+        pat = re.compile(rf"([^，。！？\s]{{2,6}}?)(?:{vocab.SPEAKER_MODS_PATTERN})*"
+                         rf"(?:道|说|笑|叹|喝|问)[:：]")
+        for line, want in [("林牧怒斥道：住手", "林牧"), ("林牧咬牙切齿道：住手", "林牧")]:
+            m = pat.search(line)
+            self.assertIsNotNone(m, f"「{line}」应能解析出说话人")
+            self.assertEqual(m.group(1), want,
+                             f"「{line}」说话人应为「{want}」，实际「{m.group(1)}」")
+
+    def test_captured_unit_resolves_to_real_pool(self):
+        """捕获到的量词必须能解析回本书真实资源池（余额不足才报警）。"""
+        from engine import audit
+        line = "他付了九十块灵石换取丹药。"
+        rich = {"pools": {"spirit_stone": {"name": "灵石", "unit": "块", "current": 100}}}
+        poor = {"pools": {"spirit_stone": {"name": "灵石", "unit": "块", "current": 50}}}
+        self.assertEqual(audit.probe_amount_ledger(line, [line], rich), [],
+                         "余额充足时不应报警")
+        self.assertTrue(audit.probe_amount_ledger(line, [line], poor),
+                        "余额不足（50 < 90）时必须报警")
+        mismatched = {"pools": {"lingshi": {"name": "极品灵石", "unit": "枚", "current": 1}}}
+        self.assertEqual(audit.probe_amount_ledger(line, [line], mismatched), [],
+                         "量词「块」不应误挂到 unit=枚 的池上")
