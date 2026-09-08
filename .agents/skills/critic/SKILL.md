@@ -37,7 +37,7 @@ description: Universal commercial webnovel reader feedback and next-chapter anti
 
 1. 🌊 **【阅读疲劳度与节奏水位】**：
    - 当前情绪是**紧绷**还是**松弛**？
-   - 连续高潮打脸后是否产生疲劳感？下章该爆发、蓄水，还是需要半章战利品清点或趣味日常缓冲？
+   - 连续高潮打脸后是否产生疲劳感？下章该爆发（Eruption）、蓄水（Suppression），还是需要半章战利品清点（Harvest）或趣味日常（DailyFun）缓冲？
 2. 🔍 **【伏笔与信息差透光度】**：
    - 读者视角下，重要暗线（身世、阴谋、秘密）是藏得太深快被遗忘，还是透光过火失去悬念？
 3. 🌡️ **【主角活人感与去 AI 味】**：

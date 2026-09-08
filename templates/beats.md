@@ -10,7 +10,7 @@ form: {{slot:form|暗流汇聚}}
 pov: {{slot:protagonist|主角名}}·视角
 words: 2000-3000+
 tension_curve: {{slot:tension_curve|动态起伏}}
-# 情绪流体力学（蓄水泵）：1-10 张力值；Suppression(蓄水) | Simmering(试探) | Eruption(爆发) | Harvest(清点)
+# 情绪流体力学（蓄水泵）：1-10 张力值；Suppression(蓄水) | Simmering(试探) | Eruption(爆发) | Harvest(清点) | ‌DailyFun(趣味日常)
 tension_score: {{slot:tension_score|6}}
 stage_mode: {{slot:stage_mode|Simmering}}
 # suppression_factors: <!-- 若为 Suppression 建议填写：压迫阻力或隐忍限制，蓄满戏剧弹簧（引擎不强制） -->
@@ -53,7 +53,7 @@ editor_extra:
      - 心理温差：从戒备防备 ➔ 因主角具体举动打破防线产生信赖，或产生微妙心意；
      - 动作潜台词：眼神避开视线、紧绷的嘴角松弛、指尖微颤（调用 characters/*.md 专属微动作，严禁抽象抒情）。 -->
 - **心理温差推进**：{{slot:beat_emotional_pivot|核心角色之间在当章冲突中产生的具体信任度或心理温差挪动}}
-- **微动作与潜台词外化**：{{slot:beat_emotional_actions|具体的眼神、肢体伴随动作与带刺/带暖意的对白机锋}}
+- **微动作与潜台词外化**：{{slot:beat_emotional_actions|具体的眼神、肢体伴随动作与带刺/带暖意（情意）的对白机锋}}
 
 ---
 
