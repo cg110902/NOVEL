@@ -15,6 +15,7 @@ import re
 from pathlib import Path
 
 from . import common, errcodes, evidence, state, vocab
+from .models.entities import LOCATION_TYPES
 
 try:
     from rapidfuzz import fuzz
@@ -40,7 +41,9 @@ RUNTIME_DEPENDENCIES: list[tuple[str, str]] = [
     ("networkx", "实体拓扑沙盘与因果图寻路"),
     ("rapidfuzz", "引文柔性模糊比对"),
     ("rich", "终端态势驾驶舱渲染"),
-    ("sqlite3", "SQLite3 FTS5 全文索引"),
+    # sqlite3 属 Python 标准库（FTS5 全文索引），列在此处只为体检时确认解释器带该扩展，
+    # 它不在 requirements.txt 里——此前把 stdlib 混进「待安装依赖」会让人去 pip install sqlite3。
+    ("sqlite3", "SQLite3 FTS5 全文索引（Python 标准库，无需安装）"),
 ]
 
 ABRUPT_PUNCTUATION: tuple[str, ...] = ("，", ",", "、", "：", ":", "“", "‘", "（", "(", "——", "……")
@@ -421,6 +424,11 @@ def verify_candidates(book: Path, ch: str, proposal: dict) -> dict:
                 g = seg[i:i + L]
                 grams[g] = grams.get(g, 0) + 1
     cands = []
+    # 专名词性闸门：字符滑窗会把「断刀放在 / 刀放在柜 / 伸手去摸 / 指尖刚碰」这类
+    # 动词短语整片当成候选实体（实测同一章刷出 12 条纯噪声，把真正的告警淹掉）。
+    # jieba 可用时只保留「同时是专名类词（nr/ns/nt/nz）」的 gram；
+    # jieba 缺失时退回原滑窗行为（宁多勿漏，探针本身是 advisory）。
+    noun_tokens = evidence.proper_noun_tokens(text)
     try:
         _pools = state.load_state(book, "ledger").get("pools", {})
     except (ValueError, FileNotFoundError):
@@ -432,6 +440,8 @@ def verify_candidates(book: Path, ch: str, proposal: dict) -> dict:
                 known.append(str(t).lower())
     for g, c in grams.items():
         if c < 3 or g in cand_stop or any(s in g for s in cand_stop):
+            continue
+        if noun_tokens and g not in noun_tokens:
             continue
         # 传入已知实体名，启用「实体名片段 + 尾随动词」过滤（沉舟说/沉舟把）
         if evidence.is_candidate_noise(g, _pools, known):
@@ -1146,6 +1156,9 @@ def run_checks(book: Path) -> dict:
         # 别名冲突与悬空关系边（advisory， P2-9）
         owner_by_alias: dict[str, list[str]] = {}
         ent_names = {str(e.get("name", "")) for e in ents}
+        # 已登记地点实体名（type 走 LOCATION_TYPES 唯一真源：place 与 location 同为地点）
+        known_place_names = {str(e.get("name", "")) for e in ents
+                             if str(e.get("type", "")) in LOCATION_TYPES}
         for e in ents:
             for a in {str(e.get("name", ""))} | {str(x) for x in e.get("aliases", []) if x}:
                 owner_by_alias.setdefault(a, []).append(str(e.get("name", "")))
@@ -1161,6 +1174,35 @@ def run_checks(book: Path) -> dict:
                     warnings.append(_err("relation_target_unknown",
                                          f"实体「{e.get('name','')}」的关系指向未登记实体「{tgt}」"
                                          "（关系图悬空边：补登目标实体或修正拼写）"))
+
+        # faction / holder / location 悬空引用（P2-17）：relations 有守卫，这三个指向性字段
+        # 此前无人核对——写成未登记势力/持有者/地点时，graph 静默不连边、pack 静默不注入。
+        # 地点字段允许「巷口」「铺子后院」这类未建卡的场景描述，故只在命中已登记地点名的
+        # 别名体系之外且看起来像专名引用时才提示，措辞按「建议建卡」而非「错误」。
+        for e in ents:
+            ename = str(e.get("name", ""))
+            for field, label, expect_types in (
+                ("faction", "所属势力", ("faction",)),
+                ("holder", "持有者", ("person", "faction")),
+            ):
+                val = str(e.get(field, "") or "").strip()
+                if not val or val in ent_names or val in owner_by_alias:
+                    continue
+                warnings.append(_err(
+                    "entity_ref_unknown",
+                    f"实体「{ename}」的 {field}（{label}）指向未登记实体「{val}」"
+                    f"——graph 不会连这条边、pack 也不会注入其档案；"
+                    f"请补登该{'势力' if expect_types == ('faction',) else '实体'}"
+                    "（type 建议 " + "/".join(expect_types) + "）或修正拼写"))
+            loc_val = str(e.get("location", "") or "").strip()
+            if loc_val and loc_val not in ent_names and loc_val not in owner_by_alias:
+                # 地点常写成「青石巷灯铺」这类含地名的短语，只要包含任一已登记地点名即视为已接地
+                if not any(nm and nm in loc_val for nm in known_place_names):
+                    warnings.append(_err(
+                        "entity_ref_unknown",
+                        f"实体「{ename}」的 location「{loc_val}」未匹配任何已登记地点实体"
+                        "——若为固定场景请建 type=place/location 的地点卡（否则 graph 无 located_in 边）；"
+                        "若只是临时场景描述可忽略本提示"))
 
         # 实体卡片与底层属性机械对账
         for e in ents:
@@ -1424,6 +1466,13 @@ def run_checks(book: Path) -> dict:
                 s = re.sub(r"<!--.*", "", s).strip()
                 if not s or s.startswith("#"):
                     continue
+                # 未填的 {{slot:key|示例措辞}} 是引擎自己模板的兜底文案，不是主控写的判据。
+                # 剥掉占位符后再判定，否则「引擎用自己的模板触发自己的闸门」（P1-8）。
+                s = re.sub(r"\{\{slot:[^}]*\}\}", "", s)
+                s = re.sub(r"^[：:\s*·\-]+", "", s)
+                s = re.sub(r"[：:\s*·\-]+$", "", s).strip()
+                if not s:
+                    continue
                 for w in empty_words:
                     if w in s and w not in crit_hits:
                         crit_hits.append(w)
@@ -1559,6 +1608,35 @@ def run_checks(book: Path) -> dict:
         if n_bad:
             warnings.append(_err("encoding_replacement_chars",
                                  f"{f.name}: 含 {n_bad} 个替换符（疑似非 UTF-8 编码保存，字数/统计口径已失真）"))
+
+    # 定稿字数出带（config guide 承诺的 word_band_deviation / word_band_breach 判定）。
+    # 只判每章最高版本的法定定稿（per_ch），避免旧版本重复报警；口径与 evidence 一致＝中文字符数。
+    _band_ok = (isinstance(band, (list, tuple)) and len(band) == 2
+                and all(isinstance(x, int) and not isinstance(x, bool) and x > 0 for x in band)
+                and band[0] <= band[1])
+    if _band_ok:
+        _lo, _hi = int(band[0]), int(band[1])
+        for (vol, n), f in sorted(per_ch.items()):
+            try:
+                _txt = f.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                continue
+            _cjk = common.cjk_count(_txt)
+            _tok = f"ch_{n:03d}"
+            if _cjk < _lo:
+                _gap = _lo - _cjk
+                _over = _gap > _lo * 0.2
+                warnings.append(_err(
+                    "word_band_breach" if _over else "word_band_deviation",
+                    f"{_tok}: 定稿 {vol}/{f.name} 中文字数 {_cjk} 低于目标带下限 {_lo}"
+                    f"（缺 {_gap} 字{f'，超出 20% 容差' if _over else ''}）"))
+            elif _cjk > _hi:
+                _gap = _cjk - _hi
+                _over = _gap > _hi * 0.2
+                warnings.append(_err(
+                    "word_band_breach" if _over else "word_band_deviation",
+                    f"{_tok}: 定稿 {vol}/{f.name} 中文字数 {_cjk} 超出目标带上限 {_hi}"
+                    f"（超 {_gap} 字{f'，超出 20% 容差' if _over else ''}）"))
 
     try:
         g = evidence.gaps(book)
@@ -1724,6 +1802,33 @@ def run_checks(book: Path) -> dict:
                 if want_sha and cur_sha != want_sha:
                     warnings.append(_err("final_drift",
                                          f"{tok_rec}: final 内容在封存后已改动（封存 {want_sha[:12]}… / 当前 {cur_sha[:12]}…）"))
+    except (ValueError, OSError):
+        pass
+
+    # state 八表离线改动检查（P1-4）：sync 封存时盖章的 state 哈希 vs 当前内容——
+    # 「提案是唯一写入口」自此有机械证据，绕过提案手改哪张表都能指名报出。
+    try:
+        shp = book / "state" / "inbox" / "processed" / "state_hashes.json"
+        if shp.is_file():
+            stamp = common.load_json(shp, default={}) or {}
+            sealed_states = stamp.get("states") if isinstance(stamp, dict) else None
+            if isinstance(sealed_states, dict):
+                last_ch = str(stamp.get("last_sync_chapter", ""))
+                for key in sorted(sealed_states):
+                    fp = book / "state" / f"{key}.json"
+                    if not fp.is_file():
+                        continue
+                    want = str(sealed_states[key])
+                    try:
+                        cur = hashlib.sha256(fp.read_bytes()).hexdigest()
+                    except OSError:
+                        continue
+                    if want and cur != want:
+                        warnings.append(_err(
+                            "state_offline_edit",
+                            f"state/{key}.json 在 {last_ch or '上次'} 封存后被改动"
+                            f"（封存 {want[:12]}… / 当前 {cur[:12]}…）——若为绕过提案的离线手改，"
+                            "请改走提案通道；若为有意修订，重跑 sync 重新盖章即可消除本提示"))
     except (ValueError, OSError):
         pass
 

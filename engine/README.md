@@ -10,7 +10,7 @@
 | 模块 / 子包 | 核心职责 | 强援技术接入 |
 |---|---|---|
 | `models/` | 状态机领域对象与语义原子补丁强类型模型 | **Pydantic V2**（严格禁止未知键注入 `extra='forbid'`，支持 `SemanticEntityPatch`） |
-| `cli.py` | 29 命令薄壳调度：参数解析 + help 目录 + `main`（命令实现下沉至 `commands/`） | argparse |
+| `cli.py` | 30 命令名（29 个处理函数，`check`/`doctor` 共用 `cmd_check`）薄壳调度：参数解析 + help 目录 + `main`（命令实现下沉至 `commands/`） | argparse |
 | `commands/` | 命令实现层五模块：`book_setup`（init/status/cockpit/config/errcodes/lore）、`chapter_flow`（pack/beats/evidence/check/review/critic/graph/export/audit/index + ask/pov/calendar 只读取证）、`state_sync`（sync/proposal/snapshot/checkpoint/state/ledger/milestone）、`recall`（残酷四问自证）、`simulate`（剧情推演沙盒）；共享助手在 `_shared` | **Rich**（高保真圆角面板、彩色 Markdown 渲染、老白读者评分卡与状态流） |
 | `cockpit.py` | 主控态势驾驶舱：工作流导航、戏剧动力学（余震/悬顶危机/信息差机锋）、伏笔暗线分类雷达、角色活跃度与自愈处方 | 确定性聚合（秒级出报） |
 | `audit.py` | 确定性机械审计探针：**8大探针**（不可逆事实违背/在场与死亡/道具充能/金额一致/知情差泄露/认知差冲突/别名漂移/称谓与修饰词对账 `address_mismatch`） | 确定性跨域比对算法 |
@@ -96,7 +96,7 @@
 
 ```bash
 python studio.py lore list [-w BOOK]                         # 全量查看已注册实体 ID、名称与卡片状态
-python studio.py lore entity <id/name> [-w BOOK]             # 穿透调阅实体 13 大物理属性与关联卡片
+python studio.py lore entity <id/name> [-w BOOK]             # 穿透调阅实体全息档案（位阶/标尺/物象/阵营/称谓矩阵…）与关联卡片
 python studio.py lore compare <idA/nameA> <idB/nameB>        # 秒级对校两实体阶梯差距与法定互称矩阵
 python studio.py lore scale [-w BOOK]                        # 查看战力/实力位阶实物破坏力标尺
 python studio.py lore rules [-w BOOK]                        # 查看世界运转物理与逻辑公理

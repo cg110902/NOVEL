@@ -144,7 +144,7 @@
             "additionalProperties": {
               "type": "string"
             },
-            "description": "势力外交拓扑 {势力名: ally/hostile/neutral}",
+            "description": "势力外交拓扑 {势力名: 态度}；态度词表同 FactionAttitude 枚举 (hostile/neutral/friendly/allied)，但本字段是自由字符串字典、引擎不校验取值",
             "title": "Diplomacy",
             "type": "object"
           },

@@ -24,6 +24,38 @@ def _norm_ch(token: str) -> str | None:
     return f"ch_{n:03d}" if n and n >= 1 else None
 
 
+def parse_audit_frontmatter(text: str) -> dict[str, object] | None:
+    """解析 log/audit/ch_XXX.md 顶部的 YAML front-matter。
+
+    原先定义在 state_sync.py，`chapter_flow.cmd_audit --write` 也要读它（重跑 audit 时
+    沿用既有裁决），故上提到命令层共享助手，避免命令模块互相 import。
+    """
+    if not text.startswith("---"):
+        return None
+    parts = text.split("---", 2)
+    if len(parts) < 3:
+        return None
+    fm_text = parts[1]
+    data: dict[str, object] = {}
+    for line in fm_text.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if ":" in line:
+            k, v = line.split(":", 1)
+            k = k.strip()
+            v = v.strip()
+            if v.lower() == "true":
+                data[k] = True
+            elif v.lower() == "false":
+                data[k] = False
+            elif v.isdigit() or (v.startswith("-") and v[1:].isdigit()):
+                data[k] = int(v)
+            else:
+                data[k] = v
+    return data
+
+
 def _add_common_opts(p: argparse.ArgumentParser, json_flag: bool = True) -> None:
     p.add_argument("-w", "--workspace", help="书工作区目录（如 workspace/我的书）；仅一本书时可省略")
     if json_flag:

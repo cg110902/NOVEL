@@ -319,13 +319,22 @@ def build_or_update_index(book: Path, force_rebuild: bool = False) -> dict:
 
     cur.execute("INSERT OR REPLACE INTO meta(key, val) VALUES ('last_indexed_at', ?);", (str(time.time()),))
     con.commit()
+    # 索引后库里实际有多少章（此前 indexed_chapters 在增量模式下报「本次新刷了几章」、
+    # 在 --rebuild 下报「总章数」，同一个字段两种语义，读数的人无从判断）。
+    # 必须在 con.close() 之前查。
+    try:
+        cur.execute("SELECT COUNT(DISTINCT chapter) AS c FROM chapters_fts;")
+        total_ch_count = int(cur.fetchone()["c"] or 0)
+    except Exception:
+        total_ch_count = len(final_chs)
     con.close()
 
     elapsed_ms = round((time.perf_counter() - t0) * 1000, 2)
     return {
         "ok": True,
         "rebuilt": force_rebuild,
-        "indexed_chapters": indexed_ch_count if not force_rebuild else len(final_chs),
+        "indexed_chapters": total_ch_count,
+        "indexed_chapters_new": indexed_ch_count,
         "indexed_entities": ent_count,
         "indexed_lines": line_count,
         "indexed_cognition": cog_count,

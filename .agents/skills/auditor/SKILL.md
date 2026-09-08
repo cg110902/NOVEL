@@ -23,7 +23,13 @@ description: Universal deterministic consistency auditor and contradiction arbit
 仲裁员专注核验事实与出具裁决报告：
 
 - 🛠️ **法定工具能力**：
-  - 💻 **命令行执行 (Command Execution)**：运行 `python studio.py audit ch_XXX --json -w "workspace/<书名>"` 获取 8 大探针候选；遇到位阶存疑可运行 `studio lore compare` 或 `studio lore entity` 对校；
+  - 💻 **命令行执行 (Command Execution)**：
+    - ① 先跑 `python studio.py audit ch_XXX --write -w "workspace/<书名>"`：**由引擎生成仲裁报告骨架**
+      （`log/audit/ch_XXX.md`，顶部自动带 Stage 5 闸门必需的 YAML front-matter：`hard` / `soft` / `adjudicated`）；
+    - ② 需要逐条候选明细时再跑 `python studio.py audit ch_XXX --json` 取 8 大探针候选；
+    - ③ 遇到位阶存疑可运行 `studio lore compare` 或 `studio lore entity` 对校；
+    - ⚠️ **严禁手写一份没有 front-matter 的报告**：`sync` 在默认 `audit_mode: strict` 下会直接拒绝封存
+      （报错「仲裁报告缺少 YAML front-matter」）。
   - 📖 **文件读取 (File Read)**：读取准读清单中的文件；
   - ✍️ **文件写入 (File Write)**：写入仲裁报告 `log/audit/ch_XXX.md`（设置 `Overwrite: true`）；
   - ❌ **严禁越权操作**：严禁编写任何对比或统计脚本，严禁调用漫游搜索工具，严禁修改正文（正文修改全权派发给 Stylist 执行定向手术刀）！
@@ -65,9 +71,17 @@ Auditor 必须综合机械探针与细纲法定清单，将审查结果归入以
 
 ## 📋 四、 仲裁报告标准模板
 
-写入 `log/audit/ch_XXX.md`：
+写入 `log/audit/ch_XXX.md`（**推荐做法：先 `studio audit ch_XXX --write` 生成骨架，再在骨架上补写轨 2 裁决**；
+若确需从零手写，顶部 front-matter 三行一字不可少，否则 `sync` 拒绝封存）：
 
 ```markdown
+---
+audit_chapter: ch_XXX
+hard: 0
+soft: 0
+adjudicated: false
+---
+
 # 第X章 一致性双轨仲裁报告
 
 ## 🔴 确凿硬矛盾（若无则写“无”）
@@ -85,7 +99,22 @@ Auditor 必须综合机械探针与细纲法定清单，将审查结果归入以
 - 在场角色与空间坐标一致
 - 法定称谓矩阵一致
 - 不可逆事实无冲突
+
+## ✅ 交叉核实排除（误报归档）
+- ...（逐条写明排除理由；此段正文在重跑 `audit --write` 时会被引擎自动保留）
 ```
+
+**front-matter 三键口径（Stage 5 闸门的机械判据）**：
+
+| 键 | 含义 | 谁来写 |
+|---|---|---|
+| `hard` | 确凿硬矛盾条数（0 = 放行） | 引擎按探针计数生成；Auditor 排除误报后可扣减 |
+| `soft` | 软性存疑条数（不阻断，供主控知情） | 引擎生成 |
+| `adjudicated` | 人工/子代理是否已完成裁决 | 默认 `false`；`hard > 0` 且已完成交叉核实排除时置 `true` |
+
+放行规则：`hard == 0` **或** `adjudicated == true`。两者都不满足时 `sync` 报
+「事实一致性仲裁未通过」并阻断 Stage 5。Stylist 完成手术刀修复后重跑 `audit --write`：
+硬矛盾段落未变化则沿用既有 `adjudicated`，变化则自动回落 `false` 要求重新裁决。
 
 ---
 

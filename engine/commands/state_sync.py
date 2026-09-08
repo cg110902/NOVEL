@@ -10,7 +10,8 @@ from pathlib import Path
 
 from .. import checks, common, evidence, snapshot, state
 
-from ._shared import _norm_ch, usage_error, ws_gate, ws_gate_code
+from ._shared import (_norm_ch, parse_audit_frontmatter, usage_error, ws_gate,
+                      ws_gate_code)
 
 
 # ---------------------------------------------------------------------------
@@ -43,6 +44,42 @@ def _stamp_final_hash(book: Path, ch: str) -> None:
     common.debug(f"final-stamp: {ch} → {f.name} sha256={sha[:16]}…（check 的 final_drift 档自此覆盖）")
 
 
+def _stamp_state_hashes(book: Path, ch: str) -> None:
+    """ P1-4：封存时对 state/*.json 八表盖章 SHA-256 → processed/state_hashes.json。
+
+    「提案是唯一写入口」此前只是文档口径，没有任何机械证据：谁绕过提案手改了
+    state/*.json 都查不出来（final 有 final_hashes、bible 有 bible_log，唯独 state 裸奔）。
+    盖章后 check 的 state_offline_edit 档能指名道姓地报出哪张表在封存后被离线改动。
+    盖章失败不阻断封存主流程。
+    """
+    rec_path = book / "state" / "inbox" / "processed" / "state_hashes.json"
+    rec: dict = {}
+    if rec_path.is_file():
+        try:
+            rec = common.load_json(rec_path, default={}) or {}
+        except (ValueError, OSError):
+            rec = {}
+    stamps: dict[str, str] = {}
+    for key in state.STATE_KEYS:
+        fp = book / "state" / f"{key}.json"
+        if not fp.is_file():
+            continue
+        try:
+            stamps[key] = hashlib.sha256(fp.read_bytes()).hexdigest()
+        except OSError:
+            continue
+    if not stamps:
+        return
+    rec["last_sync_chapter"] = ch
+    rec["ts"] = datetime.datetime.now().isoformat(timespec="seconds")
+    rec["states"] = stamps
+    try:
+        common.dump_json(rec_path, rec)
+    except OSError:
+        return
+    common.debug(f"state-stamp: {ch} → {len(stamps)} 张表盖章（check 的 state_offline_edit 档自此覆盖）")
+
+
 def _append_bible_journal(book: Path, ch: str) -> None:
     """bible 版本盖章：每次成功封存向 state/bible_log.jsonl 追加一条 bible/ 设定哈希。
 
@@ -69,34 +106,6 @@ def _append_bible_journal(book: Path, ch: str) -> None:
             fh.write(json.dumps(entry, ensure_ascii=False) + "\n")
     except OSError:
         pass
-
-
-def parse_audit_frontmatter(text: str) -> dict[str, Any] | None:
-    """解析 log/audit/ch_XXX.md 顶部的 YAML front-matter。"""
-    if not text.startswith("---"):
-        return None
-    parts = text.split("---", 2)
-    if len(parts) < 3:
-        return None
-    fm_text = parts[1]
-    data = {}
-    for line in fm_text.splitlines():
-        line = line.strip()
-        if not line or line.startswith("#"):
-            continue
-        if ":" in line:
-            k, v = line.split(":", 1)
-            k = k.strip()
-            v = v.strip()
-            if v.lower() == "true":
-                data[k] = True
-            elif v.lower() == "false":
-                data[k] = False
-            elif v.isdigit() or (v.startswith("-") and v[1:].isdigit()):
-                data[k] = int(v)
-            else:
-                data[k] = v
-    return data
 
 
 def cmd_sync(args) -> int:
@@ -133,7 +142,7 @@ def cmd_sync(args) -> int:
 
     if not has_manuscript:
         return _fail(f"未找到 {ch} 的定稿（final），拒绝空同步（Stage 5 输入合同：beats/raw/final 齐）",
-                     hint=f"请由 Stage 3 Editor 完成定稿重塑并写入 manuscript/vol_XX/final/{ch}.md")
+                     hint=f"请由 Stage 3B Stylist 完成通俗脱水定稿并写入 manuscript/vol_XX/final/{ch}.md")
     if not has_proposal:
         # 非规范命名扫描：不按文件名前缀猜，直接看同章提案（chapter 字段 = ch）的
         # 其他 *.json——技能/代理若按旧习惯产出 sweep_ch_XXX.json 等第二文件，门闸
@@ -217,7 +226,7 @@ def cmd_sync(args) -> int:
                 if hard_count > 0 and not adjudicated:
                     if audit_mode == "strict":
                         return _fail(f"事实一致性仲裁未通过：{audit_file.name} 存在 {hard_count} 处确凿硬矛盾（hard > 0）且未裁定（adjudicated=false）",
-                                     hint=f"请由 Stage 3 Editor 实施定向手术刀修复，或在报告中完成交叉核实并将 adjudicated 设为 true / hard 修正为 0")
+                                     hint=f"请由 Stage 3B Stylist 实施定向手术刀修复后重跑 `python studio.py audit {ch} --write`，或在报告中完成交叉核实并将 adjudicated 设为 true / hard 修正为 0")
                     else:
                         if not js:
                             print(f"⚠️ [audit_mode=advisory] 仲裁报告提示存在 {hard_count} 处硬矛盾未裁定")
@@ -259,6 +268,7 @@ def cmd_sync(args) -> int:
         if not verify_errors:
             # 封存时刻对当章 final 盖章（漂移检测的事实基线）
             _stamp_final_hash(book, ch)
+            _stamp_state_hashes(book, ch)
             try:
                 snap_ok, snap_msg = snapshot.create_snapshot(book, f"{ch}_done")
             except Exception as exc:
@@ -843,7 +853,7 @@ def cmd_snapshot(args) -> int:
             if base:
                 def _quarantine(f, _book=book):
                     # 清理的稿件/细纲/注记不再直接 unlink，而是移入
-                    # workspace/.trash/（快照只含 state 六表，稿件一旦误删不可恢复）
+                    # workspace/.trash/（快照只含 state 八表，稿件一旦误删不可恢复）
                     nonlocal removed
                     try:
                         rel = f.relative_to(_book).as_posix().replace("/", "_").replace("\\", "_")
@@ -1060,8 +1070,8 @@ def cmd_state(args) -> int:
     part_name = parts[0]
     sub_path = parts[1] if len(parts) > 1 else ""
 
-    if part_name not in ("current", "entities", "lines", "timeline", "ledger", "synopsis"):
-        return _fail(f"未知状态分区: {part_name}（合法: current / entities / lines / timeline / ledger / synopsis）",
+    if part_name not in state.STATE_KEYS:
+        return _fail(f"未知状态分区: {part_name}（合法: {' / '.join(state.STATE_KEYS)}）",
                      code=2)
 
     st_data = state.load_state(book, part_name)
@@ -1085,10 +1095,29 @@ def cmd_state(args) -> int:
         else:
             val = st_data.get(sub_path)
 
+        # 未命中判定：容器里确实没有这个键 → 明确报「不存在」，不再打印 Python 字面量 None
+        _container = st_data if not sub_path else (
+            st_data if part_name == "current" or part_name in ("lines", "timeline", "ledger", "synopsis",
+                                                               "locked", "cognition") else st_data)
+        _missing = False
+        if sub_path and val is None:
+            _key = sub_path.split(".", 1)[0]
+            if part_name == "entities":
+                _missing = False  # 实体分支已自行处理未注册
+            elif isinstance(_container, dict) and _key not in _container:
+                _missing = True
+        if _missing:
+            return _fail(f"{target} 不存在（该分区无此字段；查全表请用 `state get {part_name}`）", code=1)
         if getattr(args, "json", False):
-            print(json.dumps({"target": target, "value": val}, ensure_ascii=False, indent=2))
+            print(json.dumps({"target": target, "value": val,
+                              "is_null": val is None}, ensure_ascii=False, indent=2))
         else:
-            print(f"{target} = {json.dumps(val, ensure_ascii=False) if isinstance(val, (dict, list)) else val}")
+            if isinstance(val, (dict, list)):
+                print(f"{target} = {json.dumps(val, ensure_ascii=False)}")
+            elif val is None:
+                print(f"{target} = null（字段存在但值为空）")
+            else:
+                print(f"{target} = {val}")
         return 0
 
     if action == "set":
@@ -1483,8 +1512,10 @@ def cmd_milestone(args) -> int:
             print(json.dumps({"ok": False, "code": "milestone_error", "error": msg},
                              ensure_ascii=False)) if js else print(f"❌ {msg}")
             return 1
-        # 实际达成章节：显式 --chapter 优先，否则取最新定稿章
+        # 实际达成章节：显式 --chapter 优先，否则取最新定稿章（推断值会在输出里标注）
         achieved_ch = None
+        achieved_inferred = False
+        inferred_note = ""
         ch_raw = getattr(args, "chapter", None)
         if ch_raw:
             n = common.chapter_token_to_num(ch_raw)
@@ -1495,9 +1526,14 @@ def cmd_milestone(args) -> int:
                                  ensure_ascii=False)) if js else print(f"❌ {msg}")
                 return 2
         else:
+            # 缺省推断：取最新定稿章。此前静默盖章、输出里看不出是推断值，
+            # 补拍历史里程碑时极易被误当成「就是这一章达成的」。
             finals = common.find_chapter_files(book, "final")
             if finals:
                 achieved_ch = f"ch_{max(common.chapter_token_to_num(f.name) or 0 for f in finals):03d}"
+                achieved_inferred = True
+            else:
+                inferred_note = "未提供 --chapter 且全书尚无定稿，achieved_ch 留空（补拍请用 -c 指定达成章）"
         already = target.get("status") == "achieved"
         target["status"] = "achieved"
         if achieved_ch:
@@ -1511,7 +1547,13 @@ def cmd_milestone(args) -> int:
             else:
                 print(f"❌ 写入被结构闸门拒绝: {exc}")
             return 1
-        payload = {"ok": True, "milestone": target, "already_achieved": already}
+        payload = {"ok": True, "milestone": target, "already_achieved": already,
+                   "achieved_ch_inferred": achieved_inferred}
+        if achieved_inferred:
+            payload["note"] = (f"achieved_ch={achieved_ch} 为推断值（缺省取最新定稿章）；"
+                               "补拍历史里程碑请用 -c/--chapter 显式指定")
+        elif inferred_note:
+            payload["note"] = inferred_note
         if js:
             print(json.dumps(payload, ensure_ascii=False))
         else:

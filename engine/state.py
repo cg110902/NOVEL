@@ -1,9 +1,11 @@
 """状态机核心（SSOT + 提案确定性合并）。
 
 全部「死板」操作：
-- 6 个 JSON 状态文件为机器真值；读写都过 engine/schemas/ 的声明式校验，引擎自身也不写非法数据。
-- 提案 = 唯一写入口：信封 schema + 分区规则校验 → 全部通过才落盘（内存事务：先全量合并到副本，
+- 8 个 JSON 状态文件（STATE_KEYS）为机器真值；读写都过 engine/schemas/ 的声明式校验，引擎自身也不写非法数据。
+- 提案 = 章节事实增量的唯一写入口：信封 schema + 分区规则校验 → 全部通过才落盘（内存事务：先全量合并到副本，
   任一分区报错则整体不写）；落盘阶段再带字节级备份，写失败即整体回滚。
+  （边界说明：Stage 0 建书播种与跨卷改版由 architect/evolver 直接写 state/*.json，属设定层写入；
+   封存时 sync 会对八表盖章 SHA-256，绕过提案的离线手改由 check 的 state_offline_edit 档指名报出。）
 - 幂等：operation_id → canonical hash 登记于 .applied_operations.json；重复跳过、同 id 异内容拒绝。
 - 账本：余额永远由流水重算得出，balance_after/current 都不是 AI 可信字段——引擎重算后写回。
 - 迁移守卫（advisory）：高危实体状态迁移（复活/退场反转/立场大翻转/充能回升）与时间线回退
@@ -67,6 +69,13 @@ def _schema(name: str) -> dict:
 
 
 _ENTITY_TYPES = frozenset(t.value for t in models.EntityType)  # 唯一真源：Pydantic 枚举
+# 同理：以下枚举一律从 Pydantic 模型派生，禁止在校验分支里再手写字面量集合
+# （此前 status/life_status/attitude 各写一份字面量，与模型漂移时只有模型会赢，
+#   校验层却仍按旧词表放行/拒绝，是典型的「双真源」隐患）。
+_ENTITY_STATUS = tuple(s.value for s in models.EntityStatus)
+_LIFE_STATUS = tuple(s.value for s in models.LifeStatus)
+_ATTITUDE = tuple(s.value for s in models.FactionAttitude)
+_ENTITY_ACTIONS = ("upsert", "register", "retire")  # register 为 upsert 别名（非模型枚举）
 
 
 def state_dir(book: Path) -> Path:
@@ -140,8 +149,10 @@ ledger.pools 资源池口径（ P3-1：此前全部 AI 向文档零说明，池�
     · 池对象只接受 name/unit/initial 三键，多出任何键即「含未知字段」拒收；
     · ❌ 严禁声明 "current"——余额一律由流水重算，声明即整案拒收；
     · 既有池禁止修改 initial（改动 = 拒收）；对既有池声明 name/unit 只出「声明已修订」提示；
-    · 流水 transactions[].pool 引用未声明的池 → `sync` 合并期拒收（「流水引用未声明资源池」），
-      所以**先建池、再记流水**；注意提案校验期不拦这一条，别以为 proposal check 过了就能合并；
+    · 流水 transactions[].pool 引用未声明的池 → 拒收（「流水引用未声明资源池」），
+      所以**先建池、再记流水**；`proposal check` 与 `sync` 都会跑这道账本试算，
+      提案校验期即可暴露（此前本文档写「提案校验期不拦这一条」，与实测相反）；
+      本章合法池键名与 LOCK/COG 已用 ID 水位线已由引擎注入 beats 的「💰 资源池与 ID 水位线」小节；
     · standard_currency（主通货）为引擎内置池，无需声明即可直接用。
   记流水：{"ledger": {"transactions": [{"chapter": "ch_007", "pool": "my_pool", "delta": -30,
            "type": "expense", "subject": "发生了什么", "counterparty": "对手方(选填)",
@@ -513,16 +524,16 @@ def validate_proposal(proposal, expected_chapter: str | None = None) -> tuple[li
             for k in e:
                 if k not in allowed_entity_keys:
                     errors.append(f"entities[{i}] 含未知字段: {k}")
-            if e.get("action", "upsert") not in ("upsert", "register", "retire"):
-                errors.append(f"entities[{i}].action 必须为 upsert/register/retire（register 为 upsert 别名）")
+            if e.get("action", "upsert") not in _ENTITY_ACTIONS:
+                errors.append(f"entities[{i}].action 必须为 {'/'.join(_ENTITY_ACTIONS)}（register 为 upsert 别名）")
             if not str(e.get("name", "")).strip():
                 errors.append(f"entities[{i}].name 必填")
-            if "status" in e and e["status"] not in ("active", "retired"):
-                errors.append(f"entities[{i}].status 必须 ∈ ['active', 'retired']，收到 {e['status']!r}")
-            if "life_status" in e and e["life_status"] not in ("alive", "deceased", "missing"):
-                errors.append(f"entities[{i}].life_status 必须 ∈ ['alive', 'deceased', 'missing']，收到 {e['life_status']!r}")
-            if "attitude" in e and e["attitude"] not in ("hostile", "neutral", "friendly", "allied"):
-                errors.append(f"entities[{i}].attitude 必须 ∈ ['hostile', 'neutral', 'friendly', 'allied']，收到 {e['attitude']!r}")
+            if "status" in e and e["status"] not in _ENTITY_STATUS:
+                errors.append(f"entities[{i}].status 必须 ∈ {list(_ENTITY_STATUS)}，收到 {e['status']!r}")
+            if "life_status" in e and e["life_status"] not in _LIFE_STATUS:
+                errors.append(f"entities[{i}].life_status 必须 ∈ {list(_LIFE_STATUS)}，收到 {e['life_status']!r}")
+            if "attitude" in e and e["attitude"] not in _ATTITUDE:
+                errors.append(f"entities[{i}].attitude 必须 ∈ {list(_ATTITUDE)}，收到 {e['attitude']!r}")
             if "charges" in e and (not isinstance(e["charges"], int) or isinstance(e["charges"], bool) or e["charges"] < 0):
                 errors.append(f"entities[{i}].charges 必须为 ≥0 的整数")
             if "max_charges" in e and (not isinstance(e["max_charges"], int) or isinstance(e["max_charges"], bool) or e["max_charges"] < 1):
@@ -1123,10 +1134,18 @@ def _merge_lines(state: dict, items: list[dict], ch_num: int, rep: dict) -> None
             if kind == "foreshadow":
                 open_act_count = sum(1 for item in arr if item.get("status") != "Resolved" and isinstance(item.get("target_ch"), int))
                 open_long_count = sum(1 for item in arr if item.get("status") != "Resolved" and item.get("target_ch") == "longline")
+                # 软配额提示：措辞此前自相矛盾（「已达上限（8/8），新伏笔 GUN-009 已入库」），
+                # 读着像「拒绝入库」又像「已入库」。改为显式说明是 advisory、条目照常入库、
+                # 并给出入库后的实际计数与下一步动作。
                 if target != "longline" and open_act_count >= 8:
-                    rep["warnings"].append(f"卷内活动伏笔池已达上限（{open_act_count}/8），新伏笔 {gid} 已入库")
+                    rep["warnings"].append(
+                        f"卷内活动伏笔已超软配额（入库前 {open_act_count} 条 / 建议 ≤8，入库后 {open_act_count + 1} 条）——"
+                        f"新伏笔 {gid} 仍已入库（本项为 advisory 不阻断）；"
+                        "建议尽快 resolve/remind 收束成熟伏笔，防主线稀释（另见 check 的 line_quota_exceeded）")
                 if target == "longline" and open_long_count >= 5:
-                    rep["warnings"].append(f"全书长线已达上限（{open_long_count}/5），新长线 {gid} 已入库")
+                    rep["warnings"].append(
+                        f"全书长线伏笔已超软配额（入库前 {open_long_count} 条 / 建议 ≤5，入库后 {open_long_count + 1} 条）——"
+                        f"新长线 {gid} 仍已入库（本项为 advisory 不阻断）；建议收束部分跨卷暗线")
                 reqs = [str(r) for r in g.get("requires", []) if str(r).strip()]
                 arr.append({"id": gid, "name": g["name"], "plant_ch": g.get("plant_ch") or ch_num,
                             "status": "Planted", "target_ch": target, "weight": g.get("weight", 1),
@@ -1546,8 +1565,23 @@ def _merge_locked(state: dict, patch: list, ch: str, rep: dict) -> None:
             if item.get("note"):
                 new_entry["note"] = str(item.get("note")).strip()
             if iid in entry_map:
-                entry_map[iid].update(new_entry)
-                rep["updated"].append(f"🔒 更新不可逆事实 {iid}（{fact[:20]}…）")
+                old_entry = entry_map[iid]
+                old_fact = str(old_entry.get("fact", "")).strip()
+                # 防静默改史：不可逆事实一旦入账，同 ID 重写必须显式表态。
+                # 此前 .update() 直接吞掉旧事实（sync 仍报 ok），是无声数据丢失。
+                if old_fact == new_entry["fact"]:
+                    rep["updated"].append(
+                        f"🔒 不可逆事实 {iid} 与既有条目一致（幂等重放，不重复入账）")
+                    continue
+                if action == "plant" or not item.get("overwrite"):
+                    rep["errors"].append(
+                        f"locked 条目 {iid} 已存在且事实不同（旧：{old_fact[:24]}… → 新：{new_entry['fact'][:24]}…）——"
+                        "不可逆事实禁止静默覆盖：改写历史请改用 action=\"retire\" 留痕后另立新 ID，"
+                        "确认要就地覆写请在该条目显式加 \"overwrite\": true")
+                    return
+                old_entry.update(new_entry)
+                rep["updated"].append(
+                    f"🔒 覆写不可逆事实 {iid}（overwrite=true 显式授权；旧事实 {old_fact[:24]}… 已替换）")
             else:
                 entries.append(new_entry)
                 entry_map[iid] = new_entry
@@ -1655,8 +1689,28 @@ def _merge_cognition(state: dict, patch: list, ch: str, rep: dict) -> None:
             if item.get("note"):
                 new_entry["note"] = str(item.get("note")).strip()
             if iid in entry_map:
-                entry_map[iid].update(new_entry)
-                rep["updated"].append(f"🧠 更新角色认知 {iid}「{char}」（{content[:20]}…）")
+                old_entry = entry_map[iid]
+                old_char = str(old_entry.get("character", "")).strip()
+                old_content = str(old_entry.get("content", "")).strip()
+                if old_char and char and old_char != char:
+                    # 认知条目以「谁的认知」为身份：换人就换条，绝不覆盖他人认知。
+                    rep["errors"].append(
+                        f"cognition 条目 {iid} 属于「{old_char}」，提案却写成「{char}」——"
+                        "认知归属不可覆盖，请为新角色另立新 COG ID")
+                    return
+                if old_content == new_entry["content"]:
+                    rep["updated"].append(
+                        f"🧠 角色认知 {iid} 与既有条目一致（幂等重放，不重复入账）")
+                    continue
+                if action == "plant" or not item.get("overwrite"):
+                    rep["errors"].append(
+                        f"cognition 条目 {iid} 已存在且内容不同（旧：{old_content[:24]}… → 新：{new_entry['content'][:24]}…）——"
+                        "禁止静默覆盖：认知修正请另立新 COG ID 保留认知演进链，"
+                        "确认要就地覆写请在该条目显式加 \"overwrite\": true")
+                    return
+                old_entry.update(new_entry)
+                rep["updated"].append(
+                    f"🧠 覆写角色认知 {iid}（overwrite=true 显式授权；旧内容 {old_content[:24]}… 已替换）")
             else:
                 entries.append(new_entry)
                 entry_map[iid] = new_entry

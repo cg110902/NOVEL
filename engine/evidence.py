@@ -452,6 +452,25 @@ def quote_balance(text: str) -> dict:
     }
 
 
+PROPER_NOUN_FLAGS = ("nr", "ns", "nt", "nz")
+
+
+def proper_noun_tokens(text: str, min_len: int = 2, max_len: int = 6) -> dict[str, int]:
+    """jieba 词性闸门：只回收专名类词（nr 人名 / ns 地名 / nt 机构 / nz 其他专名）及其词频。
+
+    `evidence candidates` 与 `checks.verify_candidates` 的候选新实体探针共用本函数，
+    避免两处阈值/口径互不相交。无 jieba 时返回空字典——调用方必须自行降级，
+    不得拿字符滑窗冒充专名候选。
+    """
+    if not _HAS_JIEBA:
+        return {}
+    counts: dict[str, int] = {}
+    for w, flag in pseg.cut(text or ""):
+        if flag in PROPER_NOUN_FLAGS and min_len <= len(w) <= max_len:
+            counts[w] = counts.get(w, 0) + 1
+    return counts
+
+
 def candidates(book: Path, ch: str) -> dict:
     n = common.chapter_token_to_num(ch)
     tok = f"ch_{n:03d}" if n else ch
@@ -533,13 +552,8 @@ def candidates(book: Path, ch: str) -> dict:
         known_all = set(lookup.keys())
         for aliases in lookup.values():
             known_all.update(aliases)
-        for w, flag in pseg.cut(text):
-            if flag in ("nr", "ns", "nt", "nz") and 2 <= len(w) <= 6:
-                if w not in known_all and not is_candidate_noise(w, led.get("pools")):
-                    proper_nouns.append(w)
-        counts = {}
-        for w in proper_nouns:
-            counts[w] = counts.get(w, 0) + 1
+        counts = {w: c for w, c in proper_noun_tokens(text).items()
+                  if w not in known_all and not is_candidate_noise(w, led.get("pools"))}
         proper_nouns = [w for w, _ in sorted(counts.items(), key=lambda x: -x[1])[:10]]
     out["proper_noun_candidates"] = proper_nouns
 
@@ -782,7 +796,10 @@ def _stats_one(text: str) -> dict:
 
  
     return {
-        "cjk": cjk,
+        # 修复：此前返回未定义的局部变量 `cjk`（NameError），导致 evidence all/style/file
+        # 与 review new（经 checks.review_skeleton → evidence.style）整条命令面崩溃。
+        # 统一走 common.cjk_count —— 全书字数的唯一口径（words/style/dup 同源）。
+        "cjk": common.cjk_count(text),
         "sentences": len(lens),
         "len_mean": round(mean, 1),
         "len_stdev": round(math.sqrt(var), 1),
@@ -896,7 +913,7 @@ def ask(book: Path, query: str) -> dict:
     """ask：全书事实检索机（只读取证，零裁决）。
 
     查询词先做别名展开（实体名/别名双向包含、账本池名、线索 ID 直查），再对
-    「六表结构化命中」与「final 正文原句」双域检索；所有命中均带章节/条目出处。
+    「八表结构化命中」与「final 正文原句」双域检索；所有命中均带章节/条目出处。
     未命中 = 合法事实（该词暂无账面与正文记录），绝不臆造。
     """
     q = str(query or "").strip()

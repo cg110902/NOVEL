@@ -287,6 +287,33 @@ def latest_chapter_number(book_dir: Path, area: str = "final") -> int:
     return max((n for n in nums if n is not None), default=0)
 
 
+def split_key_value(ln: str) -> tuple[str, str] | None:
+    """把一行 `key: value` 拆成 (key, value)；无冒号返回 None。
+
+    引号内的冒号不当分隔符——人物卡 address_matrix 的键位常写成
+    `"{{slot:target_char_1|核心搭档名}}": "公子"`，旧实现一律按首个冒号 partition，
+    于是键被截成 `{{slot`、值变成 `target_char_1|…"}}`，`lore entity/address/compare`
+    全线读出乱码（P1-8）。这里改为：行首是引号时先跳过成对引号再找分隔冒号。
+    """
+    s = ln.strip()
+    if s[:1] in ('"', "'"):
+        quote = s[0]
+        end = s.find(quote, 1)
+        while end != -1 and end + 1 < len(s) and s[end - 1] == "\\":
+            end = s.find(quote, end + 1)  # 跳过转义引号
+        if end == -1:
+            return None
+        key = s[1:end]
+        rest = s[end + 1:]
+        if not rest.lstrip().startswith(":"):
+            return None
+        return key, rest.lstrip()[1:]
+    if ":" not in s:
+        return None
+    k, _, v = s.partition(":")
+    return k, v
+
+
 def parse_front_matter(text: str) -> dict[str, str]:
     """极简 YAML 子集：`---` 包裹的顶层 `key: value` 行（beats 卡协议够用，零嵌套；兼容 UTF-8 BOM）。"""
     out: dict[str, str] = {}
@@ -300,7 +327,10 @@ def parse_front_matter(text: str) -> dict[str, str]:
         if ln.strip() == "---":
             break
         if ":" in ln and not ln.startswith((" ", "\t", "#")):
-            k, _, v = ln.partition(":")
+            kv = split_key_value(ln)
+            if kv is None:
+                continue
+            k, v = kv
             v = v.strip()
             if v.startswith("#"):
                 v = ""
@@ -336,7 +366,10 @@ def parse_yaml_front_matter(text: str) -> dict:
         # 顶层键
         if not ln.startswith((" ", "\t")):
             if ":" in ln:
-                k, _, v = ln.partition(":")
+                kv = split_key_value(ln)
+                if kv is None:
+                    continue
+                k, v = kv
                 k = k.strip()
                 v = v.strip()
                 if v.startswith("#"):
@@ -374,7 +407,10 @@ def parse_yaml_front_matter(text: str) -> dict:
                 out[current_key].append(val)
             # 字典元素
             elif ":" in stripped:
-                sub_k, _, sub_v = stripped.partition(":")
+                kv = split_key_value(stripped)
+                if kv is None:
+                    continue
+                sub_k, sub_v = kv
                 sub_k = sub_k.strip().strip("\"'")
                 sub_v = sub_v.strip().strip("\"'")
                 if container_type != "dict":

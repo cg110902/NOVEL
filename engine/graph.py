@@ -14,6 +14,7 @@ import json
 from pathlib import Path
 
 from . import common
+from .models.entities import LOCATION_TYPES
 
 try:
     import networkx as nx
@@ -68,7 +69,7 @@ def build_narrative_graph(ws_path: Path) -> nx.Graph:
                 loc = ent.get("location")
                 if loc:
                     for node in list(G.nodes):
-                        if G.nodes[node].get("entity_type") == "place" and node in loc and node != name:
+                        if G.nodes[node].get("entity_type") in LOCATION_TYPES and node in loc and node != name:
                             G.add_edge(name, node, relation="located_in", label="位于")
                 for rel in ent.get("relations", []):
                     target = rel.get("target")

@@ -10,7 +10,12 @@ from typing import Literal, Optional
 from pydantic import BaseModel, ConfigDict, Field
 
 LOCK_ID_RE = re.compile(r"^LOCK-\d{3,}$")
+# 软配额（advisory）：超过即 check 报 locked_quota_exceeded，提示 retire 旧承诺——
+# 目的是控上下文膨胀，不阻断落盘。
 MAX_LOCKED_ENTRIES = 15
+# 硬上限（schema）：Pydantic 层真正拒绝写入的天花板，留足长篇余量；
+# 两个数字刻意不同，此前 15/50 并存却无解释，看着像笔误。
+LOCKED_HARD_CEILING = 50
 
 LockedKind = Literal[
     "death", "destruction", "disbandment", "irreversible_action", "rule", "promise", "pact"
@@ -36,4 +41,4 @@ class LockedState(BaseModel):
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
     schema_version: str = Field(default="novel-studio.locked/v1", alias="schema_version")
-    entries: list[LockedEntry] = Field(default_factory=list, max_length=50)
+    entries: list[LockedEntry] = Field(default_factory=list, max_length=LOCKED_HARD_CEILING)
