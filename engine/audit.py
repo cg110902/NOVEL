@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from . import common, state
+from .models.entities import EntityStatus, EntityType
 
 try:
     import jieba
@@ -254,7 +255,11 @@ def probe_charges_possession(text: str, lines: list[str], ents_st: list[dict], c
     use_verbs = vocab.ITEM_USE_VERBS
     for ent in ents_st:
         etype = ent.get("type", "")
-        if etype not in ("item", "artifact", "weapon", "consumable", "prop"):
+        # 只认模型里真实存在的 EntityType.ITEM。此前还列了 artifact/weapon/consumable/prop
+        # 四个值，但 EntityType 枚举根本没有它们（合法值仅 person/item/place/location/
+        # faction/other），提案层会被 schema 拒收 → 这四个分支是永不执行的死代码，
+        # 看着「支持多种道具类型」，实际一个都不支持。
+        if etype != EntityType.ITEM.value:
             continue
         name = ent.get("name", "")
         charges = ent.get("charges")
@@ -262,7 +267,15 @@ def probe_charges_possession(text: str, lines: list[str], ents_st: list[dict], c
         aliases = ent.get("aliases", []) or []
         names_to_check = [name] + [a for a in aliases if a]
 
-        is_exhausted = (charges == 0) or (status in ("exhausted", "consumed", "destroyed", "lost"))
+        # status 的合法值只有 active/retired（EntityStatus 枚举）；此前判的
+        # exhausted/consumed/destroyed/lost 四个值一个都存不进来（schema 直接拒收），
+        # 于是「已耗尽」实际上只可能由 charges==0 触发。现改为：
+        #   ① charges == 0（充能耗尽，最硬的信号）；
+        #   ② status == retired（实体已退场，合法值）；
+        #   ③ condition 文本明示损毁/耗尽（模型里「道具完损状态」就是这一字段）。
+        cond = str(ent.get("condition", "") or "")
+        is_exhausted = (charges == 0 or status == EntityStatus.RETIRED.value
+                        or any(w in cond for w in vocab.ITEM_EXHAUSTED_WORDS))
         if not is_exhausted:
             continue
 
@@ -274,7 +287,7 @@ def probe_charges_possession(text: str, lines: list[str], ents_st: list[dict], c
                         "probe": "charges_possession",
                         "severity": "candidate_hard",
                         "line_no": line_no,
-                        "also_flagged_by": "item_charges_zero",
+                        "also_flagged_by": "item_charges_exhausted",
                         "title": f"已耗尽道具违规使用：道具「{name}」（charges={charges}/status={status}）",
                         "description": f"账本记录道具「{name}」已耗尽或销毁，但正文出现使用动作。",
                         "evidence": f"L{line_no}: {content}",
@@ -290,23 +303,36 @@ def probe_amount_ledger(text: str, lines: list[str], led_st: dict) -> list[dict]
     candidates = []
     pools = led_st.get("pools", {}) if isinstance(led_st, dict) else {}
     _verbs_pat = "|".join(vocab.MONEY_VERBS)
-    _units_pat = "|".join(vocab.CURRENCY_UNITS)
+    # 单位交替必须「长者优先」：CURRENCY_UNITS 里 "两" 排在 "两银子/两白银/两黄金" 之前，
+    # 正则交替取先匹配者，于是「九十两银子」只捕获到 "两"、「九十块灵石」只捕获到 "块"，
+    # 后面按单位名找池的分支全部落空——探针形同不存在。按长度降序即可。
+    _units_pat = "|".join(sorted(vocab.CURRENCY_UNITS, key=len, reverse=True))
     money_pat = re.compile(rf"(?:{_verbs_pat})\s*([0-9一二两三四五六七八九十百千万]+)\s*({_units_pat})")
+    # 池键解析改为对齐本书真实账本：单位词命中某池的 name/unit 即认定该池。
+    # 此前只认 silver/spirit_stone/copper/gold 四个硬编码英文键，而引擎内置池叫
+    # standard_currency、书里的池键名由作者自定（中文/拼音都可能），于是绝大多数书
+    # 的这个探针一次都不会触发。
+    def _resolve_pool(unit: str) -> str | None:
+        best_key, best_len = None, 0
+        for key, meta in pools.items():
+            if not isinstance(meta, dict):
+                continue
+            for token in (str(meta.get("name", "")).strip(), str(meta.get("unit", "")).strip(), str(key)):
+                # 只认「池的 name/unit/key 出现在捕获单位里」这一个方向：
+                # 池声明的 unit="两" 落在正文捕获的 "两银子" 里是合法命中；
+                # 反过来（unit in token）才是危险的——正文捕获 "文" 会误挂到名叫
+                # 「文献阁」的池上，故该方向已删。取命中 token 最长者，避免
+                # "灵石" 与 "极品灵石" 同时命中时挂错池。
+                if token and token in unit and len(token) > best_len:
+                    best_key, best_len = key, len(token)
+        return best_key
     for line_no, line in enumerate(lines, start=1):
         for m in money_pat.finditer(line):
             raw_num, unit = m.group(1), m.group(2)
             val = _parse_cn_number(raw_num)
             if val is None or val <= 0:
                 continue
-            pool_key = None
-            if "两" in unit or "银" in unit or "白银" in unit:
-                pool_key = "silver" if "silver" in pools else None
-            elif "灵石" in unit or "灵晶" in unit or "仙玉" in unit or "玄晶" in unit:
-                pool_key = "spirit_stone" if "spirit_stone" in pools else None
-            elif "铜钱" in unit or "文" in unit:
-                pool_key = "copper" if "copper" in pools else None
-            elif "金" in unit or "黄金" in unit:
-                pool_key = "gold" if "gold" in pools else None
+            pool_key = _resolve_pool(unit)
 
             if pool_key and pool_key in pools:
                 # 账本口径：池余额键是 current（每次合并由流水全量重算）；balance 是旧版
@@ -326,7 +352,7 @@ def probe_amount_ledger(text: str, lines: list[str], led_st: dict) -> list[dict]
                         "probe": "amount_ledger",
                         "severity": "candidate_soft",
                         "line_no": line_no,
-                        "also_flagged_by": "amount_unmatched",
+                        "also_flagged_by": "amount_unsupported",
                         "title": f"金额收支存疑：正文支出 {val} {unit} 大于账本余额 ({bal})",
                         "description": f"正文出现单次大额支出，但对应资源池 {pool_key} 当前余额仅为 {bal}。",
                         "evidence": f"L{line_no}: {line.strip()[:80]}",

@@ -674,5 +674,65 @@ class TestEnumSSOTAndDanglingRefs(unittest.TestCase):
         self.assertEqual(len(EntityEntry.model_fields), 33)
 
 
+# ---------------------------------------------------------------------------
+# 深读 engine/audit.py 发现的探针缺陷（此前 656 行探针内核从未通读）
+# ---------------------------------------------------------------------------
+class TestAuditProbes(unittest.TestCase):
+    """探针 3/4 曾是死代码：单位正则被短词遮蔽、池键硬编码、枚举字面量非法。"""
+
+    def test_amount_probe_resolves_unit_and_pool(self):
+        from engine import audit
+        cases = [
+            ("付了九十块灵石", {"spirit_stone": {"name": "灵石", "unit": "块", "current": 10}}, True),
+            ("付了九十两银子", {"silver": {"name": "白银", "unit": "两", "current": 10}}, True),
+            ("付了九十两白银", {"silver": {"name": "白银", "unit": "两", "current": 10}}, True),
+            ("花了三枚极品灵石", {"lingshi": {"name": "极品灵石", "unit": "枚", "current": 1}}, True),
+            ("付了五十两黄金", {"gold": {"name": "黄金", "unit": "两", "current": 5}}, True),
+        ]
+        for line, pools, should_fire in cases:
+            out = audit.probe_amount_ledger(line, [line], {"pools": pools})
+            self.assertEqual(bool(out), should_fire, f"{line} 触发情况不符")
+
+    def test_amount_probe_no_false_positive(self):
+        from engine import audit
+        # 正文「九十文」不得误挂到名叫「文献阁」的池（匹配方向必须是 token in unit）
+        out = audit.probe_amount_ledger("付了九十文", ["付了九十文"],
+                                        {"pools": {"wenge": {"name": "文献阁", "unit": "座", "current": 1}}})
+        self.assertEqual(out, [])
+        # 余额充足不应报警
+        out2 = audit.probe_amount_ledger("付了十块灵石", ["付了十块灵石"],
+                                         {"pools": {"spirit_stone": {"name": "灵石", "unit": "块", "current": 100}}})
+        self.assertEqual(out2, [])
+
+    def test_charges_probe_uses_legal_enum_and_condition(self):
+        from engine import audit
+        ents = [
+            {"name": "断刀", "type": "item", "charges": 0, "status": "active"},
+            {"name": "青玉瓶", "type": "item", "charges": 3, "status": "active",
+             "condition": "灵性尽失，瓶身碎裂"},
+            {"name": "旧符", "type": "item", "charges": 2, "status": "retired"},
+            {"name": "完好剑", "type": "item", "charges": 5, "status": "active",
+             "condition": "完好无损"},
+            {"name": "林牧", "type": "person", "charges": 0, "status": "active"},
+        ]
+        lines = ["他祭出断刀。", "他催动青玉瓶。", "他祭起旧符。", "他拔出完好剑。", "林牧祭出灵气。"]
+        out = audit.probe_charges_possession("\n".join(lines), lines, ents, {})
+        flagged = {c["title"].split("「")[1].split("」")[0] for c in out}
+        self.assertEqual(flagged, {"断刀", "青玉瓶", "旧符"})
+        self.assertNotIn("完好剑", flagged)   # charges>0 且 condition 完好
+        self.assertNotIn("林牧", flagged)     # person 类型不参与道具探针
+
+    def test_probe_flag_codes_all_registered(self):
+        """探针里 also_flagged_by 指向的码必须真实存在（曾出现 3 个幽灵码）。"""
+        from engine import audit
+        src = (Path(__file__).resolve().parents[1] / "engine/audit.py").read_text(encoding="utf-8")
+        codes = set(re.findall(r'"also_flagged_by":\s*"([a-z0-9_]+)"', src))
+        self.assertTrue(codes, "未扫到任何 also_flagged_by，扫描正则可能失效")
+        for code in codes:
+            self.assertIn(code, errcodes.REGISTRY, f"探针引用了不存在的错误码 {code}")
+        for ghost in ("amount_unmatched", "item_charges_zero"):
+            self.assertNotIn(ghost, codes, f"幽灵码 {ghost} 又出现了")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

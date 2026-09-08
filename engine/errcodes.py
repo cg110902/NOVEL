@@ -116,6 +116,9 @@ REGISTRY: dict[str, ErrCode] = {c.code: c for c in (
          "检查实体登记的卡片路径，创建对应卡片文件或在 entities.json 中修正 card 字段。"),
     _reg("entity_tier_invalid", "error", "实体的实力位阶 tier_rank 超出合法区间 [1, 12]",
          "将实体的 tier_rank 修正为 1 到 12 之间的整数。"),
+    _reg("item_charges_exhausted", "error", "账本记为耗尽/损毁/退场的道具，正文却出现使用动作",
+         "核对道具是否已在前章消耗完毕：若为新获取的同名道具或残存灵力，请在正文明确交代；"
+         "否则属硬性吃书，需定向修复。判定来源＝charges==0 / status=retired / condition 明示损毁。"),
     _reg("item_charges_overflow", "error", "道具剩余充能 charges 超出设定的上限 max_charges",
          "核实道具充能数值，确保 charges <= max_charges。"),
     _reg("line_action_missing", "warning", "到期/逾期线未在细纲「线动作」栏登记",
