@@ -12,6 +12,15 @@ Novel Studio 是专为网络小说多智能体协同深度定制的创作流水�
 > 状态唯一真值 = `state/` 八表（含不可逆事实表与认知差表）；
 > 一致性由引擎机械闸门与 Auditor 双轨核验兜底。
 
+> 🧰 **【开工前置：运行环境】**：引擎依赖 5 个第三方库，缺失时 `studio.py` 会在启动瞬间
+> 打印缺失模块与安装命令并以退出码 `3` 退出（不是业务问题，不要去改书）。
+> ```bash
+> python -m pip install -r requirements.txt   # pydantic / jieba / networkx / rich / rapidfuzz
+> python studio.py --version                   # 自检：应打印 novel-studio 3.x
+> ```
+> 用虚拟环境时务必用该环境的 python 跑（`.venv/bin/python studio.py …`），
+> 否则会拿系统解释器去找依赖。退出码契约：`0` 正常 / `1` 业务阻断 / `2` 用法错 / `3` 环境缺依赖。
+
 ---
 
 ## 一、 技术底座速览（黑盒边界）

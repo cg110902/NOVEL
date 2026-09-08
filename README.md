@@ -120,7 +120,8 @@ Evolution    Evolver     人类变更诉求的波及面测算与手术刀改版
 `--as <角色>` 的准读清单与各角色 SKILL.md 的准读清单一一对应（单一真源在
 `engine/pack.py` 的 `ROLE_DENY` / `ROLE_ALLOW_EXTRA`）；越权读取一律拒绝。
 
-退出码契约：`0` = 正常 / `1` = 阻断（含 `check` 有 errors、`sync` 失败）/ `2` = 用法错。
+退出码契约：`0` = 正常 / `1` = 阻断（含 `check` 有 errors、`sync` 失败）/ `2` = 用法错 /
+`3` = 运行环境缺依赖（会打印缺失模块与安装命令，不抛裸 traceback）。
 错误码的机器可读说明书：`python studio.py errcodes <码>`（注册表在 `engine/errcodes.py`）。
 
 ---

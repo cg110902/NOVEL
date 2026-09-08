@@ -292,6 +292,19 @@ class TestWordBand(unittest.TestCase):
             self.assertGreaterEqual(warns.get("word_band_breach", 0), 1,
                                     "严重出带未被检出")
 
+    def test_small_undershoot_reports_deviation_not_breach(self):
+        with TempBook() as tb:
+            tb.write("project.json", json.dumps(
+                {**json.loads(tb.read("project.json")), "words_target": [2000, 3000]},
+                ensure_ascii=False, indent=2))
+            # 1800 字 vs 下限 2000：缺 200 = 10%，落在 20% 容差内 → deviation 而非 breach
+            tb.seed_chapter("ch_001", "字" * 1800)
+            warns = _codes(tb, "warnings")
+            self.assertGreaterEqual(warns.get("word_band_deviation", 0), 1,
+                                    "容差内出带未报 deviation")
+            self.assertEqual(warns.get("word_band_breach", 0), 0,
+                             "容差内出带被误升级为 breach")
+
     def test_in_band_final_is_quiet(self):
         with TempBook() as tb:
             tb.write("project.json", json.dumps(
@@ -411,6 +424,63 @@ class TestBeatsInjection(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
+# P0-2 Stage 5 仲裁闸门端到端：hard>0 未裁定拒封 / 已裁定放行 / 放行后盖章
+# ---------------------------------------------------------------------------
+_AUDIT_REPORT = """---
+audit_chapter: ch_001
+hard: 2
+soft: 0
+adjudicated: {adj}
+---
+
+# ch_001 事实一致性仲裁报告
+
+## 🔴 确凿硬矛盾（必须定向修复或核实排除）
+- 候选一：称谓漂移
+- 候选二：死人复活
+"""
+
+
+class TestStage5AuditGate(unittest.TestCase):
+    def _seed(self, tb: TempBook, adjudicated: bool) -> None:
+        tb.seed_chapter("ch_001", "林牧推门进屋，屋里点着一盏灯。" * 100)
+        tb.write("log/audit/ch_001.md", _AUDIT_REPORT.format(
+            adj="true" if adjudicated else "false"))
+        tb.write("state/inbox/ch_001.json", json.dumps({
+            "schema": "novel-studio.state-mutation/v2", "chapter": "ch_001",
+            "operation_id": "ch_001.gate.test",
+            "synopsis": {"text": "主角拿到账册并当众揭穿造假。"}},
+            ensure_ascii=False, indent=2))
+
+    def test_unadjudicated_hard_conflicts_block_sync(self):
+        with TempBook() as tb:
+            self._seed(tb, adjudicated=False)
+            out = tb.run_json("sync", "ch_001")
+            self.assertFalse(out.get("ok", True))
+            self.assertIn("事实一致性仲裁未通过", out.get("error", ""))
+            self.assertIsNone(out.get("snapshot"))
+
+    def test_adjudicated_hard_conflicts_pass_and_stamp(self):
+        with TempBook() as tb:
+            self._seed(tb, adjudicated=True)
+            out = tb.run_json("sync", "ch_001")
+            self.assertEqual(out.get("verify_errors"), [])
+            self.assertTrue(out["snapshot"]["ok"], out)
+            # 放行即盖章：八表 SHA-256 落盘，供 state_offline_edit 档比对
+            stamp = json.loads(tb.read("state/inbox/processed/state_hashes.json"))
+            self.assertEqual(stamp["last_sync_chapter"], "ch_001")
+            self.assertEqual(len(stamp["states"]), len(state.STATE_KEYS))
+
+    def test_missing_report_blocks_sync_in_strict_mode(self):
+        with TempBook() as tb:
+            self._seed(tb, adjudicated=True)
+            tb.path("log/audit/ch_001.md").unlink()
+            out = tb.run_json("sync", "ch_001")
+            self.assertFalse(out.get("ok", True))
+            self.assertIn("仲裁报告", out.get("error", ""))
+
+
+# ---------------------------------------------------------------------------
 # P2 杂项：indexed_chapters 语义 / state get 八表 / 冷索引措辞 / 软配额措辞
 # ---------------------------------------------------------------------------
 class TestMiscFixes(unittest.TestCase):
@@ -501,6 +571,25 @@ class TestEnumSSOTAndDanglingRefs(unittest.TestCase):
         # 与模型枚举严格一致（模型改了，这里必须跟着变）
         self.assertEqual(set(state._ENTITY_STATUS),
                          {s.value for s in __import__("engine.models.entities", fromlist=["EntityStatus"]).EntityStatus})
+
+    def test_clock_and_ledger_enums_also_derived(self):
+        # 报告 五.2 列了 5 组手写字面量；这 3 组（时钟紧迫度/时钟状态/流水类型）
+        # 此前漏改，现必须与模型严格一致
+        from engine.models.ledger import TransactionType
+        from engine.models.timeline import ClockStatus, ClockUrgency
+        self.assertEqual(set(state._CLOCK_URGENCY), {u.value for u in ClockUrgency})
+        self.assertEqual(set(state._CLOCK_STATUS), {s.value for s in ClockStatus})
+        self.assertEqual(set(state._TX_TYPES), {x.value for x in TransactionType})
+        self.assertEqual(set(state._CLOCK_URGENCY), {"low", "medium", "high", "critical"})
+        self.assertEqual(set(state._CLOCK_STATUS),
+                         {"Active", "Triggered", "Defused", "Expired"})
+
+    def test_id_regex_single_source(self):
+        # 报告 五.4：LOCK_ID_RE/COG_ID_RE 曾在 models 与 state.py 各定义一遍
+        from engine.models.cognition import COG_ID_RE
+        from engine.models.locked import LOCK_ID_RE
+        self.assertIs(state.LOCK_ID_RE, LOCK_ID_RE)
+        self.assertIs(state.COG_ID_RE, COG_ID_RE)
 
     def test_dangling_faction_and_location_flagged(self):
         with TempBook() as tb:

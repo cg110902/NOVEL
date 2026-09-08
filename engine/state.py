@@ -33,8 +33,10 @@ CH_RE = re.compile(r"ch_(\d{3,})$")
 GUN_ID_RE = re.compile(r"GUN-\d{3,}")
 MIS_ID_RE = re.compile(r"MIS-\d{3,}")
 KNO_ID_RE = re.compile(r"KNO-\d{3,}")
-LOCK_ID_RE = re.compile(r"^LOCK-\d{3,}$")
-COG_ID_RE = re.compile(r"^COG-\d{3,}$")
+# ID 正则单一真源在 models/locked.py 与 models/cognition.py（此前 state.py 各自
+# 再定义一遍，三处并存；改格式时漏改一处就会让校验与落盘口径分裂）。
+from .models.cognition import COG_ID_RE  # noqa: E402
+from .models.locked import LOCK_ID_RE  # noqa: E402
 NO_MERGE_SUFFIXES = (".draft.json", ".template.json", ".sample.json")
 
 _SCHEMA_CACHE: dict[str, dict] = {}
@@ -76,6 +78,9 @@ _ENTITY_STATUS = tuple(s.value for s in models.EntityStatus)
 _LIFE_STATUS = tuple(s.value for s in models.LifeStatus)
 _ATTITUDE = tuple(s.value for s in models.FactionAttitude)
 _ENTITY_ACTIONS = ("upsert", "register", "retire")  # register 为 upsert 别名（非模型枚举）
+_CLOCK_URGENCY = tuple(u.value for u in models.ClockUrgency)
+_CLOCK_STATUS = tuple(s.value for s in models.ClockStatus)
+_TX_TYPES = tuple(x.value for x in models.TransactionType)
 
 
 def state_dir(book: Path) -> Path:
@@ -734,9 +739,9 @@ def validate_proposal(proposal, expected_chapter: str | None = None) -> tuple[li
             tch = c.get("target_ch")
             if not isinstance(tch, int) or isinstance(tch, bool) or tch < 1:
                 errors.append(f"timeline.clocks[{i}].target_ch 必须为 ≥1 的正整数")
-            if "urgency" in c and c["urgency"] not in ("low", "medium", "high", "critical"):
+            if "urgency" in c and c["urgency"] not in _CLOCK_URGENCY:
                 errors.append(f"timeline.clocks[{i}].urgency 必须 ∈ ['low', 'medium', 'high', 'critical']")
-            if "status" in c and c["status"] not in ("Active", "Triggered", "Defused", "Expired"):
+            if "status" in c and c["status"] not in _CLOCK_STATUS:
                 errors.append(f"timeline.clocks[{i}].status 必须 ∈ ['Active', 'Triggered', 'Defused', 'Expired']")
         for i, m in enumerate(tl.get("milestones", []) or []):
             if not isinstance(m, dict):
@@ -807,7 +812,7 @@ def validate_proposal(proposal, expected_chapter: str | None = None) -> tuple[li
                 errors.append(f"ledger.transactions[{i}].subject 必须为字符串")
             elif not str(t.get("subject", "")).strip():
                 errors.append(f"ledger.transactions[{i}].subject 必填")
-            if "type" in t and t["type"] not in ("income", "expense", "opening_balance", "manual"):
+            if "type" in t and t["type"] not in _TX_TYPES:
                 errors.append(f"ledger.transactions[{i}].type 必须 ∈ ['income', 'expense', 'opening_balance', 'manual']")
             delta = t.get("delta")
             if not isinstance(delta, int) or isinstance(delta, bool):

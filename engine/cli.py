@@ -4,7 +4,8 @@
 status / init / cockpit / pack / evidence / index / check / doctor / checkpoint / state / config /
 sync / snapshot / export / proposal / review / beats / critic / graph / errcodes / help / ask /
 pov / calendar / ledger / audit / recall / simulate / milestone / lore。
-退出码：0=ok / 1=阻断（含 check errors、sync 失败）/ 2=用法错。
+退出码：0=ok / 1=阻断（含 check errors、sync 失败）/ 2=用法错 /
+3=运行环境缺依赖（studio.py 在 import 期兜住并给出安装命令）。
 """
 from __future__ import annotations
 
