@@ -834,3 +834,29 @@ class TestValidatorKeywords(unittest.TestCase):
         for schema, bad, kw in cases:
             errs = validator.validate(bad, schema)
             self.assertTrue(errs, f"关键字 {kw} 应能拦下非法值 {bad!r}，实际放行")
+
+
+class TestSchemaModelSync(unittest.TestCase):
+    """engine/schemas/*.json 是生成产物，必须与 Pydantic 模型保持同步。
+
+    schema_gen.py 存在的唯一意义就是这条不变量；没有测试锁住时，改了模型忘记
+    重新生成（或手改了 schema）会静默漂移，落盘闸门校验的就不再是模型真源。
+    """
+
+    def test_committed_schemas_match_generated(self):
+        from engine.models import schema_gen
+        generated = schema_gen.regenerate_all(write=False)
+        self.assertTrue(generated, "生成器未产出任何 schema")
+        for name, text in generated.items():  # 键是裸模型名，文件名需补 .schema.json
+            p = schema_gen.SCHEMA_DIR / f"{name}.schema.json"
+            self.assertTrue(p.is_file(), f"缺少已提交的 {name}.schema.json")
+            self.assertEqual(p.read_text(encoding="utf-8"), text,
+                             f"{name} 与模型生成结果不一致——改了模型请重新运行 "
+                             f"python -m engine.models.schema_gen")
+
+    def test_every_model_has_a_committed_schema(self):
+        from engine.models import schema_gen
+        from engine.models.adapter import MODEL_REGISTRY
+        for key in MODEL_REGISTRY:
+            self.assertTrue((schema_gen.SCHEMA_DIR / f"{key}.schema.json").is_file(),
+                            f"模型 {key} 没有对应的已提交 schema")
