@@ -12,7 +12,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from engine import checks, common, evidence, graph, state  # noqa: E402
+from engine import checks, common, evidence, graph, state, validator  # noqa: E402
 from engine import errcodes  # noqa: E402
 from engine.commands import chapter_flow, state_sync  # noqa: E402
 from engine.commands._shared import parse_audit_frontmatter  # noqa: E402
@@ -796,3 +796,41 @@ class TestMigrationSafety(unittest.TestCase):
             self.assertEqual(migrations.ensure_state_version(tb.book), {"migrated": False})
             self.assertFalse((tb.book / "state" / "entities.json").exists(),
                              "迁移不应给未初始化的书播种 state 分区")
+
+
+class TestValidatorKeywords(unittest.TestCase):
+    """mini 校验器自述支持的关键字必须与实现一致（曾漏列 7 个）。"""
+
+    _IMPL = ("additionalProperties", "anyOf", "const", "enum", "items", "maxItems",
+             "maxLength", "maximum", "minItems", "minLength", "minimum", "pattern",
+             "properties", "required", "type")
+
+    def test_docstring_lists_every_implemented_keyword(self):
+        import inspect
+        doc = inspect.getdoc(validator) or ""
+        for kw in self._IMPL:
+            self.assertIn(kw, doc, f"模块自述漏列已实现的关键字 {kw}")
+
+    def test_each_keyword_actually_enforced(self):
+        """每个自述关键字都真能拦下非法值（防「列了但没实现」）。"""
+        cases = [
+            ({"type": "string"}, 5, "type"),
+            ({"enum": ["a", "b"]}, "c", "enum"),
+            ({"const": "x"}, "y", "const"),
+            ({"anyOf": [{"type": "integer"}, {"type": "boolean"}]}, "s", "anyOf"),
+            ({"type": "string", "pattern": r"^\d+$"}, "abc", "pattern"),
+            ({"type": "string", "minLength": 3}, "ab", "minLength"),
+            ({"type": "string", "maxLength": 2}, "abc", "maxLength"),
+            ({"type": "integer", "minimum": 5}, 1, "minimum"),
+            ({"type": "integer", "maximum": 5}, 9, "maximum"),
+            ({"type": "array", "items": {"type": "integer"}}, [1, "x"], "items"),
+            ({"type": "array", "minItems": 2}, [1], "minItems"),
+            ({"type": "array", "maxItems": 1}, [1, 2], "maxItems"),
+            ({"type": "object", "properties": {"a": {"type": "integer"}},
+              "required": ["a"]}, {}, "required"),
+            ({"type": "object", "properties": {"a": {"type": "integer"}},
+              "additionalProperties": False}, {"a": 1, "b": 2}, "additionalProperties"),
+        ]
+        for schema, bad, kw in cases:
+            errs = validator.validate(bad, schema)
+            self.assertTrue(errs, f"关键字 {kw} 应能拦下非法值 {bad!r}，实际放行")

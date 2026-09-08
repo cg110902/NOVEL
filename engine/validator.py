@@ -1,5 +1,12 @@
-"""mini JSON Schema 子集校验器：type / enum / pattern / required / properties / items /
-additionalProperties / minItems。
+"""mini JSON Schema 子集校验器。
+
+支持的关键字（15 个）：
+  类型   type（含类型数组）
+  取值   enum / const / anyOf
+  字符串 pattern / minLength / maxLength
+  数值   minimum / maximum
+  数组   items / minItems / maxItems
+  对象   properties / required / additionalProperties（bool 或子 schema）
 
 刻意不支持 if/then 等条件语法——跨字段规则属于业务事实，放在 state.py 的分区校验里（带更准确的报错）。
 本模块零业务、零 IO：输入数据+schema，输出错误列表（永不抛异常，除非 schema 自身畸形）。
