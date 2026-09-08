@@ -736,3 +736,63 @@ class TestAuditProbes(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class TestMigrationSafety(unittest.TestCase):
+    """迁移是会改用户数据的代码路径，必须有回归锁（审查阶段仅手工验证过，未落测试）。"""
+
+    def setUp(self):
+        from engine import migrations
+        migrations._ENSURED.clear()
+
+    def tearDown(self):
+        from engine import migrations
+        migrations._ENSURED.clear()
+
+    @staticmethod
+    def _set_version(tb, v: int) -> None:
+        from engine import migrations
+        tb.write(f"state/{migrations.VERSION_FILE}",
+                 json.dumps({"version": v, "created_at": "2020-01-01"}, ensure_ascii=False))
+
+    def test_higher_version_refuses_and_keeps_data(self):
+        """书的状态版本高于引擎支持版本 → 必须拒绝，且不得改动任何 state 文件。"""
+        from engine import migrations
+        with TempBook(title="迁移高版本") as tb:
+            self._set_version(tb, migrations.CURRENT_STATE_VERSION + 1)
+            before = {k: tb.state(k) for k in state.STATE_KEYS}
+            with self.assertRaises(ValueError) as ctx:
+                migrations.ensure_state_version(tb.book)
+            self.assertIn("高于当前引擎支持", str(ctx.exception))
+            for k in state.STATE_KEYS:
+                self.assertEqual(tb.state(k), before[k], f"拒绝高版本时不应改动 state/{k}.json")
+
+    def test_migration_creates_rollback_snapshot(self):
+        """v0 遗留书必须逐级迁到当前版本，且迁移前落可回滚快照。"""
+        from engine import migrations, snapshot
+        with TempBook(title="迁移快照") as tb:
+            self._set_version(tb, migrations.LEGACY_VERSION)
+            res = migrations.ensure_state_version(tb.book)
+            self.assertTrue(res.get("migrated"), f"v0 应触发迁移，实际 {res}")
+            names = snapshot.list_snapshots(tb.book)  # 返回快照名字符串列表
+            self.assertTrue(any("pre_migration_v0" in n for n in names),
+                            f"应存在迁移前快照，实际 {names}")
+            self.assertEqual(res.get("to"), migrations.CURRENT_STATE_VERSION)
+            self.assertEqual(migrations.read_version(tb.book), migrations.CURRENT_STATE_VERSION)
+            # 迁移后八张表仍须通过 load_state 的分区校验（非法会抛 ValueError）
+            for k in state.STATE_KEYS:
+                try:
+                    state.load_state(tb.book, k)
+                except ValueError as exc:
+                    self.fail(f"迁移后 state/{k}.json 应仍合法，实际: {exc}")
+
+    def test_uninitialized_book_not_seeded(self):
+        """空书（无 state 文件）不得被迁移逻辑播种出 state 分区。"""
+        from engine import migrations
+        with TempBook(title="迁移空书") as tb:
+            (tb.book / "state").mkdir(parents=True, exist_ok=True)
+            for k in state.STATE_KEYS:
+                (tb.book / "state" / f"{k}.json").unlink(missing_ok=True)
+            self.assertEqual(migrations.ensure_state_version(tb.book), {"migrated": False})
+            self.assertFalse((tb.book / "state" / "entities.json").exists(),
+                             "迁移不应给未初始化的书播种 state 分区")
