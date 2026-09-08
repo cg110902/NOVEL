@@ -918,3 +918,66 @@ class TestVocabAlternationSafety(unittest.TestCase):
         mismatched = {"pools": {"lingshi": {"name": "极品灵石", "unit": "枚", "current": 1}}}
         self.assertEqual(audit.probe_amount_ledger(line, [line], mismatched), [],
                          "量词「块」不应误挂到 unit=枚 的池上")
+
+
+class TestReplayIdempotency(unittest.TestCase):
+    """落盘时序是「状态先写、幂等登记簿后写」，崩溃窗口内提案会被重放。
+
+    安全前提（state.py 注释自陈）：所有 _merge_* 对同一提案重放必须幂等。
+    locked/cognition 已有锁，但账本流水是金额正确性的核心，此前没有锁——
+    重放若重复入账，余额会被静默扣两次。
+    """
+
+    def _data(self):
+        # 子键须齐备：真实路径由 load_state 的 _fill_missing_required 补齐，
+        # 直接调 _merge_proposal_into 时得自己给。
+        return {"current": {}, "entities": {"entries": []},
+                "lines": {"foreshadows": [], "misunderstandings": [], "knowledge": []},
+                "timeline": {"events": [], "clocks": [], "milestones": []},
+                "ledger": {"pools": {"silver": {"name": "银两", "unit": "两",
+                                                "initial": 100, "current": 100}},
+                           "transactions": []},
+                "synopsis": {"chapters": {}}, "locked": {"entries": []},
+                "cognition": {"entries": []}}
+
+    def _rep(self):
+        return {"updated": [], "warnings": [], "errors": []}
+
+    def test_ledger_transaction_replay_not_double_counted(self):
+        data, rep = self._data(), self._rep()
+        seed = {"ledger": {"transactions": [
+            {"pool": "silver", "delta": -30, "subject": "买刀", "type": "expense"}]}}
+        state._merge_proposal_into(data, seed, "ch_002", 2, rep)
+        self.assertEqual(rep["errors"], [])
+        n1 = len(data["ledger"]["transactions"])
+        self.assertEqual(n1, 1, "首次合并应记入 1 笔流水")
+
+        rep2 = self._rep()
+        state._merge_proposal_into(data, seed, "ch_002", 2, rep2)
+        self.assertEqual(rep2["errors"], [])
+        self.assertEqual(len(data["ledger"]["transactions"]), n1,
+                         "重放同一提案不得重复入账（否则余额被静默扣两次）")
+
+    def test_cognition_replay_not_duplicated(self):
+        data, rep = self._data(), self._rep()
+        seed = {"cognition": [{"action": "plant", "id": "COG-001", "character": "林牧",
+                               "content": "他知道刀已断裂", "kind": "fact", "quote": "刀断了"}]}
+        state._merge_proposal_into(data, seed, "ch_002", 2, rep)
+        self.assertEqual(rep["errors"], [])
+        rep2 = self._rep()
+        state._merge_proposal_into(data, seed, "ch_002", 2, rep2)
+        self.assertEqual(rep2["errors"], [])
+        self.assertEqual(len(data["cognition"]["entries"]), 1,
+                         "重放同一认知条目不得产生重复条目")
+
+    def test_lines_replay_not_duplicated(self):
+        data, rep = self._data(), self._rep()
+        seed = {"lines": [{"action": "plant", "kind": "foreshadow", "id": "GUN-001",
+                           "name": "断刀来历", "plant_ch": 2}]}
+        state._merge_proposal_into(data, seed, "ch_002", 2, rep)
+        self.assertEqual(rep["errors"], [])
+        rep2 = self._rep()
+        state._merge_proposal_into(data, seed, "ch_002", 2, rep2)
+        self.assertEqual(rep2["errors"], [])
+        self.assertEqual(len(data["lines"].get("foreshadows", [])), 1,
+                         "重放同一伏笔不得产生重复条目")
