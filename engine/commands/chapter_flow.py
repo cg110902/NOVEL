@@ -20,7 +20,7 @@ except ImportError:
     _HAS_RICH = False
     console = None
 
-from ._shared import _norm_ch, usage_error, ws_gate, ws_gate_code
+from ._shared import _norm_ch, parse_audit_frontmatter, usage_error, ws_gate, ws_gate_code
 
 
 # ---------------------------------------------------------------------------
@@ -410,6 +410,54 @@ def _render_audit_md(payload: dict) -> str:
     return "\n".join(lines)
 
 
+_AUDIT_HARD_HEAD = r"^##\s*🔴"
+_AUDIT_EXCLUDE_HEAD = r"^##\s*✅\s*交叉核实排除"
+
+
+def _audit_hard_block(text: str) -> str:
+    """提取报告「🔴 确凿硬矛盾」段落正文（剥掉分隔线/空行后归一化，用于比对候选是否变化）。"""
+    lines = [ln.strip() for ln in common.md_section(text, _AUDIT_HARD_HEAD)]
+    return "\n".join(ln for ln in lines if ln and ln != "---")
+
+
+def _audit_adjudication_note(text: str) -> str:
+    """提取 Auditor 手写的「交叉核实排除」正文（模板自带的 HTML 注释不算内容）。"""
+    body = []
+    for ln in common.md_section(text, _AUDIT_EXCLUDE_HEAD):
+        s = ln.strip()
+        if not s or s == "---" or s.startswith("<!--"):
+            continue
+        body.append(ln)
+    return "\n".join(body).strip()
+
+
+def _merge_audit_report(old_text: str | None, new_text: str) -> tuple[str, list[str]]:
+    """重跑 `audit --write` 时保住既有裁决痕迹。
+
+    此前 cmd_audit 是无条件 `write_text` 覆盖，而 `_render_audit_md` 恒定写
+    `adjudicated: false`：Auditor 完成轨 2 语义裁决 → Stylist 动刀 → 重新 audit，
+    这一步会把人工裁决整份抹掉并把闸门打回未裁定。现按机械可判定规则合并：
+    - 「🔴 确凿硬矛盾」段落逐字未变 → 沿用旧 front-matter 的 adjudicated；
+      变了（探针结论更新）→ 回落 false，需重新裁决；
+    - Auditor 写在「✅ 交叉核实排除」里的排除理由原样搬回新报告。
+    """
+    notes: list[str] = []
+    if not old_text:
+        return new_text, notes
+    old_fm = parse_audit_frontmatter(old_text) or {}
+    if _audit_hard_block(old_text) != _audit_hard_block(new_text):
+        if old_fm.get("adjudicated"):
+            notes.append("硬矛盾候选已变化 → adjudicated 回落 false（请重新裁决）")
+    elif old_fm.get("adjudicated"):
+        new_text = new_text.replace("adjudicated: false", "adjudicated: true", 1)
+        notes.append("硬矛盾候选未变化 → 沿用既有 adjudicated: true")
+    keep = _audit_adjudication_note(old_text)
+    if keep:
+        new_text = new_text.rstrip() + "\n\n### 既有排除理由（自上一版报告保留）\n" + keep + "\n"
+        notes.append("已保留上一版报告的「交叉核实排除」正文")
+    return new_text, notes
+
+
 def cmd_audit(args) -> int:
     book = ws_gate(args)
     if book is None:
@@ -429,11 +477,21 @@ def cmd_audit(args) -> int:
         audit_dir = book / "log" / "audit"
         audit_dir.mkdir(parents=True, exist_ok=True)
         out_file = audit_dir / f"{tok}.md"
-        md_content = _render_audit_md(payload)
+        prev_text = None
+        if out_file.is_file():
+            try:
+                prev_text = out_file.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                prev_text = None
+        md_content, merge_notes = _merge_audit_report(prev_text, _render_audit_md(payload))
         out_file.write_text(md_content, encoding="utf-8")
         payload["written_file"] = str(out_file.relative_to(book))
+        if merge_notes:
+            payload["preserved"] = merge_notes
         if not getattr(args, "json", False):
             print(f" 💾 已生成并写入仲裁报告: {out_file.relative_to(book)}")
+            for note in merge_notes:
+                print(f"    ♻️ {note}")
 
     if payload.get("error"):
         if getattr(args, "json", False):
@@ -538,9 +596,45 @@ def _consistency_section(book, n: int, cur: dict, ents: list[dict], lines_st: di
                 if str(k.get("status", "")).strip().lower() != "revealed"]
     kno_list.sort(key=lambda k: -(k.get("weight") if isinstance(k.get("weight"), int) else 1))
     locked_entries = (locked_st or {}).get("entries", [])
-    if not roster and not kno_list and not locked_entries:
+    # 资源池在 ledger.json 的 pools 键下（八表里没有 resources 这张表——
+    # 此前误读 state/resources.json，异常被吞成空字典，于是恒报「尚无已声明资源池」）。
+    ledger_err = ""
+    try:
+        res_st = state.load_state(book, "ledger") or {}
+    except Exception as exc:  # 账本读不回来 ≠ 没有资源池，必须显式说出来
+        res_st, ledger_err = {}, str(exc)
+    pools = (res_st.get("pools", {}) if isinstance(res_st.get("pools", {}), dict) else {})
+    if not roster and not kno_list and not locked_entries and not pools:
         return ""
     out = ["## 本章一致性速查（引擎自动注入 · 主控可增删）", ""]
+    # 资源池合法键名 + LOCK 已用 ID 水位线：Reader 提案若引用未声明的池键或复用已用 ID，
+    # Stage 5 会硬拒（ledger_pool_undeclared / locked_entry_id_reuse）——先给清单再让人写。
+    if pools or locked_entries or ledger_err:
+        out += ["### 💰 资源池与 ID 水位线（Reader 提案必填口径）", ""]
+        if ledger_err:
+            out.append(f"- ⚠️ 账本 ledger.json 读取失败，无法列出合法池键：{_clip(ledger_err, 120)}"
+                       "（先修 state/ledger.json，否则本章流水的 pool 键名只能靠猜）")
+        if pools:
+            for pk in sorted(pools):
+                # 落盘态余额字段是 current（引擎按流水重算写回），不是 balance
+                bal = pools[pk].get("current", pools[pk].get("initial", 0))
+                unit = pools[pk].get("unit", "")
+                out.append(f"- 合法池键：`{pk}`（当前余额 {bal} {unit}）— 流水 `pool` 必须逐字等于此键")
+        elif not ledger_err:
+            out.append("- ⚠️ 尚无已声明资源池：本章流水必须 `kind=\"set\"` 建立首个池键（新键名需主控批准）")
+        _lock_ids = sorted(str(e.get("id", "")) for e in locked_entries if e.get("id"))
+        try:
+            _cog_raw = state.load_state(book, "cognition") or {}
+        except Exception:
+            _cog_raw = {}
+        _cog_ids = sorted(str(e.get("id", ""))
+                          for e in (_cog_raw.get("entries") or []) if e.get("id"))
+        if _lock_ids:
+            out.append(f"- LOCK 已用 ID：{'、'.join(_lock_ids)} — 新增条目从水位线之后起号，严禁复用")
+        if _cog_ids:
+            out.append(f"- COG 已用 ID：{'、'.join(_cog_ids)} — 同上")
+        out.append("- 复用同一 ID 重写旧条目会被 `locked_entry_id_reuse` 拒绝（改史走 `locked retire` 留痕）")
+        out.append("")
     if locked_entries:
         out += ["### 🔒 不可逆事实台账（LOCK 引擎规范 · 严禁吃书/逆转）", ""]
         for le in locked_entries[:15]:
@@ -737,7 +831,8 @@ def cmd_beats(args) -> int:
     m_plan = re.search(r"当章预定规划[:：](.+)", milestone or "")
     if m_plan:
         plan_line = m_plan.group(1).strip()
-    cons_section = _consistency_section(book, n, cur, ents_st, lines_st, plan_line=plan_line, locked_st=locked_st)
+    cons_section = _consistency_section(book, n, cur, ents_st, lines_st, plan_line=plan_line,
+                                        locked_st=locked_st)
     if cons_section:
         text = text.replace("## 本章新登场实体速写", cons_section.rstrip() + "\n\n## 本章新登场实体速写")
 
@@ -851,10 +946,10 @@ def cmd_critic(args) -> int:
     if not final_files:
         if getattr(args, "json", False):
             print(json.dumps({"chapter": tok, "ok": False,
-                              "error": f"未找到 {tok} 的定稿（final），无法进行读者评测（需先由 Editor 定稿）",
+                              "error": f"未找到 {tok} 的定稿（final），无法进行读者评测（需先由 Stage 3B Stylist 定稿）",
                               "code": "no_final"}, ensure_ascii=False))
         else:
-            print(f"❌ 未找到 {tok} 的定稿（final），无法进行读者评测（需先由 Editor 定稿）")
+            print(f"❌ 未找到 {tok} 的定稿（final），无法进行读者评测（需先由 Stage 3B Stylist 定稿）")
         return 1
 
     final_text = final_files[-1].read_text(encoding="utf-8", errors="ignore")

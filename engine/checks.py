@@ -1,11 +1,24 @@
 """check：结构 + schema + 算术体检（吸收旧 doctor/verify/audit；errors 只允许事实级）。
 
 语义红线 ：
-- errors：可机械判定必须修复的事实——schema 违规、引用未登记实体、章号断档、占位符未填、
-  同 form 无理由、账本重算不符（state.verify_state）。
-- warnings：算术数出来的偏离事实（字数出带、线逾期、tics 命中、form 占比超 40%）——只报数，
+- errors：可机械判定、必须修复的事实——schema 违规、present_characters 引用未登记实体
+  （unregistered_character）、章号断档、占位符未填、同 form 无理由、账本重算不符
+  （state.verify_state）、锁台账生命状态冲突、因果前置倒挂/成环。
+- warnings：算术数出来的偏离事实（字数出带、线逾期、tension 连击、form 占比超 40%）——
   是否修、怎么修由主控决定。
-- 两个桶里都不许出现「建议/疑似/不宜」等判断词；本模块零写入。
+- infos：事实性提示与流程留痕（final 无 raw/beats、候选新专名、境界首次登记等）。
+
+两处与旧措辞的差别，按实现如实记录，勿再写回：
+1) 「引用未登记实体」并非一律 errors。只有 current.present_characters 指向未登记实体是
+   error（unregistered_character）；实体卡的 faction/holder/location 与 relations.target
+   悬空是 warning（entity_ref_unknown / relation_target_unknown）——后者可能只是临时场景
+   描述或未建卡的合法写法，机械判定不足以定性为错误。
+2) 旧措辞称「两个桶都不许出现建议/疑似/不宜等判断词」，与实现不符：实测 24 处 msg 含这些词
+   （error 级 1 处 manuscript_truncation，warning 级 14 码，info 级 3 码）。这是有意的——
+   启发式判定（截断、重叠、失焦）本就该带不确定性措辞，warnings/infos 给出可执行方向也确实
+   有用。真正的红线是：errors 桶只收机械可判定的事实，不把语义裁决塞进去。
+
+本模块零写入。
 """
 from __future__ import annotations
 
@@ -15,6 +28,7 @@ import re
 from pathlib import Path
 
 from . import common, errcodes, evidence, state, vocab
+from .models.entities import LOCATION_TYPES
 
 try:
     from rapidfuzz import fuzz
@@ -40,7 +54,9 @@ RUNTIME_DEPENDENCIES: list[tuple[str, str]] = [
     ("networkx", "实体拓扑沙盘与因果图寻路"),
     ("rapidfuzz", "引文柔性模糊比对"),
     ("rich", "终端态势驾驶舱渲染"),
-    ("sqlite3", "SQLite3 FTS5 全文索引"),
+    # sqlite3 属 Python 标准库（FTS5 全文索引），列在此处只为体检时确认解释器带该扩展，
+    # 它不在 requirements.txt 里——此前把 stdlib 混进「待安装依赖」会让人去 pip install sqlite3。
+    ("sqlite3", "SQLite3 FTS5 全文索引（Python 标准库，无需安装）"),
 ]
 
 ABRUPT_PUNCTUATION: tuple[str, ...] = ("，", ",", "、", "：", ":", "“", "‘", "（", "(", "——", "……")
@@ -421,6 +437,11 @@ def verify_candidates(book: Path, ch: str, proposal: dict) -> dict:
                 g = seg[i:i + L]
                 grams[g] = grams.get(g, 0) + 1
     cands = []
+    # 专名词性闸门：字符滑窗会把「断刀放在 / 刀放在柜 / 伸手去摸 / 指尖刚碰」这类
+    # 动词短语整片当成候选实体（实测同一章刷出 12 条纯噪声，把真正的告警淹掉）。
+    # jieba 可用时只保留「同时是专名类词（nr/ns/nt/nz）」的 gram；
+    # jieba 缺失时退回原滑窗行为（宁多勿漏，探针本身是 advisory）。
+    noun_tokens = evidence.proper_noun_tokens(text)
     try:
         _pools = state.load_state(book, "ledger").get("pools", {})
     except (ValueError, FileNotFoundError):
@@ -432,6 +453,8 @@ def verify_candidates(book: Path, ch: str, proposal: dict) -> dict:
                 known.append(str(t).lower())
     for g, c in grams.items():
         if c < 3 or g in cand_stop or any(s in g for s in cand_stop):
+            continue
+        if noun_tokens and g not in noun_tokens:
             continue
         # 传入已知实体名，启用「实体名片段 + 尾随动词」过滤（沉舟说/沉舟把）
         if evidence.is_candidate_noise(g, _pools, known):
@@ -521,7 +544,7 @@ def verify_candidates(book: Path, ch: str, proposal: dict) -> dict:
     return out
 
 
-# 错误码与修复文案的唯一真源在 errcodes.REGISTRY（含 severity 与人话解释，供 Agent 消费）；
+# 错误码与修复文案的唯一真源在 errcodes.REGISTRY（含 level 与人话解释，供 Agent 消费）；
 # 此处仅派生兜底 remedy 字典，禁止在本文件再手写新条目。
 DEFAULT_REMEDIES: dict[str, str] = {c.code: c.remedy for c in errcodes.REGISTRY.values()
                                     if c.remedy}
@@ -1099,7 +1122,7 @@ def run_checks(book: Path) -> dict:
         _pat = re.compile(
             rf"(?:{'|'.join(re.escape(str(p.get('name'))) for p in _pools2.values() if p.get('name'))})"
             rf"[^。！？\n]{{0,12}}?由\s*{_NUMPAT}\s*(?:盏|枚|个)?\s*"
-            rf"(?:变为|变成|减为|降到|降到|涨到|升到|回落到)\s*{_NUMPAT}",
+            rf"(?:变为|变成|减为|降到|涨到|升到|回落到)\s*{_NUMPAT}",
             re.S)
         for _ft in common.find_chapter_files(book, "final"):
             _ch_tok = f"ch_{common.chapter_number_from_name(_ft.name) or 0:03d}"
@@ -1146,6 +1169,9 @@ def run_checks(book: Path) -> dict:
         # 别名冲突与悬空关系边（advisory， P2-9）
         owner_by_alias: dict[str, list[str]] = {}
         ent_names = {str(e.get("name", "")) for e in ents}
+        # 已登记地点实体名（type 走 LOCATION_TYPES 唯一真源：place 与 location 同为地点）
+        known_place_names = {str(e.get("name", "")) for e in ents
+                             if str(e.get("type", "")) in LOCATION_TYPES}
         for e in ents:
             for a in {str(e.get("name", ""))} | {str(x) for x in e.get("aliases", []) if x}:
                 owner_by_alias.setdefault(a, []).append(str(e.get("name", "")))
@@ -1161,6 +1187,35 @@ def run_checks(book: Path) -> dict:
                     warnings.append(_err("relation_target_unknown",
                                          f"实体「{e.get('name','')}」的关系指向未登记实体「{tgt}」"
                                          "（关系图悬空边：补登目标实体或修正拼写）"))
+
+        # faction / holder / location 悬空引用（P2-17）：relations 有守卫，这三个指向性字段
+        # 此前无人核对——写成未登记势力/持有者/地点时，graph 静默不连边、pack 静默不注入。
+        # 地点字段允许「巷口」「铺子后院」这类未建卡的场景描述，故只在命中已登记地点名的
+        # 别名体系之外且看起来像专名引用时才提示，措辞按「建议建卡」而非「错误」。
+        for e in ents:
+            ename = str(e.get("name", ""))
+            for field, label, expect_types in (
+                ("faction", "所属势力", ("faction",)),
+                ("holder", "持有者", ("person", "faction")),
+            ):
+                val = str(e.get(field, "") or "").strip()
+                if not val or val in ent_names or val in owner_by_alias:
+                    continue
+                warnings.append(_err(
+                    "entity_ref_unknown",
+                    f"实体「{ename}」的 {field}（{label}）指向未登记实体「{val}」"
+                    f"——graph 不会连这条边、pack 也不会注入其档案；"
+                    f"请补登该{'势力' if expect_types == ('faction',) else '实体'}"
+                    "（type 建议 " + "/".join(expect_types) + "）或修正拼写"))
+            loc_val = str(e.get("location", "") or "").strip()
+            if loc_val and loc_val not in ent_names and loc_val not in owner_by_alias:
+                # 地点常写成「青石巷灯铺」这类含地名的短语，只要包含任一已登记地点名即视为已接地
+                if not any(nm and nm in loc_val for nm in known_place_names):
+                    warnings.append(_err(
+                        "entity_ref_unknown",
+                        f"实体「{ename}」的 location「{loc_val}」未匹配任何已登记地点实体"
+                        "——若为固定场景请建 type=place/location 的地点卡（否则 graph 无 located_in 边）；"
+                        "若只是临时场景描述可忽略本提示"))
 
         # 实体卡片与底层属性机械对账
         for e in ents:
@@ -1424,6 +1479,13 @@ def run_checks(book: Path) -> dict:
                 s = re.sub(r"<!--.*", "", s).strip()
                 if not s or s.startswith("#"):
                     continue
+                # 未填的 {{slot:key|示例措辞}} 是引擎自己模板的兜底文案，不是主控写的判据。
+                # 剥掉占位符后再判定，否则「引擎用自己的模板触发自己的闸门」（P1-8）。
+                s = re.sub(r"\{\{slot:[^}]*\}\}", "", s)
+                s = re.sub(r"^[：:\s*·\-]+", "", s)
+                s = re.sub(r"[：:\s*·\-]+$", "", s).strip()
+                if not s:
+                    continue
                 for w in empty_words:
                     if w in s and w not in crit_hits:
                         crit_hits.append(w)
@@ -1560,6 +1622,35 @@ def run_checks(book: Path) -> dict:
             warnings.append(_err("encoding_replacement_chars",
                                  f"{f.name}: 含 {n_bad} 个替换符（疑似非 UTF-8 编码保存，字数/统计口径已失真）"))
 
+    # 定稿字数出带（config guide 承诺的 word_band_deviation / word_band_breach 判定）。
+    # 只判每章最高版本的法定定稿（per_ch），避免旧版本重复报警；口径与 evidence 一致＝中文字符数。
+    _band_ok = (isinstance(band, (list, tuple)) and len(band) == 2
+                and all(isinstance(x, int) and not isinstance(x, bool) and x > 0 for x in band)
+                and band[0] <= band[1])
+    if _band_ok:
+        _lo, _hi = int(band[0]), int(band[1])
+        for (vol, n), f in sorted(per_ch.items()):
+            try:
+                _txt = f.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                continue
+            _cjk = common.cjk_count(_txt)
+            _tok = f"ch_{n:03d}"
+            if _cjk < _lo:
+                _gap = _lo - _cjk
+                _over = _gap > _lo * 0.2
+                warnings.append(_err(
+                    "word_band_breach" if _over else "word_band_deviation",
+                    f"{_tok}: 定稿 {vol}/{f.name} 中文字数 {_cjk} 低于目标带下限 {_lo}"
+                    f"（缺 {_gap} 字{f'，超出 20% 容差' if _over else ''}）"))
+            elif _cjk > _hi:
+                _gap = _cjk - _hi
+                _over = _gap > _hi * 0.2
+                warnings.append(_err(
+                    "word_band_breach" if _over else "word_band_deviation",
+                    f"{_tok}: 定稿 {vol}/{f.name} 中文字数 {_cjk} 超出目标带上限 {_hi}"
+                    f"（超 {_gap} 字{f'，超出 20% 容差' if _over else ''}）"))
+
     try:
         g = evidence.gaps(book)
         for item in g["foreshadows"] + g["misunderstandings"] + g.get("knowledge", []):
@@ -1684,7 +1775,13 @@ def run_checks(book: Path) -> dict:
                         t_score = float(str(raw_score).strip())
                     except ValueError:
                         pass
-                if t_score is not None:
+                if t_score is None:
+                    # 未评分或分数无法解析：该章张力未知，不能当作「延续上一章的连击」，
+                    # 否则 ch_001=2 / ch_002=缺分 / ch_003=2 / ch_004=2 会被算成
+                    # 「ch_001—ch_004 连续 3 章 ≤3 分」——既误报，区间与章数还自相矛盾。
+                    flatline_streak = []
+                    burnout_streak = []
+                else:
                     ch_tok = bf.stem
                     if t_score <= 3:
                         flatline_streak.append(ch_tok)
@@ -1724,6 +1821,33 @@ def run_checks(book: Path) -> dict:
                 if want_sha and cur_sha != want_sha:
                     warnings.append(_err("final_drift",
                                          f"{tok_rec}: final 内容在封存后已改动（封存 {want_sha[:12]}… / 当前 {cur_sha[:12]}…）"))
+    except (ValueError, OSError):
+        pass
+
+    # state 八表离线改动检查（P1-4）：sync 封存时盖章的 state 哈希 vs 当前内容——
+    # 「提案是唯一写入口」自此有机械证据，绕过提案手改哪张表都能指名报出。
+    try:
+        shp = book / "state" / "inbox" / "processed" / "state_hashes.json"
+        if shp.is_file():
+            stamp = common.load_json(shp, default={}) or {}
+            sealed_states = stamp.get("states") if isinstance(stamp, dict) else None
+            if isinstance(sealed_states, dict):
+                last_ch = str(stamp.get("last_sync_chapter", ""))
+                for key in sorted(sealed_states):
+                    fp = book / "state" / f"{key}.json"
+                    if not fp.is_file():
+                        continue
+                    want = str(sealed_states[key])
+                    try:
+                        cur = hashlib.sha256(fp.read_bytes()).hexdigest()
+                    except OSError:
+                        continue
+                    if want and cur != want:
+                        warnings.append(_err(
+                            "state_offline_edit",
+                            f"state/{key}.json 在 {last_ch or '上次'} 封存后被改动"
+                            f"（封存 {want[:12]}… / 当前 {cur[:12]}…）——若为绕过提案的离线手改，"
+                            "请改走提案通道；若为有意修订，重跑 sync 重新盖章即可消除本提示"))
     except (ValueError, OSError):
         pass
 

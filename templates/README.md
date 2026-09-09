@@ -106,14 +106,14 @@ templates/
      - `attitude`: 对主角/阵营的政治态度（严格枚举：`hostile` 敌对, `neutral` 中立, `friendly` 友善, `allied` 结盟，严禁用 `disposition`）
    - ⚔️ **道具与重器专用**：
      - `holder`: 当前实际支配/持有者角色名（`str`，严禁用 `current_owner`）
-     - `charges`: 剩余可用充能/催动次数（`int >= 0`，-1 表示非计数型）
+     - `charges`: 剩余可用充能/催动次数（`int >= 0`；**非计数型道具直接省略本字段**，写 `-1` 会被模型 `ge=0` 拒绝并连带报 `entities_schema_invalid`）
      - `max_charges`: 最大充能上限（`int >= 1`）
      - `cost_per_use`: 单次催动代价/消耗说明（`str`）
      - `durability`: 物理磨损/耐久度（`str`）
    - 🏰 **势力与据点专用**：
      - `scale_tier`: 势力规模梯级（`1 ~ 10`）
      - `core_assets`: 核心垄断王牌资产清单（`array[str]`）
-     - `diplomacy`: 势力外交网络映射（`{"势力名": "allied"|"hostile"|"neutral"}`）
+     - `diplomacy`: 势力外交网络映射（`{"势力名": "hostile"|"neutral"|"friendly"|"allied"}`，词表同 `FactionAttitude` 枚举；⚠️ 本字段是自由字符串字典，引擎不校验取值也不会读它做推断，写错枚举值不会报错——请以枚举为准）
      - `danger_tier`: 地点危险系数（`1 ~ 10`）
      - `environment_rules`: 地理环境法则与准入门槛（`array[str]`）
    - 🎭 **感官物象与称谓锁（防冷脸与防吃书）**：
@@ -134,7 +134,7 @@ templates/
 
 6. **CLI 底层词典秒级查询工具链 (Studio Lore CLI)**：
    - `python studio.py lore list`：全景列出所有已注册实体的物理 ID、名称与卡片状态；
-   - `python studio.py lore entity <id/name>`：按 ID 或名称穿透调阅实体 13 大物理属性；
+   - `python studio.py lore entity <id/name>`：按 ID 或名称穿透调阅实体全息档案（EntityEntry 共 33 个字段，按实际填写渲染）；
    - `python studio.py lore compare <idA/nameA> <idB/nameB>`：秒级对校两实体位阶差距与法定互称矩阵；
    - `python studio.py lore scale`：查看阶梯破坏力与实物标尺；
    - `python studio.py lore rules`：查看不可违背的世界物理与设定公理。

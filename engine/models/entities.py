@@ -14,6 +14,12 @@ class EntityType(str, Enum):
     OTHER = "other"
 
 
+# 地点类实体（唯一真源）：`place` 与 `location` 在语义上同为「地点」，
+# 但历史上 graph/pack 只认 "place" → 写成 location 的地点既不上图也不被注入。
+# 任何「这是不是地点」的判定都必须走这个集合，禁止再手写字面量。
+LOCATION_TYPES: frozenset[str] = frozenset({EntityType.PLACE.value, EntityType.LOCATION.value})
+
+
 class EntityStatus(str, Enum):
     ACTIVE = "active"
     RETIRED = "retired"
@@ -81,7 +87,7 @@ class EntityEntry(BaseModel):
     # 势力专属字段
     scale_tier: Optional[int] = Field(None, ge=1, le=10, description="势力规模等级(1-10)")
     core_assets: list[str] = Field(default_factory=list, description="势力核心垄断资产与王牌")
-    diplomacy: dict[str, str] = Field(default_factory=dict, description="势力外交拓扑 {势力名: ally/hostile/neutral}")
+    diplomacy: dict[str, str] = Field(default_factory=dict, description="势力外交拓扑 {势力名: 态度}；态度词表同 FactionAttitude 枚举 (hostile/neutral/friendly/allied)，但本字段是自由字符串字典、引擎不校验取值")
 
     # 地标/场景专属字段
     danger_tier: Optional[int] = Field(None, ge=1, le=10, description="地点危险度(1-10)")

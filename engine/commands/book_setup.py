@@ -120,7 +120,7 @@ def cmd_init(args) -> int:
             (book / "log" / "critic").mkdir(parents=True, exist_ok=True)
             if wipe_final:
                 print(f"🧹 已深度清理（raw + final 定稿 + 待办收件箱）: {book}（{cleared} 处）")
-                print("   ⚠️ final 定稿（事实唯一源头）已删除而状态六表仍保留——status 中已同步章仍会标绿，"
+                print("   ⚠️ final 定稿（事实唯一源头）已删除而状态八表仍保留——status 中已同步章仍会标绿，"
                       "事实源已分裂；如需连状态一起回退，请用 snapshot rollback。")
             else:
                 print(f"🧹 已清理草稿区 raw/ 与待办收件箱（保留 final 定稿、圣经/细纲/状态/审计）: "
@@ -650,7 +650,7 @@ def cmd_config(args) -> int:
 # errcodes
 # ---------------------------------------------------------------------------
 def cmd_errcodes(args) -> int:
-    """错误码注册表速查：引擎全部体检码的 severity/人话解释/修复建议（Agent 供 --json）。"""
+    """错误码注册表速查：引擎全部体检码的 level/人话解释/修复建议（Agent 供 --json）。"""
     items = errcodes.as_list()
     if getattr(args, "json", False):
         print(json.dumps({"schema": "novel-studio.errcodes/v1", "total": len(items),

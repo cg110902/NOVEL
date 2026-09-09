@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from . import checks, common, evidence, graph, state
+from .commands._shared import parse_audit_frontmatter  # 仲裁报告 front-matter 解析（Stage 4C 看板）
 
 
 def _infer_active_chapter(book: Path) -> str:
@@ -559,6 +560,10 @@ def build_cockpit_briefing(book: Path, ch: str | None = None) -> dict[str, Any]:
     # 1. 确定工作流与工序状态
     beats_files = common.find_chapter_files(book, "beats", ch_tok)
     raw_files = common.find_chapter_files(book, "raw", ch_tok)
+    # Stage 3A/3B 分轨（V3.1 流水线）：raw_v1 = Drafter 毛坯，raw_v2 = Editor 骨肉稿。
+    # 此前只认「有 raw 就进 Stage 3」，Editor 的 raw_v2 在驾驶舱里完全不存在。
+    raw_v1_files = [f for f in raw_files if common.chapter_version_from_name(f.name) < 2]
+    raw_v2_files = [f for f in raw_files if common.chapter_version_from_name(f.name) >= 2]
     final_files = common.find_chapter_files(book, "final", ch_tok)
     inbox_file = (book / "state" / "inbox" / f"{ch_tok}.json").is_file() or (book / "state" / "inbox" / "processed" / f"{ch_tok}.json").is_file()
     critic_file = False
@@ -569,6 +574,23 @@ def build_cockpit_briefing(book: Path, ch: str | None = None) -> dict[str, Any]:
             critic_file = "SKELETON" not in _cf.read_text(encoding="utf-8", errors="replace")[:400]
         except OSError:
             critic_file = True
+    # Stage 4C 仲裁闸门：sync 在 audit_mode=strict 下强制要求带 front-matter 的仲裁报告，
+    # 驾驶舱此前不追踪它，顺着「下一步」走必然在 Stage 5 撞墙。
+    audit_mode = str(proj.get("audit_mode", "strict")).strip().lower()
+    audit_ready = audit_mode == "off"
+    audit_state = "off" if audit_ready else "missing"
+    _af = book / "log" / "audit" / f"{ch_tok}.md"
+    if not audit_ready and _af.is_file():
+        try:
+            _fm = parse_audit_frontmatter(_af.read_text(encoding="utf-8", errors="replace"))
+        except OSError:
+            _fm = None
+        if _fm is None:
+            audit_state = "no_frontmatter"
+        else:
+            audit_ready = True
+            audit_state = ("blocked" if int(_fm.get("hard", 0) or 0) > 0
+                           and not bool(_fm.get("adjudicated", False)) else "pass")
 
     syn = cur["synopsis"].get("chapters", {})
     if isinstance(syn, dict):
@@ -581,10 +603,14 @@ def build_cockpit_briefing(book: Path, ch: str | None = None) -> dict[str, Any]:
 
     status = {
         "beats": bool(beats_files),
-        "raw": bool(raw_files),
+        "raw": bool(raw_v1_files),
+        "raw_v2": bool(raw_v2_files),
         "final": bool(final_files),
         "proposal": inbox_file,
         "critic": critic_file,
+        "audit": audit_ready,
+        "audit_state": audit_state,
+        "audit_mode": audit_mode,
         "synced": is_synced,
     }
 
@@ -619,27 +645,46 @@ def build_cockpit_briefing(book: Path, ch: str | None = None) -> dict[str, Any]:
             "command": f"python studio.py pack {ch_tok} --full",
             "target_file": f"manuscript/{vol}/raw/{ch_tok}_v1.md"
         }
-    elif not status["final"]:
-        curr_stage = "Stage 3 (文学重塑)"
+    elif not status["raw_v2"]:
+        curr_stage = "Stage 3A (骨肉重塑)"
         next_action = {
             "actor": "Editor",
-            "stage": "Stage 3",
-            "instruction": "向精修师 Editor 下达 Stage 3 标准工序派发令，切除解释性反刍，成型定稿",
+            "stage": "Stage 3A",
+            "instruction": "向精修师 Editor 下达 Stage 3A 标准工序派发令：剧情做加法、潜台词与气口缝合，产出初修骨肉稿",
             "command": f"view_file manuscript/{vol}/raw/{ch_tok}_v1.md",
+            "target_file": f"manuscript/{vol}/raw/{ch_tok}_v2.md"
+        }
+    elif not status["final"]:
+        curr_stage = "Stage 3B (通俗脱水与扫读优化)"
+        next_action = {
+            "actor": "Stylist",
+            "stage": "Stage 3B",
+            "instruction": "向脱水师 Stylist 下达 Stage 3B 标准工序派发令：减法去油、去冷脸、斩断反刍，落盘法定定稿",
+            "command": f"view_file manuscript/{vol}/raw/{ch_tok}_v2.md",
             "target_file": f"manuscript/{vol}/final/{ch_tok}.md"
         }
-    elif not status["proposal"] or not status["critic"]:
-        curr_stage = "Stage 4 (双轨审计与催更)"
+    elif not status["proposal"] or not status["critic"] or not status["audit"]:
+        curr_stage = "Stage 4 (三轨并发质检)"
         missing = []
         if not status["proposal"]:
             missing.append("Reader (轨A-事实提案)")
         if not status["critic"]:
             missing.append("Critic (轨B-老白催更便签)")
+        if not status["audit"]:
+            missing.append("Auditor (轨C-一致性仲裁报告)")
 
-        if not status["proposal"] and not status["critic"]:
-            actor = "Reader & Critic (双轨并发)"
-            target_f = f"state/inbox/{ch_tok}.json | log/critic/{ch_tok}.md"
-            instruct = "在单次 invoke_subagent 调用中并发唤起 Reader (事实提案) 与 Critic (催更便签)"
+        if not status["proposal"] and not status["critic"] and not status["audit"]:
+            actor = "Reader & Critic & Auditor (三轨并发)"
+            target_f = (f"state/inbox/{ch_tok}.json | log/critic/{ch_tok}.md | "
+                        f"log/audit/{ch_tok}.md")
+            instruct = ("在单次 invoke_subagent 调用中并发唤起 Reader (事实提案)、Critic (催更便签) "
+                        "与 Auditor (双轨仲裁报告)")
+        elif not status["audit"]:
+            actor = "Auditor"
+            target_f = f"log/audit/{ch_tok}.md"
+            instruct = ("向仲裁员 Auditor 下达 Stage 4C 标准工序派发令：跑 "
+                        "`studio audit --write` 生成带 front-matter 的仲裁报告并补写裁决"
+                        "（Stage 5 闸门必需）")
         elif not status["proposal"]:
             actor = "Reader"
             target_f = f"state/inbox/{ch_tok}.json"
@@ -653,8 +698,11 @@ def build_cockpit_briefing(book: Path, ch: str | None = None) -> dict[str, Any]:
             "actor": actor,
             "stage": "Stage 4",
             "instruction": instruct,
-            "command": f"view_file manuscript/{vol}/final/{ch_tok}.md",
-            "target_file": target_f
+            "command": (f"python studio.py audit {ch_tok} --write"
+                        if not status["audit"]
+                        else f"view_file manuscript/{vol}/final/{ch_tok}.md"),
+            "target_file": target_f,
+            **({"missing": missing} if missing else {})
         }
     else:
         curr_stage = "Stage 5 (状态同步与快照)"
@@ -827,14 +875,22 @@ def render_cockpit_terminal(briefing: dict[str, Any]) -> None:
         # 1. 工作流看板
         st_beats = "✅" if st["beats"] else "⭕"
         st_raw = "✅" if st["raw"] else "⭕"
+        st_raw2 = "✅" if st.get("raw_v2") else "⭕"
         st_final = "✅" if st["final"] else "⭕"
         st_prop = "✅" if st["proposal"] else "⭕"
         st_crit = "✅" if st["critic"] else "⭕"
+        # 仲裁看板带状态后缀：缺报告 / 缺 front-matter / 硬矛盾未裁决 都要一眼可辨
+        st_audit = "✅" if st.get("audit") else "⭕"
+        _ast = st.get("audit_state", "")
+        _audit_label = {"pass": "✅ 通过", "blocked": "🔴 硬矛盾未裁决",
+                        "no_frontmatter": "❌ 缺 front-matter", "missing": "⭕ 缺报告",
+                        "off": "➖ 已关闭 (audit_mode=off)"}.get(_ast, "⭕ 缺报告")
         st_sync = "✅" if st["synced"] else "⭕"
 
         status_line = (
-            f"细纲 beats: {st_beats}  初稿 raw: {st_raw}  定稿 final: {st_final}  "
-            f"事实提案: {st_prop}  催更便签: {st_crit}  快照同步: {st_sync}"
+            f"细纲 beats: {st_beats}  毛坯 raw_v1: {st_raw}  初修 raw_v2: {st_raw2}  "
+            f"定稿 final: {st_final}  事实提案: {st_prop}  催更便签: {st_crit}\n"
+            f"事实仲裁: {_audit_label}  快照同步: {st_sync}"
         )
 
         wf_text = (

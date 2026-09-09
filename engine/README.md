@@ -10,13 +10,13 @@
 | 模块 / 子包 | 核心职责 | 强援技术接入 |
 |---|---|---|
 | `models/` | 状态机领域对象与语义原子补丁强类型模型 | **Pydantic V2**（严格禁止未知键注入 `extra='forbid'`，支持 `SemanticEntityPatch`） |
-| `cli.py` | 29 命令薄壳调度：参数解析 + help 目录 + `main`（命令实现下沉至 `commands/`） | argparse |
+| `cli.py` | 30 命令名（29 个处理函数，`check`/`doctor` 共用 `cmd_check`）薄壳调度：参数解析 + help 目录 + `main`（命令实现下沉至 `commands/`） | argparse |
 | `commands/` | 命令实现层五模块：`book_setup`（init/status/cockpit/config/errcodes/lore）、`chapter_flow`（pack/beats/evidence/check/review/critic/graph/export/audit/index + ask/pov/calendar 只读取证）、`state_sync`（sync/proposal/snapshot/checkpoint/state/ledger/milestone）、`recall`（残酷四问自证）、`simulate`（剧情推演沙盒）；共享助手在 `_shared` | **Rich**（高保真圆角面板、彩色 Markdown 渲染、老白读者评分卡与状态流） |
 | `cockpit.py` | 主控态势驾驶舱：工作流导航、戏剧动力学（余震/悬顶危机/信息差机锋）、伏笔暗线分类雷达、角色活跃度与自愈处方 | 确定性聚合（秒级出报） |
 | `audit.py` | 确定性机械审计探针：**8大探针**（不可逆事实违背/在场与死亡/道具充能/金额一致/知情差泄露/认知差冲突/别名漂移/称谓与修饰词对账 `address_mismatch`） | 确定性跨域比对算法 |
 | `db.py` | SQLite3 双平面投影与 FTS5 检索加速：BM25 段落级语义召回与角色 POV 聚合（支持优雅降级） | **sqlite3**（FTS5 全文索引）+ **jieba**（专名切词） |
 | `migrations.py` | 状态机版本化与迁移器：`state/state_schema.json` 版本戳；老书首次读取自动迁移（迁移前强制快照 + 闸门预验 + JSONL 审计日志 `state/migrations.log`）；只修结构不碰事实 | 快照回滚双保险 |
-| `errcodes.py` | 错误码注册表：全部体检码的 severity/人话解释/修复建议（`python studio.py errcodes`，--json 供 Agent 自助修复，含 `entity_id_duplicate` 探针）；`checks.DEFAULT_REMEDIES` 由它派生 | 单一真源 |
+| `errcodes.py` | 错误码注册表：全部体检码的 level/人话解释/修复建议（`python studio.py errcodes`，--json 供 Agent 自助修复，含 `entity_id_duplicate` 探针）；`checks.DEFAULT_REMEDIES` 由它派生 | 单一真源 |
 | `graph.py` | 实体拓扑与叙事中介寻路分析（`studio graph`） | **NetworkX**（最短破局链路、中介中心度排名、孤立资产排查） |
 | `common.py` | 工作区定位、章节号解析、front-matter、原子写、Windows 并发重试、规范哈希 | 标准库（Windows 重试微退避机制，四层回滚保护） |
 | `state.py` | 八表真值管理（含 locked/cognition）、**双键实体寻址合并（ID优先）**、语义补丁合并、复式记账重算、幂等登记簿、落盘前一致性体检、高危状态迁移守卫与时间线回退警示（advisory） | 确定性复式平衡算法与实体关系闭合校验 |
@@ -34,7 +34,9 @@
 - **退出码**：
   - `0` = 成功 (OK)；
   - `1` = 业务阻断（体检 errors、数据校验失败、硬闸门拦截）；
-  - `2` = 用法错误（参数不合法、非法章号）。
+  - `2` = 用法错误（参数不合法、非法章号）；
+  - `3` = 运行环境缺依赖（引擎 import 期即失败；`studio.py` 会打印缺失模块与
+    安装命令，不再抛裸 traceback——环境问题必须与业务阻断区分开）。
 
 ---
  
@@ -96,7 +98,7 @@
 
 ```bash
 python studio.py lore list [-w BOOK]                         # 全量查看已注册实体 ID、名称与卡片状态
-python studio.py lore entity <id/name> [-w BOOK]             # 穿透调阅实体 13 大物理属性与关联卡片
+python studio.py lore entity <id/name> [-w BOOK]             # 穿透调阅实体全息档案（位阶/标尺/物象/阵营/称谓矩阵…）与关联卡片
 python studio.py lore compare <idA/nameA> <idB/nameB>        # 秒级对校两实体阶梯差距与法定互称矩阵
 python studio.py lore scale [-w BOOK]                        # 查看战力/实力位阶实物破坏力标尺
 python studio.py lore rules [-w BOOK]                        # 查看世界运转物理与逻辑公理

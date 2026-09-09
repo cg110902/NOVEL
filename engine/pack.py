@@ -10,6 +10,7 @@ import re
 from pathlib import Path
 
 from . import common, evidence, state
+from .models.entities import LOCATION_TYPES
 
 try:
     import networkx as nx
@@ -510,7 +511,7 @@ def build_pack(book: Path, ch: str, lean: bool = False, full: bool = False) -> d
         for name, aliases in lookup.items():
             if name not in seen_names and any(a in loc_str for a in aliases):
                 ent = next((e for e in cur["entities"].get("entries", []) if e.get("name") == name), None)
-                if ent and ent.get("type") == "place":
+                if ent and ent.get("type") in LOCATION_TYPES:
                     raw_hits.append((False, True, 1, name))
                     seen_names.add(name)
 
@@ -602,13 +603,20 @@ def build_pack(book: Path, ch: str, lean: bool = False, full: bool = False) -> d
                     continue
         finals = evidence.final_chapters(book)
         window = [c for c in finals if c[1] < ch_num][-POINTER_WINDOW:]
-        for name in sorted(hits):
-            marks = []
-            for tok, _, text in window:
-                c = sum(evidence.count_aliases(text, lookup[name]).values())
-                if c:
-                    marks.append(f"{tok}×{c}")
-            p2["old_chapter_pointers"].append(f"{name}: " + (", ".join(marks) if marks else "近10章未出现"))
+        # 首章（或前面还没有任何定稿）时窗口为空，此前一律渲染成「近10章未出现」——
+        # 把「尚无历史可比」说成「历史里查无此人」，是误导性的冷索引噪声。
+        if not window:
+            p2["old_chapter_pointers"].append(
+                f"（本章之前尚无已定稿章节，无历史出处可比；POINTER_WINDOW={POINTER_WINDOW} 自本章起累计）")
+        else:
+            for name in sorted(hits):
+                marks = []
+                for tok, _, text in window:
+                    c = sum(evidence.count_aliases(text, lookup[name]).values())
+                    if c:
+                        marks.append(f"{tok}×{c}")
+                p2["old_chapter_pointers"].append(
+                    f"{name}: " + (", ".join(marks) if marks else f"近{len(window)}章未出现"))
         payload["p2"] = p2
 
     texts = {layer: payload[layer] for layer in ("p0", "p1", "p2")}
@@ -765,15 +773,43 @@ ROLE_DENY: dict[str, tuple[str, ...]] = {
     "reader": ("state/", "bible/", "characters/"),
     # 催更员：禁 outlines/*、raw/*、bible/*、characters/*、log/*；state 仅 current.json
     "critic": ("outlines/", "bible/", "characters/", "state/", "log/"),
+    # ---- 以下为 V3.1 新增角色（此前不在表内 → pack --as 合法选项被网关一律拒绝）----
+    # 架构师（Stage 0/演进）：全局设定层，禁读成稿与日志（其职责是设定真值，不是正文）
+    "architect": ("manuscript/", "log/", "snapshots/"),
+    # 脱水师（Stage 3B）：只看 beats + raw_v2 + 文风宪法；禁 state/卡片/日志。
+    # bible/ 同理整体禁读——只有 06_style_guidelines.md 走白名单例外。
+    "stylist": ("state/", "bible/", "characters/", "entities/", "log/", "snapshots/"),
+    # 仲裁员（Stage 4C）：只看定稿 + beats + locked/current/entities 三表；禁 raw/bible/卡片。
+    # ⚠️ state/ 必须整体禁读，否则 ROLE_ALLOW_EXTRA 的三表白名单形同虚设
+    # （前缀没禁，白名单就成了摆设，ledger/timeline/cognition 一样读得到）。
+    "auditor": ("state/", "bible/", "characters/", "entities/", "snapshots/"),
+    # 图书管理员：只看近 10 章定稿 + 四张台账；禁大纲/bible/卡片/日志/草稿（state/ 同理整体禁读）
+    "librarian": ("state/", "outlines/", "bible/", "characters/", "entities/",
+                  "log/", "snapshots/"),
+    # 演进员（跨卷改版）：与主控同权，engine/* 由 safe_child_path 兜底
+    "evolver": (),
 }
 # 路径「段」级禁读（前缀表达不了的，如 manuscript/vol_XX/raw/*）
 ROLE_DENY_SEGMENT: dict[str, tuple[str, ...]] = {
     "reader": ("/raw/",),
     "critic": ("/raw/",),
+    "auditor": ("/raw/",),
+    "librarian": ("/raw/",),
 }
 # critic 的唯一 state 例外（前情记忆）
 ROLE_ALLOW_EXTRA: dict[str, tuple[str, ...]] = {
     "critic": ("state/current.json",),
+    # Reader 准读清单第 3 项：state/entities.json 仅用于核对既有实体物理 ID，防新赋 ID 碰撞
+    "reader": ("state/entities.json",),
+    # Editor / Stylist 准读清单第 3 项：全书文风宪法（此前文档授权、机械层一律拒绝，
+    # 「双层防御」名不副实——真按网关走 Editor 连文风宪法都拿不到）
+    "editor": ("bible/06_style_guidelines.md",),
+    "stylist": ("bible/06_style_guidelines.md",),
+    # Auditor 的三张事实台账（准读清单第 3~5 项）
+    "auditor": ("state/locked.json", "state/current.json", "state/entities.json"),
+    # Librarian 的四张台账（准读清单第 2~5 项）
+    "librarian": ("state/entities.json", "state/lines.json",
+                  "state/locked.json", "state/ledger.json"),
 }
 
 

@@ -12,14 +12,23 @@ Novel Studio 是专为网络小说多智能体协同深度定制的创作流水�
 > 状态唯一真值 = `state/` 八表（含不可逆事实表与认知差表）；
 > 一致性由引擎机械闸门与 Auditor 双轨核验兜底。
 
+> 🧰 **【开工前置：运行环境】**：引擎依赖 5 个第三方库，缺失时 `studio.py` 会在启动瞬间
+> 打印缺失模块与安装命令并以退出码 `3` 退出（不是业务问题，不要去改书）。
+> ```bash
+> python -m pip install -r requirements.txt   # pydantic / jieba / networkx / rich / rapidfuzz
+> python studio.py --version                   # 自检：应打印 novel-studio 3.x
+> ```
+> 用虚拟环境时务必用该环境的 python 跑（`.venv/bin/python studio.py …`），
+> 否则会拿系统解释器去找依赖。退出码契约：`0` 正常 / `1` 业务阻断 / `2` 用法错 / `3` 环境缺依赖。
+
 ---
 
 ## 一、 技术底座速览（黑盒边界）
 
 以下能力全部封装在确定性引擎（`engine/`，黑盒）内，各角色只经 CLI 消费、禁知实现源码：
 
-- **强类型状态机**：Pydantic V2 八表真值（current / entities / lines / timeline / ledger / synopsis / locked / cognition）；提案（proposal）为唯一写入口，过 schema 校验、引文柔性接地、幂等登记、复式记账重算四道闸；
-- **命令面（29 个生产指令）**：`python studio.py help --json` 是命令目录、阶段配方与退出码契约的唯一自查入口——含 lore 底层词典与实体知识库速查对账、cockpit 态势驾驶舱、check 事实体检、audit 确定性机械探针、recall 残酷四问自证、simulate 剧情推演沙盒、milestone 主线里程碑管理、sync 状态封存、ledger recompute 账本修复、snapshot 回滚等；
+- **强类型状态机**：Pydantic V2 八表真值（current / entities / lines / timeline / ledger / synopsis / locked / cognition）；提案（proposal）为**章节事实增量**的唯一写入口，过 schema 校验、引文柔性接地、幂等登记、复式记账重算四道闸（设定层例外：Stage 0 建书播种与跨卷改版由 architect/evolver 直接写 `state/*.json`；每次 sync 会对八表盖章 SHA-256，绕过提案的离线手改由 `check` 的 `state_offline_edit` 档指名报出）；
+- **命令面（30 个命令名 / 29 个处理函数）**：`python studio.py help --json` 是命令目录、阶段配方与退出码契约的唯一自查入口——含 lore 底层词典与实体知识库速查对账、cockpit 态势驾驶舱、check 事实体检、audit 确定性机械探针、recall 残酷四问自证、simulate 剧情推演沙盒、milestone 主线里程碑管理、sync 状态封存、ledger recompute 账本修复、snapshot 回滚等；
 - **强援库**：jieba（专名与词频）、networkx（实体拓扑寻路）、rapidfuzz（引文模糊接地）、rich（终端渲染）、sqlite3（FTS5 检索加速）。
 
 ---
@@ -37,7 +46,7 @@ Novel Studio 是专为网络小说多智能体协同深度定制的创作流水�
 | **脱水师 (Stylist)** | 原生子代理 | Stage 3B | **通俗脱水、去冷脸与扫读优化**：以极度易读、方便扫读、通俗直白为导向；首行规范输出章题；以 `06_style_guidelines.md` 为基线，**负责做足减法与表情动作去僵化**（切除动作后反刍总结、消除主角冷脸与神色淡然套路、比喻脱水白描化、确保遣词造句自然准确），直接落盘全书法定定稿 `final/ch_XXX.md`。 |
 | **审计员 (Reader)** | 原生子代理 | Stage 4 (并行轨 A) | **精益事实审计与动态演进提取**：以 final 为唯一事实源，客观提取核心事实（现场在场、动态关系与称谓演进、关键新实体、线索动作、大额收支、不可逆事实），装配严格符合 Pydantic V2 Schema 的标准增量提案 JSON (`state/inbox/ch_XXX.json`)。 |
 | **催更员 (Critic)** | 原生子代理 | Stage 4 (并行轨 B) | **追更老白催更便签（专供下章参考）**：扮演十年老白追更读者盲审 final 正文，评估疲劳度与活人感，输出 200~500 字催更便签 `log/critic/ch_XXX.md`，直供下章细纲构思。落盘即交卷。 |
-| **仲裁员 (Auditor)** | 原生子代理 | Stage 4 (并行轨 C) | **双轨一致性仲裁（机械探针+细纲语义清单）**：基于引擎 `audit` 输出的 8 大确定性机械探针，结合细纲预提炼清单逐行对校称谓、修饰词漂移检查，输出仲裁报告 `log/audit/ch_XXX.md`。检出 🔴 确凿硬矛盾立即下达定向手术刀修复指令。 |
+| **仲裁员 (Auditor)** | 原生子代理 | Stage 4 (并行轨 C) | **双轨一致性仲裁（机械探针+细纲语义清单）**：先运行 `python studio.py audit ch_XXX --write` 由引擎生成**带 YAML front-matter（`hard`/`soft`/`adjudicated`）的仲裁报告骨架**，再基于 8 大确定性机械探针与细纲预提炼清单逐行对校称谓、修饰词漂移，补写裁决至 `log/audit/ch_XXX.md`（缺 front-matter 将被 Stage 5 闸门拒绝封存）。检出 🔴 确凿硬矛盾立即下达定向手术刀修复指令。 |
 | **图书管理员 (Librarian)** | 原生子代理 | Stage 4D (每10章低频巡查) | **十年长程事实巡检与账目平账**：每 10 章执行一次深度巡检，通读近 10 章定稿，清查遗漏次要实体、法宝道具充能漏扣与生死状态，把修补直接并入当章在途提案 `state/inbox/ch_XXX.json`。 |
 | **重构师 (Evolver)** | 原生子代理 | Stage Evolution (中途随时触发) | **剧情外科主任与演进重构总监**：专职承接人类作者全生命周期中途提出的**任何变更诉求**（改设定、改历史正文段落、改人物设定、改事件因果、开辟新卷地图等）。负责波及面测算、快照先行、跨层手术刀修改与八表平账（`ledger recompute`, `check`）。独立沙盒运行，落盘即交卷。 |
 
@@ -55,9 +64,13 @@ graph TD
     S3B --> S4A["Stage 4A: 事实审计<br/>(Reader: 增量状态与动态演进提案)"]
     S3B --> S4B["Stage 4B: 催更便签<br/>(Critic: 读者体感+期待)"]
     S3B --> S4C["Stage 4C: 双轨一致性仲裁<br/>(Auditor: 机械探针+细纲语义清单拦截)"]
-    S4C -. "🔴 确凿硬矛盾/称谓漂移" .-> S3Patch["定向手术刀修复<br/>(Stylist: 仅精准替换冲突单行)"]
-    S3Patch --> S4A
+    S4C -. "🔴 确凿硬矛盾/称谓漂移" .-> S4Patch["定向手术刀修复<br/>(Stylist: 仅精准替换冲突单行)"]
+    S4Patch -. "修复后必须复审：重跑 audit --write<br/>(硬矛盾段落未变则沿用既有 adjudicated)" .-> S4C
+    S4Patch --> S4A
     S4A --> S5["Stage 5: 状态同步与动态基准更新<br/>(主控: 原子合并/封存快照/新状态生效)"]
+    S5 --> S4D["Stage 4D: 长程事实巡检（每 10 章一次）<br/>(Librarian: 近 10 章定稿 vs 四张台账平账)"]
+    S4D -. "遗漏实体/漏扣充能/生死错账并入在途提案" .-> S5
+    S4Patch -. "已知取舍：Critic 便签不随手术刀重跑" .-> S4B
     S4B -. "下章参考便签" .-> S1
     S5 --> S6["🎉 最终成品交付: final/ch_XXX.md<br/>(交付作者终审)"]
 

@@ -102,7 +102,7 @@ description: Universal director, chief playwright, and pipeline orchestrator for
 ### 准备：事实与称谓对账
 运行 `python studio.py beats new ch_XXX --write -w "workspace/<书名>"` 生成脚手架，借助 CLI 速查对账：
 - `python studio.py lore compare <idA/角色A> <idB/角色B>`：核对位阶差距与法定互称；
-- `python studio.py lore entity <id/实体名>`：调阅关键实体的 13 大物理属性；
+- `python studio.py lore entity <id/实体名>`：穿透调阅关键实体的全息档案（位阶/破坏力标尺/视觉物象/阵营/法定称谓对账表等，按实体实际填写情况渲染；模型共 33 个字段）；
 - `python studio.py ask "<线索或事件>"`：确认前情事实原句出处。
 
 ### 核心四步破局心法（事线破局 + 情线微澜 · 全题材通用）

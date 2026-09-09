@@ -1,9 +1,11 @@
-"""CLI 薄壳：28 命令参数解析与总调度；命令实现分置于 engine/commands/* 五模块。
+"""CLI 薄壳：30 个命令名（29 个处理函数，check 与 doctor 共用 cmd_check）参数解析与总调度；
+命令实现分置于 engine/commands/* 五模块。命令目录的唯一自查入口是 `python studio.py help --json`。
 
-status / init / cockpit / pack / evidence / index / check / checkpoint / state / config / sync / snapshot /
-export / proposal / review / beats / critic / graph / errcodes / help / ask / pov / calendar / ledger /
-audit / recall / simulate / milestone。
-退出码：0=ok / 1=阻断（含 check errors、sync 失败）/ 2=用法错。
+status / init / cockpit / pack / evidence / index / check / doctor / checkpoint / state / config /
+sync / snapshot / export / proposal / review / beats / critic / graph / errcodes / help / ask /
+pov / calendar / ledger / audit / recall / simulate / milestone / lore。
+退出码：0=ok / 1=阻断（含 check errors、sync 失败）/ 2=用法错 /
+3=运行环境缺依赖（studio.py 在 import 期兜住并给出安装命令）。
 """
 from __future__ import annotations
 
@@ -11,7 +13,7 @@ import argparse
 import json
 import sys
 
-from . import __version__, common
+from . import __version__, common, pack
 from .commands._shared import _add_common_opts
 from .commands.book_setup import (cmd_config, cmd_cockpit, cmd_errcodes, cmd_init, cmd_status,
                                   cmd_lore)
@@ -35,13 +37,13 @@ COMMAND_HELP = {
     "init": "创建/清理书工作区（脚手架+状态播种+模板槽位实例化）",
     "cockpit": "主控态势驾驶舱：工作流导航 + 戏剧动力学 + 伏笔雷达 + 自愈处方 + 催更雷达",
     "pack": "单章上下文三层装配（P0 热 / P1 别名触发 / P2 冷索引）",
-    "ask": "全书事实检索机（只读取证：别名展开→六表+final 原句双域，带章节出处；写细纲前先问书）",
+    "ask": "全书事实检索机（只读取证：别名展开→八表+final 原句双域，带章节出处；写细纲前先问书）",
     "pov": "角色视角包（档案/持有/关系/出场足迹/他知道与不知道的/未了线——由账本推导，advisory）",
     "calendar": "未来 N 章排产日历（到期线/危机时钟/卷阶段里程碑投影；Stage 1 排产前置参考）",
     "evidence": "机械证据：all|mentions|gaps|names|dup|style|words|file|candidates|prev|index（纯 JSON，零裁决）",
     "index": "SQLite3 双平面投影索引：构建/重建 FTS5 BM25 全文检索与关系表缓存",
     "check": "结构/schema/算术体检（errors 只允许事实级；有 errors 退出码 1；新书 Stage 0 待办不阻断）",
-    "doctor": "全息双核健康体检与问诊（系统运行时健康 + 商业小说叙事健康，含自愈处方）",
+    "doctor": "check 的同义别名（同一处理函数 cmd_check，输出逐字节相同）；习惯叫 doctor 的人用它",
     "checkpoint": "宏观航向校准点（每5章复盘分卷四分位里程碑与主线偏航）",
     "milestone": "主线里程碑管理：list ｜ add（Stage 0 播种主线里程碑与预期达成章节）",
     "state": "状态速查与手术刀纠偏：state show ｜ get <表.字段> ｜ set <表.字段> <值>（如 state get current.time；防真值幻觉）",
@@ -58,7 +60,7 @@ COMMAND_HELP = {
     "recall": "知乎残酷四问 0 Token 机械自证（主要人物知道什么/哪三条不能改/伏笔未兑现/下章红线）",
     "simulate": "剧情推演沙盒与走向假说（impact 因果链测算 ｜ branch 多分支走向参谋件）",
     "graph": "实体拓扑沙盘与叙事中介寻路（NetworkX 强力赋能：path/neighbors/isolated/centrality）",
-    "errcodes": "错误码注册表速查：全部体检码的 severity/解释/修复建议（--json 供 Agent）",
+    "errcodes": "错误码注册表速查：全部体检码的 level/解释/修复建议（--json 供 Agent）",
     "lore": "底层词典与实体知识库速查对账：list（ID总览）｜ entity（实体属性）｜ compare（位阶互称）｜ scale/rules ｜ address",
     "help": "本命令目录与实战配方（--json 供 Agent 解析速查）",
 }
@@ -99,8 +101,10 @@ RECIPES = [
             "python studio.py beats new ch_XXX --write",
             "python studio.py pack ch_XXX",
             "# (Stage 2 Drafter 起草 raw/ch_XXX_v1.md)",
-            "# (Stage 3 Editor 精修 final/ch_XXX.md)",
-            "# (Stage 4 Reader 提案 state/inbox/ch_XXX.json 并行 Critic 评测)",
+            "# (Stage 3A Editor 骨肉重塑 raw/ch_XXX_v2.md)",
+            "# (Stage 3B Stylist 通俗脱水定稿 final/ch_XXX.md)",
+            "# (Stage 4 并发：Reader 提案 state/inbox/ch_XXX.json ｜ Critic 便签 ｜ Auditor 仲裁)",
+            "python studio.py audit ch_XXX --write   # 生成带 front-matter 的仲裁报告（Stage 5 闸门必需）",
             "python studio.py sync ch_XXX",
         ],
     },
@@ -108,7 +112,7 @@ RECIPES = [
         "name": "写作前取证（问书三件套，严禁凭记忆脑补）",
         "stage_flow": "Stage 1",
         "steps": [
-            "python studio.py ask <关键词/实体名/线索ID>   # 全书事实检索：六表+正文原句，带章节出处",
+            "python studio.py ask <关键词/实体名/线索ID>   # 全书事实检索：八表+正文原句，带章节出处",
             "python studio.py pov <角色名>                # 角色视角包：他知道什么/不知道什么/未了线",
             "python studio.py calendar [N]                # 未来 N 章排产日历：到期线/时钟/里程碑",
         ],
@@ -215,7 +219,7 @@ def _build_subparsers(sub: argparse._SubParsersAction) -> None:
                    help="清稿重来（清 raw 草稿与待办提案；保留 final 定稿/圣经/细纲/审计与状态；"
                         "--deep 才连 final 定稿一并清理）")
     q.add_argument("--deep", action="store_true",
-                   help="配合 --clean 使用：连 final 定稿一并删除（状态六表仍保留，事实源将分裂，慎用）")
+                   help="配合 --clean 使用：连 final 定稿一并删除（状态八表仍保留，事实源将分裂，慎用）")
     q.add_argument("--force", action="store_true",
                    help="整本重开（仅限已登记书目录；原书整体移入 workspace/.trash/ 回收区备份，"
                         "不直接删除；确认无需后可手动清理回收区）")
@@ -229,11 +233,12 @@ def _build_subparsers(sub: argparse._SubParsersAction) -> None:
     q.add_argument("--open", dest="open_path",
                    help="取工作区内文件原文（相对路径）；受角色禁读网关约束，默认 --as drafter")
     q.add_argument("--as", dest="as_role", default="drafter",
-                   choices=("architect","director", "drafter", "editor", "reader", "critic"),
-                   help="--open 的准读角色（默认 drafter=最严格；主控用 director 才有全量准读权）")
+                   # 单一真源：直接取读权限网关的角色表，杜绝「choices 合法但网关不认」（P0-3）
+                   choices=tuple(pack.ROLE_DENY),
+                   help="--open 的准读角色（默认 drafter=最严格；主控用 director/evolver 才有全量准读权）")
     q.set_defaults(func=cmd_pack)
 
-    q = sub.add_parser("ask", help="全书事实检索机（只读取证：六表+final 原句双域，带章节出处）")
+    q = sub.add_parser("ask", help="全书事实检索机（只读取证：八表+final 原句双域，带章节出处）")
     _add_common_opts(q)
     q.add_argument("query", help="关键词/实体名/线索ID（如：灵石 / 苏九娘 / GUN-001）")
     q.set_defaults(func=cmd_ask)
@@ -290,11 +295,11 @@ def _build_subparsers(sub: argparse._SubParsersAction) -> None:
     p_br.set_defaults(func=cmd_simulate)
     q.set_defaults(func=cmd_simulate)
 
-    q = sub.add_parser("check", help="全息双核健康体检（errors 只允许事实级）")
+    q = sub.add_parser("check", help="全息双核健康体检：系统运行时健康 + 叙事健康（errors 只允许事实级；doctor 为其别名）")
     _add_common_opts(q)
     q.set_defaults(func=cmd_check)
 
-    q = sub.add_parser("doctor", help="全息双核健康体检与问诊（系统运行时健康 + 商业小说叙事健康，含处方）")
+    q = sub.add_parser("doctor", help="check 的同义别名（同 cmd_check，输出一致）")
     _add_common_opts(q)
     q.set_defaults(func=cmd_check)
 
@@ -523,7 +528,7 @@ def _build_subparsers(sub: argparse._SubParsersAction) -> None:
     q.add_argument("--json", action="store_true")
     q.set_defaults(func=cmd_help)
 
-    q = sub.add_parser("errcodes", help="错误码注册表速查（severity/解释/修复建议）")
+    q = sub.add_parser("errcodes", help="错误码注册表速查（level/解释/修复建议）")
     q.add_argument("-w", "--workspace", default=argparse.SUPPRESS, help=argparse.SUPPRESS)
     q.add_argument("--json", action="store_true", help="结构化 JSON 输出（Agent 首选）")
     q.set_defaults(func=cmd_errcodes)

@@ -1,7 +1,8 @@
 """错误码注册表：Novel Studio 引擎全部体检错误码的机器可读说明书。
 
 定位：这些错误的最终消费者往往是 LLM Agent（主控拿到 `check --json` 后要自助修复），
-因此每个码必须有：severity（错误/警告/提示）、description（一句话人话解释）、
+因此每个码必须有：level（error/warning/info，决定投递到哪条通道）、
+description（一句话人话解释）、
 remedy（可执行的修复建议）。
 
 单一真源约定：
@@ -9,7 +10,9 @@ remedy（可执行的修复建议）。
 - checks.py 源码中出现的每个 `_err("code"` 字面量
   必须已注册，新增错误码漏注册会当场报警。
 
-severity 为数据驱动：按 run_checks 实际把错误码投递到 errors/warnings/infos 哪条通道归类。
+level 为数据驱动：按 run_checks 实际把错误码投递到 errors/warnings/infos 哪条通道归类。
+（字段名是 level，不是 severity——`errcodes --json` 输出的键就是 level/description/
+remedy/code 四个；audit 候选里的 severity=candidate_hard/soft 是另一套东西，勿混。）
 """
 from __future__ import annotations
 
@@ -109,10 +112,16 @@ REGISTRY: dict[str, ErrCode] = {c.code: c for c in (
          "在 state/entities.json 中把冲突别名改为唯一，或改用 aliases 归并到同一实体名下。"),
     _reg("relation_target_unknown", "warning", "实体关系指向未登记的实体（关系图悬空边）",
          "在 state/entities.json 补登目标实体，或修正 relations.target 的名称拼写。"),
+    _reg("entity_ref_unknown", "warning", "实体的 faction/holder/location 指向未登记实体（悬空引用）",
+         "补登被指向的实体（势力用 type=faction、地点用 type=place/location），或修正字段里的名称拼写；"
+         "location 若只是临时场景描述而非固定地点，可忽略本提示。"),
     _reg("entity_card_missing", "warning", "实体登记的卡片文件不存在（建议补齐卡片或修正路径）",
          "检查实体登记的卡片路径，创建对应卡片文件或在 entities.json 中修正 card 字段。"),
     _reg("entity_tier_invalid", "error", "实体的实力位阶 tier_rank 超出合法区间 [1, 12]",
          "将实体的 tier_rank 修正为 1 到 12 之间的整数。"),
+    _reg("item_charges_exhausted", "error", "账本记为耗尽/损毁/退场的道具，正文却出现使用动作",
+         "核对道具是否已在前章消耗完毕：若为新获取的同名道具或残存灵力，请在正文明确交代；"
+         "否则属硬性吃书，需定向修复。判定来源＝charges==0 / status=retired / condition 明示损毁。"),
     _reg("item_charges_overflow", "error", "道具剩余充能 charges 超出设定的上限 max_charges",
          "核实道具充能数值，确保 charges <= max_charges。"),
     _reg("line_action_missing", "warning", "到期/逾期线未在细纲「线动作」栏登记",
@@ -155,6 +164,16 @@ REGISTRY: dict[str, ErrCode] = {c.code: c for c in (
     # ---- 世界圣经版本 ----
     _reg("bible_drift", "info", "世界圣经（project_bible.md）自上次封存后发生改动",
          "有意修订则忽略本提示；涉及世界规则/战力标尺的修订建议在后续 beats 注明适用范围，回溯旧章时对照 state/bible_log.jsonl。"),
+    _reg("ledger_pool_undeclared", "error", "流水引用了未声明的资源池键（账本无此池）",
+         "先建池再记流水：本章合法池键名见 beats 的「💰 资源池与 ID 水位线」小节，"
+         "流水 pool 必须逐字等于其中一个键；确需新池请在提案 ledger.pools 里声明"
+         "（name/unit/initial 三项必填，严禁写 current）。"),
+    _reg("locked_entry_id_reuse", "error", "提案复用既有 LOCK ID 改写不可逆事实（静默改史被拦）",
+         "不可逆事实禁止就地覆写：改写历史请用 action=\"retire\" 留痕后另立新 ID；"
+         "同 ID 同事实属幂等重放会自动跳过；确认要就地覆写请在该条目显式加 \"overwrite\": true。"),
+    _reg("cognition_entry_id_reuse", "error", "提案复用既有 COG ID 改写他人/旧认知（静默覆盖被拦）",
+         "认知修正请另立新 COG ID 保留认知演进链（或直接省略 id 让引擎自动编号）；"
+         "换角色归属一律拒绝；确认要就地覆写请在该条目显式加 \"overwrite\": true。"),
     # ---- 不可逆事实台账 ----
     _reg("locked_injection_missing", "error", "beats 任务书缺少不可逆台账注入小节（防吃书硬闸门）",
          "运行 python studio.py beats new 重新生成细纲脚手架，或手动在 beats 正文中补充「🔒 不可逆事实台账」小节。"),
@@ -167,6 +186,57 @@ REGISTRY: dict[str, ErrCode] = {c.code: c for c in (
          "核查主线里程碑进展；若已完成请在提案更新 status=achieved，若已调整大纲请更新 target_ch。"),
     _reg("subplot_stall", "info", "支线伏笔超过 15 章未有任何推进/提醒",
          "该伏笔/误解已连续 15 章未触碰，建议在后续章节安排提醒（remind_ch）或回收（resolve_ch），防主线跑焦。"),
+    # ---- 定稿字数出带（config guide 承诺的字数闸门）----
+    _reg("word_band_deviation", "warning", "定稿中文字数落在 project.json.words_target 目标带之外（20% 容差内）",
+         "定稿字数出带属可接受偏移：需要严格达标请让 Stylist 在 Stage 3B 增删内容，"
+         "或按本书实际节奏用 python studio.py config set words_target --merge '[下限, 上限]' 校准目标带。"),
+    _reg("word_band_breach", "warning", "定稿中文字数偏离目标带超过 20% 容差（严重出带）",
+         "严重出带会影响读者节奏预期：请让 Stylist 回 Stage 3B 补足/删减到目标带内，"
+         "或确认目标带本身过时后用 config set words_target 校准。字数口径＝中文字符数（与 evidence 一致）。"),
+    _reg("state_offline_edit", "warning", "state 八表在上次封存后被离线改动（绕过提案写入口）",
+         "state/*.json 的法定写入口是提案（sync 合并）：请核对该表改动来源，"
+         "属手改请改走提案通道重跑 sync；属有意修订则重跑 sync 重新盖章消除提示，"
+         "或 snapshot rollback 回到封存时点。"),
+    # ---- proposal verify / sync 前置建议电池（advisory battery）----
+    _reg("quote_missing", "warning", "提案条目缺 quote 原文引证（无法回证到定稿）",
+         "提案的事实条目请补 quote 字段，逐字摘录 final 定稿原句（引擎按引证回校，缺证视为不可核验）。"),
+    _reg("quote_none", "warning", "提案写了 quote 但内容为空或占位",
+         "把 quote 填成 final 定稿中的真实原句，不要用「无」或空串占位。"),
+    _reg("title_mismatch", "warning", "提案 title 与细纲/上一章承接的章标题不一致",
+         "核对 beats 与提案的 title 是否同一章口径；有意改标题请同步更新 beats front-matter。"),
+    _reg("title_absent", "info", "提案未提供 title（引擎将沿用既有章标题）",
+         "如需改标题请在提案补 title；沿用原标题可忽略本提示。"),
+    _reg("beats_overlap", "warning", "提案 synopsis/正文与 beats 细纲措辞高度重叠（疑似抄任务书）",
+         "synopsis 应记录本章实际发生的事实，而不是复制 beats 任务书原句；请改写为成稿事实陈述。"),
+    _reg("due_line_unhandled", "warning", "本章到期线索在提案中没有对应动作",
+         "到期线必须给出处置：在提案 lines 里写 advance/remind/resolve，或在 beats 线动作栏写明顺延理由。"),
+    _reg("candidate_new_entity", "info", "定稿中出现疑似新专名，但未在 entities 建卡",
+         "若确为新实体请在提案 entities 建卡（含 type/summary）；若是误报可忽略，"
+         "或在 state/entities.json 用 aliases 归并到既有实体，避免实体碎片化。"),
+    _reg("critical_mutation", "warning", "提案触发了关键字段的重大变更（如生死/位阶/归属）",
+         "关键状态变更请确认与 beats「预期演变声明」一致，并同步核对 locked 台账与称谓矩阵。"),
+    _reg("state_watch_hit", "info", "提案触碰了受监控的状态字段（watch 名单命中）",
+         "属知情提示：确认该字段变更是本章剧情本意即可；误改请修正提案后重跑 proposal verify。"),
+    _reg("amount_unsupported", "warning", "提案金额变动在定稿中找不到对应引证",
+         "账目流水必须能回证到正文：补 quote 原句，或删掉这笔无出处的流水。"),
+    _reg("amount_by_quote", "info", "金额变动由引证原句推得（引擎按原句读数）",
+         "属知情提示：核对引擎从原句读出的数额与提案 delta 是否一致（中文数字易被读成多笔）。"),
+    _reg("mention_not_present", "info", "正文提及的实体未列入 present_characters",
+         "若该实体确实在场请补进 present_characters；仅被提及/回忆则忽略本提示。"),
+    _reg("present_unmentioned", "warning", "present_characters 声明在场的角色在正文中一次都没出现",
+         "在场名单必须与正文一致：删掉未出场的角色，或在正文补上其在场动作。"),
+    _reg("present_undeclared", "info", "正文有台词/动作的角色未声明在场",
+         "把该角色补进 present_characters（在场是称谓对校与 POV 判定的输入）。"),
+    _reg("power_level_shift", "info", "提案改动了实体位阶/战力标尺",
+         "位阶变更请对齐 bible 战力标尺与 locked 台账，防止战力通胀。"),
+    _reg("aftermath_opening_miss", "info", "上一章章末刀口在本章开头未被承接",
+         "本章开头建议先承接上章物理刀口的余波，再展开新事件（读者连续性）。"),
+    _reg("entities_unreadable", "warning", "entities 状态不可读，提案建议电池相关项已跳过",
+         "检查 state/entities.json 的 JSON 语法并修复后重跑 proposal verify。"),
+    _reg("lines_unreadable", "warning", "lines 状态不可读，线索相关建议项已跳过",
+         "检查 state/lines.json 的 JSON 语法并修复后重跑 proposal verify。"),
+    _reg("ledger_unreadable", "warning", "ledger 状态不可读，账目建议项已跳过",
+         "检查 state/ledger.json 的 JSON 语法并修复，或运行 python studio.py ledger recompute。"),
 )}
 
 LEVELS = ("error", "warning", "info")
