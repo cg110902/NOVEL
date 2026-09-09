@@ -253,3 +253,52 @@ class TestScorecardCurve(unittest.TestCase):
             out = tb.run("check", "--trend")
             self.assertEqual(out.returncode, 0)
             self.assertIn("分数曲线", out.stdout)
+
+
+class TestLockedNoteRequired(unittest.TestCase):
+    """A4：locked.note 提案层必填（存量书不动）。—— R2-c6"""
+
+    def _locked_proposal(self, note=None):
+        item = {"action": "plant", "id": "LOCK-003", "fact": "赵莽死于剑下",
+                "kind": "death", "since_ch": "ch_001", "quote": "赵莽倒在血泊里。"}
+        if note is not None:
+            item["note"] = note
+        return {"schema": "novel-studio.state-mutation/v2", "chapter": "ch_001",
+                "operation_id": "ch_001.reader.locked", "locked": [item]}
+
+    def test_missing_note_rejected_with_rationale(self):
+        errors, _ = state.validate_proposal(self._locked_proposal())
+        self.assertTrue(any("note 必填" in e and "写作红线" in e for e in errors), errors)
+
+    def test_blank_note_rejected(self):
+        errors, _ = state.validate_proposal(self._locked_proposal(note="   "))
+        self.assertTrue(any("note 必填" in e for e in errors), errors)
+
+    def test_valid_note_passes_and_persists(self):
+        with TempBook() as tb:
+            rep = state.apply_proposal(tb.book, self._locked_proposal(note="严禁再次出场，回忆除外"))
+            self.assertEqual(rep["errors"], [], rep["errors"])
+            persisted = tb.state("locked")["entries"]
+            self.assertEqual(len(persisted), 1)
+            self.assertEqual(persisted[0]["note"], "严禁再次出场，回忆除外")
+
+    def test_retire_still_only_needs_reason(self):
+        # 退役通道不受影响：reason 瞬态字段照旧
+        prop = {"schema": "novel-studio.state-mutation/v2", "chapter": "ch_001",
+                "operation_id": "ch_001.reader.retire",
+                "locked": [{"action": "retire", "id": "LOCK-009", "reason": "误登"}]}
+        errors, _ = state.validate_proposal(prop)
+        self.assertFalse(any("note 必填" in e for e in errors), errors)
+
+    def test_legacy_book_without_note_unaffected(self):
+        # 存量兼容：磁盘上无 note 的旧条目，load/check 不得新增错误
+        with TempBook() as tb:
+            tb.set_state("locked", {
+                "schema_version": "novel-studio.locked/v1",
+                "entries": [{"id": "LOCK-001", "fact": "灯铺被烧毁",
+                             "since_ch": "ch_001", "kind": "destruction",
+                             "quote": "门口站着一个人"}]})
+            loaded = state.load_state(tb.book, "locked")  # 不得抛错
+            self.assertEqual(len(loaded["entries"]), 1)
+            out = tb.run_json("check")
+            self.assertNotIn("error", out)

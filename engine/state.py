@@ -143,6 +143,8 @@ ch_007.reader.0901_2125）；`*.draft.json`/`*.template.json`/`*.sample.json` �
  
 
 写提案的纪律：只写增量；事实必须能在本章 final 正文找到出处；不确定就不上账。
+locked 不可逆事实的 note 为必填（写作红线执行提示，如「严禁再次出场，回忆除外」）——
+只记 fact 不记红线，日后判断能否绕过时将无据可依；缺 note 整案拒收。
 current 只写要刷新的字段：缺省/空值＝不修改（引擎跳过空串与空数组，不当作清档）。
 status 只许 active/retired（越界整案回滚进 failed/）；"现状/近况"一律并入 summary——upsert 即覆盖，逐章刷新。
 修订通道（随提案合并，全程留审计痕迹）：
@@ -916,6 +918,14 @@ def validate_proposal(proposal, expected_chapter: str | None = None) -> tuple[li
                 fact = l.get("fact")
                 if not fact or len(str(fact).strip()) < 4:
                     errors.append(f"locked[{i}].fact 至少需要 4 字有效陈述")
+                # note 必填（2025 一致性改造 R2-c6）：不可逆事实的约束力来自
+                # 「后续写作不得如何」，只记 fact 不记红线，日后判断能否绕过时无据可依。
+                # 仅提案层（写入口）强制；存量书与 schema 不动（先例：param_write_guard P2-6）。
+                if not str(l.get("note") or "").strip():
+                    errors.append(
+                        f"locked[{i}].note 必填（写作红线执行提示）：不可逆事实的约束力来自"
+                        f"「后续写作不得如何」，只记 fact 不记红线，日后判断能否绕过时将无据可依。"
+                        f"示例：「严禁再次出场，回忆除外」")
                 kind = l.get("kind")
                 # 与 models.locked.LockedKind / schemas/locked.schema.json 全量对齐（7 类），
                 # 此前闸门只放行 4 类，destruction/disbandment/pact 被误杀

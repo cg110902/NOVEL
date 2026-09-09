@@ -65,7 +65,8 @@ description: Universal factual auditor and state proposal generator for Novel St
       "fact": "确凿不可逆事实（注意：若 kind 为 death，文本内只能出现死者本人名字，严禁出现生者名字，以防误判）",
       "kind": "irreversible_action",
       "since_ch": "ch_XXX",
-      "quote": "final 正文支撑句"
+      "quote": "final 正文支撑句",
+      "note": "写作红线执行提示（必填）：后续写作不得如何，如「严禁再次出场，回忆除外」"
     }
   ],
   "entities": [
