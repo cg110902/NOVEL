@@ -99,6 +99,9 @@ REGISTRY: dict[str, ErrCode] = {c.code: c for c in (
     _reg("line_never_surfaced", "warning", "线索已登记入账，但正文中从未真正出现过",
          "该线只存在于台账、读者从未读到。请先在正文中把它写实（哪怕一句侧写），"
          "否则日后回收等于凭空兑现。若确不打算写，请用 resolve/retire 收掉该条。"),
+    _reg("voiceprint_drift", "info",
+        "角色对白声纹（句长/语气词/口头禅）近窗偏离自身基线，腔调漂移",
+        "重读该角色早期对白找回腔调落点；若角色有意转变（成长/黑化），在 beats 写明 form_reason 即可忽略"),
     _reg("locked_fact_untraceable", "info",
         "locked 新条目的 fact 不含任何已登记实体名/别名，读者记忆层无法追踪（闸门 3 盲区）",
         "把相关实体名写进 fact（如「张三」而非「那人」）；若确为无实体全局事件，可忽略本提示"),

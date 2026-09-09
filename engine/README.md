@@ -21,6 +21,7 @@
 | `common.py` | 工作区定位、章节号解析、front-matter、原子写、Windows 并发重试、规范哈希 | 标准库（Windows 重试微退避机制，四层回滚保护） |
 | `state.py` | 八表真值管理（含 locked/cognition）、**双键实体寻址合并（ID优先）**、语义补丁合并、复式记账重算、幂等登记簿、落盘前一致性体检、高危状态迁移守卫与时间线回退警示（advisory） | 确定性复式平衡算法与实体关系闭合校验 |
 | `rollup.py` | 卷级态势摘要层：`state/rollups/vol_XX.json` 从当前八表确定性派生（零 Token 纯算术）；`prior_volumes_digest` 供 pack p0 注入「前情卷末态势」（≤500 token，超限按优先级尾部裁剪），装配成本 O(当前卷)；与 snapshot（精确回滚点）/changelog（字段级事件史）三分：rollup 是写作上下文用粗粒度态势 | 标准库 |
+| `voiceprint.py` | 对白声纹层：引号段抽取 + 说话人归属启发式（宁漏报不误报）→ 每主要角色滚动基线（口头禅 n-gram（jieba）/ 句长 / 语气词密度）→ 近窗偏离出 `voiceprint_drift`（info，只测「怎么说话」不测人设）；阈值走 PARAM_SPEC `voiceprint` 键 | jieba（已在栈内） |
 | `changelog.py` | 事件溯源层：`state/changelog.jsonl` 字段级变更事件流（save_state 唯一写入咽喉自动派生；外部改动 load 时自动补录；快照回滚不清空历史而是记为事件）；`fold(base, events) == 磁盘` 核心不变量供 verify 对账；`state at <章>`（时点切面）/ `state diff` / `state blame`（字段级溯源）由本模块直接供底 | 标准库（追加式 JSONL + 规范哈希） |
 | `validator.py` + `schemas/` | mini JSON Schema 子集机械校验器（load/save 读写闸门 + 提案顶层）；`schemas/*.json` 为**构建产物**，由 `models/schema_gen.py` 从 Pydantic 模型生成（`python -m engine.models.schema_gen`），anyOf 失败时报告最接近分支的具体错误 | 模型唯一真源 + 闸门补丁层（落盘必完整） |
 | `checks.py` | 叙事 AST 编译器体检、伏笔饥饿告警 (`plotline_starvation`)、引文接地柔性容错、MIS/KNO 配额执法、bible 版本盖章对照 (`bible_drift`)、实体 ID 重复校验 (`entity_id_duplicate`) | **RapidFuzz**（引文模糊接地，消除语气助词偏差误报） |

@@ -32,8 +32,10 @@ Novel Studio 是专为网络小说多智能体协同深度定制的创作流水�
 state rollup 卷末态势摘要（pack 前情注入源）、reconcile 卷末对账大修（机械复扫+投影 diff 工作单）、
 check --trend 分数曲线 / --bisect 快照二分等；
 - **读者记忆轴（advisory）**：以正文落笔史推导读者印象——线温分层（hot/warm/cold，阈值按 weight 缩放）、
-零落笔线（line_never_surfaced）、冷线计划回收提醒（line_recall_cold）、关键事实久未重现（locked/已揭示 knowledge）；
-全部 warning 级提醒不阻断，阈值走 `project.json` 的 `reader_memory` 键（PARAM_SPEC 单一真源）；
+零落笔线（line_never_surfaced）、冷线计划回收提醒（line_recall_cold，pack/beats 侧另有「先锚定再兑现」操作提示）、
+关键事实久未重现（locked/已揭示 knowledge）、对白声纹漂移（voiceprint_drift：句长/语气词/口头禅，
+只测「怎么说话」不测人设）；全部不阻断，阈值走 `project.json` 的 `reader_memory` / `voiceprint` 键
+（PARAM_SPEC 单一真源）；
 - **规模经济**：changelog 事件溯源（state at 重放任意章切面 / blame 字段级溯源 / external_edit 自愈补录）、
 卷级 rollup（前情态势 ≤500 token 注入 pack，装配成本 O(当前卷)）、卷末 reconcile 对账大修（投影误差的周期性维护）；
 - **强援库**：jieba（专名与词频）、networkx（实体拓扑寻路）、rapidfuzz（引文模糊接地）、rich（终端渲染）、sqlite3（FTS5 检索加速）。

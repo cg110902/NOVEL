@@ -629,6 +629,12 @@ PARAM_SPEC: dict[str, dict] = {
         "desc": "位阶单调性探针（tier_shift_without_event）的事件匹配窗口：位阶变更章"
                 "±N 章内需有提及该实体的突破/被废类 timeline 事件。默认 1；0=严格同章。",
         "example": 1},
+    "voiceprint": {"shape": "voiceprint_map", "gap": False,
+        "desc": "对白声纹漂移检测阈值 {min_lines, recent_lines, window, len_shift, "
+                "mood_shift, sig_min_count}（check voiceprint_drift 档，info 级）。"
+                "基线最少对白条数 / 近窗最少条数 / 观察窗章数 / 句长偏离比 / 语气词变化倍数 / "
+                "口头禅入选次数。均可不配走默认。",
+        "example": {"min_lines": 12, "recent_lines": 4, "window": 6}},
     "reader_memory": {"shape": "mem_map", "gap": False,
         "desc": "读者记忆派生阈值 {working_window, fuzzy_window, cold_line_base, "
                 "cold_line_per_weight}。工作记忆窗口 / 模糊记忆边界（超过即入印象区）/ "
@@ -794,6 +800,15 @@ def validate_param_value(key: str, value) -> str | None:
     elif shape == "nonneg_int":
         if not isinstance(value, int) or isinstance(value, bool) or value < 0:
             return f"「{key}」必须为非负整数（形状示例：{eg}）"
+    elif shape == "voiceprint_map":
+        allowed_keys = {"min_lines", "recent_lines", "window", "len_shift",
+                        "mood_shift", "sig_min_count"}
+        if (not isinstance(value, dict) or not value
+                or any(not isinstance(k, str) or k not in allowed_keys
+                       or not isinstance(v, (int, float)) or isinstance(v, bool) or v <= 0
+                       for k, v in value.items())):
+            return (f"「{key}」必须是 阈值键→正数 的对象"
+                    f"（合法键 {sorted(allowed_keys)}，形状示例：{eg}）")
     elif shape == "mem_map":
         allowed_keys = {"working_window", "fuzzy_window",
                         "cold_line_base", "cold_line_per_weight"}
@@ -1524,6 +1539,21 @@ def run_checks(book: Path) -> dict:
             "line_never_surfaced",
             f"{_r['id']}《{_r['label']}》已登记入账（plant ch_{(_r['plant_ch'] or 0):03d}），"
             f"但正文从未出现过——读者压根没见过这条线，日后回收等于凭空兑现"))
+    # 声纹漂移（C2，info）：只测「怎么说话」（句长/语气词/口头禅），不测人设对错。
+    # 样本不足的角色不判定——宁漏报不误报（启发式归属，详见 voiceprint.py 局限清单）。
+    try:
+        from . import voiceprint as vp_mod
+        _vp = vp_mod.voiceprint_report(book)
+        for _c in _vp["characters"]:
+            if _c["drift_reasons"]:
+                infos.append(_err(
+                    "voiceprint_drift",
+                    f"{_c['name']} 的对白声纹近 {_vp['window']} 章偏离基线："
+                    f"{'；'.join(_c['drift_reasons'])}——腔调漂移易让读者觉得「换了个人在说话」，"
+                    f"建议重读该角色早期对白找回落点（info 级提示，机械只测形式不测人设）"))
+    except (ValueError, OSError):
+        pass
+
     # 闸门 3：已声明重要的事实（locked + 已揭示 knowledge）久未重现，进入读者印象区。
     # 范围严格限定这两个集合（书自己声明为重要的），不对全部认知条目生效——
     # 否则一次性事实会刷屏。locked.fact 不含已登记专名时提词退化 → 漏报（不是误报），
