@@ -1,11 +1,24 @@
 """check：结构 + schema + 算术体检（吸收旧 doctor/verify/audit；errors 只允许事实级）。
 
 语义红线 ：
-- errors：可机械判定必须修复的事实——schema 违规、引用未登记实体、章号断档、占位符未填、
-  同 form 无理由、账本重算不符（state.verify_state）。
-- warnings：算术数出来的偏离事实（字数出带、线逾期、tics 命中、form 占比超 40%）——只报数，
+- errors：可机械判定、必须修复的事实——schema 违规、present_characters 引用未登记实体
+  （unregistered_character）、章号断档、占位符未填、同 form 无理由、账本重算不符
+  （state.verify_state）、锁台账生命状态冲突、因果前置倒挂/成环。
+- warnings：算术数出来的偏离事实（字数出带、线逾期、tension 连击、form 占比超 40%）——
   是否修、怎么修由主控决定。
-- 两个桶里都不许出现「建议/疑似/不宜」等判断词；本模块零写入。
+- infos：事实性提示与流程留痕（final 无 raw/beats、候选新专名、境界首次登记等）。
+
+两处与旧措辞的差别，按实现如实记录，勿再写回：
+1) 「引用未登记实体」并非一律 errors。只有 current.present_characters 指向未登记实体是
+   error（unregistered_character）；实体卡的 faction/holder/location 与 relations.target
+   悬空是 warning（entity_ref_unknown / relation_target_unknown）——后者可能只是临时场景
+   描述或未建卡的合法写法，机械判定不足以定性为错误。
+2) 旧措辞称「两个桶都不许出现建议/疑似/不宜等判断词」，与实现不符：实测 24 处 msg 含这些词
+   （error 级 1 处 manuscript_truncation，warning 级 14 码，info 级 3 码）。这是有意的——
+   启发式判定（截断、重叠、失焦）本就该带不确定性措辞，warnings/infos 给出可执行方向也确实
+   有用。真正的红线是：errors 桶只收机械可判定的事实，不把语义裁决塞进去。
+
+本模块零写入。
 """
 from __future__ import annotations
 

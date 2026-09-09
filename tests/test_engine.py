@@ -1085,3 +1085,70 @@ class TestErrcodeFieldNaming(unittest.TestCase):
                     offenders.append(f"{rel}:{i}: {line.strip()[:90]}")
         self.assertEqual(offenders, [],
                          "以下位置仍把 errcodes 的分级字段写成 severity:\n" + "\n".join(offenders))
+
+
+class TestChecksDocstringAccuracy(unittest.TestCase):
+    """checks.py 模块自述不得再宣称与实现相反的两条「语义红线」。
+
+    旧自述：① errors 含「引用未登记实体」；② 两个桶都不许出现建议/疑似/不宜。
+    实测：① 只有 unregistered_character 是 error，实体卡 faction/holder/location 与
+    relations.target 悬空都是 warning；② 24 处 msg 含这些词（启发式判定本就该带不确定
+    性措辞）。自述已按实现更正，此处锁住不许写回。
+    """
+
+    DOC = (Path(__file__).resolve().parents[1] / "engine" / "checks.py").read_text(
+        encoding="utf-8").split('"""')[1]
+
+    def test_dangling_ref_levels_match_docstring(self):
+        self.assertEqual(errcodes.REGISTRY["unregistered_character"].level, "error",
+                         "present_characters 悬空必须是 error")
+        for code in ("entity_ref_unknown", "relation_target_unknown"):
+            self.assertEqual(errcodes.REGISTRY[code].level, "warning",
+                             f"{code} 是 warning，自述不得把它归入 errors")
+
+    def test_docstring_no_longer_claims_blanket_judgment_word_ban(self):
+        self.assertNotIn("两个桶里都不许出现", self.DOC,
+                         "该措辞与实现不符（实测 24 处 msg 含判断词），已删除，勿写回")
+
+    def test_judgment_words_confined_to_advisory_levels(self):
+        """真正的红线：判断词可以出现在 warning/info，但 errors 桶只收机械事实。
+
+        manuscript_truncation 是唯一带「疑似」的 error 级码——它靠标点/连接词启发式
+        推断截断，措辞保留不确定性是合理的；此处把它作为已知例外显式记录，
+        将来若有第二个 error 级启发式码混进来，测试会要求显式承认。
+        """
+        import ast as _ast
+        import pathlib as _pl
+
+        def _lit(node):
+            if isinstance(node, _ast.Constant) and isinstance(node.value, str):
+                return node.value
+            if isinstance(node, _ast.JoinedStr):
+                return "".join(v.value for v in node.values
+                               if isinstance(v, _ast.Constant) and isinstance(v.value, str))
+            if isinstance(node, _ast.BinOp):
+                return _lit(node.left) + _lit(node.right)
+            return ""
+
+        src = _pl.Path(__file__).resolve().parents[1] / "engine" / "checks.py"
+        tree = _ast.parse(src.read_text(encoding="utf-8"))
+        hedged = set()
+        for node in _ast.walk(tree):
+            if not isinstance(node, _ast.Call):
+                continue
+            fn = node.func
+            nm = fn.id if isinstance(fn, _ast.Name) else (
+                fn.attr if isinstance(fn, _ast.Attribute) else "")
+            a = node.args
+            if nm == "_err" and len(a) >= 2:
+                code, msg = _lit(a[0]), _lit(a[1])
+            elif nm == "add" and len(a) >= 3:
+                code, msg = _lit(a[1]), _lit(a[2])
+            else:
+                continue
+            if any(w in msg for w in ("建议", "疑似", "不宜")) and code:
+                hedged.add(code)
+        err_hedged = {c for c in hedged
+                      if errcodes.REGISTRY.get(c) and errcodes.REGISTRY[c].level == "error"}
+        self.assertEqual(err_hedged, {"manuscript_truncation"},
+                         "带判断词的 error 级码只允许 manuscript_truncation 这一已知例外")
