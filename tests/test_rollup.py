@@ -91,6 +91,19 @@ class TestRollup(unittest.TestCase):
             self.assertLessEqual(common.est_tokens(digest),
                                  rollup.PRIOR_VOLUMES_TOKEN_CAP)
 
+    def test_digest_floor_keeps_head_line(self):
+        """极端场景：单卷头行本身超预算 —— 保底保留头行（空摘要比超预算更有害）。"""
+        with TempBook() as tb:
+            self._rich_book(tb)
+            cur = tb.state("current")
+            cur["situation"] = "超长态势" * 400  # 单行 ~800 token，必超 500
+            tb.set_state("current", cur)
+            for v in ("vol_01", "vol_02"):
+                tb.run_json("state", "rollup", v)
+            lines = rollup.prior_volumes_digest(tb.book, "vol_03")
+            self.assertTrue(lines, "即使超预算也必须保留态势头行，不得裁成空")
+            self.assertIn("卷末态势", lines[0])
+
     def test_pack_no_rollup_no_block(self):
         with TempBook() as tb:
             self._rich_book(tb)
@@ -101,16 +114,20 @@ class TestRollup(unittest.TestCase):
 
     def test_digest_cap_trims_from_tail(self):
         with TempBook() as tb:
+            self._rich_book(tb)
             tb.set_state("entities", {"entries": [
                 {"id": f"p_{i:03d}", "name": f"角色{i}", "type": "person",
                  "status": "active", "tier_rank": (i % 12) + 1,
                  "tier_name": f"第{(i % 12) + 1}阶位阶名"} for i in range(1, 61)]})
-            tb.run_json("state", "rollup", "vol_01")
-            lines = rollup.prior_volumes_digest(tb.book, "vol_02")
-            self.assertTrue(lines)
+            # 三卷 rollup：单卷摘要 ≤500，多卷合并必须触发尾部裁剪
+            for v in ("vol_01", "vol_02", "vol_03"):
+                tb.run_json("state", "rollup", v)
+            lines = rollup.prior_volumes_digest(tb.book, "vol_04")
+            self.assertTrue(lines, "裁剪保底：至少保留态势头行，不得裁成空")
             self.assertLessEqual(common.est_tokens("\n".join(lines)),
                                  rollup.PRIOR_VOLUMES_TOKEN_CAP,
                                  "超预算必须从尾部裁剪")
+            self.assertIn("卷末态势", lines[0], "保底保留的是优先级最高的头行")
 
 
 if __name__ == "__main__":

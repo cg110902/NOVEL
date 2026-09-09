@@ -447,6 +447,30 @@ class TestStateAtAndBlame(unittest.TestCase):
                 self.assertTrue(e["path"] == "foreshadows[GUN-001]"
                                 or e["path"].startswith("foreshadows[GUN-001]."))
 
+    def test_blame_prefix_trap(self):
+        """p_003 的 blame 不得命中 p_0031（路径段边界，非字符串前缀）。"""
+        with TempBook() as tb:
+            tb.seed_chapter("ch_001", "林牧走进城隍庙，张彪与李四对坐。" * 60)
+            tb.write("log/audit/ch_001.md", _AUDIT_OK)
+            tb.write("state/inbox/ch_001.json", json.dumps({
+                "schema": "novel-studio.state-mutation/v2", "chapter": "ch_001",
+                "operation_id": "ch_001.reader.c",
+                "entities": [
+                    {"action": "upsert", "id": "p_003", "name": "张彪",
+                     "type": "person", "summary": "庙祝", "tier_rank": 3},
+                    {"action": "upsert", "id": "p_0031", "name": "李四",
+                     "type": "person", "summary": "香客", "tier_rank": 2}]},
+                ensure_ascii=False))
+            self.assertTrue(tb.run_json("sync", "ch_001").get("snapshot", {}).get("ok"))
+            out = tb.run_json("state", "blame", "entities.entries[p_003]")
+            paths = [e["path"] for e in out.get("events", [])]
+            self.assertTrue(paths, "p_003 自身的变更必须在案")
+            for p in paths:
+                self.assertTrue(p == "entries[p_003]" or p.startswith("entries[p_003]."),
+                                f"前缀越界命中: {p}")
+            self.assertFalse(any("p_0031" in p for p in paths),
+                             "entries[p_003] 不得命中 entries[p_0031]（字符串前缀陷阱）")
+
     def test_blame_unknown_table_rejected(self):
         with TempBook() as tb:
             out = tb.run_json("state", "blame", "not_a_table")

@@ -63,6 +63,21 @@ class TestVoiceprint(unittest.TestCase):
             names = {c["name"] for c in rep["characters"]}
             self.assertNotIn("林牧", names)
 
+    def test_mention_without_speech_not_attributed(self):
+        """段内提及实体但非其说话（无说话动词紧邻）→ 对白不得被错归属。"""
+        with TempBook() as tb:
+            tb.set_state("entities", {"entries": [
+                {"id": "p_001", "name": "林牧", "type": "person", "status": "active"},
+                {"id": "p_002", "name": "赵莽", "type": "person", "status": "active"}]})
+            # 两个注册实体都在场但都不说话（无动词紧邻）+ 说话人未注册：
+            # 归属启发式必须双路失败（前缀无动词 / 回退非唯一实体）→ 丢弃
+            tb.seed_chapter("ch_001",
+                            "林牧不作声，赵莽也低头。掌柜的赔笑道：「客官说笑了。」" * 3)
+            ds = voiceprint.extract_dialogues(tb.book)
+            texts = [q for _, _, q in ds]
+            self.assertFalse(any("客官说笑了" in t for t in texts),
+                             "提及≠说话：该对白说话人未注册且无归属线索，必须丢弃")
+
     def test_unattributed_dialogue_dropped(self):
         with TempBook() as tb:
             tb.set_state("entities", {"entries": [
