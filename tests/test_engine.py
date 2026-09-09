@@ -1341,3 +1341,78 @@ class TestLedgerDuplicateWarning(unittest.TestCase):
         self.assertEqual(len(data["ledger"]["transactions"]), 1,
                          "崩溃重放仍须幂等，不得双计")
         self.assertEqual(data["ledger"]["pools"]["spirit"]["current"], 70)
+
+
+class TestEntityMergeCoverage(unittest.TestCase):
+    """_merge_entities 必须给每个模型字段留一条写入路径。
+
+    字段真源是 EntityEntry.model_fields（33 个）。若某字段通过了 validate_proposal
+    却在 _merge_entities 里既不被合并循环直拷、也没有 `if "x" in e` 分支，那么
+    提案里写了它也不会落盘——校验通过、静默丢数据，最难发现的一类。
+
+    注意实现细节：写入路径有两种形态，扫描时必须都认——
+      1. for f in ("id","type",...) 合并循环直拷（24 个）
+      2. if "x" in e and isinstance(...) 守卫分支（10 个，是 BoolOp 不是裸 Compare；
+         只匹配裸 Compare 会漏掉这 10 个，从而误判 6 个字段「无写入路径」）
+    """
+
+    PROPOSAL_ONLY = {"action", "quote"}
+
+    @staticmethod
+    def _write_paths():
+        import ast as _ast
+        import pathlib as _pl
+        src = (_pl.Path(__file__).resolve().parents[1] / "engine" / "state.py"
+               ).read_text(encoding="utf-8")
+        fn = next(n for n in _ast.parse(src).body
+                  if isinstance(n, _ast.FunctionDef) and n.name == "_merge_entities")
+        copied, guarded = set(), set()
+        for node in _ast.walk(fn):
+            if isinstance(node, _ast.For) and isinstance(node.iter, _ast.Tuple):
+                copied |= {x.value for x in node.iter.elts
+                           if isinstance(x, _ast.Constant) and isinstance(x.value, str)}
+            if isinstance(node, _ast.If):
+                for sub in _ast.walk(node.test):        # BoolOp 里也要找
+                    if (isinstance(sub, _ast.Compare)
+                            and any(isinstance(op, _ast.In) for op in sub.ops)
+                            and isinstance(sub.left, _ast.Constant)
+                            and isinstance(sub.left.value, str)):
+                        guarded.add(sub.left.value)
+        return copied, guarded
+
+    def test_every_model_field_has_a_write_path(self):
+        copied, guarded = self._write_paths()
+        covered = copied | guarded | {"name"}      # name 在建卡时赋值
+        missing = sorted(set(EntityEntry.model_fields) - covered)
+        self.assertEqual(missing, [],
+                         f"这些字段过了校验却不落盘（静默丢数据）: {missing}")
+
+    def test_guarded_keys_are_all_model_fields(self):
+        copied, guarded = self._write_paths()
+        extra = sorted(guarded - set(EntityEntry.model_fields) - self.PROPOSAL_ONLY)
+        self.assertEqual(extra, [],
+                         f"守卫了模型里不存在的键，疑似字段名拼错: {extra}")
+
+    def test_scalar_and_container_fields_actually_land(self):
+        """跑真实合并，确认标量直拷与容器合并两类路径都真的落盘。"""
+        data = {"entries": []}
+        rep = {"updated": [], "warnings": [], "errors": []}
+        state._merge_entities(data, [{
+            "action": "upsert", "name": "林牧", "type": "person",
+            "realm": "淬体三重", "tier_rank": 3,
+            "aliases": ["牧哥"], "micro_actions": ["摩挲刀柄"],
+            "core_assets": ["断刀"], "environment_rules": ["灯铺夜里不点灯"],
+            "diplomacy": {"漕帮": " wary"}, "address_matrix": {"对掌柜": "小子"},
+            "relations": [{"type": "宿敌", "target": "裴九"}],
+        }], rep)
+        self.assertEqual(rep["errors"], [])
+        ent = data["entries"][0]
+        self.assertEqual(ent["realm"], "淬体三重")          # 标量直拷
+        self.assertEqual(ent["tier_rank"], 3)
+        self.assertEqual(ent["aliases"], ["牧哥"])           # 容器并集
+        self.assertEqual(ent["micro_actions"], ["摩挲刀柄"])
+        self.assertEqual(ent["core_assets"], ["断刀"])
+        self.assertEqual(ent["environment_rules"], ["灯铺夜里不点灯"])
+        self.assertEqual(ent["diplomacy"]["漕帮"], " wary")
+        self.assertEqual(ent["address_matrix"]["对掌柜"], "小子")
+        self.assertEqual(ent["relations"][0]["target"], "裴九")
