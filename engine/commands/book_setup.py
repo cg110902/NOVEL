@@ -206,7 +206,7 @@ def cmd_init(args) -> int:
                         "aliases": []
                     })
                     ents_data["entries"] = entries
-                    state.save_state(book, "entities", ents_data)
+                    state.save_state(book, "entities", ents_data, source="init")
             except (ValueError, OSError) as exc:
                 # M4 修复：不再静默吞掉异常，至少提示
                 print(f"⚠️ 主角实体预置失败（不阻断 init）: {exc}")

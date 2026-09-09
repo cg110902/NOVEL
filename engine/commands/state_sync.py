@@ -8,7 +8,7 @@ import re
 import sys
 from pathlib import Path
 
-from .. import checks, common, evidence, snapshot, state
+from .. import changelog, checks, common, evidence, snapshot, state
 
 from ._shared import (_norm_ch, parse_audit_frontmatter, usage_error, ws_gate,
                       ws_gate_code)
@@ -275,6 +275,8 @@ def cmd_sync(args) -> int:
                 snap_ok, snap_msg = False, f"快照创建异常（状态已合并，可用 snapshot create 手动补拍）：{exc}"
             common.debug(f"snapshot: ok={snap_ok} {snap_msg}")
             _append_bible_journal(book, ch)
+            # 事件溯源：章封存锚点（state at ch_XXX 的重放边界）
+            changelog.seal_chapter(book, ch)
 
     payload = {"chapter": ch, "dry_run": args.dry_run, "apply": overall,
                "quote_notes": quote_notes, "verify_battery": battery,
@@ -1196,7 +1198,7 @@ def cmd_state(args) -> int:
             return _fail("写入被语义闸门拒绝: " + "；".join(semantic_errors[:5]), code=1)
         try:
             with common.file_lock(state.state_dir(book), name=".state.lock"):
-                state.save_state(book, part_name, st_data)
+                state.save_state(book, part_name, st_data, source="state_set")
         except ValueError as exc:
             # 写闸门拒绝（schema 违规 / 显式 null 等）：--json 下也须是 JSON 信封而非裸文本
             return _fail(f"写入被结构闸门拒绝: {exc}", code=1)
@@ -1265,7 +1267,7 @@ def _ledger_pool(book, args, _fail=None) -> int:
         return 1
     pools[pid] = {"name": name, "unit": unit, "initial": initial, "current": initial}
     try:
-        state.save_state(book, "ledger", led)
+        state.save_state(book, "ledger", led, source="ledger_recompute")
     except ValueError as exc:
         return _fail(f"写入被结构闸门拒绝: {exc}")
     payload = {"ok": True, "pool_id": pid, "name": name, "unit": unit, "initial": initial,
@@ -1360,7 +1362,7 @@ def cmd_ledger(args) -> int:
                 print("✅ 账本自洽：余额与 balance_after 均等于流水重算值，无需修复")
             return 0
         try:
-            state.save_state(book, "ledger", led)
+            state.save_state(book, "ledger", led, source="ledger_recompute")
         except ValueError as exc:
             return _fail(f"修复落盘被闸门拒绝: {exc}")
     if not js:
@@ -1476,7 +1478,7 @@ def cmd_milestone(args) -> int:
         }
         milestones.append(new_ms)
         try:
-            state.save_state(book, "timeline", tl)
+            state.save_state(book, "timeline", tl, source="milestone")
         except ValueError as exc:
             # --json 契约：写闸门失败不得向 stdout 打印裸文本。
             if js:
@@ -1539,7 +1541,7 @@ def cmd_milestone(args) -> int:
         if achieved_ch:
             target["achieved_ch"] = achieved_ch
         try:
-            state.save_state(book, "timeline", tl)
+            state.save_state(book, "timeline", tl, source="milestone")
         except ValueError as exc:
             if js:
                 print(json.dumps({"ok": False, "code": "milestone_error",

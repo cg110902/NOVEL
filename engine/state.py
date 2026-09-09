@@ -21,7 +21,7 @@ import json
 import re
 from pathlib import Path
 
-from . import common, migrations, validator, models
+from . import changelog, common, migrations, validator, models
 
 MUTATION_SCHEMA = "novel-studio.state-mutation/v2"
 STATE_DIR_NAME = "state"
@@ -210,6 +210,8 @@ def init_state(book: Path) -> int:
     common.dump_json(migrations.version_path(book),
                      {"version": migrations.CURRENT_STATE_VERSION,
                       "created_at": datetime.date.today().isoformat()})
+    # 事件溯源：播种完成即激活（基线=八张默认表），此后一切写入都有事件
+    changelog.ensure_changelog(book)
     return seeded
 
 
@@ -244,14 +246,32 @@ def load_state(book: Path, key: str) -> dict:
     errors = validator.validate(data, _schema(key))
     if errors:
         raise ValueError(f"{p.name} schema 校验失败: " + "; ".join(errors[:5]))
+    # 事件溯源：磁盘哈希 ≠ 引擎最后认知 → 补记 external_edit 事件（fold 追平磁盘）
+    changelog.check_external_edit(book, key, data)
     return data
 
 
-def save_state(book: Path, key: str, data: dict) -> None:
+def save_state(book: Path, key: str, data: dict, *, source: str = "engine",
+               ch: str | None = None, op_id: str | None = None) -> None:
+    """状态唯一写入咽喉：schema 校验 → 落盘 → changelog 事件化。
+
+    source 取值（事件溯源的通道标签）：proposal（提案合并）/ state_set（手术刀）/
+    ledger_recompute / milestone / migration / snapshot_rollback / init / engine（兜底）。
+    """
     errors = validator.validate(data, _schema(key))
     if errors:
         raise ValueError(f"拒绝写入非法 {key}.json: " + "; ".join(errors[:5]))
-    common.dump_json(state_dir(book) / f"{key}.json", data)
+    p = state_dir(book) / f"{key}.json"
+    # 写前旧值（事件 diff 的 before）；必要时激活 changelog（基线=写前世界）
+    old_raw = None
+    if p.is_file():
+        try:
+            old_raw = common.load_json(p)
+        except (ValueError, OSError):
+            old_raw = None
+    changelog.ensure_changelog(book)
+    common.dump_json(p, data)
+    changelog.record_save(book, key, old_raw, data, source=source, ch=ch, op_id=op_id)
 
 
 def _load_marker(book: Path) -> dict:
@@ -1897,7 +1917,7 @@ def apply_proposal(book: Path, proposal: dict, expected_chapter: str | None = No
         # （transactions: _tx_replay_key 去重；cognition: 内容指纹去重；
         #  lines: _same_line_content 去重；entities/timeline/locked: by-key upsert）。
         for key in STATE_KEYS:
-            save_state(book, key, data[key])
+            save_state(book, key, data[key], source="proposal", ch=ch, op_id=op)
         marker[op] = proposal_hash
         common.dump_json(marker_path, marker)
     except Exception as exc:

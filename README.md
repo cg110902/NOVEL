@@ -93,7 +93,10 @@ Evolution    Evolver     人类变更诉求的波及面测算与手术刀改版
   引文柔性接地、幂等登记、复式记账重算四道闸才落盘。
 - **设定层例外**：Stage 0 建书播种与跨卷改版由 Architect/Evolver 直接写 `state/*.json`。
 - **机械证据**：每次 `sync` 对八表盖章 SHA-256（`state/inbox/processed/state_hashes.json`），
-  绕过提案的离线手改由 `check` 的 `state_offline_edit` 档指名报出。
+  绕过提案的离线手改由 `check` 的 `state_offline_edit` 档指名报出；
+- **事件溯源**：`state/changelog.jsonl` 记录八表字段级变更事件流（谁、哪章、哪个通道、
+  把哪个路径从什么改成什么），由引擎在唯一写入咽喉自动派生、离线手改自动补录、
+  快照回滚不清空历史——`fold(基线, 事件) == 磁盘` 是其对账不变量。
 - **账本口径**：余额永远由流水重算，`balance_after` / `current` 不是可信输入字段。
 - **改史留痕**：不可逆事实（locked）与角色认知（cognition）禁止同 ID 静默覆盖——
   幂等重放放行，改写历史需 `action="retire"` 或显式 `"overwrite": true`。
