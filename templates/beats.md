@@ -73,7 +73,12 @@ editor_extra:
 
 ## 伏笔与线索动作（对齐 state/lines.json）
 
-<!-- plant 首次埋设 / remind 伏笔回响 / update 属性更新 / escalate 误会激化 / resolve 闭环回收 -->
+<!-- plant 首次埋设 / remind 伏笔回响 / update 属性更新 / escalate 误会激化 / resolve 闭环回收。
+     引擎校验口径（写错会被 check 点名）：
+     - 已登记线的 ID 必须逐字出现，到期/逾期线未出现即 missing；
+     - 计划本章 plant 的新线写「plant GUN-XXX」；本章明确不推进的未登记线写「skip GUN-XXX」
+       （也接受 hold / defer / 不涉及 / 不推进 / 顺延），两种格式可豁免；
+     - 引用台账不存在的线 ID 即 orphan。动作写完后 Reader 按此栏提炼 lines 提案。 -->
 - GUN-XXX（伏笔动作与目标）：{{slot:line_gun|GUN-001 ...}}
 - KNO-XXX（秘密知情差动作）：{{slot:line_kno|KNO-001 ...}}
 - MIS-XXX（误会认知差动作）：{{slot:line_mis|MIS-001 ...}}

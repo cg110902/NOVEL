@@ -115,9 +115,9 @@ Evolution    Evolver     人类变更诉求的波及面测算与手术刀改版
 | 命令目录与阶段配方 | `python studio.py help --json` |
 | 工作区/工序总览 | `python studio.py status` · `cockpit [ch]` |
 | 单章上下文装配 | `python studio.py pack ch_XXX [--lean|--full] [--open 路径 --as 角色]` |
-| 只读取证 | `python studio.py ask <关键词>` · `evidence <kind>` · `pov` · `calendar` |
+| 只读取证 | `python studio.py ask <关键词>`（2.0 引用链：每条命中带 cite 出处） · `evidence <kind>` · `pov` · `calendar` |
 | 细纲与稿件流转 | `beats new ch_XXX --write` · `critic` · `audit ch_XXX --write` · `reconcile vol_XX`（卷末对账） |
-| 提案 | `proposal check ch_XXX` · `proposal auto ch_XXX --write` · `sync ch_XXX [--dry-run]` |
+| 提案 | `proposal new [--v3] ch_XXX`（骨架；--v3 为寻址式防错版） · `proposal check ch_XXX` · `proposal auto ch_XXX --write` · `sync ch_XXX [--dry-run]` |
 | 体检与自愈 | `check`（`doctor` 为其别名；`--trend` 分数曲线 / `--bisect` 快照二分） · `errcodes <码>` |
 | 图谱与索引 | `graph <action>` · `index [--rebuild]` · `recall` · `simulate` |
 | 台账手术刀 | `state get/set` · `state at <章>`（时点切面）· `state diff <章A> <章B>` · `state blame <表.路径>`（字段级溯源） · `state rollup vol_XX`（卷末态势摘要，pack 前情注入源） · `ledger recompute` · `milestone add/achieve` |

@@ -53,7 +53,7 @@ COMMAND_HELP = {
     "ledger": "账本手术刀：recompute（余额与 balance_after 按流水全量重算修复）",
     "snapshot": "快照 list / create NAME / rollback NAME [--clean-drafts]",
     "export": "全书编译：--txt 拼接正文，--views 渲染状态视图",
-    "proposal": "提案：new 骨架 ｜ auto 自动装配 ｜ check 结构预检+三方事实对照 ｜ verify 算法版Stage4.5机械对照",
+    "proposal": "提案：new 骨架（--v3 寻址式防错版） ｜ auto 自动装配 ｜ check 结构预检+三方事实对照 ｜ verify 算法版Stage4.5机械对照",
     "review": "校对注记：new <章节>（骨架预填验收条目+机器数据，--write 写 log/review/）",
     "beats": "细纲脚手架：new [章节]（Stage 1 智能生成带字数预算与情绪蓄水泵的 beats 任务书）",
     "critic": "老白读者催更便签：查看 Stage 4B 便签或落盘 SKELETON 预填骨架（骨架不替代子代理评审）",
@@ -479,7 +479,7 @@ def _build_subparsers(sub: argparse._SubParsersAction) -> None:
     q.add_argument("--views", action="store_true", help="导出 export/views/state_view.md")
     q.set_defaults(func=cmd_export)
 
-    q = sub.add_parser("proposal", help="提案：new 骨架 ｜ auto 自动装配 ｜ check 结构预检+三方对照")
+    q = sub.add_parser("proposal", help="提案：new 骨架（--v3 寻址式） ｜ auto 自动装配 ｜ check 结构预检+三方对照")
     _add_common_opts(q)
     pp = q.add_subparsers(dest="pp_action")
     r = pp.add_parser("new", help="生成最小合法骨架（schema/chapter/operation_id 预填）")

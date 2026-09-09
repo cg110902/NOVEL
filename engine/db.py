@@ -392,6 +392,13 @@ def finals_from_index(book: Path) -> list[tuple[str, int, str]] | None:
     """
     try:
         book = Path(book)
+        # 跨卷同章号守卫：DB 章键无卷前缀（预存局限），vol_01/ch_001 与
+        # vol_02/ch_001 会互相覆盖只剩其一——此时不用缓存，回退文件扫保正确。
+        seen_nums: set[int] = set()
+        for _vol, _n, _p in evidence.final_chapter_files(book):
+            if _n in seen_nums:
+                return None
+            seen_nums.add(_n)
         db_path = get_db_path(book)
         if not db_path.is_file():
             return None

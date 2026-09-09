@@ -47,7 +47,7 @@ pack / derive / verify 统一走这里，替代散落的各写一遍的寻址逻
 | relations[].type | 未知谓词 | advisory 警告 | 拼写引导（宿敌等中文谓词合法） |
 | locked[] | refs | 实体引用数组 | 记忆层精确追踪（修盲区） |
 | cognition[] | truth_ref | GUN-/KNO-/EVT-/LOCK- | 认知-真相挂载判定 |
-| timeline.events[] | id / participants / place / causes / consequences | EVT-编号（缺省自动分配） | 因果图、simulate 真遍历 |
+| timeline.events[] | id / participants / place / causes / consequences | EVT-编号（缺省自动分配） | 按 id 修订、simulate 真遍历/前因后果展示 |
 
 修订事件：`{"id": "EVT-00X", "replace": "..."}` 按 id 修订文本；
 补元数据：`{"id": "EVT-00X", "participants": [...]}`（time/event 必须与既有一致）。

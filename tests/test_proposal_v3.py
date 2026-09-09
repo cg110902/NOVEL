@@ -366,6 +366,19 @@ class TestV3Skeleton(unittest.TestCase):
             self.assertEqual(rep["errors"], [], rep["errors"])
 
 
+class TestV3ExampleTemplate(unittest.TestCase):
+    def test_example_template_structurally_valid(self):
+        # templates/proposals/v3_example.json 是给 Reader 仿写的活范例：
+        # 无状态做信封级校验（存在性检查需要真实账本，此处跳过），改崩即红防文档腐烂
+        from pathlib import Path
+        from engine import state
+        ex = json.loads((Path(__file__).resolve().parents[1]
+                         / "templates/proposals/v3_example.json").read_text(encoding="utf-8"))
+        errs, plan = state.validate_proposal(ex, "ch_001")
+        self.assertEqual(errs, [], errs)
+        self.assertTrue(plan)
+
+
 class TestV3VerifyPreamble(unittest.TestCase):
     def test_as_v2_proposal_compiles(self):
         from engine import checks

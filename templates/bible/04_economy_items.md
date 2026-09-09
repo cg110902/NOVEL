@@ -17,6 +17,10 @@ schema_version: novel-studio.bible/v2
 <!-- 明确本书的基础计价通货，并给出具体的【实物换算物象】： -->
 
 ### 1. 通货阶层与换算比率
+
+<!-- ★ Stage 0 锁死账本池键名（与 state/ledger.pools 一一对应，首章提案 declare_pool 建池）：
+     在此给每种要记账的资源定一个英文池键（如 stone 灵石 / silver 银两 / merit 功勋），
+     全书永不改名；只过手不记账的财物不建池。`standard_currency` 为引擎内置主通货池，无需声明。 -->
 - **底层基础货币**：{{slot:currency_base|如：铜钱 / 碎银 / 纸币元 / 信用点 / 下品灵石}}
 - **中层流通货币**：{{slot:currency_mid|如：白银两 / 黄金 / 万元支票 / 高纯能量块 / 中上品灵石}}
 - **顶层战略货币**：{{slot:currency_top|如：极品灵石 / 神晶 / 万界通宝 / 集团股权 / 黑市不记名债权}}
@@ -47,7 +51,7 @@ schema_version: novel-studio.bible/v2
 
 ## 道具损耗、充能与记账法则（State Ledger Rules）
 
-<!-- 拒绝“无限弹药、无限耐久”。高阶道具与消耗品必须具备消耗规则，由 engine 的 state/ledger 与 entities 监控： -->
+<!-- 拒绝“无限弹药、无限耐久”。高阶道具与消耗品必须具备消耗规则，由 engine 的 state/ledger 与实体四表监控： -->
 
 1. **充能与次数限制**：
    - 核心道具若存在次数限制（如某秘宝仅能保命3次），必须在卡片与 `实体四表（persons/items/factions/places）` 中明确登记 `charges: N`，正文每次使用由 Reader 提案扣减；
