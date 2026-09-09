@@ -93,7 +93,10 @@ Evolution    Evolver     人类变更诉求的波及面测算与手术刀改版
   引文柔性接地、幂等登记、复式记账重算四道闸才落盘。
 - **设定层例外**：Stage 0 建书播种与跨卷改版由 Architect/Evolver 直接写 `state/*.json`。
 - **机械证据**：每次 `sync` 对八表盖章 SHA-256（`state/inbox/processed/state_hashes.json`），
-  绕过提案的离线手改由 `check` 的 `state_offline_edit` 档指名报出。
+  绕过提案的离线手改由 `check` 的 `state_offline_edit` 档指名报出；
+- **事件溯源**：`state/changelog.jsonl` 记录八表字段级变更事件流（谁、哪章、哪个通道、
+  把哪个路径从什么改成什么），由引擎在唯一写入咽喉自动派生、离线手改自动补录、
+  快照回滚不清空历史——`fold(基线, 事件) == 磁盘` 是其对账不变量。
 - **账本口径**：余额永远由流水重算，`balance_after` / `current` 不是可信输入字段。
 - **改史留痕**：不可逆事实（locked）与角色认知（cognition）禁止同 ID 静默覆盖——
   幂等重放放行，改写历史需 `action="retire"` 或显式 `"overwrite": true`。
@@ -110,11 +113,11 @@ Evolution    Evolver     人类变更诉求的波及面测算与手术刀改版
 | 工作区/工序总览 | `python studio.py status` · `cockpit [ch]` |
 | 单章上下文装配 | `python studio.py pack ch_XXX [--lean|--full] [--open 路径 --as 角色]` |
 | 只读取证 | `python studio.py ask <关键词>` · `evidence <kind>` · `pov` · `calendar` |
-| 细纲与稿件流转 | `beats new ch_XXX --write` · `critic` · `audit ch_XXX --write` |
+| 细纲与稿件流转 | `beats new ch_XXX --write` · `critic` · `audit ch_XXX --write` · `reconcile vol_XX`（卷末对账） |
 | 提案 | `proposal check ch_XXX` · `proposal auto ch_XXX --write` · `sync ch_XXX [--dry-run]` |
-| 体检与自愈 | `check`（`doctor` 为其别名）· `errcodes <码>` |
+| 体检与自愈 | `check`（`doctor` 为其别名；`--trend` 分数曲线 / `--bisect` 快照二分） · `errcodes <码>` |
 | 图谱与索引 | `graph <action>` · `index [--rebuild]` · `recall` · `simulate` |
-| 台账手术刀 | `state get/set` · `ledger recompute` · `milestone add/achieve` |
+| 台账手术刀 | `state get/set` · `state at <章>`（时点切面）· `state diff <章A> <章B>` · `state blame <表.路径>`（字段级溯源） · `state rollup vol_XX`（卷末态势摘要，pack 前情注入源） · `ledger recompute` · `milestone add/achieve` |
 | 快照 | `snapshot create/list/rollback` · `checkpoint` |
 
 `--as <角色>` 的准读清单与各角色 SKILL.md 的准读清单一一对应（单一真源在

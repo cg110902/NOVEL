@@ -28,7 +28,16 @@ Novel Studio 是专为网络小说多智能体协同深度定制的创作流水�
 以下能力全部封装在确定性引擎（`engine/`，黑盒）内，各角色只经 CLI 消费、禁知实现源码：
 
 - **强类型状态机**：Pydantic V2 八表真值（current / entities / lines / timeline / ledger / synopsis / locked / cognition）；提案（proposal）为**章节事实增量**的唯一写入口，过 schema 校验、引文柔性接地、幂等登记、复式记账重算四道闸（设定层例外：Stage 0 建书播种与跨卷改版由 architect/evolver 直接写 `state/*.json`；每次 sync 会对八表盖章 SHA-256，绕过提案的离线手改由 `check` 的 `state_offline_edit` 档指名报出）；
-- **命令面（30 个命令名 / 29 个处理函数）**：`python studio.py help --json` 是命令目录、阶段配方与退出码契约的唯一自查入口——含 lore 底层词典与实体知识库速查对账、cockpit 态势驾驶舱、check 事实体检、audit 确定性机械探针、recall 残酷四问自证、simulate 剧情推演沙盒、milestone 主线里程碑管理、sync 状态封存、ledger recompute 账本修复、snapshot 回滚等；
+- **命令面（31 个命令名 / 30 个处理函数）**：`python studio.py help --json` 是命令目录、阶段配方与退出码契约的唯一自查入口——含 lore 底层词典与实体知识库速查对账、cockpit 态势驾驶舱、check 事实体检、audit 确定性机械探针、recall 残酷四问自证、simulate 剧情推演沙盒、milestone 主线里程碑管理、sync 状态封存、ledger recompute 账本修复、snapshot 回滚、state at/diff/blame 时点切面与字段级溯源、
+state rollup 卷末态势摘要（pack 前情注入源）、reconcile 卷末对账大修（机械复扫+投影 diff 工作单）、
+check --trend 分数曲线 / --bisect 快照二分等；
+- **读者记忆轴（advisory）**：以正文落笔史推导读者印象——线温分层（hot/warm/cold，阈值按 weight 缩放）、
+零落笔线（line_never_surfaced）、冷线计划回收提醒（line_recall_cold，pack/beats 侧另有「先锚定再兑现」操作提示）、
+关键事实久未重现（locked/已揭示 knowledge）、对白声纹漂移（voiceprint_drift：句长/语气词/口头禅，
+只测「怎么说话」不测人设）；全部不阻断，阈值走 `project.json` 的 `reader_memory` / `voiceprint` 键
+（PARAM_SPEC 单一真源）；
+- **规模经济**：changelog 事件溯源（state at 重放任意章切面 / blame 字段级溯源 / external_edit 自愈补录）、
+卷级 rollup（前情态势 ≤500 token 注入 pack，装配成本 O(当前卷)）、卷末 reconcile 对账大修（投影误差的周期性维护）；
 - **强援库**：jieba（专名与词频）、networkx（实体拓扑寻路）、rapidfuzz（引文模糊接地）、rich（终端渲染）、sqlite3（FTS5 检索加速）。
 
 ---
@@ -47,7 +56,8 @@ Novel Studio 是专为网络小说多智能体协同深度定制的创作流水�
 | **审计员 (Reader)** | 原生子代理 | Stage 4 (并行轨 A) | **精益事实审计与动态演进提取**：以 final 为唯一事实源，客观提取核心事实（现场在场、动态关系与称谓演进、关键新实体、线索动作、大额收支、不可逆事实），装配严格符合 Pydantic V2 Schema 的标准增量提案 JSON (`state/inbox/ch_XXX.json`)。 |
 | **催更员 (Critic)** | 原生子代理 | Stage 4 (并行轨 B) | **追更老白催更便签（专供下章参考）**：扮演十年老白追更读者盲审 final 正文，评估疲劳度与活人感，输出 200~500 字催更便签 `log/critic/ch_XXX.md`，直供下章细纲构思。落盘即交卷。 |
 | **仲裁员 (Auditor)** | 原生子代理 | Stage 4 (并行轨 C) | **双轨一致性仲裁（机械探针+细纲语义清单）**：先运行 `python studio.py audit ch_XXX --write` 由引擎生成**带 YAML front-matter（`hard`/`soft`/`adjudicated`）的仲裁报告骨架**，再基于 8 大确定性机械探针与细纲预提炼清单逐行对校称谓、修饰词漂移，补写裁决至 `log/audit/ch_XXX.md`（缺 front-matter 将被 Stage 5 闸门拒绝封存）。检出 🔴 确凿硬矛盾立即下达定向手术刀修复指令。 |
-| **图书管理员 (Librarian)** | 原生子代理 | Stage 4D (每10章低频巡查) | **十年长程事实巡检与账目平账**：每 10 章执行一次深度巡检，通读近 10 章定稿，清查遗漏次要实体、法宝道具充能漏扣与生死状态，把修补直接并入当章在途提案 `state/inbox/ch_XXX.json`。 |
+| **图书管理员 (Librarian)** | 原生子代理 | Stage 4D (每10章低频巡查) | **十年长程事实巡检与账目平账**：每 10 章执行一次深度巡检，通读近 10 章定稿，清查遗漏次要实体、法宝道具充能漏扣与生死状态，把修补直接并入当章在途提案 `state/inbox/ch_XXX.json`；卷末跑 `python studio.py reconcile vol_XX --write`
+生成对账工作单并按清单裁决（投影 diff：未登记专名 / 零出现实体）。 |
 | **重构师 (Evolver)** | 原生子代理 | Stage Evolution (中途随时触发) | **剧情外科主任与演进重构总监**：专职承接人类作者全生命周期中途提出的**任何变更诉求**（改设定、改历史正文段落、改人物设定、改事件因果、开辟新卷地图等）。负责波及面测算、快照先行、跨层手术刀修改与八表平账（`ledger recompute`, `check`）。独立沙盒运行，落盘即交卷。 |
 
 ---

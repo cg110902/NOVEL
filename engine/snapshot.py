@@ -27,11 +27,16 @@ def snapshots_root(book: Path) -> Path:
 
 def _state_files(book: Path) -> list[Path]:
     sd = state.state_dir(book)
+    # changelog 三件套是自管理基础设施：不入快照、回滚不清空
+    # （历史是资产——回滚本身会作为 snapshot_rollback 事件被记录）
+    from . import changelog as changelog_mod
     out = []
     for p in sorted(sd.iterdir()):
         if not p.is_file() or p.is_symlink():
             continue
         if p.name in {".state.lock", ".engine.lock", MANIFEST_NAME}:
+            continue
+        if p.name in changelog_mod.CHANGELOG_FILES:
             continue
         if p.suffix in (".json", ".md") and (not p.name.startswith(".") or p.name == state.MARKER_NAME):
             # 加固：确保解析后仍在 state 目录内
@@ -182,6 +187,16 @@ def rollback_snapshot(book: Path, target: str) -> tuple[bool, str, str]:
 
     with common.file_lock(sd, name=".state.lock"):
         ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+        # 事件溯源：回滚前八表快照（snapshot_rollback 事件的 before 侧）
+        from . import changelog as changelog_mod
+        before_states = {}
+        for k in state.STATE_KEYS:
+            kp = sd / f"{k}.json"
+            if kp.is_file():
+                try:
+                    before_states[k] = common.load_json(kp)
+                except (ValueError, OSError):
+                    pass
         backup_dir = root / f"pre_rollback_{ts}"
         backup_dir.mkdir(parents=True, exist_ok=False)
         for f in _state_files(book):
@@ -206,6 +221,8 @@ def rollback_snapshot(book: Path, target: str) -> tuple[bool, str, str]:
                     continue
                 if f.name in {".state.lock", ".engine.lock", MANIFEST_NAME, state.MARKER_NAME}:
                     continue
+                if f.name in changelog_mod.CHANGELOG_FILES:
+                    continue  # 事件流跨回滚存续（回滚本身记录为事件）
                 if f.name.startswith(".") and f.name != state.MARKER_NAME:
                     continue
                 if f.suffix in (".json", ".md"):
@@ -214,10 +231,22 @@ def rollback_snapshot(book: Path, target: str) -> tuple[bool, str, str]:
             for k in state.STATE_KEYS:
                 target_file = sd / f"{k}.json"
                 if not target_file.is_file():
-                    state.save_state(book, k, state.defaults_for(k))
+                    # 直接落盘（不走 save_state）：本回滚的全部差异由下方
+                    # record_rollback 统一事件化，避免双重事件
+                    common.dump_json(target_file, state.defaults_for(k))
                     restored.append(f"{k}.json (自动补齐默认表)")
             from . import migrations
             migrations.ensure_state_version(book)
+            # 事件溯源：回滚后八表 → snapshot_rollback 数据事件（逐表 diff 前后）
+            after_states = {}
+            for k in state.STATE_KEYS:
+                kp = sd / f"{k}.json"
+                if kp.is_file():
+                    try:
+                        after_states[k] = common.load_json(kp)
+                    except (ValueError, OSError):
+                        pass
+            changelog_mod.record_rollback(book, chosen.name, before_states, after_states)
         except OSError as exc:
             # 盲区深读修复：恢复/清理中途失败时现场处于撕裂态，必须给出
             # pre_rollback 备份位置与明确出口，而不是裸 OSError

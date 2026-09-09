@@ -5,7 +5,7 @@ import json
 import re
 import sys
 
-from .. import audit, checks, common, evidence, state
+from .. import audit, checks, common, evidence, scorecard, state
 from .. import pack as pack_mod
 from .. import graph as graph_mod
 from .. import cockpit as cockpit_mod
@@ -164,11 +164,88 @@ def cmd_index(args) -> int:
 # ---------------------------------------------------------------------------
 # check
 # ---------------------------------------------------------------------------
+def _bisect_scan(book) -> dict:
+    """逐快照（+当前 state）跑 verify_data，定位不变量首次破坏点。
+
+    口径诚实：只覆盖 state 级不变量（结构/schema/算术/引用闭合/前置因果）——
+    叙事类检查需要稿件与全文扫描，不在快照内；缺表按默认空表处理（只校验
+    存在的部分）。
+    """
+    from .. import snapshot as snapshot_mod
+    rows: list[dict] = []
+    names = snapshot_mod.list_snapshots(book)
+    for name in names:
+        folder = snapshot_mod.snapshots_root(book) / name
+        data: dict[str, dict] = {}
+        unreadable = []
+        for k in state.STATE_KEYS:
+            p = folder / f"{k}.json"
+            if p.is_file():
+                try:
+                    data[k] = common.load_json(p)
+                except (ValueError, OSError):
+                    unreadable.append(k)
+        for k in state.STATE_KEYS:
+            data.setdefault(k, state.defaults_for(k))
+        errs = state.verify_data(data)
+        rows.append({"name": name, "chapter": snapshot_mod.chapter_of_snapshot(name),
+                     "ok": not errs, "errors": errs[:3], "unreadable": unreadable})
+    # 当前 state 作为最后一站
+    live: dict[str, dict] = {}
+    live_err: list[str] = []
+    try:
+        for k in state.STATE_KEYS:
+            live[k] = state.load_state(book, k)
+        live_err = state.verify_data(live)
+    except (ValueError, OSError) as exc:
+        live_err = [f"当前 state 不可读: {exc}"]
+    rows.append({"name": "(当前 state)", "chapter": None,
+                 "ok": not live_err, "errors": live_err[:3], "unreadable": []})
+    first_break = next((r["name"] for r in rows if not r["ok"]), None)
+    prev_ok = None
+    if first_break:
+        idx = next(i for i, r in enumerate(rows) if r["name"] == first_break)
+        prev_ok = rows[idx - 1]["name"] if idx > 0 else None
+    return {"rows": rows, "first_break": first_break, "previous_ok": prev_ok}
+
+
+def _cmd_check_bisect(book, args) -> int:
+    payload = _bisect_scan(book)
+    if args.json:
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+        return 0
+    rows = payload["rows"]
+    print("🔬 快照不变量二分（verify_data 逐快照 + 当前 state）")
+    for r in rows:
+        mark = "✅" if r["ok"] else "❌"
+        ch = f"ch_{r['chapter']:03d}" if r["chapter"] else "—"
+        errs = f"  ⚠ {'；'.join(r['errors'][:2])}" if r["errors"] else ""
+        print(f"  {mark} {r['name']:<44} ({ch}){errs}")
+    fb, prev = payload["first_break"], payload["previous_ok"]
+    if fb:
+        print(f"\n ▶ 不变量首次破坏：{fb}" + (f"；上一正常：{prev}" if prev else ""))
+        print("   问题引入区间 = (上一正常, 首次破坏]；取证：changelog blame / state at（事件流已激活时）")
+    else:
+        print("\n ▶ 全部快照与当前 state 的不变量均通过")
+    return 0
+
+
 def cmd_check(args) -> int:
     book = ws_gate(args)  # --json 错误路径也出 JSON 信封
     if book is None:
         return ws_gate_code()
+    if getattr(args, "bisect", False):
+        return _cmd_check_bisect(book, args)
+    if getattr(args, "trend", False):
+        # 分数曲线模式：不跑体检，只消费历史（测量史只增不改）
+        rows = scorecard.load_scores(book)
+        if args.json:
+            print(json.dumps({"trend": rows}, ensure_ascii=False, indent=2))
+        else:
+            print(scorecard.render_trend(book))
+        return 0
     report = checks.run_checks(book)
+    scorecard.append_score(book, report)  # 分数曲线积累（log/scorecard.jsonl）
     if args.json:
         print(json.dumps(report, ensure_ascii=False, indent=2))
     else:
@@ -789,6 +866,22 @@ def cmd_beats(args) -> int:
     if not due_lines_str:
         due_lines_str = "- （根据大纲按需 plant 新线或维持现状）"
 
+    # 冷线提醒（A5）：已冷且近期（≤5 章）要到期的线——安排回收前先半句锚定。
+    cold_hint_str = ""
+    try:
+        from .. import memory as memory_mod
+        cold_due = [r for r in memory_mod.line_memory_map(book)
+                    if r["is_cold"] and isinstance(r.get("target_ch"), int)
+                    and r["target_ch"] <= n + 5]
+        cold_due.sort(key=lambda r: (r["target_ch"], -(r["gap"] or 0)))
+        if cold_due:
+            cold_hint_str = "\n".join(
+                f"- {r['id']}《{r['label']}》已 {r['gap']} 章未重现"
+                f"（目标 ch_{r['target_ch']:03d}）——读者或已忘记，回收前先半句锚定旧事"
+                for r in cold_due[:3])
+    except (ValueError, OSError):
+        pass  # 读者记忆层不可用：冷线提醒留空，不阻断细纲装配
+
     tmpl_path = common.project_root() / "templates" / "beats.md"
     if not tmpl_path.is_file():
         return _err(f"细纲模板缺失: {tmpl_path}", code=1, err_code="engine")
@@ -825,6 +918,9 @@ def cmd_beats(args) -> int:
         print("⚠️ beats 脚手架「所属阶段/上章现场」注入：模板标记与锚点均缺失，"
               "已回退到 frontmatter 后独立块——请人工核对位置", file=sys.stderr)
     text = re.sub(r"- GUN-XXX[^\n]*\n- KNO-XXX[^\n]*\n- MIS-XXX[^\n]*", due_lines_str, text)
+    # 冷线提醒（A5）：追加到到期区之后（读者记忆轴信号，与到期台账互补）
+    if cold_hint_str:
+        text = text.replace(due_lines_str, due_lines_str + "\n\n**⚠️ 冷线提醒（已冷却且临近到期）**\n" + cold_hint_str, 1)
 
     # 一致性速查注入：实体名册（含别名，含卷纲规划行点名实体）+ KNO 知情差边界
     plan_line = ""

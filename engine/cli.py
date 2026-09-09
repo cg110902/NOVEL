@@ -1,9 +1,9 @@
-"""CLI 薄壳：30 个命令名（29 个处理函数，check 与 doctor 共用 cmd_check）参数解析与总调度；
-命令实现分置于 engine/commands/* 五模块。命令目录的唯一自查入口是 `python studio.py help --json`。
+"""CLI 薄壳：31 个命令名（30 个处理函数，check 与 doctor 共用 cmd_check）参数解析与总调度；
+命令实现分置于 engine/commands/* 六模块。命令目录的唯一自查入口是 `python studio.py help --json`。
 
 status / init / cockpit / pack / evidence / index / check / doctor / checkpoint / state / config /
 sync / snapshot / export / proposal / review / beats / critic / graph / errcodes / help / ask /
-pov / calendar / ledger / audit / recall / simulate / milestone / lore。
+pov / calendar / ledger / audit / recall / simulate / milestone / lore / reconcile。
 退出码：0=ok / 1=阻断（含 check errors、sync 失败）/ 2=用法错 /
 3=运行环境缺依赖（studio.py 在 import 期兜住并给出安装命令）。
 """
@@ -21,6 +21,7 @@ from .commands.chapter_flow import (cmd_ask, cmd_audit, cmd_beats, cmd_calendar,
                                     cmd_evidence, cmd_export, cmd_graph, cmd_index, cmd_pack,
                                     cmd_pov, cmd_review)
 from .commands.recall import cmd_recall
+from .commands.reconcile import cmd_reconcile
 from .commands.simulate import cmd_simulate
 from .commands.state_sync import (cmd_checkpoint, cmd_ledger, cmd_milestone, cmd_proposal, cmd_snapshot,
                                   cmd_state, cmd_sync)
@@ -42,11 +43,11 @@ COMMAND_HELP = {
     "calendar": "未来 N 章排产日历（到期线/危机时钟/卷阶段里程碑投影；Stage 1 排产前置参考）",
     "evidence": "机械证据：all|mentions|gaps|names|dup|style|words|file|candidates|prev|index（纯 JSON，零裁决）",
     "index": "SQLite3 双平面投影索引：构建/重建 FTS5 BM25 全文检索与关系表缓存",
-    "check": "结构/schema/算术体检（errors 只允许事实级；有 errors 退出码 1；新书 Stage 0 待办不阻断）",
+    "check": "结构/schema/算术体检（errors 只允许事实级；有 errors 退出码 1；新书 Stage 0 待办不阻断；--trend 分数曲线；--bisect 快照二分定位不变量首次破坏）",
     "doctor": "check 的同义别名（同一处理函数 cmd_check，输出逐字节相同）；习惯叫 doctor 的人用它",
     "checkpoint": "宏观航向校准点（每5章复盘分卷四分位里程碑与主线偏航）",
     "milestone": "主线里程碑管理：list ｜ add（Stage 0 播种主线里程碑与预期达成章节）",
-    "state": "状态速查与手术刀纠偏：state show ｜ get <表.字段> ｜ set <表.字段> <值>（如 state get current.time；防真值幻觉）",
+    "state": "状态速查与手术刀纠偏：show ｜ get/set <表.字段> ｜ at <章>（时点切面）｜ diff <章A> <章B> ｜ blame <表.路径>（溯源）｜ rollup <卷>（卷末态势摘要）",
     "config": "书级参数手术刀：list|guide|suggest|get|set[--merge]|unset（主控供参通道，project.json；含 words_target/lines_cap 等项目级键）",
     "sync": "提案合并 → 状态体检 → 快照（Stage 5 闭环，可 --dry-run）",
     "ledger": "账本手术刀：recompute（余额与 balance_after 按流水全量重算修复）",
@@ -58,6 +59,7 @@ COMMAND_HELP = {
     "critic": "老白读者催更便签：查看 Stage 4B 便签或落盘 SKELETON 预填骨架（骨架不替代子代理评审）",
     "audit": "确定性矛盾排查探针（8大机械探针：在场/充能/金额/KNO/不可逆/认知差/别名漂移/称谓对账；0 Token 候选清单）",
     "recall": "知乎残酷四问 0 Token 机械自证（主要人物知道什么/哪三条不能改/伏笔未兑现/下章红线）",
+    "reconcile": "卷末对账大修（Stage 4D）：全书不变量复扫 + 本卷8探针批量重跑 + 高危字段变更史 + 投影diff候选（未登记专名/零出现实体），产出 LLM 对账工作单",
     "simulate": "剧情推演沙盒与走向假说（impact 因果链测算 ｜ branch 多分支走向参谋件）",
     "graph": "实体拓扑沙盘与叙事中介寻路（NetworkX 强力赋能：path/neighbors/isolated/centrality）",
     "errcodes": "错误码注册表速查：全部体检码的 level/解释/修复建议（--json 供 Agent）",
@@ -84,7 +86,7 @@ STAGE_MAP = {
     "Stage 4 (多轨质检)": {
         "role": "Reader & Critic & Auditor",
         "description": "事实审计提案生成（轨A）、老白读者催更评测（轨B）与一致性仲裁（轨C）",
-        "commands": ["evidence", "audit", "critic", "proposal"],
+        "commands": ["evidence", "audit", "critic", "proposal", "reconcile"],
     },
     "Stage 5 (同步与封存)": {
         "role": "Director",
@@ -271,6 +273,13 @@ def _build_subparsers(sub: argparse._SubParsersAction) -> None:
     q.add_argument("--write", action="store_true", help="生成并落盘 log/audit/ch_XXX.md 仲裁初稿")
     q.set_defaults(func=cmd_audit)
 
+    q = sub.add_parser("reconcile", help="卷末对账大修：机械复扫+探针重跑+投影diff候选清单 → 工作单（Stage 4D）")
+    _add_common_opts(q)
+    q.add_argument("vol", help="卷名（如 vol_01）")
+    q.add_argument("--write", action="store_true",
+                   help="写入 log/review/reconcile_vol_XX.md（已存在则拒绝；默认只打印）")
+    q.set_defaults(func=cmd_reconcile)
+
     q = sub.add_parser("recall", help="知乎残酷四问 0 Token 机械自证（主要人物知道什么/哪三条不能改/伏笔未兑现/下章红线）")
     _add_common_opts(q)
     q.add_argument("chapter", nargs="?", default="", help="锚定章节（如 ch_005，缺省默认最新定稿章）")
@@ -297,10 +306,16 @@ def _build_subparsers(sub: argparse._SubParsersAction) -> None:
 
     q = sub.add_parser("check", help="全息双核健康体检：系统运行时健康 + 叙事健康（errors 只允许事实级；doctor 为其别名）")
     _add_common_opts(q)
+    q.add_argument("--trend", action="store_true",
+                   help="不跑体检，只看近 N 次的一致性分数曲线（log/scorecard.jsonl）")
+    q.add_argument("--bisect", action="store_true",
+                   help="快照不变量二分：逐快照跑 verify_data，定位不变量首次破坏的快照区间")
     q.set_defaults(func=cmd_check)
 
     q = sub.add_parser("doctor", help="check 的同义别名（同 cmd_check，输出一致）")
     _add_common_opts(q)
+    q.add_argument("--trend", action="store_true", help="同 check --trend")
+    q.add_argument("--bisect", action="store_true", help="同 check --bisect")
     q.set_defaults(func=cmd_check)
 
     q = sub.add_parser("checkpoint", help="宏观航向校准点（每5章复盘分卷四分位里程碑与主线偏航）")
@@ -348,6 +363,28 @@ def _build_subparsers(sub: argparse._SubParsersAction) -> None:
     r = st_sub.add_parser("set", help="直接设置/纠偏指定字段（例如: current.injury \"轻伤已愈\"）")
     r.add_argument("target", help="字段路径")
     r.add_argument("value", help="新值（支持普通文本或 JSON 结构）")
+    r.add_argument("-w", "--workspace", default=argparse.SUPPRESS)
+    r.add_argument("--json", action="store_true", default=argparse.SUPPRESS)
+    r.set_defaults(func=cmd_state)
+    r = st_sub.add_parser("at", help="时点切面：第 N 章封存后的八表世界（changelog 重放）")
+    r.add_argument("chapter", help="章节（如 3 或 ch_003；超出最新封存则折叠到最新封存）")
+    r.add_argument("--table", default=None, help="只看某张表（如 current / entities）")
+    r.add_argument("-w", "--workspace", default=argparse.SUPPRESS)
+    r.add_argument("--json", action="store_true", default=argparse.SUPPRESS)
+    r.set_defaults(func=cmd_state)
+    r = st_sub.add_parser("diff", help="两切面对照：ch_A 与 ch_B 封存后的世界差异")
+    r.add_argument("chapter_a", help="章节 A（如 3 或 ch_003）")
+    r.add_argument("chapter_b", help="章节 B（如 7 或 ch_007）")
+    r.add_argument("-w", "--workspace", default=argparse.SUPPRESS)
+    r.add_argument("--json", action="store_true", default=argparse.SUPPRESS)
+    r.set_defaults(func=cmd_state)
+    r = st_sub.add_parser("rollup", help="卷级态势摘要：从当前八表生成 state/rollups/vol_XX.json（卷末封存后执行）")
+    r.add_argument("vol", help="卷名（如 vol_01）")
+    r.add_argument("-w", "--workspace", default=argparse.SUPPRESS)
+    r.add_argument("--json", action="store_true", default=argparse.SUPPRESS)
+    r.set_defaults(func=cmd_state)
+    r = st_sub.add_parser("blame", help="字段级溯源：某表某路径的全部变更史（新→旧）")
+    r.add_argument("target", help="表[.路径]，如 current ｜ entities.entries[p_003] ｜ ledger.transactions")
     r.add_argument("-w", "--workspace", default=argparse.SUPPRESS)
     r.add_argument("--json", action="store_true", default=argparse.SUPPRESS)
     r.set_defaults(func=cmd_state)

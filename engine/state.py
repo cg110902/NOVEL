@@ -21,7 +21,7 @@ import json
 import re
 from pathlib import Path
 
-from . import common, migrations, validator, models
+from . import changelog, common, migrations, validator, models
 
 MUTATION_SCHEMA = "novel-studio.state-mutation/v2"
 STATE_DIR_NAME = "state"
@@ -61,6 +61,16 @@ _LINE_KIND_SPEC = {
                   "plant_need": ("secret",), "update_str": ("secret", "note"),
                   "update_fields": {"status", "target_ch", "secret", "note", "weight", "requires", "holders"}},
 }
+
+
+def line_kind_spec(kind: str) -> dict | None:
+    """三类线（foreshadow / misunderstanding / knowledge）字段规格的公开只读入口。
+
+    单一真源仍是模块级 _LINE_KIND_SPEC；memory / checks / audit 等外部模块
+    需要判定「已闭环状态字面量」「plant 必填字段」等规格时一律走本函数，
+    禁止跨模块摸 _LINE_KIND_SPEC 私有名（2025 一致性改造 R1-c1）。
+    """
+    return _LINE_KIND_SPEC.get(kind)
 
 
 def _schema(name: str) -> dict:
@@ -133,6 +143,8 @@ ch_007.reader.0901_2125）；`*.draft.json`/`*.template.json`/`*.sample.json` �
  
 
 写提案的纪律：只写增量；事实必须能在本章 final 正文找到出处；不确定就不上账。
+locked 不可逆事实的 note 为必填（写作红线执行提示，如「严禁再次出场，回忆除外」）——
+只记 fact 不记红线，日后判断能否绕过时将无据可依；缺 note 整案拒收。
 current 只写要刷新的字段：缺省/空值＝不修改（引擎跳过空串与空数组，不当作清档）。
 status 只许 active/retired（越界整案回滚进 failed/）；"现状/近况"一律并入 summary——upsert 即覆盖，逐章刷新。
 修订通道（随提案合并，全程留审计痕迹）：
@@ -200,6 +212,8 @@ def init_state(book: Path) -> int:
     common.dump_json(migrations.version_path(book),
                      {"version": migrations.CURRENT_STATE_VERSION,
                       "created_at": datetime.date.today().isoformat()})
+    # 事件溯源：播种完成即激活（基线=八张默认表），此后一切写入都有事件
+    changelog.ensure_changelog(book)
     return seeded
 
 
@@ -234,14 +248,32 @@ def load_state(book: Path, key: str) -> dict:
     errors = validator.validate(data, _schema(key))
     if errors:
         raise ValueError(f"{p.name} schema 校验失败: " + "; ".join(errors[:5]))
+    # 事件溯源：磁盘哈希 ≠ 引擎最后认知 → 补记 external_edit 事件（fold 追平磁盘）
+    changelog.check_external_edit(book, key, data)
     return data
 
 
-def save_state(book: Path, key: str, data: dict) -> None:
+def save_state(book: Path, key: str, data: dict, *, source: str = "engine",
+               ch: str | None = None, op_id: str | None = None) -> None:
+    """状态唯一写入咽喉：schema 校验 → 落盘 → changelog 事件化。
+
+    source 取值（事件溯源的通道标签）：proposal（提案合并）/ state_set（手术刀）/
+    ledger_recompute / milestone / migration / snapshot_rollback / init / engine（兜底）。
+    """
     errors = validator.validate(data, _schema(key))
     if errors:
         raise ValueError(f"拒绝写入非法 {key}.json: " + "; ".join(errors[:5]))
-    common.dump_json(state_dir(book) / f"{key}.json", data)
+    p = state_dir(book) / f"{key}.json"
+    # 写前旧值（事件 diff 的 before）；必要时激活 changelog（基线=写前世界）
+    old_raw = None
+    if p.is_file():
+        try:
+            old_raw = common.load_json(p)
+        except (ValueError, OSError):
+            old_raw = None
+    changelog.ensure_changelog(book)
+    common.dump_json(p, data)
+    changelog.record_save(book, key, old_raw, data, source=source, ch=ch, op_id=op_id)
 
 
 def _load_marker(book: Path) -> dict:
@@ -886,6 +918,14 @@ def validate_proposal(proposal, expected_chapter: str | None = None) -> tuple[li
                 fact = l.get("fact")
                 if not fact or len(str(fact).strip()) < 4:
                     errors.append(f"locked[{i}].fact 至少需要 4 字有效陈述")
+                # note 必填（2025 一致性改造 R2-c6）：不可逆事实的约束力来自
+                # 「后续写作不得如何」，只记 fact 不记红线，日后判断能否绕过时无据可依。
+                # 仅提案层（写入口）强制；存量书与 schema 不动（先例：param_write_guard P2-6）。
+                if not str(l.get("note") or "").strip():
+                    errors.append(
+                        f"locked[{i}].note 必填（写作红线执行提示）：不可逆事实的约束力来自"
+                        f"「后续写作不得如何」，只记 fact 不记红线，日后判断能否绕过时将无据可依。"
+                        f"示例：「严禁再次出场，回忆除外」")
                 kind = l.get("kind")
                 # 与 models.locked.LockedKind / schemas/locked.schema.json 全量对齐（7 类），
                 # 此前闸门只放行 4 类，destruction/disbandment/pact 被误杀
@@ -1887,7 +1927,7 @@ def apply_proposal(book: Path, proposal: dict, expected_chapter: str | None = No
         # （transactions: _tx_replay_key 去重；cognition: 内容指纹去重；
         #  lines: _same_line_content 去重；entities/timeline/locked: by-key upsert）。
         for key in STATE_KEYS:
-            save_state(book, key, data[key])
+            save_state(book, key, data[key], source="proposal", ch=ch, op_id=op)
         marker[op] = proposal_hash
         common.dump_json(marker_path, marker)
     except Exception as exc:

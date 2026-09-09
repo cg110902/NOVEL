@@ -27,7 +27,7 @@ import json
 import re
 from pathlib import Path
 
-from . import common, errcodes, evidence, state, vocab
+from . import common, errcodes, evidence, memory, state, vocab
 from .models.entities import LOCATION_TYPES
 
 try:
@@ -244,6 +244,25 @@ def verify_candidates(book: Path, ch: str, proposal: dict) -> dict:
     if total == 0:
         add("warn", "quote_none", "提案未携带任何引文——整套引文接地机制未启用")
     out["stats"] = {"quote_slots": total, "quote_missing": missing}
+
+    # A4b 盲区可见化（修正 3 的工程处置）：locked.fact 不含任何已登记实体名/别名时，
+    # 读者记忆层（key_fact_memory 按专名扫描 finals）将无法追踪这条事实——静默漏报。
+    # 在写入时刻出 info 提示，不阻断；fact 几乎必然含实体名，故预期低频。
+    locked_ops = proposal.get("locked")
+    if isinstance(locked_ops, list) and locked_ops:
+        try:
+            known_names = [n for names in evidence.entity_lookup(book).values() for n in names]
+        except (ValueError, OSError):
+            known_names = []
+        for i, op in enumerate(locked_ops):
+            if not isinstance(op, dict) or op.get("action", "plant") != "plant":
+                continue
+            fact = str(op.get("fact") or "")
+            if fact and known_names and not any(n in fact for n in known_names):
+                add("info", "locked_fact_untraceable",
+                    f"locked[{i}]（{op.get('id') or '新条目'}）的 fact 不含任何已登记实体名/别名——"
+                    "读者记忆层将无法按专名追踪这条事实（闸门 3 盲区），"
+                    "建议 fact 中写入相关实体名（如「张三」而非「那人」）")
 
     m = re.search(r"^#\s*(.+?)\s*$", text, re.M)
     if not m:
@@ -479,7 +498,7 @@ def verify_candidates(book: Path, ch: str, proposal: dict) -> dict:
                     continue
                 t = g.get("target_ch")
                 if isinstance(t, int) and t <= n:
-                    terms = evidence._line_terms_for(g, kind, reg_terms)
+                    terms = evidence.line_terms_for(g, kind, reg_terms)
                     if any(term in text for term in terms):
                         add("warn", "due_line_unhandled",
                             f"{g['id']}（target ch_{t:03d}）正文有触及、提案未操作——确认本章是否该还线")
@@ -606,6 +625,23 @@ PARAM_SPEC: dict[str, dict] = {
         "choices": ["strict", "advisory", "off"],
         "desc": "Stage 4C 事实一致性审校闸门模式（strict: 必须有 log/audit 报告且 hard=0 或已裁定才能 sync；advisory: 存在硬矛盾仅出 warning；off: 关闭检查）",
         "example": "strict"},
+    "tier_shift_grace": {"shape": "nonneg_int", "gap": False,
+        "desc": "位阶单调性探针（tier_shift_without_event）的事件匹配窗口：位阶变更章"
+                "±N 章内需有提及该实体的突破/被废类 timeline 事件。默认 1；0=严格同章。",
+        "example": 1},
+    "voiceprint": {"shape": "voiceprint_map", "gap": False,
+        "desc": "对白声纹漂移检测阈值 {min_lines, recent_lines, window, len_shift, "
+                "mood_shift, sig_min_count}（check voiceprint_drift 档，info 级）。"
+                "基线最少对白条数 / 近窗最少条数 / 观察窗章数 / 句长偏离比 / 语气词变化倍数 / "
+                "口头禅入选次数。均可不配走默认。",
+        "example": {"min_lines": 12, "recent_lines": 4, "window": 6}},
+    "reader_memory": {"shape": "mem_map", "gap": False,
+        "desc": "读者记忆派生阈值 {working_window, fuzzy_window, cold_line_base, "
+                "cold_line_per_weight}。工作记忆窗口 / 模糊记忆边界（超过即入印象区）/ "
+                "冷线阈值基数 / 每级 weight 放宽章数。默认 25/70/25/8，按本书题材与"
+                "更新频率调整；不配走默认值，不提示。",
+        "example": {"working_window": 25, "fuzzy_window": 70,
+                    "cold_line_base": 25, "cold_line_per_weight": 8}},
 }
 WORDLIST_SPEC = {k: v["desc"] for k, v in PARAM_SPEC.items() if v.get("gap")}
 
@@ -761,6 +797,27 @@ def validate_param_value(key: str, value) -> str | None:
                        or not isinstance(v, int) or isinstance(v, bool) or v < 1
                        for k, v in value.items())):
             return f"「{key}」必须是 配额键→正整数 的对象（合法键 {sorted(allowed_keys)}，形状示例：{eg}）"
+    elif shape == "nonneg_int":
+        if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+            return f"「{key}」必须为非负整数（形状示例：{eg}）"
+    elif shape == "voiceprint_map":
+        allowed_keys = {"min_lines", "recent_lines", "window", "len_shift",
+                        "mood_shift", "sig_min_count"}
+        if (not isinstance(value, dict) or not value
+                or any(not isinstance(k, str) or k not in allowed_keys
+                       or not isinstance(v, (int, float)) or isinstance(v, bool) or v <= 0
+                       for k, v in value.items())):
+            return (f"「{key}」必须是 阈值键→正数 的对象"
+                    f"（合法键 {sorted(allowed_keys)}，形状示例：{eg}）")
+    elif shape == "mem_map":
+        allowed_keys = {"working_window", "fuzzy_window",
+                        "cold_line_base", "cold_line_per_weight"}
+        if (not isinstance(value, dict) or not value
+                or any(not isinstance(k, str) or k not in allowed_keys
+                       or not isinstance(v, int) or isinstance(v, bool) or v < 1
+                       for k, v in value.items())):
+            return (f"「{key}」必须是 阈值键→正整数 的对象"
+                    f"（合法键 {sorted(allowed_keys)}，形状示例：{eg}）")
     elif shape == "str_choice":
         choices = spec.get("choices", [])
         if not isinstance(value, str) or value not in choices:
@@ -938,6 +995,96 @@ def proposal_cross_facts(book: Path, ch: str, proposal: dict) -> dict:
         facts["kno_reveal_timing"] = timing
     facts["present_in_proposal"] = list(((proposal.get("current") or {}).get("present_characters") or []))
     return facts
+
+
+# 位阶单调性探针（C1）：tier 变更的剧情事件关键词（向上/向下合并一组，
+# 方向语义交给事件文本本身；实体名命中是必要条件，防任意突破事件洗白任意实体）
+_TIER_SHIFT_KEYWORDS = ("突破", "晋升", "跃迁", "觉醒", "加冕", "进阶", "晋阶", "升阶",
+                        "凝聚", "铸就", "被废", "跌境", "重创", "尽废", "废去", "降阶", "折损")
+
+
+def _tier_probe(book: Path, warnings: list) -> None:
+    """位阶单调性探针（C1）：重放 processed/ 提案，实体 tier_rank/tier_name 的
+    实际变更必须有前后 grace 章内的 timeline 剧情事件支撑（事件文本需含实体名
+    + 突破/被废类关键词或新 tier_name）。
+
+    - 走 processed/ 重放而非 changelog：对没有 changelog 的老书同样可用；
+      手术刀直改 tier 不经提案，逃过本探针（但 changelog blame 可见，已知局限）；
+    - 首次 sighting 只建基线（Stage 0 播种语义），不变更不要求事件；
+    - 同值重述不算变更（Reader 刷新 summary 顺带重写 tier 不产生噪声）。
+    """
+    proj = common.load_json(book / "project.json", default={}) or {}
+    raw_grace = proj.get("tier_shift_grace")
+    grace = raw_grace if (isinstance(raw_grace, int) and not isinstance(raw_grace, bool)
+                          and raw_grace >= 0) else 1
+
+    # 1) processed/ 提案重放：抽取实体 tier 实际变更序列
+    shifts: list[tuple[int, str, str]] = []   # (章号, 实体名, 新 tier_name)
+    seen_rank: dict[str, object] = {}
+    seen_tname: dict[str, str] = {}
+    processed_dir = book / "state" / "inbox" / "processed"
+    if processed_dir.is_dir():
+        for pf in sorted(processed_dir.glob("*.json")):
+            if pf.name.endswith(state.NO_MERGE_SUFFIXES) or pf.name == "state_hashes.json":
+                continue
+            data = common.load_json(pf, default=None)
+            if not isinstance(data, dict):
+                continue
+            ch_num = common.chapter_token_to_num(data.get("chapter"))
+            if not ch_num:
+                continue
+            ents = data.get("entities")
+            if not isinstance(ents, list):
+                continue
+            for e in ents:
+                if not isinstance(e, dict):
+                    continue
+                key = str(e.get("id") or e.get("name") or "").strip()
+                name = str(e.get("name") or key).strip()
+                if not key or not name:
+                    continue
+                shifted = False
+                if "tier_rank" in e:
+                    cur = e["tier_rank"] if isinstance(e["tier_rank"], int) \
+                        and not isinstance(e["tier_rank"], bool) else None
+                    if key in seen_rank and seen_rank[key] != cur:
+                        shifted = True
+                    seen_rank[key] = cur
+                tname = str(e.get("tier_name") or "").strip()
+                if "tier_name" in e and tname:
+                    if key in seen_tname and seen_tname[key] != tname:
+                        shifted = True
+                    seen_tname[key] = tname
+                if shifted:
+                    shifts.append((ch_num, name, tname or str(seen_tname.get(key, ""))))
+
+    if not shifts:
+        return
+
+    # 2) timeline 事件窗口匹配
+    try:
+        events = state.load_state(book, "timeline").get("events", []) or []
+    except (ValueError, OSError):
+        events = []
+    windowed: list[tuple[int, str]] = []
+    for ev in events:
+        if not isinstance(ev, dict):
+            continue
+        ev_ch = common.chapter_token_to_num(ev.get("chapter"))
+        if ev_ch:
+            windowed.append((ev_ch, str(ev.get("event", ""))))
+
+    for n, name, tname in shifts[:20]:
+        candidates = [txt for c, txt in windowed if abs(c - n) <= grace]
+        ok = any(name in txt and (any(k in txt for k in _TIER_SHIFT_KEYWORDS)
+                                  or (tname and tname in txt))
+                 for txt in candidates)
+        if not ok:
+            warnings.append(_err(
+                "tier_shift_without_event",
+                f"{name} 的位阶在 ch_{n:03d} 变更（→{tname or '未具名'}），但前后 {grace} 章的"
+                f" timeline 无提及该实体的突破/被废类事件——战力通胀/通缩风险"
+                + (f"（另有 {len(shifts) - 20} 处未列出）" if len(shifts) > 20 else "")))
 
 
 def run_checks(book: Path) -> dict:
@@ -1375,6 +1522,59 @@ def run_checks(book: Path) -> dict:
             warnings.append(_err("plotline_starvation",
                                  f"伏笔/暗线 {gid} 预定 ch_{tch:03d} 解决，当前已连载至 ch_{latest_final:03d}（严重饥饿，请尽快安排回响或闭环）"))
 
+    # ---- 读者记忆闸门（一/三）：画像全文扫描只此一次，闸门 2 的冷线判定共用 ----
+    # 与既有线闸门家族的分工（勿「去重」误删）：
+    #   plotline_starvation / line_overdue = 台账时间轴（预定章 vs 连载进度）；
+    #   line_recall_cold                   = 读者记忆轴 × 回收意图（beats 写了 resolve 才触发）。
+    # 两者对同一条线可能双报——一个是账务信号、一个是读者信号，语义不同。
+    try:
+        _mem_rows = memory.line_memory_map(book)
+    except (ValueError, OSError):
+        _mem_rows = []
+    _cold_by_id = {r["id"]: r for r in _mem_rows if r["is_cold"]}
+    # 闸门 1：已入账但正文从未落笔——硬事实判定（台账有、正文零出现），无阈值猜测。
+    # 与 present_unmentioned 同构：那是「在场声明零提及」，这是「线索登记零落笔」。
+    for _r in memory.never_surfaced(_mem_rows):
+        warnings.append(_err(
+            "line_never_surfaced",
+            f"{_r['id']}《{_r['label']}》已登记入账（plant ch_{(_r['plant_ch'] or 0):03d}），"
+            f"但正文从未出现过——读者压根没见过这条线，日后回收等于凭空兑现"))
+    # 声纹漂移（C2，info）：只测「怎么说话」（句长/语气词/口头禅），不测人设对错。
+    # 样本不足的角色不判定——宁漏报不误报（启发式归属，详见 voiceprint.py 局限清单）。
+    try:
+        from . import voiceprint as vp_mod
+        _vp = vp_mod.voiceprint_report(book)
+        for _c in _vp["characters"]:
+            if _c["drift_reasons"]:
+                infos.append(_err(
+                    "voiceprint_drift",
+                    f"{_c['name']} 的对白声纹近 {_vp['window']} 章偏离基线："
+                    f"{'；'.join(_c['drift_reasons'])}——腔调漂移易让读者觉得「换了个人在说话」，"
+                    f"建议重读该角色早期对白找回落点（info 级提示，机械只测形式不测人设）"))
+    except (ValueError, OSError):
+        pass
+
+    # 闸门 3：已声明重要的事实（locked + 已揭示 knowledge）久未重现，进入读者印象区。
+    # 范围严格限定这两个集合（书自己声明为重要的），不对全部认知条目生效——
+    # 否则一次性事实会刷屏。locked.fact 不含已登记专名时提词退化 → 漏报（不是误报），
+    # 见 memory 模块 docstring 的盲区清单。
+    try:
+        for _r in memory.key_fact_memory(book):
+            # tier == "impression" 已隐含 gap 非 None；never 档不报（否则空提词刷屏）
+            if _r["tier"] == "impression" and _r["gap"] is not None:
+                warnings.append(_err(
+                    "reader_memory_stale",
+                    f"[{_r['source']}] {_r['id']}「{_r['label']}」已 {_r['gap']} 章未在正文重现"
+                    f"（上次 ch_{_r['last_seen_ch']:03d}）——已进入读者印象区"))
+    except (ValueError, OSError):
+        pass
+
+    # ---- 位阶单调性探针（C1）：战力通胀/通缩是长篇吃书第一重灾区 ----
+    try:
+        _tier_probe(book, warnings)
+    except (ValueError, OSError):
+        pass
+
     # 因果依赖图校验 (Prerequisite DAG Check)
     all_lines_map: dict[str, dict] = {}
     try:
@@ -1501,6 +1701,8 @@ def run_checks(book: Path) -> dict:
         planned_skips = set(re.findall(
             r"(?:skip|hold|defer|不涉及|不推进|顺延)\s*[:：]?\s*((?:GUN|MIS|KNO)-\d{3,})",
             action_sec))
+        planned_resolves = set(re.findall(
+            r"(?:resolve|回收|收束|揭示)\s*[:：]?\s*((?:GUN|MIS|KNO)-\d{3,})", action_sec))
         orphans = sorted(set(re.findall(r"(?:GUN|MIS|KNO)-\d{3,}", action_sec)) - ledger_line_ids
                          - planned_plants - planned_skips)
         if orphans:
@@ -1513,6 +1715,15 @@ def run_checks(book: Path) -> dict:
             warnings.append(_err("line_action_missing",
                                  f"{f.name}: 到期/逾期线 {', '.join(missing_ids[:5])} 未出现在「线动作」栏"
                                  "（不还须在 beats 写明顺延理由，归主控 Stage 1 裁决）"))
+        # 读者记忆闸门（二）：beats 计划回收 × 该线已冷（gap 超过按 weight 缩放的阈值）。
+        # 只在「本章真要回收」时才报——把提醒推到动作发生的那一刻，而非全程噪声。
+        for _lid in sorted(planned_resolves & set(_cold_by_id)):
+            _r = _cold_by_id[_lid]
+            warnings.append(_err(
+                "line_recall_cold",
+                f"{f.name}: {_lid}《{_r['label']}》计划本章回收，但正文已 {_r['gap']} 章未重现"
+                f"（上次出现 ch_{_r['last_seen_ch']:03d}，冷线阈值 {_r['cold_threshold']} 章）"
+                "——读者可能已忘记埋过此线，回收时无爽感"))
 
         if locked_entries:
             active_locks = [

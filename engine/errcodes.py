@@ -96,6 +96,25 @@ REGISTRY: dict[str, ErrCode] = {c.code: c for c in (
     # ---- 伏笔暗线 ----
     _reg("plotline_starvation", "warning", "线索长期未推进（伏笔饥饿）",
          "该线索长期未推进，请在当章或后续章节 beats 中安排线索推进（advancement）或提及（remind）。"),
+    _reg("line_never_surfaced", "warning", "线索已登记入账，但正文中从未真正出现过",
+         "该线只存在于台账、读者从未读到。请先在正文中把它写实（哪怕一句侧写），"
+         "否则日后回收等于凭空兑现。若确不打算写，请用 resolve/retire 收掉该条。"),
+    _reg("voiceprint_drift", "info",
+        "角色对白声纹（句长/语气词/口头禅）近窗偏离自身基线，腔调漂移",
+        "重读该角色早期对白找回腔调落点；若角色有意转变（成长/黑化），在 beats 写明 form_reason 即可忽略"),
+    _reg("locked_fact_untraceable", "info",
+        "locked 新条目的 fact 不含任何已登记实体名/别名，读者记忆层无法追踪（闸门 3 盲区）",
+        "把相关实体名写进 fact（如「张三」而非「那人」）；若确为无实体全局事件，可忽略本提示"),
+    _reg("line_recall_cold", "warning", "计划回收的线索在正文中久未重现，读者可能已遗忘",
+         "建议本章先 remind 回响一次（提案 lines 里带 "
+         "{\"action\":\"remind\",\"id\":\"<线ID>\"}），或把回收改期到回响之后。"),
+    _reg("reader_memory_stale", "warning", "关键事实（不可逆事实/已揭示秘密）久未在正文重现",
+         "读者可能已忘记这条设定。建议在后续章节安排一次自然回响（借对话或场景侧写带出），"
+         "不要等到要用它时才重新解释。"),
+    _reg("tier_shift_without_event", "warning", "实体位阶变更无对应 timeline 事件（战力通胀/通缩风险）",
+         "位阶（tier_rank/tier_name）变更应有突破/晋升/被废/跌境等剧情事件支撑。"
+         "请在提案 timeline.events 补记该事件（既有事件修订走 replace 通道），"
+         "或修正 entities 的 tier 值。"),
     _reg("prerequisite_missing", "warning", "线索声明的依赖项在台账中不存在",
          "在 state/lines.json 中补齐前置线索定义，或修正该线索的 requires 依赖项。"),
     _reg("prerequisite_unmet", "error", "前置线索未达成就尝试收网/揭晓",
