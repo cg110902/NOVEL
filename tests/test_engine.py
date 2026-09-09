@@ -1205,3 +1205,78 @@ class TestProposalKeyWhitelistSync(unittest.TestCase):
         }, expected_chapter="ch_001")
         self.assertTrue(any("含未知字段" in e and "totally_made_up_field" in e
                             for e in errs), errs)
+
+
+class TestHandwrittenLiteralSync(unittest.TestCase):
+    """validate_proposal 里内联手写的枚举字面量必须与模型 Literal / schema 同源。
+
+    state.py 的枚举真源（_ENTITY_STATUS 等 8 组）已在 TestEnumSSOTAndDanglingRefs 锁住，
+    但 validate_proposal 内部还有两处**内联手写**的枚举，不在那 8 组里：
+      - locked[i].kind         （注释自称「与 models.locked.LockedKind 全量对齐（7 类）」）
+      - timeline.milestones[i].status
+    注释断言的对齐关系此前无人机械校验。实测当前三者一致（模型 Literal / 手写 /
+    提交的 schema JSON），此处锁死防漂移。
+    """
+
+    HAND_LOCKED_KIND = {"death", "destruction", "disbandment", "irreversible_action",
+                        "rule", "promise", "pact"}
+    HAND_MILESTONE_STATUS = {"pending", "achieved", "abandoned"}
+
+    def test_locked_kind_matches_model_literal(self):
+        import typing
+        from engine.models.locked import LockedKind
+        self.assertEqual(set(typing.get_args(LockedKind)), self.HAND_LOCKED_KIND,
+                         "validate_proposal 手写的 locked.kind 与模型 Literal 漂移")
+
+    def test_milestone_status_matches_model_literal(self):
+        import typing
+        from engine.models.timeline import TimelineMilestone
+        ann = TimelineMilestone.model_fields["status"].annotation
+        self.assertEqual(set(typing.get_args(ann)), self.HAND_MILESTONE_STATUS,
+                         "validate_proposal 手写的 milestones.status 与模型 Literal 漂移")
+
+    def test_committed_schemas_carry_same_enums(self):
+        root = Path(__file__).resolve().parents[1]
+
+        def enums_of(schema_name, key):
+            doc = json.loads((root / "engine" / "schemas" / f"{schema_name}.schema.json"
+                              ).read_text(encoding="utf-8"))
+            out = []
+
+            def walk(node):
+                if isinstance(node, dict):
+                    v = node.get(key)
+                    if isinstance(v, dict) and "enum" in v:
+                        out.append(set(v["enum"]))
+                    for x in node.values():
+                        walk(x)
+                elif isinstance(node, list):
+                    for x in node:
+                        walk(x)
+            walk(doc)
+            return out
+
+        self.assertIn(self.HAND_LOCKED_KIND, enums_of("locked", "kind"))
+        # timeline.schema.json 里有两个 status enum（clocks 用 ClockStatus、
+        # milestones 用里程碑状态），只要求里程碑那组在其中
+        self.assertIn(self.HAND_MILESTONE_STATUS, enums_of("timeline", "status"))
+
+    def test_illegal_locked_kind_rejected_by_real_validator(self):
+        errs, _ = state.validate_proposal({
+            "schema": "novel-studio.state-mutation/v2", "chapter": "ch_001",
+            "operation_id": "op-kind",
+            "locked": [{"action": "plant", "id": "LOCK-001", "kind": "vibes",
+                        "fact": "灯铺被烧毁，无法复原", "since_ch": "ch_001"}],
+        }, expected_chapter="ch_001")
+        self.assertTrue(any("kind 必须" in e for e in errs), errs)
+
+    def test_every_legal_locked_kind_accepted(self):
+        for i, kind in enumerate(sorted(self.HAND_LOCKED_KIND)):
+            errs, _ = state.validate_proposal({
+                "schema": "novel-studio.state-mutation/v2", "chapter": "ch_001",
+                "operation_id": f"op-kind-{kind}",
+                "locked": [{"action": "plant", "id": f"LOCK-{i + 1:03d}", "kind": kind,
+                            "fact": "灯铺被烧毁，无法复原", "since_ch": "ch_001"}],
+            }, expected_chapter="ch_001")
+            self.assertFalse([e for e in errs if "kind 必须" in e],
+                             f"合法 kind={kind} 被误杀: {errs}")
