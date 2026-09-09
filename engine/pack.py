@@ -463,6 +463,15 @@ def build_pack(book: Path, ch: str, lean: bool = False, full: bool = False) -> d
         "prev_tail": _prev_final_tail(book, ch_num, cur_vol),
         "hard_reminders": _hard_reminders(book, ch, ch_num),
     }
+    # 前情卷末态势（D1 卷级 rollup）：装配成本 O(当前卷) 的关键——远卷只给态势
+    # 摘要（≤500 token，超限从尾部裁剪），细节走 lore/entity 卡按需取
+    try:
+        from . import rollup as rollup_mod
+        _prior = rollup_mod.prior_volumes_digest(book, cur_vol)
+        if _prior:
+            p0["prior_volumes"] = _prior
+    except (ValueError, OSError):
+        pass
     if aftershock:
         p0["aftershock"] = aftershock
     if active_pressures:
@@ -686,6 +695,9 @@ def render_layer(name: str, obj, full: bool = False) -> str:
                 lines.append(f"loadout: {' | '.join(parts)}")
             else:
                 lines.append(f"{k}: {v}")
+        if obj.get("prior_volumes"):
+            lines += ["", "=== 前情卷末态势（远卷摘要，细节用 lore 按需取） ==="] \
+                     + [f"- {ln}" for ln in obj["prior_volumes"]]
         if obj.get("volume_phase"):
             lines += ["", "=== 本卷阶段航标 ===", f"- {obj['volume_phase']}"]
         if obj.get("world_anchors"):

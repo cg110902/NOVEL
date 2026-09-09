@@ -1064,6 +1064,27 @@ def cmd_state(args) -> int:
                 print(f" {k:<18}: {v}")
         return 0
 
+    # ---- 卷级 rollup（D1）：卷末封存后生成态势摘要 ----
+    if action == "rollup":
+        from .. import rollup as rollup_mod
+        vol = str(getattr(args, "vol", "") or "").strip()
+        try:
+            data = rollup_mod.build_rollup(book, vol)
+        except ValueError as exc:
+            return _fail(str(exc), code=2)
+        out_path = rollup_mod.save_rollup(book, vol)
+        if js:
+            print(json.dumps({"ok": True, "vol": vol, "path": str(out_path.relative_to(book)),
+                              "entities": len(data["entities"]),
+                              "open_lines": len(data["open_lines"]),
+                              "at_final_ch": data["at_final_ch"]}, ensure_ascii=False))
+        else:
+            print(f"📦 卷末态势摘要已生成：{out_path.relative_to(book)}"
+                  f"（实体 {len(data['entities'])} ｜ 未兑线 {len(data['open_lines'])} ｜"
+                  f" 至 ch_{data['at_final_ch']:03d}）")
+            print("   后卷章节 pack 将自动注入「前情卷末态势」块（≤500 token）")
+        return 0
+
     # ---- 溯源查询族：at / diff / blame（changelog 重放，零 Token） ----
     if action == "at":
         n = common.chapter_token_to_num(getattr(args, "chapter", ""))

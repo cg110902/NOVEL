@@ -46,7 +46,7 @@ COMMAND_HELP = {
     "doctor": "check 的同义别名（同一处理函数 cmd_check，输出逐字节相同）；习惯叫 doctor 的人用它",
     "checkpoint": "宏观航向校准点（每5章复盘分卷四分位里程碑与主线偏航）",
     "milestone": "主线里程碑管理：list ｜ add（Stage 0 播种主线里程碑与预期达成章节）",
-    "state": "状态速查与手术刀纠偏：show ｜ get/set <表.字段> ｜ at <章>（时点切面）｜ diff <章A> <章B> ｜ blame <表.路径>（字段级溯源；防真值幻觉）",
+    "state": "状态速查与手术刀纠偏：show ｜ get/set <表.字段> ｜ at <章>（时点切面）｜ diff <章A> <章B> ｜ blame <表.路径>（溯源）｜ rollup <卷>（卷末态势摘要）",
     "config": "书级参数手术刀：list|guide|suggest|get|set[--merge]|unset（主控供参通道，project.json；含 words_target/lines_cap 等项目级键）",
     "sync": "提案合并 → 状态体检 → 快照（Stage 5 闭环，可 --dry-run）",
     "ledger": "账本手术刀：recompute（余额与 balance_after 按流水全量重算修复）",
@@ -366,6 +366,11 @@ def _build_subparsers(sub: argparse._SubParsersAction) -> None:
     r = st_sub.add_parser("diff", help="两切面对照：ch_A 与 ch_B 封存后的世界差异")
     r.add_argument("chapter_a", help="章节 A（如 3 或 ch_003）")
     r.add_argument("chapter_b", help="章节 B（如 7 或 ch_007）")
+    r.add_argument("-w", "--workspace", default=argparse.SUPPRESS)
+    r.add_argument("--json", action="store_true", default=argparse.SUPPRESS)
+    r.set_defaults(func=cmd_state)
+    r = st_sub.add_parser("rollup", help="卷级态势摘要：从当前八表生成 state/rollups/vol_XX.json（卷末封存后执行）")
+    r.add_argument("vol", help="卷名（如 vol_01）")
     r.add_argument("-w", "--workspace", default=argparse.SUPPRESS)
     r.add_argument("--json", action="store_true", default=argparse.SUPPRESS)
     r.set_defaults(func=cmd_state)
