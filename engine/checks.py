@@ -245,6 +245,25 @@ def verify_candidates(book: Path, ch: str, proposal: dict) -> dict:
         add("warn", "quote_none", "提案未携带任何引文——整套引文接地机制未启用")
     out["stats"] = {"quote_slots": total, "quote_missing": missing}
 
+    # A4b 盲区可见化（修正 3 的工程处置）：locked.fact 不含任何已登记实体名/别名时，
+    # 读者记忆层（key_fact_memory 按专名扫描 finals）将无法追踪这条事实——静默漏报。
+    # 在写入时刻出 info 提示，不阻断；fact 几乎必然含实体名，故预期低频。
+    locked_ops = proposal.get("locked")
+    if isinstance(locked_ops, list) and locked_ops:
+        try:
+            known_names = [n for names in evidence.entity_lookup(book).values() for n in names]
+        except (ValueError, OSError):
+            known_names = []
+        for i, op in enumerate(locked_ops):
+            if not isinstance(op, dict) or op.get("action", "plant") != "plant":
+                continue
+            fact = str(op.get("fact") or "")
+            if fact and known_names and not any(n in fact for n in known_names):
+                add("info", "locked_fact_untraceable",
+                    f"locked[{i}]（{op.get('id') or '新条目'}）的 fact 不含任何已登记实体名/别名——"
+                    "读者记忆层将无法按专名追踪这条事实（闸门 3 盲区），"
+                    "建议 fact 中写入相关实体名（如「张三」而非「那人」）")
+
     m = re.search(r"^#\s*(.+?)\s*$", text, re.M)
     if not m:
         add("info", "title_absent", "final 无章题标题行，章题机械对照跳过（Editor 契约要求首行章题）")

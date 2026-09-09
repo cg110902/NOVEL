@@ -866,6 +866,22 @@ def cmd_beats(args) -> int:
     if not due_lines_str:
         due_lines_str = "- （根据大纲按需 plant 新线或维持现状）"
 
+    # 冷线提醒（A5）：已冷且近期（≤5 章）要到期的线——安排回收前先半句锚定。
+    cold_hint_str = ""
+    try:
+        from .. import memory as memory_mod
+        cold_due = [r for r in memory_mod.line_memory_map(book)
+                    if r["is_cold"] and isinstance(r.get("target_ch"), int)
+                    and r["target_ch"] <= n + 5]
+        cold_due.sort(key=lambda r: (r["target_ch"], -(r["gap"] or 0)))
+        if cold_due:
+            cold_hint_str = "\n".join(
+                f"- {r['id']}《{r['label']}》已 {r['gap']} 章未重现"
+                f"（目标 ch_{r['target_ch']:03d}）——读者或已忘记，回收前先半句锚定旧事"
+                for r in cold_due[:3])
+    except (ValueError, OSError):
+        pass  # 读者记忆层不可用：冷线提醒留空，不阻断细纲装配
+
     tmpl_path = common.project_root() / "templates" / "beats.md"
     if not tmpl_path.is_file():
         return _err(f"细纲模板缺失: {tmpl_path}", code=1, err_code="engine")
@@ -902,6 +918,9 @@ def cmd_beats(args) -> int:
         print("⚠️ beats 脚手架「所属阶段/上章现场」注入：模板标记与锚点均缺失，"
               "已回退到 frontmatter 后独立块——请人工核对位置", file=sys.stderr)
     text = re.sub(r"- GUN-XXX[^\n]*\n- KNO-XXX[^\n]*\n- MIS-XXX[^\n]*", due_lines_str, text)
+    # 冷线提醒（A5）：追加到到期区之后（读者记忆轴信号，与到期台账互补）
+    if cold_hint_str:
+        text = text.replace(due_lines_str, due_lines_str + "\n\n**⚠️ 冷线提醒（已冷却且临近到期）**\n" + cold_hint_str, 1)
 
     # 一致性速查注入：实体名册（含别名，含卷纲规划行点名实体）+ KNO 知情差边界
     plan_line = ""

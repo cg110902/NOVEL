@@ -472,6 +472,25 @@ def build_pack(book: Path, ch: str, lean: bool = False, full: bool = False) -> d
             p0["prior_volumes"] = _prior
     except (ValueError, OSError):
         pass
+
+    # 冷线回收锚定（A5）：只注入「本章 beats 计划回收 × 已冷」的可执行子集（≤2 条）。
+    # 前置纪律与 check 的 line_recall_cold 同源——真要回收一条读者已忘的线时，
+    # 给写手一句「先半句锚定再兑现」的操作提示，而非事后再报。
+    try:
+        planned = set(re.findall(
+            r"(?:resolve|回收|收束|揭示)\s*[:：]?\s*((?:GUN|MIS|KNO)-\d{3,})", beats))
+        if planned:
+            from . import memory as memory_mod
+            cold = [r for r in memory_mod.line_memory_map(book)
+                    if r["id"] in planned and r["is_cold"]]
+            cold.sort(key=lambda r: -(r["gap"] or 0))
+            hints = [f"{r['id']}《{r['label']}》已 {r['gap']} 章未重现"
+                     f"（上次 ch_{(r['last_seen_ch'] or 0):03d}）——兑现前先半句锚定旧事，"
+                     f"再收 payoff" for r in cold[:2]]
+            if hints:
+                p0["cold_recall_hints"] = hints
+    except (ValueError, OSError):
+        pass
     if aftershock:
         p0["aftershock"] = aftershock
     if active_pressures:
@@ -712,6 +731,9 @@ def render_layer(name: str, obj, full: bool = False) -> str:
             lines += ["", "=== 现场信息差机锋（AI写对手戏必用） ==="] + [f"- {di}" for di in obj["dramatic_irony"]]
         lines += ["", "=== beats ===", obj["beats"], "", "=== 上章余温 ===", obj["prev_tail"],
                   "", "=== 硬提醒 ==="] + [f"- {m}" for m in obj["hard_reminders"]]
+        if obj.get("cold_recall_hints"):
+            lines += ["", "=== 冷线回收锚定（读者或已忘记，先锚定再兑现） ==="] \
+                     + [f"- {h}" for h in obj["cold_recall_hints"]]
         return "\n".join(lines)
     if name == "p1":
         lines = []
