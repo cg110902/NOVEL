@@ -63,6 +63,16 @@ _LINE_KIND_SPEC = {
 }
 
 
+def line_kind_spec(kind: str) -> dict | None:
+    """三类线（foreshadow / misunderstanding / knowledge）字段规格的公开只读入口。
+
+    单一真源仍是模块级 _LINE_KIND_SPEC；memory / checks / audit 等外部模块
+    需要判定「已闭环状态字面量」「plant 必填字段」等规格时一律走本函数，
+    禁止跨模块摸 _LINE_KIND_SPEC 私有名（2025 一致性改造 R1-c1）。
+    """
+    return _LINE_KIND_SPEC.get(kind)
+
+
 def _schema(name: str) -> dict:
     if name not in _SCHEMA_CACHE:
         p = Path(__file__).resolve().parent / "schemas" / f"{name}.schema.json"

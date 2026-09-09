@@ -479,7 +479,7 @@ def verify_candidates(book: Path, ch: str, proposal: dict) -> dict:
                     continue
                 t = g.get("target_ch")
                 if isinstance(t, int) and t <= n:
-                    terms = evidence._line_terms_for(g, kind, reg_terms)
+                    terms = evidence.line_terms_for(g, kind, reg_terms)
                     if any(term in text for term in terms):
                         add("warn", "due_line_unhandled",
                             f"{g['id']}（target ch_{t:03d}）正文有触及、提案未操作——确认本章是否该还线")

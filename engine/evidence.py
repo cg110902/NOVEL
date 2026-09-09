@@ -389,7 +389,19 @@ def _amount_scan(text: str, pools: dict) -> list[dict]:
     return out
 
 
-def _line_terms_for(g: dict, kind: str, reg_terms: list[str]) -> list[str]:
+def line_terms_for(g: dict, kind: str, reg_terms: list[str]) -> list[str]:
+    """一条台账线在正文中的可检索表面形式（提词）。
+
+    伏笔取 name/plan、秘密取 secret/note、误会取 parties/content 中的实质词，
+    并把出现在该线自身文本（blob）里的已登记专名并入 terms——注意是按
+    ``a in blob`` 过滤后的定向并入，不是全量并入，因此不会产生
+    「任意线命中任意章」的假命中雪崩。
+
+    公开 API：memory.py 的读者记忆派生层依赖此函数（2025 一致性改造 R1-c1
+    由私有提为公开）。修改提词规则会同时影响 gaps() 的 line_hits、
+    checks.py 的 due_line_unhandled 与全部读者记忆闸门（line_never_surfaced /
+    line_recall_cold / reader_memory_stale），改动前请跑全量单测。
+    """
     terms: list[str] = []
     if kind == "foreshadow":
         name = str(g.get("name", "")).strip()
@@ -518,7 +530,7 @@ def candidates(book: Path, ch: str) -> dict:
                     due.append((t, sk[1], sk[3], item))
                 elif t <= n + 2:
                     upcoming.append((t, sk[1], sk[3], item))
-            hits = {tm: text.count(tm) for tm in _line_terms_for(g, kind, reg_terms) if tm in text}
+            hits = {tm: text.count(tm) for tm in line_terms_for(g, kind, reg_terms) if tm in text}
             if hits:
                 line_hits.append({"id": g["id"], "kind": kind,
                                   "label": str(g.get("name", g.get("parties", g.get("secret", "")))),
