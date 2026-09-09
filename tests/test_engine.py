@@ -1416,3 +1416,57 @@ class TestEntityMergeCoverage(unittest.TestCase):
         self.assertEqual(ent["diplomacy"]["漕帮"], " wary")
         self.assertEqual(ent["address_matrix"]["对掌柜"], "小子")
         self.assertEqual(ent["relations"][0]["target"], "裴九")
+
+
+class TestProposalAtomicity(unittest.TestCase):
+    """合并期报错必须整案不落盘（apply_proposal 的原子性前提）。
+
+    _merge_lines / _merge_entities 等合并函数是就地改 dict 的：例如 `resolve` 先把
+    ent["status"] 置为已闭环，再校验 target_ch，校验失败只 continue——内存里的部分
+    变更已经发生。这不出问题，全靠 apply_proposal 的两条设计：
+      1. 操作对象是 load_state 的 deepcopy，不是磁盘数据；
+      2. rep["errors"] 非空时早退，且清空 updated/warnings，不写盘。
+    若哪天有人把 deepcopy 去掉、或在早退前加了写盘，部分变更就会静默落盘。
+    """
+
+    def test_merge_time_error_leaves_nothing_on_disk(self):
+        with TempBook() as tb:
+            seed = {"schema": "novel-studio.state-mutation/v2", "chapter": "ch_001",
+                    "operation_id": "op-atom-seed",
+                    "lines": [{"kind": "foreshadow", "action": "plant", "id": "GUN-001",
+                               "name": "断刀来历", "target_ch": 12, "plan": "后文揭示"}]}
+            r0 = state.apply_proposal(tb.book, seed, expected_chapter="ch_001")
+            self.assertEqual(r0["errors"], [])
+            before = state.load_state(tb.book, "lines")["foreshadows"][0]
+            self.assertEqual(before["status"], "Planted")
+
+            # 这个提案能过 validate_proposal（它不校验 update 的 status 取值），
+            # 只在 _merge_lines 里撞上 spec["statuses"] 才失败——正好用来测合并期原子性
+            bad = {"schema": "novel-studio.state-mutation/v2", "chapter": "ch_002",
+                   "operation_id": "op-atom-bad",
+                   "lines": [{"kind": "foreshadow", "action": "update", "id": "GUN-001",
+                              "status": "TotallyMadeUp", "plan": "改过的计划"}]}
+            errs, _ = state.validate_proposal(bad, expected_chapter="ch_002")
+            self.assertEqual(errs, [], "前提：该提案须能通过校验，才能测到合并期失败")
+
+            r = state.apply_proposal(tb.book, bad, expected_chapter="ch_002")
+            self.assertTrue(r["errors"], "合并期应当报错")
+            self.assertEqual(r["updated"], [], "有错时 updated 必须被清空")
+
+            after = state.load_state(tb.book, "lines")["foreshadows"][0]
+            self.assertEqual(after, before,
+                             "部分变更不得落盘（status 或 plan 被改动即为破坏）")
+
+    def test_dry_run_also_writes_nothing(self):
+        with TempBook() as tb:
+            prop = {"schema": "novel-studio.state-mutation/v2", "chapter": "ch_001",
+                    "operation_id": "op-atom-dry",
+                    "cognition": [{"action": "plant", "id": "COG-001", "character": "林牧",
+                                   "content": "他知道刀已断裂", "kind": "fact",
+                                   "since_ch": "ch_001", "quote": "刀断了"}]}
+            before = state.load_state(tb.book, "cognition")
+            r = state.apply_proposal(tb.book, prop, expected_chapter="ch_001", dry_run=True)
+            self.assertEqual(r["errors"], [])
+            self.assertTrue(r.get("dry_run"))
+            self.assertEqual(state.load_state(tb.book, "cognition"), before,
+                             "dry_run 不得写盘")
