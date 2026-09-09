@@ -1,7 +1,8 @@
 """错误码注册表：Novel Studio 引擎全部体检错误码的机器可读说明书。
 
 定位：这些错误的最终消费者往往是 LLM Agent（主控拿到 `check --json` 后要自助修复），
-因此每个码必须有：severity（错误/警告/提示）、description（一句话人话解释）、
+因此每个码必须有：level（error/warning/info，决定投递到哪条通道）、
+description（一句话人话解释）、
 remedy（可执行的修复建议）。
 
 单一真源约定：
@@ -9,7 +10,9 @@ remedy（可执行的修复建议）。
 - checks.py 源码中出现的每个 `_err("code"` 字面量
   必须已注册，新增错误码漏注册会当场报警。
 
-severity 为数据驱动：按 run_checks 实际把错误码投递到 errors/warnings/infos 哪条通道归类。
+level 为数据驱动：按 run_checks 实际把错误码投递到 errors/warnings/infos 哪条通道归类。
+（字段名是 level，不是 severity——`errcodes --json` 输出的键就是 level/description/
+remedy/code 四个；audit 候选里的 severity=candidate_hard/soft 是另一套东西，勿混。）
 """
 from __future__ import annotations
 

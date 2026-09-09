@@ -16,7 +16,7 @@
 | `audit.py` | 确定性机械审计探针：**8大探针**（不可逆事实违背/在场与死亡/道具充能/金额一致/知情差泄露/认知差冲突/别名漂移/称谓与修饰词对账 `address_mismatch`） | 确定性跨域比对算法 |
 | `db.py` | SQLite3 双平面投影与 FTS5 检索加速：BM25 段落级语义召回与角色 POV 聚合（支持优雅降级） | **sqlite3**（FTS5 全文索引）+ **jieba**（专名切词） |
 | `migrations.py` | 状态机版本化与迁移器：`state/state_schema.json` 版本戳；老书首次读取自动迁移（迁移前强制快照 + 闸门预验 + JSONL 审计日志 `state/migrations.log`）；只修结构不碰事实 | 快照回滚双保险 |
-| `errcodes.py` | 错误码注册表：全部体检码的 severity/人话解释/修复建议（`python studio.py errcodes`，--json 供 Agent 自助修复，含 `entity_id_duplicate` 探针）；`checks.DEFAULT_REMEDIES` 由它派生 | 单一真源 |
+| `errcodes.py` | 错误码注册表：全部体检码的 level/人话解释/修复建议（`python studio.py errcodes`，--json 供 Agent 自助修复，含 `entity_id_duplicate` 探针）；`checks.DEFAULT_REMEDIES` 由它派生 | 单一真源 |
 | `graph.py` | 实体拓扑与叙事中介寻路分析（`studio graph`） | **NetworkX**（最短破局链路、中介中心度排名、孤立资产排查） |
 | `common.py` | 工作区定位、章节号解析、front-matter、原子写、Windows 并发重试、规范哈希 | 标准库（Windows 重试微退避机制，四层回滚保护） |
 | `state.py` | 八表真值管理（含 locked/cognition）、**双键实体寻址合并（ID优先）**、语义补丁合并、复式记账重算、幂等登记簿、落盘前一致性体检、高危状态迁移守卫与时间线回退警示（advisory） | 确定性复式平衡算法与实体关系闭合校验 |

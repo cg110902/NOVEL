@@ -531,7 +531,7 @@ def verify_candidates(book: Path, ch: str, proposal: dict) -> dict:
     return out
 
 
-# 错误码与修复文案的唯一真源在 errcodes.REGISTRY（含 severity 与人话解释，供 Agent 消费）；
+# 错误码与修复文案的唯一真源在 errcodes.REGISTRY（含 level 与人话解释，供 Agent 消费）；
 # 此处仅派生兜底 remedy 字典，禁止在本文件再手写新条目。
 DEFAULT_REMEDIES: dict[str, str] = {c.code: c.remedy for c in errcodes.REGISTRY.values()
                                     if c.remedy}

@@ -60,7 +60,7 @@ COMMAND_HELP = {
     "recall": "知乎残酷四问 0 Token 机械自证（主要人物知道什么/哪三条不能改/伏笔未兑现/下章红线）",
     "simulate": "剧情推演沙盒与走向假说（impact 因果链测算 ｜ branch 多分支走向参谋件）",
     "graph": "实体拓扑沙盘与叙事中介寻路（NetworkX 强力赋能：path/neighbors/isolated/centrality）",
-    "errcodes": "错误码注册表速查：全部体检码的 severity/解释/修复建议（--json 供 Agent）",
+    "errcodes": "错误码注册表速查：全部体检码的 level/解释/修复建议（--json 供 Agent）",
     "lore": "底层词典与实体知识库速查对账：list（ID总览）｜ entity（实体属性）｜ compare（位阶互称）｜ scale/rules ｜ address",
     "help": "本命令目录与实战配方（--json 供 Agent 解析速查）",
 }
@@ -528,7 +528,7 @@ def _build_subparsers(sub: argparse._SubParsersAction) -> None:
     q.add_argument("--json", action="store_true")
     q.set_defaults(func=cmd_help)
 
-    q = sub.add_parser("errcodes", help="错误码注册表速查（severity/解释/修复建议）")
+    q = sub.add_parser("errcodes", help="错误码注册表速查（level/解释/修复建议）")
     q.add_argument("-w", "--workspace", default=argparse.SUPPRESS, help=argparse.SUPPRESS)
     q.add_argument("--json", action="store_true", help="结构化 JSON 输出（Agent 首选）")
     q.set_defaults(func=cmd_errcodes)

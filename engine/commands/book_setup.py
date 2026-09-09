@@ -650,7 +650,7 @@ def cmd_config(args) -> int:
 # errcodes
 # ---------------------------------------------------------------------------
 def cmd_errcodes(args) -> int:
-    """错误码注册表速查：引擎全部体检码的 severity/人话解释/修复建议（Agent 供 --json）。"""
+    """错误码注册表速查：引擎全部体检码的 level/人话解释/修复建议（Agent 供 --json）。"""
     items = errcodes.as_list()
     if getattr(args, "json", False):
         print(json.dumps({"schema": "novel-studio.errcodes/v1", "total": len(items),

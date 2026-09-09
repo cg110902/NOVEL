@@ -1030,3 +1030,58 @@ class TestTensionStreakBreak(unittest.TestCase):
             hits = self._flatline(tb)
             self.assertEqual(len(hits), 1, "真·连续 3 章 ≤3 分仍须告警")
             self.assertIn("ch_001—ch_003", hits[0]["msg"])
+
+
+class TestErrcodeFieldNaming(unittest.TestCase):
+    """errcodes 的分级字段名是 level，不是 severity。
+
+    模块自述、README、cli help、book_setup docstring 曾全部写作 severity，
+    而 `errcodes --json` 实际输出的键是 code/description/level/remedy——
+    Agent 照文档写 e["severity"] 必然 KeyError/AttributeError。
+    （audit 候选里的 severity=candidate_hard/soft 是另一套东西，不在此约束内。）
+    """
+
+    REAL_FIELDS = {"code", "description", "level", "remedy"}
+
+    def test_errcode_model_fields(self):
+        # ErrCode 是 dataclass（非 Pydantic 模型），字段名以 dataclasses.fields 为准
+        import dataclasses
+        e = next(iter(errcodes.REGISTRY.values()))
+        self.assertTrue(dataclasses.is_dataclass(e))
+        self.assertEqual({f.name for f in dataclasses.fields(e)}, self.REAL_FIELDS)
+        self.assertFalse(hasattr(e, "severity"),
+                         "ErrCode 没有 severity 属性——文档不得再这样宣称")
+
+    def test_json_output_uses_level_not_severity(self):
+        # 真实签名是 cmd_errcodes(args)，读 args.json（不是 json_out 关键字）
+        import argparse
+        import contextlib
+        import io
+        from engine.commands.book_setup import cmd_errcodes
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            rc = cmd_errcodes(argparse.Namespace(json=True))
+        self.assertEqual(rc, 0)
+        payload = json.loads(buf.getvalue())
+        self.assertEqual(payload["schema"], "novel-studio.errcodes/v1")
+        for item in payload["codes"]:
+            self.assertEqual(set(item), self.REAL_FIELDS)
+            self.assertNotIn("severity", item,
+                             "--json 契约里没有 severity 键")
+
+    def test_docs_do_not_claim_severity_field(self):
+        """文档/help 里描述 errcodes 分级字段处必须写 level。"""
+        import re as _re
+        offenders = []
+        for rel in ("engine/errcodes.py", "engine/checks.py", "engine/cli.py",
+                    "engine/README.md", "engine/commands/book_setup.py"):
+            text = (Path(__file__).resolve().parents[1] / rel).read_text(encoding="utf-8")
+            for i, line in enumerate(text.splitlines(), 1):
+                # 只揪「把 severity 当作 errcodes 分级字段」的表述
+                if "severity" in line and ("errcodes" in line or "体检码" in line
+                                           or "错误码" in line or "注册表" in line):
+                    if "不是 severity" in line or "另一套" in line:
+                        continue          # 明确澄清字段名的说明句，允许
+                    offenders.append(f"{rel}:{i}: {line.strip()[:90]}")
+        self.assertEqual(offenders, [],
+                         "以下位置仍把 errcodes 的分级字段写成 severity:\n" + "\n".join(offenders))
