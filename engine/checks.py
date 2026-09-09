@@ -606,6 +606,10 @@ PARAM_SPEC: dict[str, dict] = {
         "choices": ["strict", "advisory", "off"],
         "desc": "Stage 4C 事实一致性审校闸门模式（strict: 必须有 log/audit 报告且 hard=0 或已裁定才能 sync；advisory: 存在硬矛盾仅出 warning；off: 关闭检查）",
         "example": "strict"},
+    "tier_shift_grace": {"shape": "nonneg_int", "gap": False,
+        "desc": "位阶单调性探针（tier_shift_without_event）的事件匹配窗口：位阶变更章"
+                "±N 章内需有提及该实体的突破/被废类 timeline 事件。默认 1；0=严格同章。",
+        "example": 1},
     "reader_memory": {"shape": "mem_map", "gap": False,
         "desc": "读者记忆派生阈值 {working_window, fuzzy_window, cold_line_base, "
                 "cold_line_per_weight}。工作记忆窗口 / 模糊记忆边界（超过即入印象区）/ "
@@ -768,6 +772,9 @@ def validate_param_value(key: str, value) -> str | None:
                        or not isinstance(v, int) or isinstance(v, bool) or v < 1
                        for k, v in value.items())):
             return f"「{key}」必须是 配额键→正整数 的对象（合法键 {sorted(allowed_keys)}，形状示例：{eg}）"
+    elif shape == "nonneg_int":
+        if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+            return f"「{key}」必须为非负整数（形状示例：{eg}）"
     elif shape == "mem_map":
         allowed_keys = {"working_window", "fuzzy_window",
                         "cold_line_base", "cold_line_per_weight"}
@@ -954,6 +961,96 @@ def proposal_cross_facts(book: Path, ch: str, proposal: dict) -> dict:
         facts["kno_reveal_timing"] = timing
     facts["present_in_proposal"] = list(((proposal.get("current") or {}).get("present_characters") or []))
     return facts
+
+
+# 位阶单调性探针（C1）：tier 变更的剧情事件关键词（向上/向下合并一组，
+# 方向语义交给事件文本本身；实体名命中是必要条件，防任意突破事件洗白任意实体）
+_TIER_SHIFT_KEYWORDS = ("突破", "晋升", "跃迁", "觉醒", "加冕", "进阶", "晋阶", "升阶",
+                        "凝聚", "铸就", "被废", "跌境", "重创", "尽废", "废去", "降阶", "折损")
+
+
+def _tier_probe(book: Path, warnings: list) -> None:
+    """位阶单调性探针（C1）：重放 processed/ 提案，实体 tier_rank/tier_name 的
+    实际变更必须有前后 grace 章内的 timeline 剧情事件支撑（事件文本需含实体名
+    + 突破/被废类关键词或新 tier_name）。
+
+    - 走 processed/ 重放而非 changelog：对没有 changelog 的老书同样可用；
+      手术刀直改 tier 不经提案，逃过本探针（但 changelog blame 可见，已知局限）；
+    - 首次 sighting 只建基线（Stage 0 播种语义），不变更不要求事件；
+    - 同值重述不算变更（Reader 刷新 summary 顺带重写 tier 不产生噪声）。
+    """
+    proj = common.load_json(book / "project.json", default={}) or {}
+    raw_grace = proj.get("tier_shift_grace")
+    grace = raw_grace if (isinstance(raw_grace, int) and not isinstance(raw_grace, bool)
+                          and raw_grace >= 0) else 1
+
+    # 1) processed/ 提案重放：抽取实体 tier 实际变更序列
+    shifts: list[tuple[int, str, str]] = []   # (章号, 实体名, 新 tier_name)
+    seen_rank: dict[str, object] = {}
+    seen_tname: dict[str, str] = {}
+    processed_dir = book / "state" / "inbox" / "processed"
+    if processed_dir.is_dir():
+        for pf in sorted(processed_dir.glob("*.json")):
+            if pf.name.endswith(state.NO_MERGE_SUFFIXES) or pf.name == "state_hashes.json":
+                continue
+            data = common.load_json(pf, default=None)
+            if not isinstance(data, dict):
+                continue
+            ch_num = common.chapter_token_to_num(data.get("chapter"))
+            if not ch_num:
+                continue
+            ents = data.get("entities")
+            if not isinstance(ents, list):
+                continue
+            for e in ents:
+                if not isinstance(e, dict):
+                    continue
+                key = str(e.get("id") or e.get("name") or "").strip()
+                name = str(e.get("name") or key).strip()
+                if not key or not name:
+                    continue
+                shifted = False
+                if "tier_rank" in e:
+                    cur = e["tier_rank"] if isinstance(e["tier_rank"], int) \
+                        and not isinstance(e["tier_rank"], bool) else None
+                    if key in seen_rank and seen_rank[key] != cur:
+                        shifted = True
+                    seen_rank[key] = cur
+                tname = str(e.get("tier_name") or "").strip()
+                if "tier_name" in e and tname:
+                    if key in seen_tname and seen_tname[key] != tname:
+                        shifted = True
+                    seen_tname[key] = tname
+                if shifted:
+                    shifts.append((ch_num, name, tname or str(seen_tname.get(key, ""))))
+
+    if not shifts:
+        return
+
+    # 2) timeline 事件窗口匹配
+    try:
+        events = state.load_state(book, "timeline").get("events", []) or []
+    except (ValueError, OSError):
+        events = []
+    windowed: list[tuple[int, str]] = []
+    for ev in events:
+        if not isinstance(ev, dict):
+            continue
+        ev_ch = common.chapter_token_to_num(ev.get("chapter"))
+        if ev_ch:
+            windowed.append((ev_ch, str(ev.get("event", ""))))
+
+    for n, name, tname in shifts[:20]:
+        candidates = [txt for c, txt in windowed if abs(c - n) <= grace]
+        ok = any(name in txt and (any(k in txt for k in _TIER_SHIFT_KEYWORDS)
+                                  or (tname and tname in txt))
+                 for txt in candidates)
+        if not ok:
+            warnings.append(_err(
+                "tier_shift_without_event",
+                f"{name} 的位阶在 ch_{n:03d} 变更（→{tname or '未具名'}），但前后 {grace} 章的"
+                f" timeline 无提及该实体的突破/被废类事件——战力通胀/通缩风险"
+                + (f"（另有 {len(shifts) - 20} 处未列出）" if len(shifts) > 20 else "")))
 
 
 def run_checks(book: Path) -> dict:
@@ -1420,6 +1517,12 @@ def run_checks(book: Path) -> dict:
                     "reader_memory_stale",
                     f"[{_r['source']}] {_r['id']}「{_r['label']}」已 {_r['gap']} 章未在正文重现"
                     f"（上次 ch_{_r['last_seen_ch']:03d}）——已进入读者印象区"))
+    except (ValueError, OSError):
+        pass
+
+    # ---- 位阶单调性探针（C1）：战力通胀/通缩是长篇吃书第一重灾区 ----
+    try:
+        _tier_probe(book, warnings)
     except (ValueError, OSError):
         pass
 

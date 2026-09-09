@@ -105,6 +105,10 @@ REGISTRY: dict[str, ErrCode] = {c.code: c for c in (
     _reg("reader_memory_stale", "warning", "关键事实（不可逆事实/已揭示秘密）久未在正文重现",
          "读者可能已忘记这条设定。建议在后续章节安排一次自然回响（借对话或场景侧写带出），"
          "不要等到要用它时才重新解释。"),
+    _reg("tier_shift_without_event", "warning", "实体位阶变更无对应 timeline 事件（战力通胀/通缩风险）",
+         "位阶（tier_rank/tier_name）变更应有突破/晋升/被废/跌境等剧情事件支撑。"
+         "请在提案 timeline.events 补记该事件（既有事件修订走 replace 通道），"
+         "或修正 entities 的 tier 值。"),
     _reg("prerequisite_missing", "warning", "线索声明的依赖项在台账中不存在",
          "在 state/lines.json 中补齐前置线索定义，或修正该线索的 requires 依赖项。"),
     _reg("prerequisite_unmet", "error", "前置线索未达成就尝试收网/揭晓",
