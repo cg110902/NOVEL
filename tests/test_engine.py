@@ -1152,3 +1152,56 @@ class TestChecksDocstringAccuracy(unittest.TestCase):
                       if errcodes.REGISTRY.get(c) and errcodes.REGISTRY[c].level == "error"}
         self.assertEqual(err_hedged, {"manuscript_truncation"},
                          "带判断词的 error 级码只允许 manuscript_truncation 这一已知例外")
+
+
+class TestProposalKeyWhitelistSync(unittest.TestCase):
+    """validate_proposal 的手写字段白名单必须与 Pydantic 模型同步。
+
+    `allowed_entity_keys` 是 state.py 里手写的 35 键集合，而字段真源是
+    EntityEntry.model_fields（33 个）。两者一旦漂移：
+      - 模型新增字段而白名单漏加 → 合法提案被判「含未知字段」直接拒绝；
+      - 白名单多加字段 → 脏字段静默写进 state。
+    这是本项目已反复出现的「手写字面量 vs Pydantic 模型」缺陷类。
+    """
+
+    # 提案层控制字段：不是实体状态字段，模型里本就没有，属预期差集
+    PROPOSAL_ONLY = {"action", "quote"}
+
+    @staticmethod
+    def _literal_keys():
+        import ast as _ast
+        import pathlib as _pl
+        src = (_pl.Path(__file__).resolve().parents[1] / "engine" / "state.py"
+               ).read_text(encoding="utf-8")
+        for node in _ast.walk(_ast.parse(src)):
+            if isinstance(node, _ast.Assign) and any(
+                    isinstance(t, _ast.Name) and t.id == "allowed_entity_keys"
+                    for t in node.targets):
+                return {e.value for e in node.value.elts
+                        if isinstance(e, _ast.Constant)}
+        raise AssertionError("state.py 里找不到 allowed_entity_keys")
+
+    def test_whitelist_covers_every_model_field(self):
+        model = set(EntityEntry.model_fields)
+        lit = self._literal_keys()
+        missing = sorted(model - lit)
+        self.assertEqual(missing, [],
+                         f"模型有、白名单没有——这些合法字段会被误判为未知字段: {missing}")
+
+    def test_whitelist_extras_are_proposal_layer_only(self):
+        model = set(EntityEntry.model_fields)
+        lit = self._literal_keys()
+        extra = sorted(lit - model)
+        self.assertEqual(extra, sorted(self.PROPOSAL_ONLY),
+                         f"白名单多出的键应只有提案层控制字段 {sorted(self.PROPOSAL_ONLY)}，"
+                         f"实际多出 {extra}——多出的键会静默写进 state")
+
+    def test_unknown_entity_field_actually_rejected(self):
+        errs, _ = state.validate_proposal({
+            "schema": "novel-studio.state-mutation/v2", "chapter": "ch_001",
+            "operation_id": "op-x",
+            "entities": [{"action": "upsert", "name": "林牧", "type": "person",
+                          "totally_made_up_field": 1}],
+        }, expected_chapter="ch_001")
+        self.assertTrue(any("含未知字段" in e and "totally_made_up_field" in e
+                            for e in errs), errs)
