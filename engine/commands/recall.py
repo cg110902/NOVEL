@@ -165,11 +165,19 @@ def run_recall(book: Path, ch: str | None = None) -> dict:
         for lk in locked_st
     ]
 
+    # R0：桥接双伤情通道——current.injury（主角旧口径）+ entities[].injury_level（逐实体）
+    entity_injuries = [
+        {"name": e.get("name"), "injury_level": e.get("injury_level"),
+         "injury_desc": e.get("injury_desc", "")}
+        for e in ents_st
+        if type(e.get("injury_level")) is int and e["injury_level"] > 0
+    ]
     irreversible_facts = {
         "locked_rules_and_events": locked_items,
         "deceased_characters": deceased_entities,
         "retired_entities": retired_entities,
         "permanent_injury": cur_st.get("injury") if cur_st.get("injury") not in ("", "完好", None) else None,
+        "entity_injuries": entity_injuries,
     }
 
     # -----------------------------------------------------------------------
@@ -283,6 +291,7 @@ def run_recall(book: Path, ch: str | None = None) -> dict:
         "kind": "recall",
         "chapter": tok,
         "next_chapter": next_tok,
+        "story_day": cur_st.get("time_day"),
         "character_cognition": cognition_report,
         "irreversible_facts": irreversible_facts,
         "pending_lines": pending_lines,
@@ -299,9 +308,11 @@ def render_recall_markdown(d: dict) -> str:
     lines = d["pending_lines"]
     bound = d["next_chapter_boundaries"]
 
+    _sd = d.get("story_day")
     L = [
-        f"# 🧭 [知乎长篇残酷四问 · 机械自证单] 锚定章节: {ch} ｜ 面向下一章: {next_ch}",
-        "<!-- 本报告由确定性引擎基于 state/ 八表真值 0 Token 瞬间推导，杜绝吃书与上帝视角。 -->",
+        f"# 🧭 [知乎长篇残酷四问 · 机械自证单] 锚定章节: {ch} ｜ 面向下一章: {next_ch}"
+        + (f" ｜ 故事第 {_sd} 日" if type(_sd) is int else ""),
+        "<!-- 本报告由确定性引擎基于 state/ 十一表真值 0 Token 瞬间推导，杜绝吃书与上帝视角。 -->",
         "",
         "## ❓ 问一：主要人物各自知道什么？（认知台账与知情圈）",
     ]
@@ -355,6 +366,9 @@ def render_recall_markdown(d: dict) -> str:
 
     if irrev.get("permanent_injury"):
         L.append(f"- 🩸 **伤残指征**：{irrev['permanent_injury']}")
+    for inj in irrev.get("entity_injuries") or []:
+        L.append(f"- 🩹 **{inj['name']}** 伤势 Lv{inj['injury_level']}"
+                 + (f"：{inj['injury_desc']}" if inj.get("injury_desc") else ""))
     L.append("")
 
     L.append("## ❓ 问三：哪些伏笔仍未兑现？（未结算线索与时钟雷达）")

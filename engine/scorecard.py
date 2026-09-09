@@ -4,7 +4,7 @@
 缓慢漂移，「warning 数逐卷爬升」只有时间序列可见（PLAN_CONSISTENCY_50W D3）。
 
 零 Token：引擎在 check 完成时自动追加，`check --trend` 消费。
-文件放 log/（不属八表、不入快照、回滚不动——测量史是只增资产）。
+文件放 log/（不属十一表、不入快照、回滚不动——测量史是只增资产）。
 """
 from __future__ import annotations
 

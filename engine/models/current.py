@@ -33,3 +33,8 @@ class CurrentState(BaseModel):
     loadout: Optional[Loadout] = Field(None, description="主角常驻作战体系")
     aftershock: Optional[str] = Field(None, description="上章戏剧余震与未平残局（下章开篇必接动作）")
     active_pressures: list[str] = Field(default_factory=list, description="当前悬在主角头上的核心危机与倒计时")
+    # 对象化扩展（v2 加法字段：scene 引用化——字符串保留兼容，引用供精确装配）
+    time_day: Optional[int] = Field(None, ge=1, description="故事日计数（第N日；time 自由文本的数值孪生）")
+    pov_ref: Optional[str] = Field(None, description="视角角色对象引用（实体 id 如 p_001，或法定名）")
+    place_ref: Optional[str] = Field(None, description="当前地点对象引用（实体 id 如 loc_012，或法定名）")
+    present_refs: list[str] = Field(default_factory=list, description="在场角色对象引用清单（实体 id 或法定名，与 present_characters 并存）")

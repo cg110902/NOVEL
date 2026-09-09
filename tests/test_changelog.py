@@ -1,6 +1,6 @@
 """事件溯源层（engine/changelog.py）单测 — 2025 一致性改造 R1-c3。
 
-核心不变量：fold(base, events) == 磁盘八表（verify 消费）。
+核心不变量：fold(base, events) == 磁盘十一表（verify 消费）。
 覆盖：diff/fold 往返、genesis、提案事件流、手术刀、外部改动补录、
 回滚存续、尾行自愈、无变化零事件、verify 语义。
 """
@@ -121,10 +121,10 @@ class TestProposalFlow(unittest.TestCase):
             self.assertTrue(all(e["source"] == "proposal" for e in data_events))
             self.assertTrue(all(e["ch"] == "ch_001" for e in data_events))
             self.assertTrue(all(e["op_id"] == "ch_001.reader.t1" for e in data_events))
-            # 覆盖各分区：current/entities/lines/ledger 都有事件
+            # 覆盖各分区：current/persons/lines/ledger 都有事件（v6 起实体事件按 kind 表记账）
             tables = {e["table"] for e in data_events}
             self.assertIn("current", tables)
-            self.assertIn("entities", tables)
+            self.assertIn("persons", tables)
             self.assertIn("lines", tables)
             self.assertIn("ledger", tables)
             # 路径寻址样例：实体按 id、流水按下标

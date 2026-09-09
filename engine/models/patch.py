@@ -82,6 +82,11 @@ class EntityMutation(BaseModel):
     relations: list[EntityRelation] = Field(default_factory=list, description="与特定角色的动态张力关系")
     quote: Optional[str] = Field(None, description="逐字支撑引文")
 
+    # 对象化扩展（v2 加法字段，与 EntityEntry 同口径；提案可写）
+    injury_level: Optional[int] = Field(None, ge=0, le=5, description="伤势等级 0~5（0=无伤，5=濒死；人物专用）")
+    injury_desc: Optional[str] = Field(None, description="伤势文字说明")
+    renown: Optional[int] = Field(None, description="声望/悬赏值（人物/势力）")
+
 
 class ProposalModel(BaseModel):
     """对齐 novel-studio.state-mutation/v2 规范的强类型提案校验模型。
@@ -107,3 +112,44 @@ class ProposalModel(BaseModel):
     cognition: Optional[list[dict[str, Any]]] = None
     cognition_delta: Optional[list[dict[str, Any]]] = None
     consequences: Optional[list[dict[str, Any]]] = None
+
+
+# —— v3 寻址式提案：与 state.ASSERTED_KEYS 同步（刻意重复：models 层禁止导入
+# state 防循环；漂移由 tests/test_proposal_v3.py::test_v3_table_literal_matches_asserted_keys 钉住） ——
+V3_TABLES = ("current", "persons", "items", "factions", "places", "lines",
+             "timeline", "ledger", "synopsis", "locked", "cognition")
+
+
+class V3OpModel(BaseModel):
+    """单个寻址 op 的信封。载荷键按表区分、直通 v2（extra=allow）：
+
+    深层规则（存在性/表一致性/字段合法性）归编译器（proposal_v3.compile_ops）
+    与 v2 管线管——模型只钉信封形状，与 v2「浅层信封原则」同构。
+    """
+    model_config = ConfigDict(extra="allow")
+
+    table: Literal["current", "persons", "items", "factions", "places", "lines",
+                   "timeline", "ledger", "synopsis", "locked", "cognition"]
+    action: str
+    id: Optional[str] = None
+    entry: Optional[dict[str, Any]] = None
+    set: Optional[dict[str, Any]] = Field(None, alias="set")
+    kind: Optional[str] = None
+    event: Optional[dict[str, Any]] = None
+    clock: Optional[dict[str, Any]] = None
+    arc: Optional[dict[str, Any]] = None
+    milestone: Optional[dict[str, Any]] = None
+    pool: Optional[str] = None
+    spec: Optional[dict[str, Any]] = None
+
+
+class ProposalV3Model(BaseModel):
+    """v3 提案信封：ops-only。v2 分区键一律按未知字段拒绝（extra=forbid），
+    与编译器的「禁止混写」检查同义（分层门：结构先行，结构坏则编译不跑）。"""
+    model_config = ConfigDict(extra="forbid", populate_by_name=False)
+
+    schema_version: Literal["novel-studio.state-mutation/v3"] = Field(..., alias="schema")
+    chapter: str = Field(..., pattern=r"^ch_\d{3,}$")
+    operation_id: Optional[str] = Field(None, pattern=r"^[A-Za-z0-9_.-]{1,128}$")
+    draft: Optional[bool] = Field(None, alias="_draft")
+    ops: list[V3OpModel] = Field(..., min_length=1)

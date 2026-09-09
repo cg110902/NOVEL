@@ -82,6 +82,24 @@
       },
       "title": "Active Pressures",
       "type": "array"
+    },
+    "time_day": {
+      "minimum": 1,
+      "type": "integer"
+    },
+    "pov_ref": {
+      "type": "string"
+    },
+    "place_ref": {
+      "type": "string"
+    },
+    "present_refs": {
+      "description": "在场角色对象引用清单（实体 id 或法定名，与 present_characters 并存）",
+      "items": {
+        "type": "string"
+      },
+      "title": "Present Refs",
+      "type": "array"
     }
   },
   "title": "CurrentState",

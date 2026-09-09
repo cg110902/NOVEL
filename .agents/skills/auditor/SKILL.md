@@ -38,7 +38,7 @@ description: Universal deterministic consistency auditor and contradiction arbit
   2. `outlines/vol_XX/beats/ch_XXX.md`（当章细纲任务书）；
   3. `state/locked.json`（不可逆事实台账）；
   4. `state/current.json`（现场快照）；
-  5. `state/entities.json`（实体台账与生命状态）；
+  5. `state/persons.json`、`state/items.json`、`state/factions.json`、`state/places.json`（实体四表与生命状态）；
   6. `studio.py audit` 输出的 JSON 数据。
 - 🔴 **禁读清单**：
   - 严禁读取草稿（`raw/*`）或引擎源码。

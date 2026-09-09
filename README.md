@@ -35,7 +35,7 @@ python studio.py check -w workspace/我的书
 ## 二、流水线一图流
 
 ```
-Stage 0A/0B  Architect   世界观公理 + 人物大纲 + 八表播种（设定层直写）
+Stage 0A/0B  Architect   世界观公理 + 人物大纲 + 十一表播种（设定层直写）
 Stage 1      Director    细纲构思 beats（引擎注入一致性速查 / 资源池键名 / ID 水位线）
 Stage 2      Drafter     初稿 raw_v1
 Stage 3A     Editor      骨肉重塑 raw_v2
@@ -44,7 +44,7 @@ Stage 4A     Reader      事实提案 state/inbox/ch_XXX.json
 Stage 4B     Critic      老白催更便签 log/critic/ch_XXX.md
 Stage 4C     Auditor     一致性仲裁 log/audit/ch_XXX.md（带 front-matter，Stage 5 硬闸门）
 Stage 4D     Librarian   每 10 章长程巡检（近 10 章定稿 vs 四张台账平账）
-Stage 5      Director    sync：提案合并 + 八表盖章 + 快照封存
+Stage 5      Director    sync：提案合并 + 十一表盖章 + 快照封存
 Evolution    Evolver     人类变更诉求的波及面测算与手术刀改版
 ```
 
@@ -77,26 +77,29 @@ Evolution    Evolver     人类变更诉求的波及面测算与手术刀改版
 | `characters/`、`entities/` | 人物卡与实体卡 |
 | `outlines/` | 主线大纲 + 分卷大纲 + `beats/ch_XXX.md` 细纲任务书 |
 | `manuscript/vol_XX/{raw,final}/` | 毛坯 `_v1` / 初修 `_v2` / 法定定稿 |
-| `state/*.json` | 八表真值：current / entities / lines / timeline / ledger / synopsis / locked / cognition |
+| `state/*.json` | 十一表真值：current / persons / items / factions / places / lines / timeline / ledger / synopsis / locked / cognition |
 | `state/inbox/` | 提案收件箱（`processed/` 为审计留痕，永不删改） |
 | `log/{audit,critic,review}/` | 仲裁报告 / 催更便签 / 校对与巡检报告 |
 | `snapshots/` | 快照与回滚点 |
 
 ---
 
-## 四、八表真值与写入口
+## 四、十一表真值与写入口
 
-`state/*.json` 八张表是机器真值，读写都过 `engine/schemas/` 的声明式校验。
+`state/*.json` 十一张表是机器真值，读写都过 `engine/schemas/` 的声明式校验。
 
 - **章节事实增量的唯一写入口是提案**：Reader 落盘 `state/inbox/ch_XXX.json` →
   主控 `python studio.py sync ch_XXX`（支持 `--dry-run` 预演）→ 过 schema 校验、
   引文柔性接地、幂等登记、复式记账重算四道闸才落盘。
 - **设定层例外**：Stage 0 建书播种与跨卷改版由 Architect/Evolver 直接写 `state/*.json`。
-- **机械证据**：每次 `sync` 对八表盖章 SHA-256（`state/inbox/processed/state_hashes.json`），
+- **机械证据**：每次 `sync` 对十一表盖章 SHA-256（`state/inbox/processed/state_hashes.json`），
   绕过提案的离线手改由 `check` 的 `state_offline_edit` 档指名报出；
-- **事件溯源**：`state/changelog.jsonl` 记录八表字段级变更事件流（谁、哪章、哪个通道、
+- **事件溯源**：`state/changelog.jsonl` 记录十一表字段级变更事件流（谁、哪章、哪个通道、
   把哪个路径从什么改成什么），由引擎在唯一写入咽喉自动派生、离线手改自动补录、
   快照回滚不清空历史——`fold(基线, 事件) == 磁盘` 是其对账不变量。
+- **派生封存**：`state/derived.json` 是第十二张表（纯派生缓存，删了可重算）：每次 `sync`
+  自动 seal（线温 / 场景告警 / 持有悬空 / 认知挂旗四节），`state recompute` 可随时手动重算；
+  提案与手术刀禁止写入，`check` 的离线改动检出跳过它。
 - **账本口径**：余额永远由流水重算，`balance_after` / `current` 不是可信输入字段。
 - **改史留痕**：不可逆事实（locked）与角色认知（cognition）禁止同 ID 静默覆盖——
   幂等重放放行，改写历史需 `action="retire"` 或显式 `"overwrite": true`。
@@ -112,9 +115,9 @@ Evolution    Evolver     人类变更诉求的波及面测算与手术刀改版
 | 命令目录与阶段配方 | `python studio.py help --json` |
 | 工作区/工序总览 | `python studio.py status` · `cockpit [ch]` |
 | 单章上下文装配 | `python studio.py pack ch_XXX [--lean|--full] [--open 路径 --as 角色]` |
-| 只读取证 | `python studio.py ask <关键词>` · `evidence <kind>` · `pov` · `calendar` |
+| 只读取证 | `python studio.py ask <关键词>`（2.0 引用链：每条命中带 cite 出处） · `evidence <kind>` · `pov` · `calendar` |
 | 细纲与稿件流转 | `beats new ch_XXX --write` · `critic` · `audit ch_XXX --write` · `reconcile vol_XX`（卷末对账） |
-| 提案 | `proposal check ch_XXX` · `proposal auto ch_XXX --write` · `sync ch_XXX [--dry-run]` |
+| 提案 | `proposal new [--v3] ch_XXX`（骨架；--v3 为寻址式防错版） · `proposal check ch_XXX` · `proposal auto ch_XXX --write` · `sync ch_XXX [--dry-run]` |
 | 体检与自愈 | `check`（`doctor` 为其别名；`--trend` 分数曲线 / `--bisect` 快照二分） · `errcodes <码>` |
 | 图谱与索引 | `graph <action>` · `index [--rebuild]` · `recall` · `simulate` |
 | 台账手术刀 | `state get/set` · `state at <章>`（时点切面）· `state diff <章A> <章B>` · `state blame <表.路径>`（字段级溯源） · `state rollup vol_XX`（卷末态势摘要，pack 前情注入源） · `ledger recompute` · `milestone add/achieve` |

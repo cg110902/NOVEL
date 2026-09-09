@@ -63,11 +63,11 @@ REGISTRY: dict[str, ErrCode] = {c.code: c for c in (
          "检查 state 目录下的 JSON 文件语法并修复，或从快照回滚。"),
     _reg("unregistered_character", "error", "登场人物未在实体注册表登记（吃书风险）",
          "由 Reader 提案登记新实体（Stage 4 提案 entities 段，action=upsert，见 state/inbox/README.md），"
-         "或修正提案 present_characters/正文中的拼写。严禁手改 state/entities.json——提案是唯一写入口。"),
+         "或修正提案 present_characters/正文中的拼写。严禁手改 state/四 kind 表（persons/items/factions/places）——提案是唯一写入口。"),
     _reg("retired_entity_on_stage", "warning", "已退场/离世的实体再次登场",
-         "该实体已标记退场/阵亡；若重新出场请先在 entities.json 中更新状态或更名。"),
+         "该实体已标记退场/阵亡；若重新出场请先在实体四表中更新状态或更名。"),
     _reg("entity_id_duplicate", "error", "多个实体共用相同 ID（唯一主键冲突）",
-         "检查 state/entities.json 中重复的实体 ID，确保每个实体拥有全书唯一的业务标识。"),
+         "检查 state/四 kind 表（persons/items/factions/places） 中重复的实体 ID，确保每个实体拥有全书唯一的业务标识。"),
     # ---- 章节文件结构 ----
     _reg("duplicate_final", "error", "同章存在多份定稿（真理源不唯一）",
          "清理重复的 final 文件，保持同章唯一的单一真理源。"),
@@ -128,14 +128,14 @@ REGISTRY: dict[str, ErrCode] = {c.code: c for c in (
     _reg("lines_state_unreadable", "warning", "lines 账本不可读，因果依赖守卫降级",
          "检查 state/lines.json 的 JSON 语法并修复，修复后重跑 python studio.py check。"),
     _reg("alias_conflict", "warning", "同一别名被多个实体共享（在场推断/提及统计将产生歧义）",
-         "在 state/entities.json 中把冲突别名改为唯一，或改用 aliases 归并到同一实体名下。"),
+         "在 state/四 kind 表（persons/items/factions/places） 中把冲突别名改为唯一，或改用 aliases 归并到同一实体名下。"),
     _reg("relation_target_unknown", "warning", "实体关系指向未登记的实体（关系图悬空边）",
-         "在 state/entities.json 补登目标实体，或修正 relations.target 的名称拼写。"),
+         "在 state/四 kind 表（persons/items/factions/places） 补登目标实体，或修正 relations.target 的名称拼写。"),
     _reg("entity_ref_unknown", "warning", "实体的 faction/holder/location 指向未登记实体（悬空引用）",
          "补登被指向的实体（势力用 type=faction、地点用 type=place/location），或修正字段里的名称拼写；"
          "location 若只是临时场景描述而非固定地点，可忽略本提示。"),
     _reg("entity_card_missing", "warning", "实体登记的卡片文件不存在（建议补齐卡片或修正路径）",
-         "检查实体登记的卡片路径，创建对应卡片文件或在 entities.json 中修正 card 字段。"),
+         "检查实体登记的卡片路径，创建对应卡片文件或在实体四表中修正 card 字段。"),
     _reg("entity_tier_invalid", "error", "实体的实力位阶 tier_rank 超出合法区间 [1, 12]",
          "将实体的 tier_rank 修正为 1 到 12 之间的整数。"),
     _reg("item_charges_exhausted", "error", "账本记为耗尽/损毁/退场的道具，正文却出现使用动作",
@@ -212,7 +212,7 @@ REGISTRY: dict[str, ErrCode] = {c.code: c for c in (
     _reg("word_band_breach", "warning", "定稿中文字数偏离目标带超过 20% 容差（严重出带）",
          "严重出带会影响读者节奏预期：请让 Stylist 回 Stage 3B 补足/删减到目标带内，"
          "或确认目标带本身过时后用 config set words_target 校准。字数口径＝中文字符数（与 evidence 一致）。"),
-    _reg("state_offline_edit", "warning", "state 八表在上次封存后被离线改动（绕过提案写入口）",
+    _reg("state_offline_edit", "warning", "state 十一表在上次封存后被离线改动（绕过提案写入口）",
          "state/*.json 的法定写入口是提案（sync 合并）：请核对该表改动来源，"
          "属手改请改走提案通道重跑 sync；属有意修订则重跑 sync 重新盖章消除提示，"
          "或 snapshot rollback 回到封存时点。"),
@@ -231,7 +231,7 @@ REGISTRY: dict[str, ErrCode] = {c.code: c for c in (
          "到期线必须给出处置：在提案 lines 里写 advance/remind/resolve，或在 beats 线动作栏写明顺延理由。"),
     _reg("candidate_new_entity", "info", "定稿中出现疑似新专名，但未在 entities 建卡",
          "若确为新实体请在提案 entities 建卡（含 type/summary）；若是误报可忽略，"
-         "或在 state/entities.json 用 aliases 归并到既有实体，避免实体碎片化。"),
+         "或在 state/四 kind 表（persons/items/factions/places） 用 aliases 归并到既有实体，避免实体碎片化。"),
     _reg("critical_mutation", "warning", "提案触发了关键字段的重大变更（如生死/位阶/归属）",
          "关键状态变更请确认与 beats「预期演变声明」一致，并同步核对 locked 台账与称谓矩阵。"),
     _reg("state_watch_hit", "info", "提案触碰了受监控的状态字段（watch 名单命中）",
@@ -251,7 +251,7 @@ REGISTRY: dict[str, ErrCode] = {c.code: c for c in (
     _reg("aftermath_opening_miss", "info", "上一章章末刀口在本章开头未被承接",
          "本章开头建议先承接上章物理刀口的余波，再展开新事件（读者连续性）。"),
     _reg("entities_unreadable", "warning", "entities 状态不可读，提案建议电池相关项已跳过",
-         "检查 state/entities.json 的 JSON 语法并修复后重跑 proposal verify。"),
+         "检查 state/四 kind 表（persons/items/factions/places） 的 JSON 语法并修复后重跑 proposal verify。"),
     _reg("lines_unreadable", "warning", "lines 状态不可读，线索相关建议项已跳过",
          "检查 state/lines.json 的 JSON 语法并修复后重跑 proposal verify。"),
     _reg("ledger_unreadable", "warning", "ledger 状态不可读，账目建议项已跳过",

@@ -94,7 +94,7 @@ def create_snapshot(book: Path, snapshot_name: str) -> tuple[bool, str]:
                 shutil.copy2(f, folder / f.name)
                 copied.append(f.name)
             manifest = _manifest_of(folder)
-            # manifest 不再只有状态八表——记录快照时刻全部 final 定稿的内容哈希，
+            # manifest 不再只有状态十一表——记录快照时刻全部 final 定稿的内容哈希，
             # 回滚核对与「定稿是否在封存后被改过」的追溯有了机械依据
             finals: dict[str, str] = {}
             for f in common.find_chapter_files(book, "final"):
@@ -180,14 +180,18 @@ def rollback_snapshot(book: Path, target: str) -> tuple[bool, str, str]:
     ok, msg = _verify_manifest(chosen)
     if not ok:
         return False, msg, ""
-    BASE_STATE_KEYS = ("current", "entities", "lines", "timeline", "ledger", "synopsis")
+    BASE_STATE_KEYS = ("current", "lines", "timeline", "ledger", "synopsis")
     missing = [f"{k}.json" for k in BASE_STATE_KEYS if not (chosen / f"{k}.json").is_file()]
+    _has_legacy_ents = (chosen / "entities.json").is_file()
+    _has_kind_ents = all((chosen / f"{k}.json").is_file() for k in state.KIND_TABLES)
+    if not (_has_legacy_ents or _has_kind_ents):
+        missing.append("entities.json（legacy 快照）或 persons/items/factions/places 四表（v6 快照）")
     if missing:
         return False, f"快照缺少状态文件 {'、'.join(missing)}，拒绝回滚", ""
 
     with common.file_lock(sd, name=".state.lock"):
         ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-        # 事件溯源：回滚前八表快照（snapshot_rollback 事件的 before 侧）
+        # 事件溯源：回滚前十一表快照（snapshot_rollback 事件的 before 侧）
         from . import changelog as changelog_mod
         before_states = {}
         for k in state.STATE_KEYS:
@@ -237,7 +241,7 @@ def rollback_snapshot(book: Path, target: str) -> tuple[bool, str, str]:
                     restored.append(f"{k}.json (自动补齐默认表)")
             from . import migrations
             migrations.ensure_state_version(book)
-            # 事件溯源：回滚后八表 → snapshot_rollback 数据事件（逐表 diff 前后）
+            # 事件溯源：回滚后十一表 → snapshot_rollback 数据事件（逐表 diff 前后）
             after_states = {}
             for k in state.STATE_KEYS:
                 kp = sd / f"{k}.json"

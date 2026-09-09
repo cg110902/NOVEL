@@ -31,7 +31,7 @@ description: Universal long-range consistency sweep librarian and retroactive le
   - ❌ **严禁越权操作**：严禁编写临时提取脚本，严禁修改任何 `final/*.md` 正文一字一句！
 - 🟢 **准读清单（Strict Whitelist）**：
   1. `manuscript/vol_XX/final/ch_{N-9..N}.md`（最近 10 章定稿正文）；
-  2. `state/entities.json`（实体名册）；
+  2. `state/persons.json`、`state/items.json`、`state/factions.json`、`state/places.json`（实体名册四表）；
   3. `state/lines.json`（伏笔暗线台账）；
   4. `state/locked.json`（不可逆事实台账）；
   5. `state/ledger.json`（资金流水账本）。
@@ -43,7 +43,7 @@ description: Universal long-range consistency sweep librarian and retroactive le
 ## 📋 三、 四维长程巡检法则 (Sweep SOP)
 
 1. **实体名册漏网之鱼 (Missing Entities)**：
-   - 某角色/地名在近 10 章中出场 ≥2 次或有实际交锋，但 `entities.json` 未收录；
+   - 某角色/地名在近 10 章中出场 ≥2 次或有实际交锋，但实体四表未收录；
    - 在提案中以 `action="register"` 录入，赋唯一物理 ID（`p_XXX`, `it_XXX`, `loc_XXX`）；
    - **二八分级规范**：次要角色（门房、店家、传话杂役）`card` 保持留空 `""`，**坚决不建 `.md` 冗余卡片**，杜绝文件碎片爆炸。
 2. **道具充能与损耗核对 (Charges Reconciliation)**：

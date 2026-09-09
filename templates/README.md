@@ -77,13 +77,13 @@ templates/
    彻底杜绝长篇小说中“路人甲都要建个卡片”导致的千张碎卡爆炸灾难：
    - 🌟 **核心实体（占 20%，决定 80% 叙事）**：主角、核心女主、长线宿敌、宗门重臣、本命重器、首府要塞。
      - **标准**：必须在 `characters/` 或 `entities/` 建立独立的 `.md` 全息卡，锁定称谓矩阵、Want/Fear 与物象；
-     - **台账**：在 `state/entities.json` 中配置对应 `card: "characters/<名字>.md"` 路径。
+     - **台账**：在 `实体四表（persons/items/factions/places）` 中配置对应 `card: "characters/<名字>.md"` 路径。
    - 🍃 **次要/临时实体（占 80%，服务即时情节）**：客栈掌柜、巡逻守卫、传话执事、临时消耗符箓、路过村庄。
      - **标准**：**坚决不建 `.md` 冗余卡片**，避免文件污染与磁盘膨胀；
-     - **台账**：直接由 Reader 在 Stage 4 提案中登记入 `state/entities.json`（设置 `card: ""`），记录其姓名、ID、境界、阵营与正文引文即可。
+     - **台账**：直接由 Reader 在 Stage 4 提案中登记入 `实体四表（persons/items/factions/places）`（设置 `card: ""`），记录其姓名、ID、境界、阵营与正文引文即可。
 
 4. **强类型物理通用字段（Entities Schema 核心白名单）**：
-   底层状态表 `state/entities.json` 开启了 `"additionalProperties": false` 强类型闸门。各角色向状态表登记实体时，**必须严格使用以下法定字段**：
+   底层状态表 `实体四表（persons/items/factions/places）` 开启了 `"additionalProperties": false` 强类型闸门。各角色向状态表登记实体时，**必须严格使用以下法定字段**：
    - 🆔 **标识与类型**：
      - `id`: 唯一物理 ID（终身不可变：`p_001`, `it_001`, `fac_001`, `loc_001`）
      - `name`: 实体中文法定全名（唯一主键）
@@ -100,6 +100,9 @@ templates/
      - `status`: 实体活跃状态（严格枚举：`active` 活跃, `retired` 隐退/沉睡）
      - `life_status`: 生命体生死状态（严格枚举：`alive` 在世, `deceased` 阵亡, `missing` 失踪）
      - `condition`: 肉身或物性状态（如 `"重伤"`、`"经脉受损"`、`"完好"`）
+     - `injury_level`: 伤势等级 `0~5`（`0`=无伤，`5`=濒死；人物专用可算字段，建议与 `injury_desc` 同写）
+     - `injury_desc`: 伤势文字说明（如 `"左臂骨折"`）
+     - `renown`: 声望/悬赏整数值（人物/势力；正=美名，负=恶名/悬赏）
    - 🗺️ **地缘与归属**：
      - `location`: 当前具体所在空间/据点（`str`，严禁用 `current_location`）
      - `faction`: 所属门派、势力或组织名称（`str`）
@@ -124,17 +127,17 @@ templates/
 
    > ⚠️ **【重要：Markdown 卡片 vs 数据库状态表分界规范】**：
    > - **Markdown 卡片（`characters/*.md`, `entities/*/*.md`）**：是面向大模型创作的**全息感官档案**，其正文允许有丰富的 Want/Fear、生平轶事、背景设定等自然语言描述；
-   > - **数据库状态表（`state/entities.json`）**：是面向确定性引擎的**强类型检索台账**。提案中向 `entities.json` 写入的字段**必须且仅能来自上述白名单**，严禁私自添加未经 Schema 许可的字段（如 `leader`, `headquarters`, `bound_to` 等），否则会被引擎机械闸门直接拒绝！
+   > - **数据库状态表（`实体四表（persons/items/factions/places）`）**：是面向确定性引擎的**强类型检索台账**。提案中向 实体四表 写入的字段**必须且仅能来自上述白名单**，严禁私自添加未经 Schema 许可的字段（如 `leader`, `headquarters`, `bound_to` 等），否则会被引擎机械闸门直接拒绝！
 
 5. **长篇增删改查（CRUD）对账机制**：
-   - **增（新实体出场）**：在 beats 中声明，核心角色建卡，次要角色免建卡；由 Reader 在提案 `entities.json` 中分配递增 ID 注册；
+   - **增（新实体出场）**：在 beats 中声明，核心角色建卡，次要角色免建卡；由 Reader 在提案 实体四表 中分配递增 ID 注册；
    - **删（战死/毁损/退场）**：由 Reader 在提案中附原句引文，登记为 `deceased` 或 `destroyed`，并生成 `state/locked.json` 锁定；
    - **改（境界突破/道具流转/称谓变更）**：通过 beats 声明演进，Reader 提取更新（引擎以 `id` 为第一主键优先索引，即使改名改换品阶也绝不丢失生命周期）；
    - **查（对校核验）**：Auditor 结合细纲预提炼清单、人物卡称谓矩阵与机械探针，逐行对账正文，杜绝任何擅自越级或漂移。
 
 6. **CLI 底层词典秒级查询工具链 (Studio Lore CLI)**：
    - `python studio.py lore list`：全景列出所有已注册实体的物理 ID、名称与卡片状态；
-   - `python studio.py lore entity <id/name>`：按 ID 或名称穿透调阅实体全息档案（EntityEntry 共 33 个字段，按实际填写渲染）；
+   - `python studio.py lore entity <id/name>`：按 ID 或名称穿透调阅实体全息档案（EntityEntry 共 36 个字段，按实际填写渲染）；
    - `python studio.py lore compare <idA/nameA> <idB/nameB>`：秒级对校两实体位阶差距与法定互称矩阵；
    - `python studio.py lore scale`：查看阶梯破坏力与实物标尺；
    - `python studio.py lore rules`：查看不可违背的世界物理与设定公理。

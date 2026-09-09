@@ -120,7 +120,7 @@ def cmd_init(args) -> int:
             (book / "log" / "critic").mkdir(parents=True, exist_ok=True)
             if wipe_final:
                 print(f"🧹 已深度清理（raw + final 定稿 + 待办收件箱）: {book}（{cleared} 处）")
-                print("   ⚠️ final 定稿（事实唯一源头）已删除而状态八表仍保留——status 中已同步章仍会标绿，"
+                print("   ⚠️ final 定稿（事实唯一源头）已删除而状态十一表仍保留——status 中已同步章仍会标绿，"
                       "事实源已分裂；如需连状态一起回退，请用 snapshot rollback。")
             else:
                 print(f"🧹 已清理草稿区 raw/ 与待办收件箱（保留 final 定稿、圣经/细纲/状态/审计）: "
@@ -190,26 +190,23 @@ def cmd_init(args) -> int:
     common.dump_json(book / "project.json", proj)
     seeded = state.init_state(book)
     if args.protagonist:
-        ent_path = book / "state" / "entities.json"
-        if ent_path.exists():
-            try:
-                ents_data = common.load_json(ent_path, default={}) or {}
-                entries = ents_data.get("entries", [])
-                if not any(e.get("name") == args.protagonist for e in entries):
-                    entries.append({
-                        "id": "p_001",
-                        "name": args.protagonist,
-                        "type": "person",
-                        "status": "active",
-                        "card": "characters/protagonist.md",
-                        "summary": f"本书主角：{args.protagonist}",
-                        "aliases": []
-                    })
-                    ents_data["entries"] = entries
-                    state.save_state(book, "entities", ents_data, source="init")
-            except (ValueError, OSError) as exc:
-                # M4 修复：不再静默吞掉异常，至少提示
-                print(f"⚠️ 主角实体预置失败（不阻断 init）: {exc}")
+        try:
+            persons_data = state.load_state(book, "persons")
+            entries = persons_data.get("entries", [])
+            if not any(e.get("name") == args.protagonist for e in entries):
+                entries.append({
+                    "id": "p_001",
+                    "name": args.protagonist,
+                    "type": "person",
+                    "status": "active",
+                    "card": "characters/protagonist.md",
+                    "summary": f"本书主角：{args.protagonist}",
+                    "aliases": []
+                })
+                state.save_state(book, "persons", persons_data, source="init")
+        except (ValueError, OSError) as exc:
+            # M4 修复：不再静默吞掉异常，至少提示
+            print(f"⚠️ 主角实体预置失败（不阻断 init）: {exc}")
     done = _instantiate_templates(book, {"title": args.title or "", "genre": args.genre or "",
                                          "protagonist": args.protagonist or ""})
     print(f"✅ 书工作区已创建: {book}（状态机播种 {seeded} 个 JSON；模板实例化 {len(done)} 份：{', '.join(done)}）")
@@ -709,7 +706,7 @@ def _find_lore_target(book: Path, query: str) -> Path | None:
         for p in edir.rglob("*.md"):
             if q in p.stem.lower():
                 return p
-    # 从 state/entities.json 中按 ID、别名或卡片路径查找
+    # 从实体四表（兼容读视图）中按 ID、别名或卡片路径查找
     try:
         ents_st = state.load_state(book, "entities")
         for e in ents_st.get("entries", []):
@@ -816,7 +813,7 @@ def _resolve_mutual_address(from_prof: dict, to_prof: dict) -> str:
 
 
 def _get_entity_full_profile(book: Path, query_name: str) -> dict | None:
-    """提取实体的结构化全息档案（融合 state/entities.json + 卡片 YAML Front-matter + 正文关键小节）。"""
+    """提取实体的结构化全息档案（融合实体四表 + 卡片 YAML Front-matter + 正文关键小节）。"""
     if not query_name:
         return None
     q = query_name.strip().lower()
@@ -949,7 +946,7 @@ def cmd_lore(args) -> int:
                 if prof:
                     all_profiles.append(prof)
 
-        # 扫描未在 entities.json 注册但存在于卡片目录中的实体
+        # 扫描未在实体四表注册但存在于卡片目录中的实体
         for sub_dir, fallback_type in (("characters", "person"),
                                        ("entities/items", "item"),
                                        ("entities/factions", "faction"),

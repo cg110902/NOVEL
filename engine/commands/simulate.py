@@ -60,6 +60,7 @@ def simulate_impact(book: Path, entity: str | None = None, line_id: str | None =
         "affected_items": [],
         "affected_milestones": [],
         "affected_relations": [],
+        "affected_events": [],
         "affected_cognition": [],
     }
 
@@ -86,7 +87,7 @@ def simulate_impact(book: Path, entity: str | None = None, line_id: str | None =
             out["warnings"].append(f"🔴 [致命主线崩坏风险] 实体「{target_name}」是本书唯一主角！若其死亡，全书主线脊柱将直接瓦解！")
 
         if target_ent and target_ent.get("life_status") == "deceased":
-            out["warnings"].append(f"⚠️ 实体「{target_name}」在 state/entities.json 中已是死亡状态（deceased），无需重复执行击杀动作。")
+            out["warnings"].append(f"⚠️ 实体「{target_name}」在实体四表中已是死亡状态（deceased），无需重复执行击杀动作。")
 
         # 1) 波及伏笔与机密
         def _hit_names(text_blob: str) -> bool:
@@ -150,7 +151,7 @@ def simulate_impact(book: Path, entity: str | None = None, line_id: str | None =
                         "impact": "里程碑任务与该实体直接挂钩，实体异动可能导致里程碑无法如期达成",
                     })
 
-        # 4) 社交人际网络
+        # 4) 社交人际网络（R0：携带 strength/status，强关系排前——断强关系才伤筋动骨）
         for e in ents_st:
             if e.get("name") in names:
                 for rel in (e.get("relations") or []):
@@ -158,7 +159,28 @@ def simulate_impact(book: Path, entity: str | None = None, line_id: str | None =
                         "target": rel.get("target"),
                         "type": rel.get("type"),
                         "desc": rel.get("desc"),
+                        "strength": rel.get("strength"),
+                        "status": rel.get("status", ""),
                     })
+        out["affected_relations"].sort(key=lambda r: (
+            -(r["strength"] if type(r.get("strength")) is int else 0),
+            str(r.get("target", ""))))
+
+        # 4b) 事件因果图（v2：参与者引用直连；无引用字段的老事件自动跳过）
+        _ids = {target_ent.get("id")} if target_ent and target_ent.get("id") else set()
+        for ev in (tl_st.get("events") or []):
+            if not isinstance(ev, dict):
+                continue
+            parts = [str(p) for p in (ev.get("participants") or [])]
+            if any(p in _ids or _hit_names(p) for p in parts):
+                out["affected_events"].append({
+                    "id": ev.get("id"),
+                    "event": str(ev.get("event", ""))[:40],
+                    "chapter": ev.get("chapter"),
+                    "causes": list(ev.get("causes") or []),
+                    "consequences": list(ev.get("consequences") or []),
+                    "reason": "该实体为事件参与者",
+                })
 
     # 线索冲击推演（如：揭示秘密 KNO-001 或回收伏笔 GUN-001）
     if line_id:
@@ -365,10 +387,19 @@ def cmd_simulate(args) -> int:
             for ms in payload["affected_milestones"]:
                 lines_md.append(f"- **[{ms['id']}] {ms['title']}** ➔ {ms['impact']}")
 
+        if payload.get("affected_events"):
+            lines_md.append(f"\n## 📜 波及事件因果 ({len(payload['affected_events'])} 起)")
+            for ev in payload["affected_events"]:
+                lines_md.append(f"- {ev.get('id') or '?'}《{ev.get('event', '')}》"
+                                f"（{ev.get('chapter', '?')}｜前因 {ev.get('causes') or '—'}"
+                                f"→后果 {ev.get('consequences') or '—'}）")
         if payload["affected_relations"]:
             lines_md.append(f"\n## 👥 波及人际网络 ({len(payload['affected_relations'])} 条)")
             for r in payload["affected_relations"]:
-                lines_md.append(f"- ➔ {r['target']} ({r['type']}): {r.get('desc','')}")
+                _s = r.get("strength")
+                _mark = f" 💪{_s}" if type(_s) is int else ""
+                _st = f"［{r['status']}］" if r.get("status") else ""
+                lines_md.append(f"- ➔ {r['target']} ({r['type']}){_st}{_mark}: {r.get('desc','')}")
 
         full_text = "\n".join(lines_md)
         if _HAS_RICH and console:

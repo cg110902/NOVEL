@@ -65,7 +65,7 @@ LINES = [
 # ① ch_120 无事件跳阶（tier 3→7，无 timeline 事件）→ tier_shift_without_event
 # ② ch_130 细纲计划回收冷却线 GUN-015（上次提及 ch_008、仍开放）→ line_recall_cold
 # ③ GUN-019/020 全书正文零出现 → line_never_surfaced
-# ④a ch_100 封存后离线手改 entities.json → 下一章 load 补记 external_edit 事件
+# ④a ch_100 封存后离线手改 persons.json → 下一章 load 补记 external_edit 事件
 # ④b ch_200 全部封存后再次手改 → check 的 state_offline_edit 指名报出
 # ⑤ ch_150 断水剑 holder 林牧→赵莽 → changelog blame 精确到章与 operation_id
 
@@ -237,22 +237,22 @@ def build_stress_book(book: Path) -> dict:
 
         # 植入④a：ch_100 封存后离线手改（绕过 save_state）
         if n == 100:
-            ents = json.loads((book / "state" / "entities.json").read_text(encoding="utf-8"))
+            ents = json.loads((book / "state" / "persons.json").read_text(encoding="utf-8"))
             for e in ents["entries"]:
                 if e.get("id") == "p_lm":
                     e["summary"] = "离线手改的假履历（植入④a）"
-            (book / "state" / "entities.json").write_text(
+            (book / "state" / "persons.json").write_text(
                 json.dumps(ents, ensure_ascii=False, indent=2), encoding="utf-8")
         # 卷末 rollup（真实工序：卷末封存后立即生成前情态势）
         if n % 50 == 0 and n < 200:
             rollup.save_rollup(book, f"vol_{n // 50:02d}")
 
     # 植入④b：全部封存后再次手改 → check 的 state_offline_edit 必须指名报出
-    ents = json.loads((book / "state" / "entities.json").read_text(encoding="utf-8"))
+    ents = json.loads((book / "state" / "persons.json").read_text(encoding="utf-8"))
     for e in ents["entries"]:
         if e.get("id") == "p_lm":
             e["summary"] = "卷末离线手改（植入④b）"
-    (book / "state" / "entities.json").write_text(
+    (book / "state" / "persons.json").write_text(
         json.dumps(ents, ensure_ascii=False, indent=2), encoding="utf-8")
 
     return {"book": book, "build_seconds": round(time.time() - t0, 2),

@@ -18,6 +18,37 @@
           },
           "chapter": {
             "type": "string"
+          },
+          "id": {
+            "pattern": "^EVT-\\d{3,}$",
+            "type": "string"
+          },
+          "participants": {
+            "description": "参与实体引用（实体 id 或法定名）",
+            "items": {
+              "type": "string"
+            },
+            "title": "Participants",
+            "type": "array"
+          },
+          "place": {
+            "type": "string"
+          },
+          "causes": {
+            "description": "前因事件引用（EVT-编号）",
+            "items": {
+              "type": "string"
+            },
+            "title": "Causes",
+            "type": "array"
+          },
+          "consequences": {
+            "description": "后果事件引用（EVT-编号）",
+            "items": {
+              "type": "string"
+            },
+            "title": "Consequences",
+            "type": "array"
           }
         },
         "required": [

@@ -1,6 +1,6 @@
 """卷末对账大修（D2）：`python studio.py reconcile vol_XX --write`。
 
-定位：投影必然有损（八表是正文的 lossy projection），误差逐章累积——
+定位：投影必然有损（十一表是正文的 lossy projection），误差逐章累积——
 每卷末做一次**周期性维护**（如同数据库的 full rebuild）。本命令只做机械部分：
 全书不变量复扫、本卷 8 探针批量重跑、高危字段变更史、投影 diff 候选清单，
 产出 `log/review/reconcile_vol_XX.md` 工作单；LLM 重读对账是仪式不是代码
@@ -63,8 +63,9 @@ def _gather(book: Path, vol: str) -> dict:
     if changelog.active(book):
         hi_seq = changelog.seal_seq_for(book, hi) or 0
         lo_seq = changelog.seal_seq_for(book, lo - 1) or 0
+        _ent_tables = (*state.KIND_TABLES, state.LEGACY_ENTITIES_KEY)
         for ev in changelog.load_events(book):
-            if ev.get("kind") or ev.get("table") != "entities":
+            if ev.get("kind") or ev.get("table") not in _ent_tables:
                 continue
             seq = int(ev.get("seq") or 0)
             if not (lo_seq < seq <= hi_seq):
@@ -84,7 +85,7 @@ def _gather(book: Path, vol: str) -> dict:
     for _tok, n, text in evidence.final_chapters(book):
         if lo <= n <= hi:
             vol_text += text + "\n"
-    ents = data["entities"].get("entries", [])
+    ents = state.merged_entities_view(data)
     registered = set()
     for e in ents:
         registered.add(str(e.get("name", "")))
@@ -156,7 +157,7 @@ def render_reconcile_md(payload: dict, book_name: str) -> str:
         L.append(f"  - {h.get('ch')} [{h.get('source')}] {h.get('path')}: "
                  f"{_clip(h.get('before'))} → {_clip(h.get('after'))}")
     L.append("")
-    L.append("## 四、投影 diff 工位（正文 vs 八表，主控裁决）")
+    L.append("## 四、投影 diff 工位（正文 vs 十一表，主控裁决）")
     L.append("### 4a. 正文出现但未登记的候选专名（本卷 ≥2 次）")
     if payload["unregistered"]:
         for u in payload["unregistered"]:
@@ -171,7 +172,7 @@ def render_reconcile_md(payload: dict, book_name: str) -> str:
         L.append("  - （无）")
     L.append("")
     L.append("## 五、LLM 对账仪式（主控派发临时沙盒，引擎不管）")
-    L.append("- [ ] 派发临时沙盒 Reader 重读本卷全部 final，与八表逐项对账（重点：第四节清单）")
+    L.append("- [ ] 派发临时沙盒 Reader 重读本卷全部 final，与十一表逐项对账（重点：第四节清单）")
     L.append("- [ ] 差异并入下一章在途提案（`state/inbox/ch_XXX.json`）随 sync 合并")
     L.append("- [ ] 对账后跑 `python studio.py ledger recompute` + `python studio.py check` 确认平账")
     L.append("- [ ] 卷末执行 `python studio.py state rollup " + vol + "` 生成下卷前情态势")

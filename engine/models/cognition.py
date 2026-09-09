@@ -29,6 +29,7 @@ class CognitionEntry(BaseModel):
     since_ch: str = Field(..., pattern=r"^ch_\d{3,}$", description="该认知建立或变迁的章节 (如 ch_002)")
     quote: str = Field(..., min_length=2, description="定稿逐字佐证原句")
     note: Optional[str] = Field(None, description="知情限制或机锋约束 (如 '仅怀疑，未掌握确凿铁证')")
+    truth_ref: Optional[str] = Field(None, description="真相锚点（GUN-/KNO-/EVT-/LOCK-编号；供机械判定认知与真相是否冲突）")
 
 
 class CognitionState(BaseModel):

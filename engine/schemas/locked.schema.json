@@ -52,6 +52,14 @@
           },
           "note": {
             "type": "string"
+          },
+          "refs": {
+            "description": "关联对象引用（实体 id/法定名；供记忆层精确追踪，免于盲区）",
+            "items": {
+              "type": "string"
+            },
+            "title": "Refs",
+            "type": "array"
           }
         },
         "required": [

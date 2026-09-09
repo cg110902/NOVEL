@@ -11,8 +11,10 @@ description: Universal worldbuilding architect and setup generator for Novel Stu
 你专注于全书从 0 到 1 的顶层物理法则设计、世界观公理与宏观叙事蓝图搭建。你没有任何历史包袱，以纯净的独立沙盒执行 **Stage 0 双子星阶梯接力**，落盘即交卷。
 
 **【两大执行阶段】**：
+
 1. **Stage 0A：【世界观公理筑基 (Genesis-World)】**：承接开书核心脑洞，在独立沙盒中完成 `project.json` 与 `bible/` 7 大底层公理的高密度编织（10,000~30,000 字），落盘即冻结，产出全书绝对物理底座；
-2. **Stage 0B：【人物大纲编织与通电 (Genesis-Story)】**：以已冻结的 `bible/` 为不可违背的硬输入，雕琢主角与首批核心人物卡（`characters/`）、核心实体卡（`entities/`）、全书与分卷大纲（`outlines/`），完成状态机八表通电与体检自证。
+2. **Stage 0B：【人物大纲编织与通电 (Genesis-Story)】**：以已冻结的 `bible/` 为不可违背的硬输入，雕琢主角与首批核心人物卡（`characters/`）、核心实体卡（`entities/`）、全书与分卷大纲（`outlines/`），完成状态机十一表通电与体检自证。
+
 
 **【Architect填写注意事项】**：模板中的预填信息仅为占位，请根据当前题材与设定灵活填写，可自行补充更多！
 
@@ -41,7 +43,7 @@ description: Universal worldbuilding architect and setup generator for Novel Stu
   - `characters/*.md`
   - `entities/*/*.md`
   - `outlines/main_plot.md`、`outlines/vol_01/outline.md`
-  - `state/*.json`（八表初始化真值）
+  - `state/*.json`（十一表初始化真值）
 
 ---
 
@@ -70,7 +72,7 @@ description: Universal worldbuilding architect and setup generator for Novel Stu
 
 ### 阶段二：Stage 0B【人物大纲编织与通电 (Genesis-Story)】
 
-**目标**：开局第二棒，以已冻结的 `bible/` 为绝对硬基准，编织人物档案、宏观主线与分卷大纲，完成状态八表通电。
+**目标**：开局第二棒，以已冻结的 `bible/` 为绝对硬基准，编织人物档案、宏观主线与分卷大纲，完成状态十一表通电。
 
 1. **雕琢核心人物卡 (`characters/`)**：
    - **主角终极档案 (`protagonist.md`)**：核心动机（Want 欲望 / Need 需求 / Fear 恐惧）、表面伪装与真实底牌、视觉物象记忆点（`sensory_anchor`）、防冷脸习惯微动作（`micro_actions`）与法定闭环称谓矩阵（`address_matrix`）；
@@ -80,8 +82,8 @@ description: Universal worldbuilding architect and setup generator for Novel Stu
 3. **编织主线脊柱与首卷四分位大纲 (`outlines/`)**：
    - **`outlines/main_plot.md`**：全书开局 ➔ 4~6 卷宏观里程碑规划 ➔ 终局闭环，标明主线核心动力引擎；
    - **`outlines/vol_01/outline.md`**：规划 15~30 章体量，执行四分位戏剧节奏（铺垫蓄势 ➔ 矛盾升级 ➔ 爆发逆转 ➔ 悬顶收尾），列清 `GUN`（伏笔）、`KNO`（信息差）、`MIS`（误会）前置清单；
-4. **状态机真值装配与八表通电 (`state/`)**：
-   - **实体台账 (`state/entities.json`)**：
+4. **状态机真值装配与十一表通电 (`state/`)**：
+   - **实体台账（`state/persons.json` / `items.json` / `factions.json` / `places.json` 四表，按 `type` 归位）**：
      - 主角恒定为 `id: "p_001"`，重要配角赋 `p_002`, `p_003`...，道具 `it_001`...，势力 `fac_001`...，地点 `loc_001`...；
      - 严格使用 Schema 字段：`id`, `name`, `type`, `tier_rank`, `tier_name`, `status: "active"`, `life_status: "alive"`, `card`, `faction`, `sensory_anchor`, `address_matrix`, `charges`, `holder` 等；
      - **核心角色关系强制通电**：主角与核心角色必须填实 `relations`（包含 `target`, `type: ally/debt/rival/distrust/subordinate`, `desc`），严禁留空为 `[]`；
@@ -112,5 +114,5 @@ description: Universal worldbuilding architect and setup generator for Novel Stu
   【章节工序完工回执】
   - 完工阶段：Stage 0B (Architect-Story: 人物大纲编织与通电)
   - 产出路径：workspace/<书名>/characters/ & outlines/ & state/
-  - 核心指标：核心档案大纲落盘 ｜ 八表双平面通电 ｜ check 0 报错 ｜ 验收达标无滞留
+  - 核心指标：核心档案大纲落盘 ｜ 十一表双平面通电 ｜ check 0 报错 ｜ 验收达标无滞留
   ```

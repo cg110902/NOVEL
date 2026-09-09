@@ -1,8 +1,11 @@
 """时空事件轴与危机倒计时 (Timeline) 强类型领域模型。"""
 from __future__ import annotations
+import re
 from enum import Enum
 from typing import Optional, Literal
 from pydantic import BaseModel, ConfigDict, Field
+
+EVT_ID_RE = re.compile(r"^EVT-\d{3,}$")
 
 
 class ClockUrgency(str, Enum):
@@ -25,6 +28,12 @@ class TimelineEvent(BaseModel):
     time: str = Field(..., description="绝对/相对时间点，如'第一日·正午'")
     event: str = Field(..., description="发生的重大事件事实记录")
     chapter: Optional[str] = Field(None, description="事件发生章节")
+    # 对象化扩展（v2 加法字段：事件成为可引用的 Object）
+    id: Optional[str] = Field(None, pattern=r"^EVT-\d{3,}$", description="事件唯一编号（如 EVT-001；缺省由引擎自动分配）")
+    participants: list[str] = Field(default_factory=list, description="参与实体引用（实体 id 或法定名）")
+    place: Optional[str] = Field(None, description="发生地点引用（实体 id 或法定名）")
+    causes: list[str] = Field(default_factory=list, description="前因事件引用（EVT-编号）")
+    consequences: list[str] = Field(default_factory=list, description="后果事件引用（EVT-编号）")
 
 
 class TimelineClock(BaseModel):

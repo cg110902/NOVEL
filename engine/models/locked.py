@@ -34,6 +34,7 @@ class LockedEntry(BaseModel):
     )
     quote: str = Field(..., min_length=2, description="final 原文佐证句 (经 RapidFuzz 柔性接地)")
     note: Optional[str] = Field(None, description="写作红线执行提示 (如 '严禁再次出场，回忆除外')")
+    refs: list[str] = Field(default_factory=list, description="关联对象引用（实体 id/法定名；供记忆层精确追踪，免于盲区）")
 
 
 class LockedState(BaseModel):

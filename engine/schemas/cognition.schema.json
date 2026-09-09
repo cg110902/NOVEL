@@ -57,6 +57,9 @@
           },
           "note": {
             "type": "string"
+          },
+          "truth_ref": {
+            "type": "string"
           }
         },
         "required": [

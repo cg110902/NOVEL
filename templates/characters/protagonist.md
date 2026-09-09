@@ -21,7 +21,7 @@ schema_version: novel-studio.character/v2
        - 都市/商战：金融巨鳄/隐世兵王/超级宗师，填职级资本身家、贴身器械、标志风衣名表、锁定称谓「陆先生/老大」；
        - 科幻/星际：基因超体/星舰领航员/智械先驱，填代际军衔、外骨骼脉冲、机动光刃、锁定称谓「指挥官/长官」；
        - 历史/权谋：贬谪帝师/寒门谋主/边军统帅，填爵位官品、旧羊皮裘紫毫笔、佩剑虎符、锁定称谓「先生/九爷」。
-     ★ 核心对账：YAML Front-matter 中的 tier_rank (1-12)、tier_name、power_benchmark、faction、sensory_anchor、status 与 address_matrix 属于 state/entities.json 法定白名单；role 属于卡片身份标注，入库 entities.json 时仅需保留白名单字段！ -->
+     ★ 核心对账：YAML Front-matter 中的 tier_rank (1-12)、tier_name、power_benchmark、faction、sensory_anchor、status 与 address_matrix 属于 实体四表（persons/items/factions/places） 法定白名单；role 属于卡片身份标注，入库四表时仅需保留白名单字段！ -->
 
 # {{slot:protagonist|主角名}}
 
