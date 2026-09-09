@@ -24,19 +24,26 @@ except ImportError:
 
 
 def build_narrative_graph(ws_path: Path) -> nx.Graph:
-    """从 state/entities.json 与 state/lines.json 构建全景叙事拓扑图。"""
+    """从 state/ 四 kind 表（persons/items/factions/places）与 lines.json 构建全景叙事拓扑图。"""
     if not _HAS_NX:
         raise RuntimeError("未安装 networkx 库，请运行 pip install networkx")
 
     G = nx.Graph()
     state_dir = ws_path / "state"
 
-    # 1. 实体加载
-    entities_file = state_dir / "entities.json"
-    if entities_file.is_file():
+    # 1. 实体加载（v6：四 kind 表合并；legacy entities.json 仅四表全空时回退，与 fold 口径一致）
+    if True:
         try:
-            data = common.load_json(entities_file, default={}) or {}
-            entries = data.get("entries", [])
+            from . import state as state_mod
+            entries = []
+            for _k in state_mod.KIND_TABLES:
+                _f = state_dir / f"{_k}.json"
+                if _f.is_file():
+                    entries.extend((common.load_json(_f, default={}) or {}).get("entries", []) or [])
+            if not entries:
+                _leg = state_dir / "entities.json"
+                if _leg.is_file():
+                    entries.extend((common.load_json(_leg, default={}) or {}).get("entries", []) or [])
             for ent in entries:
                 name = ent.get("name")
                 if not name:
@@ -76,7 +83,9 @@ def build_narrative_graph(ws_path: Path) -> nx.Graph:
                     if target and target in G:
                         rtype = rel.get("type", "tension")
                         rdesc = rel.get("desc", "")
-                        G.add_edge(name, target, relation=rtype, label=rdesc)
+                        _w = rel.get("strength")
+                        G.add_edge(name, target, relation=rtype, label=rdesc,
+                                   weight=_w if type(_w) is int else 1)
         except (TypeError, AttributeError, KeyError):
             pass  # 形状异常跳过；JSON 损坏(ValueError)上抛，拒绝静默空图
 
@@ -260,9 +269,12 @@ def cmd_neighbors(G: nx.Graph, node: str, depth: int = 1, as_json: bool = False)
             return 1
         print(f"❌ 未找到节点: {node}")
         return 1
+    def _nb_order(n):
+        w = G.get_edge_data(node, n, default={}).get("weight")
+        return (-(w if type(w) is int else 0), str(n))
     if as_json:
         neighbor_items = []
-        for n in G.neighbors(node):
+        for n in sorted(G.neighbors(node), key=_nb_order):
             edge = G.get_edge_data(node, n, default={})
             rel = edge.get("label") or edge.get("relation") or "关联"
             ntype = G.nodes[n].get("entity_type", G.nodes[n].get("node_type", ""))
@@ -282,7 +294,7 @@ def cmd_neighbors(G: nx.Graph, node: str, depth: int = 1, as_json: bool = False)
         return 0
     print(f" 🕸️ 实体 [{node}] 的 {depth}-Hop 关联子网:")
     if depth == 1:
-        neighbors = list(G.neighbors(node))
+        neighbors = sorted(G.neighbors(node), key=_nb_order)
         if not neighbors:
             print("   （当前无直接关联节点）")
             return 0

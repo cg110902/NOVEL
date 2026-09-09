@@ -187,6 +187,14 @@ def _bisect_scan(book) -> dict:
                     unreadable.append(k)
         for k in state.STATE_KEYS:
             data.setdefault(k, state.defaults_for(k))
+        _leg_p = folder / "entities.json"
+        if _leg_p.is_file() and not any((data.get(k) or {}).get("entries") for k in state.KIND_TABLES):
+            try:
+                _split = state.split_entities_entries(common.load_json(_leg_p).get("entries", []) or [])
+                for k in state.KIND_TABLES:
+                    data[k] = {"entries": _split[k]}
+            except (ValueError, OSError):
+                unreadable.append("entities")
         errs = state.verify_data(data)
         rows.append({"name": name, "chapter": snapshot_mod.chapter_of_snapshot(name),
                      "ok": not errs, "errors": errs[:3], "unreadable": unreadable})
@@ -673,7 +681,7 @@ def _consistency_section(book, n: int, cur: dict, ents: list[dict], lines_st: di
                 if str(k.get("status", "")).strip().lower() != "revealed"]
     kno_list.sort(key=lambda k: -(k.get("weight") if isinstance(k.get("weight"), int) else 1))
     locked_entries = (locked_st or {}).get("entries", [])
-    # 资源池在 ledger.json 的 pools 键下（八表里没有 resources 这张表——
+    # 资源池在 ledger.json 的 pools 键下（十一表里没有 resources 这张表——
     # 此前误读 state/resources.json，异常被吞成空字典，于是恒报「尚无已声明资源池」）。
     ledger_err = ""
     try:

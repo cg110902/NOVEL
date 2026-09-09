@@ -18,10 +18,16 @@ from .current import CurrentState
 from .synopsis import SynopsisState
 from .locked import LockedState
 from .cognition import CognitionState
-from .patch import ProposalModel
+from .derived import DerivedState
+from .patch import ProposalModel, ProposalV3Model
 
 MODEL_REGISTRY: dict[str, Type[BaseModel]] = {
     "entities": EntitiesState,
+    # v6 拆表：四 kind 表与 entities 共享行模型（单真源；schema 四文件内容一致，各表其名）
+    "persons": EntitiesState,
+    "items": EntitiesState,
+    "factions": EntitiesState,
+    "places": EntitiesState,
     "ledger": LedgerState,
     "timeline": TimelineState,
     "lines": LinesState,
@@ -29,7 +35,9 @@ MODEL_REGISTRY: dict[str, Type[BaseModel]] = {
     "synopsis": SynopsisState,
     "locked": LockedState,
     "cognition": CognitionState,
+    "derived": DerivedState,
     "proposal": ProposalModel,
+    "proposal_v3": ProposalV3Model,
 }
 
 

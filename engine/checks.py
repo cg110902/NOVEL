@@ -27,7 +27,7 @@ import json
 import re
 from pathlib import Path
 
-from . import common, errcodes, evidence, memory, state, vocab
+from . import common, errcodes, evidence, memory, proposal_v3, state, vocab
 from .models.entities import LOCATION_TYPES
 
 try:
@@ -100,6 +100,17 @@ _QUOTE_SLOTS: list[tuple[str, object]] = [
 ]
 
 
+def _as_v2_proposal(book: Path, proposal: dict) -> dict:
+    """v3→v2 编译前导（核验三件套共用）：v3 提案先编译为 v2 等价提案再核验，
+    v2/v3 核验口径天然一致。编译失败（草稿/半成品）回退原文：核验本就 advisory
+    （.get 缺席即跳过），不因编译失败多报错（sync 门会拦住坏提案）。"""
+    if isinstance(proposal, dict) and proposal.get("schema") == proposal_v3.V3_SCHEMA:
+        v2, errs, _ = proposal_v3.compile_ops(book, proposal)
+        if not errs:
+            return v2
+    return proposal
+
+
 def _iter_quote_items(proposal: dict):
     if not isinstance(proposal, dict):
         return
@@ -140,6 +151,7 @@ def validate_quotes(book: Path, ch: str, proposal: dict) -> list[str]:
     - 战死/退役等高危变更未携带引文 → 醒目提示（建议附原句，便于日后回溯）。
     返回值为提示清单，调用方一律不得据此阻断 sync。
     """
+    proposal = _as_v2_proposal(book, proposal)
     finals = common.find_chapter_files(book, "final", ch)
     if not finals:
         return []
@@ -215,6 +227,7 @@ _CAND_STOP = vocab.CANDIDATE_STOP_WORDS
 
 
 def verify_candidates(book: Path, ch: str, proposal: dict) -> dict:
+    proposal = _as_v2_proposal(book, proposal)
     n = common.chapter_token_to_num(ch)
     out: dict = {"kind": "verify", "chapter": ch, "items": []}
     if not n:
@@ -258,6 +271,8 @@ def verify_candidates(book: Path, ch: str, proposal: dict) -> dict:
             if not isinstance(op, dict) or op.get("action", "plant") != "plant":
                 continue
             fact = str(op.get("fact") or "")
+            if any(str(r or "").strip() for r in (op.get("refs") or [])):
+                continue  # P2：refs 显式挂载实体 → 记忆层按 refs 专名追踪，非盲区
             if fact and known_names and not any(n in fact for n in known_names):
                 add("info", "locked_fact_untraceable",
                     f"locked[{i}]（{op.get('id') or '新条目'}）的 fact 不含任何已登记实体名/别名——"
@@ -935,6 +950,7 @@ def review_skeleton(book: Path, ch: str) -> dict:
 
 
 def proposal_cross_facts(book: Path, ch: str, proposal: dict) -> dict:
+    proposal = _as_v2_proposal(book, proposal)
     n = common.chapter_token_to_num(ch)
     facts: dict = {}
     if not isinstance(proposal, dict) or not n:
@@ -1003,6 +1019,29 @@ _TIER_SHIFT_KEYWORDS = ("突破", "晋升", "跃迁", "觉醒", "加冕", "进�
                         "凝聚", "铸就", "被废", "跌境", "重创", "尽废", "废去", "降阶", "折损")
 
 
+def _v3_tier_pseudo_entries(ops: list, id_to_name: dict) -> list[dict]:
+    """v3 ops → 位阶探针伪条目（仅实体寻址 op，仅 id/name/tier 轨迹有意义）。
+
+    v3 update 不带名：用当前 id→名表解析，解不出退回 id（此时事件文本须直书
+    名、或 participants 挂该 id 才能命中——与手术刀改名后重放同局限，已知接受）。
+    retire 不产生 tier 轨迹，跳过。
+    """
+    pseudo: list[dict] = []
+    for op in ops:
+        if not isinstance(op, dict):
+            continue
+        if op.get("table") not in ("persons", "items", "factions", "places"):
+            continue
+        if op.get("action") == "create" and isinstance(op.get("entry"), dict):
+            pseudo.append(op["entry"])
+        elif op.get("action") == "update" and isinstance(op.get("set"), dict):
+            eid = str(op.get("id") or "")
+            pseudo.append({"id": eid,
+                           "name": id_to_name.get(eid, eid),
+                           **op["set"]})
+    return pseudo
+
+
 def _tier_probe(book: Path, warnings: list) -> None:
     """位阶单调性探针（C1）：重放 processed/ 提案，实体 tier_rank/tier_name 的
     实际变更必须有前后 grace 章内的 timeline 剧情事件支撑（事件文本需含实体名
@@ -1017,6 +1056,13 @@ def _tier_probe(book: Path, warnings: list) -> None:
     raw_grace = proj.get("tier_shift_grace")
     grace = raw_grace if (isinstance(raw_grace, int) and not isinstance(raw_grace, bool)
                           and raw_grace >= 0) else 1
+
+    try:
+        _id_to_name = {str(e.get("id", "")): str(e.get("name", ""))
+                       for e in state.load_state(book, "entities").get("entries", []) or []
+                       if isinstance(e, dict) and e.get("id")}
+    except (ValueError, OSError):
+        _id_to_name = {}
 
     # 1) processed/ 提案重放：抽取实体 tier 实际变更序列
     shifts: list[tuple[int, str, str]] = []   # (章号, 实体名, 新 tier_name)
@@ -1035,7 +1081,13 @@ def _tier_probe(book: Path, warnings: list) -> None:
                 continue
             ents = data.get("entities")
             if not isinstance(ents, list):
-                continue
+                # v3 提案：ops 直提伪条目（只关心实体寻址 op 的 tier 轨迹，
+                # 无需全编译——全编译要求 live 存在性，不适用于历史重放）
+                if data.get("schema") == proposal_v3.V3_SCHEMA \
+                        and isinstance(data.get("ops"), list):
+                    ents = _v3_tier_pseudo_entries(data["ops"], _id_to_name)
+                else:
+                    continue
             for e in ents:
                 if not isinstance(e, dict):
                     continue
@@ -1066,19 +1118,26 @@ def _tier_probe(book: Path, warnings: list) -> None:
         events = state.load_state(book, "timeline").get("events", []) or []
     except (ValueError, OSError):
         events = []
-    windowed: list[tuple[int, str]] = []
+    windowed: list[tuple[int, str, list]] = []
     for ev in events:
         if not isinstance(ev, dict):
             continue
         ev_ch = common.chapter_token_to_num(ev.get("chapter"))
         if ev_ch:
-            windowed.append((ev_ch, str(ev.get("event", ""))))
-
+            windowed.append((ev_ch, str(ev.get("event", "")),
+                             list(ev.get("participants") or [])))
+    # （_id_to_name 已在重放前构建：v3 update op 不带名，需 id→名解析）
     for n, name, tname in shifts[:20]:
-        candidates = [txt for c, txt in windowed if abs(c - n) <= grace]
-        ok = any(name in txt and (any(k in txt for k in _TIER_SHIFT_KEYWORDS)
-                                  or (tname and tname in txt))
-                 for txt in candidates)
+        cands = [(txt, parts) for c, txt, parts in windowed if abs(c - n) <= grace]
+
+        def _hit(txt: str, parts: list) -> bool:
+            anchored = (name in txt) or any(
+                str(p) == name or _id_to_name.get(str(p)) == name for p in parts)
+            keyed = (any(k in txt for k in _TIER_SHIFT_KEYWORDS)
+                     or (tname and tname in txt))
+            return bool(anchored and keyed)
+
+        ok = any(_hit(txt, parts) for txt, parts in cands)
         if not ok:
             warnings.append(_err(
                 "tier_shift_without_event",
@@ -2035,7 +2094,7 @@ def run_checks(book: Path) -> dict:
     except (ValueError, OSError):
         pass
 
-    # state 八表离线改动检查（P1-4）：sync 封存时盖章的 state 哈希 vs 当前内容——
+    # state 十一表离线改动检查（P1-4）：sync 封存时盖章的 state 哈希 vs 当前内容——
     # 「提案是唯一写入口」自此有机械证据，绕过提案手改哪张表都能指名报出。
     try:
         shp = book / "state" / "inbox" / "processed" / "state_hashes.json"
@@ -2045,6 +2104,8 @@ def run_checks(book: Path) -> dict:
             if isinstance(sealed_states, dict):
                 last_ch = str(stamp.get("last_sync_chapter", ""))
                 for key in sorted(sealed_states):
+                    if key == "derived":
+                        continue  # 派生表是引擎缓存（重算即合法变更），不纳入离线改动检出
                     fp = book / "state" / f"{key}.json"
                     if not fp.is_file():
                         continue

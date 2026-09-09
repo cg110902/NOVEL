@@ -359,6 +359,13 @@ def _entity_block(book: Path, name: str, cur: dict, lines: dict, full: bool) -> 
     if e.get("charges") is not None:
         max_c = e.get("max_charges")
         block["charges"] = f"{e['charges']}/{max_c}" if max_c else str(e["charges"])
+    # R0：实体伤势/声望注入（Drafter 必须知道谁伤了、谁有名，避免写出断臂抡剑）
+    _inj = e.get("injury_level")
+    if type(_inj) is int and _inj > 0:
+        block["injury"] = f"Lv{_inj}" + (f"：{e['injury_desc']}" if e.get("injury_desc") else "")
+    _ren = e.get("renown")
+    if type(_ren) is int and _ren != 0:
+        block["renown"] = _ren
     touched = []
     alias = [name] + list(e.get("aliases", []))
     for g in (lines.get("foreshadows", []) + lines.get("misunderstandings", [])
@@ -508,6 +515,16 @@ def build_pack(book: Path, ch: str, lean: bool = False, full: bool = False) -> d
                 recent_entity_mentions.add(name)
 
     present_set = set(cur["current"].get("present_characters", []))
+    try:  # scene 引用化：在场/视角/地点引用解析为法定名并入 present 集（失败静默回退字符串口径）
+        from .objects import build_registry as _build_reg, resolve_ref as _resolve
+        _reg = _build_reg(cur["entities"])
+        for _r in (list(cur["current"].get("present_refs") or [])
+                   + [cur["current"].get("pov_ref"), cur["current"].get("place_ref")]):
+            _ent = _resolve(_reg, _r)
+            if isinstance(_ent, dict) and _ent.get("name"):
+                present_set.add(_ent["name"])
+    except Exception:
+        pass
     entries_map = {e.get("name"): e for e in cur["entities"].get("entries", []) if e.get("name")}
     raw_hits = []
     seen_names = set()
@@ -833,16 +850,19 @@ ROLE_DENY_SEGMENT: dict[str, tuple[str, ...]] = {
 # critic 的唯一 state 例外（前情记忆）
 ROLE_ALLOW_EXTRA: dict[str, tuple[str, ...]] = {
     "critic": ("state/current.json",),
-    # Reader 准读清单第 3 项：state/entities.json 仅用于核对既有实体物理 ID，防新赋 ID 碰撞
-    "reader": ("state/entities.json",),
+    # Reader 准读清单第 3 项：实体四表仅用于核对既有实体物理 ID，防新赋 ID 碰撞
+    "reader": ("state/persons.json", "state/items.json",
+               "state/factions.json", "state/places.json"),
     # Editor / Stylist 准读清单第 3 项：全书文风宪法（此前文档授权、机械层一律拒绝，
     # 「双层防御」名不副实——真按网关走 Editor 连文风宪法都拿不到）
     "editor": ("bible/06_style_guidelines.md",),
     "stylist": ("bible/06_style_guidelines.md",),
-    # Auditor 的三张事实台账（准读清单第 3~5 项）
-    "auditor": ("state/locked.json", "state/current.json", "state/entities.json"),
-    # Librarian 的四张台账（准读清单第 2~5 项）
-    "librarian": ("state/entities.json", "state/lines.json",
+    # Auditor 的事实台账（准读清单第 3~5 项：locked/current + 实体四表）
+    "auditor": ("state/locked.json", "state/current.json", "state/persons.json",
+                "state/items.json", "state/factions.json", "state/places.json"),
+    # Librarian 的台账（准读清单第 2~5 项：实体四表 + lines/locked/ledger）
+    "librarian": ("state/persons.json", "state/items.json", "state/factions.json",
+                  "state/places.json", "state/lines.json",
                   "state/locked.json", "state/ledger.json"),
 }
 
@@ -929,6 +949,7 @@ def export_views(book: Path) -> Path:
         return str(v).replace("|", "\\|").replace("\n", " ")
 
     data = {key: state.load_state(book, key) for key in state.STATE_KEYS}
+    data["entities"] = {"entries": state.merged_entities_view(data)}
     L = ["# 状态视图（export --views 渲染；真值以 state/*.json 为准）", ""]
     L += ["## current", ""]
     for k, v in sorted(data["current"].items()):

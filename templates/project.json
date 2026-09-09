@@ -49,5 +49,22 @@
     "power_level": ["突破", "晋升", "重修", "暴涨", "跃迁", "觉醒", "蜕变", "加冕"],
     "injury": ["重创", "咳血", "断臂", "骨折", "毒发", "昏死", "衰竭", "休克"]
   },
+  "tier_shift_grace": 1,
+  "voiceprint": {
+    "min_lines": 12,
+    "recent_lines": 4,
+    "window": 6,
+    "len_shift": 0.45,
+    "mood_shift": 2.5,
+    "sig_min_count": 3
+  },
+  "reader_memory": {
+    "working_window": 25,
+    "fuzzy_window": 70,
+    "cold_line_base": 25,
+    "cold_line_per_weight": 8
+  },
+  "candidate_stopwords": [],
+  "latin_allowlist": [],
   "created_at": "{{slot:created_at|YYYY-MM-DD}}"
 }

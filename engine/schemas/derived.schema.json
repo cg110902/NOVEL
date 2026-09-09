@@ -1,0 +1,211 @@
+{
+  "additionalProperties": false,
+  "description": "派生表根模型（state/derived.json）。",
+  "properties": {
+    "schema_version": {
+      "default": "novel-studio.derived/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "sealed_ch": {
+      "default": "",
+      "description": "封存章号（ch_XXX；空=尚未封存过）",
+      "title": "Sealed Ch",
+      "type": "string"
+    },
+    "sealed_at": {
+      "default": "",
+      "description": "封存时刻 ISO（仅审计用，不参与一致性比对）",
+      "title": "Sealed At",
+      "type": "string"
+    },
+    "line_temps": {
+      "description": "全线记忆温度",
+      "items": {
+        "additionalProperties": false,
+        "description": "单条线的读者记忆温度（派生自正文落笔史 + 权重）。",
+        "properties": {
+          "id": {
+            "description": "线索编号（GUN-/MIS-/KNO-）",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "description": "foreshadow | misunderstanding | knowledge",
+            "title": "Kind",
+            "type": "string"
+          },
+          "temp": {
+            "description": "记忆温度档（closed=已闭环，仅快照）",
+            "enum": [
+              "hot",
+              "warm",
+              "cold",
+              "never",
+              "closed"
+            ],
+            "title": "Temp",
+            "type": "string"
+          },
+          "last_seen_ch": {
+            "type": "integer"
+          },
+          "gap": {
+            "type": "integer"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "temp"
+        ],
+        "title": "LineTemp",
+        "type": "object"
+      },
+      "title": "Line Temps",
+      "type": "array"
+    },
+    "scene_violations": {
+      "description": "场景合法性 violation（空=干净）",
+      "items": {
+        "additionalProperties": false,
+        "description": "场景合法性 violation（派生自 scene 引用 × 实体生死/注册表）。",
+        "properties": {
+          "code": {
+            "description": "present_unregistered | present_deceased | ref_unresolved | present_refs_mismatch",
+            "title": "Code",
+            "type": "string"
+          },
+          "level": {
+            "description": "error=硬伤 | warning=待核对",
+            "enum": [
+              "error",
+              "warning"
+            ],
+            "title": "Level",
+            "type": "string"
+          },
+          "msg": {
+            "description": "人话描述",
+            "title": "Msg",
+            "type": "string"
+          },
+          "refs": {
+            "description": "涉事引用",
+            "items": {
+              "type": "string"
+            },
+            "title": "Refs",
+            "type": "array"
+          }
+        },
+        "required": [
+          "code",
+          "level",
+          "msg"
+        ],
+        "title": "SceneViolation",
+        "type": "object"
+      },
+      "title": "Scene Violations",
+      "type": "array"
+    },
+    "holder_orphans": {
+      "description": "持有悬空清单（空=干净）",
+      "items": {
+        "additionalProperties": false,
+        "description": "持有悬空（派生自 holder × 实体注册/生死）。",
+        "properties": {
+          "item": {
+            "description": "道具名",
+            "title": "Item",
+            "type": "string"
+          },
+          "holder": {
+            "description": "悬空的 holder 值",
+            "title": "Holder",
+            "type": "string"
+          },
+          "reason": {
+            "description": "unregistered | deceased",
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "item",
+          "holder",
+          "reason"
+        ],
+        "title": "HolderOrphan",
+        "type": "object"
+      },
+      "title": "Holder Orphans",
+      "type": "array"
+    },
+    "knowledge_flags": {
+      "description": "认知-真相挂载旗",
+      "items": {
+        "additionalProperties": false,
+        "description": "认知-真相挂载旗（派生自 beliefs.truth_ref × 线/事件/锁状态）。",
+        "properties": {
+          "cog_id": {
+            "description": "COG-编号",
+            "title": "Cog Id",
+            "type": "string"
+          },
+          "character": {
+            "description": "认知主体",
+            "title": "Character",
+            "type": "string"
+          },
+          "truth_ref": {
+            "description": "真相锚点",
+            "title": "Truth Ref",
+            "type": "string"
+          },
+          "verdict": {
+            "description": "aligned 一致 | contradicted 冲突 | unresolved 锚点不存在",
+            "enum": [
+              "aligned",
+              "contradicted",
+              "unresolved"
+            ],
+            "title": "Verdict",
+            "type": "string"
+          },
+          "detail": {
+            "description": "判定依据一句话",
+            "title": "Detail",
+            "type": "string"
+          }
+        },
+        "required": [
+          "cog_id",
+          "character",
+          "truth_ref",
+          "verdict",
+          "detail"
+        ],
+        "title": "KnowledgeFlag",
+        "type": "object"
+      },
+      "title": "Knowledge Flags",
+      "type": "array"
+    },
+    "stats": {
+      "additionalProperties": {
+        "type": "integer"
+      },
+      "description": "派生统计（实体数/线数/事件数等，供 cockpit 问书速查）",
+      "title": "Stats",
+      "type": "object"
+    }
+  },
+  "title": "DerivedState",
+  "type": "object",
+  "$comment": "本文件由 engine/models/schema_gen.py 从 Pydantic 模型自动生成，禁止手改；重新生成：python -m engine.models.schema_gen"
+}

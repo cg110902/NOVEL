@@ -22,7 +22,7 @@ _STEADY_PARA = "赵莽答道：「行，那就依你。」"
 
 
 def _book_with_dialogues(tb, base_chs, drift_chs):
-    tb.set_state("entities", {"entries": [
+    tb.set_state("persons", {"entries": [
         {"id": "p_001", "name": "林牧", "type": "person", "status": "active"},
         {"id": "p_002", "name": "赵莽", "type": "person", "status": "active"}]})
     for i, n in enumerate(range(1, base_chs + 1), start=1):
@@ -66,7 +66,7 @@ class TestVoiceprint(unittest.TestCase):
     def test_mention_without_speech_not_attributed(self):
         """段内提及实体但非其说话（无说话动词紧邻）→ 对白不得被错归属。"""
         with TempBook() as tb:
-            tb.set_state("entities", {"entries": [
+            tb.set_state("persons", {"entries": [
                 {"id": "p_001", "name": "林牧", "type": "person", "status": "active"},
                 {"id": "p_002", "name": "赵莽", "type": "person", "status": "active"}]})
             # 两个注册实体都在场但都不说话（无动词紧邻）+ 说话人未注册：
@@ -80,7 +80,7 @@ class TestVoiceprint(unittest.TestCase):
 
     def test_unattributed_dialogue_dropped(self):
         with TempBook() as tb:
-            tb.set_state("entities", {"entries": [
+            tb.set_state("persons", {"entries": [
                 {"id": "p_001", "name": "林牧", "type": "person", "status": "active"}]})
             # 无归属对白（段内无实体名+说话动词，也无唯一实体提及）→ 全部丢弃
             tb.seed_chapter("ch_001", "「这买卖真是有意思吧。」" * 4)

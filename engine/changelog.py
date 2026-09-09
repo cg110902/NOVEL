@@ -1,4 +1,4 @@
-"""事件溯源层：state/changelog.jsonl —— 八表状态的全量字段级变更事件流。
+"""事件溯源层：state/changelog.jsonl —— 十一表状态的全量字段级变更事件流。
 
 定位（与既有机制的分工，互补不互替）：
 - ``state/inbox/processed/``            提案原文归档（Reader 交付物，按章）；
@@ -10,7 +10,7 @@
 
 三个产物文件（**均不入快照、回滚不清空**——历史是资产，回滚本身也是事件）：
 - ``changelog.jsonl``     追加式事件流（一行一 JSON；尾行残缺容忍并自愈截断）；
-- ``changelog_base.json`` 事件流起点时的八表全量基线（重放的折叠底座）；
+- ``changelog_base.json`` 事件流起点时的十一表全量基线（重放的折叠底座）；
 - ``changelog.meta.json`` ``{seq, head: {表: 规范哈希}}``（外部改动的检测锚）。
 
 自愈性质：状态文件写入与事件追加之间的崩溃窗口，由 load_state 的哈希比对兜底
@@ -145,11 +145,11 @@ def _data_events(table: str, ops: list[dict], *, source: str,
 
 
 # ---------------------------------------------------------------------------
-# 激活（genesis）：事件流起点 = 此刻磁盘八表
+# 激活（genesis）：事件流起点 = 此刻磁盘十一表
 # ---------------------------------------------------------------------------
 
 def ensure_changelog(book: Path) -> bool:
-    """事件流不存在则激活：基线=此刻磁盘八表 + genesis 标记。
+    """事件流不存在则激活：基线=此刻磁盘十一表 + genesis 标记。
 
     老书从接入日起积累（此前历史不可重放，由 genesis 事件如实声明）；
     新书在 init 播种后激活，此后全部写入都有事件。
@@ -187,7 +187,7 @@ def ensure_changelog(book: Path) -> bool:
         changelog_path(book).write_text(
             _line({"seq": 1, "ts": ts, "kind": "genesis", "ch": None,
                    "at_final_ch": at_final_ch,
-                   "note": "事件流起点：基线为此刻磁盘八表，此前历史不可重放"}) + "\n",
+                   "note": "事件流起点：基线为此刻磁盘十一表，此前历史不可重放"}) + "\n",
             encoding="utf-8")
         _write_meta(book, meta)
     return True
@@ -403,6 +403,18 @@ def fold(base: dict, events: list[dict]) -> dict:
         except (KeyError, IndexError, TypeError, ValueError):
             stale.append({"seq": ev.get("seq"), "path": ev.get("path"),
                           "reason": "寻址失败"})
+    if isinstance(result.get("entities"), dict):
+        from . import state as state_mod  # 惰性导入（state 模块级导入本模块）
+        if any(k in result for k in state_mod.KIND_TABLES):
+            # 迁移后历史：kind 表事件已 supersede 全量，legacy entities 视图作废
+            del result["entities"]
+        else:
+            # 迁移前历史：按归一化 type 切分（result 是深拷贝，改写安全）
+            _split = state_mod.split_entities_entries(
+                result["entities"].get("entries", []) or [])
+            for k in state_mod.KIND_TABLES:
+                result[k] = {"entries": _split[k]}
+            del result["entities"]
     if stale:
         result[STALE_KEY] = stale
     return result
@@ -501,7 +513,7 @@ def fold_book(book: Path) -> dict:
 
 
 def verify(book: Path) -> tuple[bool, str]:
-    """核心不变量检查：fold(base, events) 与磁盘八表逐表哈希一致。
+    """核心不变量检查：fold(base, events) 与磁盘十一表逐表哈希一致。
 
     - 老书未激活 → 视为通过（inactive）；
     - 不一致 = 存在尚未被 load_state 补录的外部改动或事件丢失——这正是

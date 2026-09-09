@@ -18,11 +18,13 @@ from tests._fixtures import TempBook  # noqa: E402
 class TestRollup(unittest.TestCase):
 
     def _rich_book(self, tb):
-        tb.set_state("entities", {"entries": [
+        tb.set_state("persons", {"entries": [
             {"id": "p_001", "name": "林牧", "type": "person", "status": "active",
              "tier_rank": 5, "tier_name": "辟海境"},
             {"id": "p_002", "name": "赵莽", "type": "person", "status": "active",
              "life_status": "deceased"},
+        ]})
+        tb.set_state("items", {"entries": [
             {"id": "it_001", "name": "断水剑", "type": "item", "status": "active",
              "holder": "林牧", "charges": 3, "max_charges": 9},
         ]})
@@ -115,7 +117,7 @@ class TestRollup(unittest.TestCase):
     def test_digest_cap_trims_from_tail(self):
         with TempBook() as tb:
             self._rich_book(tb)
-            tb.set_state("entities", {"entries": [
+            tb.set_state("persons", {"entries": [
                 {"id": f"p_{i:03d}", "name": f"角色{i}", "type": "person",
                  "status": "active", "tier_rank": (i % 12) + 1,
                  "tier_name": f"第{(i % 12) + 1}阶位阶名"} for i in range(1, 61)]})

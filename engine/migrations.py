@@ -30,6 +30,7 @@ VERSION_FILE = "state_schema.json"
 LOG_FILE = "migrations.log"
 LEGACY_VERSION = 0
 
+
 # 进程内缓存：{规范化 state 目录: 已确认版本}，避免每次 load_state 重复读版本文件
 _ENSURED: dict[str, int] = {}
 
@@ -216,6 +217,89 @@ def _migrate_v3_to_v4(data: dict[str, dict]) -> tuple[dict[str, dict], list[str]
 
 MIGRATIONS[3] = _migrate_v3_to_v4
 
+
+# ---------------------------------------------------------------------------
+# v4 → v5：对象化加法（派生表 + 事件 EVT 编号）
+# ---------------------------------------------------------------------------
+def _migrate_v4_to_v5(data: dict[str, dict]) -> tuple[dict[str, dict], list[str]]:
+    """v4 → v5：新增派生表 derived.json；为无 id 事件分配 EVT 编号。
+
+    只做结构补齐，不捏造事实：EVT 编号按既有 events 数组顺序分配；
+    其余新字段全 Optional，老数据天然通过新闸门；末尾沿惯例全表清洗。
+    """
+    from . import state as state_mod
+
+    notes: list[str] = []
+    if "derived" not in data or not isinstance(data.get("derived"), dict):
+        data["derived"] = state_mod.defaults_for("derived")
+        notes.append("初始化第九表 derived.json（派生缓存；下次 sync 自动 seal）")
+    tl = data.get("timeline")
+    if isinstance(tl, dict):
+        events = tl.get("events") or []
+        maxn = 0
+        for e in events:
+            eid = str((e or {}).get("id", ""))
+            if eid.startswith("EVT-") and eid[4:].isdigit():
+                maxn = max(maxn, int(eid[4:]))
+        n_new = 0
+        for e in events:
+            if isinstance(e, dict) and not e.get("id"):
+                maxn += 1
+                e["id"] = f"EVT-{maxn:03d}"
+                n_new += 1
+        if n_new:
+            notes.append(f"编年史 {n_new} 条事件补 EVT 编号（按序分配）")
+    for key in state_mod.STATE_KEYS:
+        if key in data and isinstance(data[key], dict):
+            cleaned = _strip_dropped(
+                _normalize(data[key], state_mod._schema(key), key, notes))
+            data[key] = cleaned
+    return data, notes
+
+
+MIGRATIONS[4] = _migrate_v4_to_v5
+
+
+def _migrate_v5_to_v6(data: dict[str, dict]) -> tuple[dict[str, dict], list[str]]:
+    """v5 → v6：entities 按 kind 物理拆为 persons/items/factions/places 四表。
+
+    - 路由：type 归一（中文→英文、缺省→other）后按 state.TYPE_TO_TABLE；
+    - 未知 type（外部手改脏数据）：兜底 persons + 记账，不丢条目；
+    - entities.json 文件本身由 ensure 环节改名 .v5bak（此处只管数据）。
+    若 kind 表与 legacy 并存（正常路径不会），以 legacy 拆分结果为准。
+    """
+    from . import state as state_mod
+
+    notes: list[str] = []
+    legacy = data.pop("entities", {}) or {}
+    entries = legacy.get("entries", []) or []
+    if not isinstance(entries, list):
+        raise ValueError("entities.json 结构损坏（entries 非数组），请回滚快照后人工修复")
+    n_alias = n_unknown = 0
+    for e in entries:
+        if not isinstance(e, dict):
+            continue
+        raw_t = e.get("type")
+        canon = state_mod.canonical_entity_type(raw_t)
+        if canon is None:
+            n_unknown += 1
+        elif isinstance(raw_t, str) and raw_t.strip() in state_mod.TYPE_ALIASES:
+            n_alias += 1
+    split = state_mod.split_entities_entries(entries)
+    for k in state_mod.KIND_TABLES:
+        data[k] = {"entries": split[k]}
+    notes.append("entities {} 条按 kind 拆表：{}".format(
+        len(entries),
+        "、".join(f"{k}×{len(split[k])}" for k in state_mod.KIND_TABLES)))
+    if n_alias:
+        notes.append(f"{n_alias} 条中文 type 已归一为法定枚举")
+    if n_unknown:
+        notes.append(f"{n_unknown} 条未知 type 兜底归入 persons（脏数据，请复核）")
+    return data, notes
+
+
+MIGRATIONS[5] = _migrate_v5_to_v6
+
 # 全部注册完成后统一重算当前版本（= 最高迁移版本 + 1）
 CURRENT_STATE_VERSION = max(MIGRATIONS, default=0) + 1
 
@@ -257,6 +341,9 @@ def ensure_state_version(book: Path) -> dict:
             p = sd / f"{k}.json"
             if p.is_file():
                 raw[k] = common.load_json(p)
+        _leg = sd / "entities.json"
+        if _leg.is_file():
+            raw["entities"] = common.load_json(_leg)  # legacy 单表：供 v5→v6 迁移消费
 
         ok, snap_name = snapshot.create_snapshot(book, f"pre_migration_v{v}")
         if not ok:
@@ -288,6 +375,12 @@ def ensure_state_version(book: Path) -> dict:
 
         for k, d in raw.items():
             state_mod.save_state(book, k, d, source="migration")
+        if v <= 5:
+            # v6 拆表：entities.json 功成身退，改名留档（引擎不再读取，人可查）
+            _old_ent = sd / "entities.json"
+            if _old_ent.is_file():
+                _old_ent.rename(sd / "entities.json.v5bak")
+                notes.append("entities.json 已改名 entities.json.v5bak（留档备查）")
         # 原实现整表重写版本戳，迁移前 {created_at, version} 里的 created_at
         # 被丢掉，变成 {from_version, migrated_at, version}——建档时间这个不可再生的
         # 事实就此消失。现保留既有键，只更新版本相关字段。

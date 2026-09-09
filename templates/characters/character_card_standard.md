@@ -17,7 +17,7 @@ schema_version: novel-studio.character/v2
 <!-- 💡【Stage 0 架构师指南（填写后可删）】
      本模板是除主角外的所有重要角色（核心配角、核心反派宿敌、忠诚副手、宗门巨擘）的标准模板。
      复制本模板至 characters/<角色名>.md 并填实。
-     ★ 契约规范：YAML Front-matter 中的 tier_rank (1-12)、tier_name、power_benchmark、faction、sensory_anchor、status 与 address_matrix 属于 state/entities.json 法定白名单；role 属于卡片标注，入库 entities.json 时仅保留白名单字段；称谓矩阵填定即为全书常量，后置工序严禁吃书！
+     ★ 契约规范：YAML Front-matter 中的 tier_rank (1-12)、tier_name、power_benchmark、faction、sensory_anchor、status 与 address_matrix 属于 实体四表（persons/items/factions/places） 法定白名单；role 属于卡片标注，入库四表时仅保留白名单字段；称谓矩阵填定即为全书常量，后置工序严禁吃书！
      ★ 全题材适配：
        - 玄幻/仙侠：宗门圣女/少谷主/魔宗巨擘，填境界位阶、极道体质、锁定称谓「公子/贼子」；
        - 都市/商战：集团千金/刑侦队长/死对头操盘手，填职级资本、专属座驾风衣、锁定称谓「陆先生/林总」；

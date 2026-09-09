@@ -263,14 +263,18 @@ class TestLocationTypeParity(unittest.TestCase):
 
     def test_location_entity_gets_located_in_edge(self):
         with TempBook() as tb:
-            ents = tb.state("entities")
-            ents["entries"] = [
+            persons = tb.state("persons")
+            persons["entries"] = [
                 {"id": "p_001", "name": "林牧", "type": "person", "status": "active",
                  "summary": "主角", "location": "青石巷灯铺"},
+            ]
+            tb.set_state("persons", persons)
+            places = tb.state("places")
+            places["entries"] = [
                 {"id": "loc_001", "name": "青石巷", "type": "location", "status": "active",
                  "summary": "老巷子"},
             ]
-            tb.set_state("entities", ents)
+            tb.set_state("places", places)
             g = graph.build_narrative_graph(tb.book)
             edges = {(u, v) for u, v, d in g.edges(data=True)
                      if d.get("relation") == "located_in"}
@@ -334,7 +338,8 @@ class TestRoleGateway(unittest.TestCase):
     def test_auditor_whitelist_and_denials(self):
         book = Path("/tmp/book")
         self.assertIsNone(deny_reason(book, "state/locked.json", "auditor"))
-        self.assertIsNone(deny_reason(book, "state/entities.json", "auditor"))
+        for _k in ("persons", "items", "factions", "places"):
+            self.assertIsNone(deny_reason(book, f"state/{_k}.json", "auditor"))
         self.assertIsNotNone(deny_reason(book, "state/ledger.json", "auditor"))
         self.assertIsNotNone(deny_reason(book, "manuscript/vol_01/raw/ch_001_v1.md", "auditor"))
 
@@ -354,7 +359,8 @@ class TestRoleGateway(unittest.TestCase):
         """
         book = Path("/tmp/book")
         for role, allowed in (
-            ("reader", ["state/entities.json"]),
+            ("reader", ["state/persons.json", "state/items.json",
+                        "state/factions.json", "state/places.json"]),
             ("editor", ["bible/06_style_guidelines.md"]),
             ("stylist", ["bible/06_style_guidelines.md"]),
             ("critic", ["state/current.json"]),
@@ -369,7 +375,8 @@ class TestRoleGateway(unittest.TestCase):
         for role, denied in (
             ("reader", ["state/ledger.json", "state/lines.json", "state/locked.json"]),
             ("editor", ["bible/01_world_axioms.md", "bible/02_power_system.md"]),
-            ("critic", ["state/entities.json", "state/synopsis.json"]),
+            ("critic", ["state/persons.json", "state/items.json", "state/factions.json",
+                        "state/places.json", "state/synopsis.json"]),
         ):
             for path in denied:
                 self.assertIsNotNone(deny_reason(book, path, role),
@@ -495,7 +502,7 @@ class TestStage5AuditGate(unittest.TestCase):
             out = tb.run_json("sync", "ch_001")
             self.assertEqual(out.get("verify_errors"), [])
             self.assertTrue(out["snapshot"]["ok"], out)
-            # 放行即盖章：八表 SHA-256 落盘，供 state_offline_edit 档比对
+            # 放行即盖章：十一表 SHA-256 落盘，供 state_offline_edit 档比对
             stamp = json.loads(tb.read("state/inbox/processed/state_hashes.json"))
             self.assertEqual(stamp["last_sync_chapter"], "ch_001")
             self.assertEqual(len(stamp["states"]), len(state.STATE_KEYS))
@@ -510,7 +517,7 @@ class TestStage5AuditGate(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# P2 杂项：indexed_chapters 语义 / state get 八表 / 冷索引措辞 / 软配额措辞
+# P2 杂项：indexed_chapters 语义 / state get 十一表 / 冷索引措辞 / 软配额措辞
 # ---------------------------------------------------------------------------
 class TestMiscFixes(unittest.TestCase):
     def test_index_reports_total_and_new(self):
@@ -574,6 +581,11 @@ class TestMiscFixes(unittest.TestCase):
 _NON_CODE_TOKENS = {
     "spirit_stone", "standard_currency", "locked_entry_id_reuse",
     "kind_set", "action_retire", "overwrite_true",
+    # v2 对象化字段名（Reader SKILL 提案指南，非错误码）
+    "pov_ref", "place_ref", "present_refs", "present_characters",
+    "time_day", "injury_level", "injury_desc", "since_ch",
+    # v3 提案分区名（Reader SKILL v3 指南，非错误码）
+    "locked_candidates", "consequences",
 }
 
 
@@ -660,18 +672,18 @@ class TestEnumSSOTAndDanglingRefs(unittest.TestCase):
 
     def test_dangling_faction_and_location_flagged(self):
         with TempBook() as tb:
-            ents = tb.state("entities")
-            ents["entries"] = [
+            persons = tb.state("persons")
+            persons["entries"] = [
                 {"id": "p_001", "name": "林牧", "type": "person", "status": "active",
                  "summary": "主角", "faction": "不存在的势力", "location": "某个没建卡的地方"},
             ]
-            tb.set_state("entities", ents)
+            tb.set_state("persons", persons)
             warns = _codes(tb, "warnings")
             self.assertGreaterEqual(warns.get("entity_ref_unknown", 0), 2)
 
     def test_entity_field_count_documented(self):
-        # 文档改口径为「33 个字段」，模型漂移时此断言会先红
-        self.assertEqual(len(EntityEntry.model_fields), 33)
+        # 文档改口径为「36 个字段」（v2 +injury_level/injury_desc/renown），模型漂移时此断言会先红
+        self.assertEqual(len(EntityEntry.model_fields), 36)
 
 
 # ---------------------------------------------------------------------------
@@ -779,7 +791,7 @@ class TestMigrationSafety(unittest.TestCase):
                             f"应存在迁移前快照，实际 {names}")
             self.assertEqual(res.get("to"), migrations.CURRENT_STATE_VERSION)
             self.assertEqual(migrations.read_version(tb.book), migrations.CURRENT_STATE_VERSION)
-            # 迁移后八张表仍须通过 load_state 的分区校验（非法会抛 ValueError）
+            # 迁移后十一张表仍须通过 load_state 的分区校验（非法会抛 ValueError）
             for k in state.STATE_KEYS:
                 try:
                     state.load_state(tb.book, k)
@@ -794,8 +806,9 @@ class TestMigrationSafety(unittest.TestCase):
             for k in state.STATE_KEYS:
                 (tb.book / "state" / f"{k}.json").unlink(missing_ok=True)
             self.assertEqual(migrations.ensure_state_version(tb.book), {"migrated": False})
-            self.assertFalse((tb.book / "state" / "entities.json").exists(),
-                             "迁移不应给未初始化的书播种 state 分区")
+            for _k in list(state.STATE_KEYS) + ["entities"]:
+                self.assertFalse((tb.book / "state" / f"{_k}.json").exists(),
+                                 f"迁移不应给未初始化的书播种 {_k}.json")
 
 
 class TestValidatorKeywords(unittest.TestCase):
@@ -1395,7 +1408,7 @@ class TestEntityMergeCoverage(unittest.TestCase):
 
     def test_scalar_and_container_fields_actually_land(self):
         """跑真实合并，确认标量直拷与容器合并两类路径都真的落盘。"""
-        data = {"entries": []}
+        data = {}  # R1：_merge_entities 按 type 路由四表，自建表结构
         rep = {"updated": [], "warnings": [], "errors": []}
         state._merge_entities(data, [{
             "action": "upsert", "name": "林牧", "type": "person",
@@ -1406,7 +1419,7 @@ class TestEntityMergeCoverage(unittest.TestCase):
             "relations": [{"type": "宿敌", "target": "裴九"}],
         }], rep)
         self.assertEqual(rep["errors"], [])
-        ent = data["entries"][0]
+        ent = data["persons"]["entries"][0]
         self.assertEqual(ent["realm"], "淬体三重")          # 标量直拷
         self.assertEqual(ent["tier_rank"], 3)
         self.assertEqual(ent["aliases"], ["牧哥"])           # 容器并集

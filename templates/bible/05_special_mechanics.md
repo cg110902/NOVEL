@@ -53,4 +53,4 @@ schema_version: novel-studio.bible/v2
 2. **走火入魔与心魔诱发条件**：
    - {{slot:backfire_deviation|例如：急功近利、道心不稳或被功法邪念反噬时的具体物理形变与神智失常表现；}}
 3. **不可逆损伤的对账要求**：
-   - 若角色在剧情中受到此类损伤，必须在当章 Reader 提案中标记，并录入 `state/entities.json` 的 `condition` 字段，直到正式救治剧情发生，严禁写着写着自然痊愈！
+   - 若角色在剧情中受到此类损伤，必须在当章 Reader 提案中标记，并录入 `实体四表（persons/items/factions/places）` 的 `condition` 字段，直到正式救治剧情发生，严禁写着写着自然痊愈！

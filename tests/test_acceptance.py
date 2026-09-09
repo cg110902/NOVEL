@@ -140,7 +140,7 @@ class TestPipelineE2E(unittest.TestCase):
 
     def test_04_state_at_and_blame_via_cli(self):
         out = self.tb.run_json("state", "at", "1")
-        self.assertIn("entities", json.dumps(out)[:2000])
+        self.assertIn("persons", json.dumps(out)[:2000])
         out = self.tb.run_json("state", "blame", "entities.entries[p_001].summary")
         blob = json.dumps(out, ensure_ascii=False)
         self.assertIn("entries[p_001].summary", blob)
@@ -209,8 +209,8 @@ class TestChaosSweep(unittest.TestCase):
 
     # (名字, 对好书的破坏动作)
     CORRUPTIONS = [
-        ("entities_truncated", lambda b: (b / "state/entities.json").write_text('{"entries": [{"id"', encoding="utf-8")),
-        ("entities_wrong_type", lambda b: (b / "state/entities.json").write_text("[]", encoding="utf-8")),
+        ("entities_truncated", lambda b: (b / "state/persons.json").write_text('{"entries": [{"id"', encoding="utf-8")),
+        ("entities_wrong_type", lambda b: (b / "state/persons.json").write_text("[]", encoding="utf-8")),
         ("lines_missing_bucket", lambda b: (b / "state/lines.json").write_text('{"misunderstandings": [], "knowledge": []}', encoding="utf-8")),
         ("rollup_garbage", lambda b: (b / "state/rollups/vol_01.json").write_text("<<<不是json>>>", encoding="utf-8")),
         ("rollup_bad_schema", lambda b: (b / "state/rollups/vol_01.json").write_text('{"schema": "evil/v9"}', encoding="utf-8")),
@@ -239,7 +239,7 @@ class TestChaosSweep(unittest.TestCase):
         for cname, corrupt in self.CORRUPTIONS:
             backups = {}
             targets = {
-                "entities": self.tb.book / "state" / "entities.json",
+                "persons": self.tb.book / "state" / "persons.json",
                 "lines": self.tb.book / "state" / "lines.json",
                 "rollup": self.tb.book / "state" / "rollups" / "vol_01.json",
                 "changelog": self.tb.book / "state" / "changelog.jsonl",
@@ -283,7 +283,7 @@ class TestChaosSweep(unittest.TestCase):
 def _corrupt_latest_snapshot(book: Path) -> None:
     snaps = sorted(p for p in (book / "state" / "snapshots").iterdir() if p.is_dir())
     if snaps:
-        (snaps[-1] / "entities.json").write_text('{"entries": "坏了"', encoding="utf-8")
+        (snaps[-1] / "persons.json").write_text('{"entries": "坏了"', encoding="utf-8")
 
 
 class TestLegacyBook(unittest.TestCase):
