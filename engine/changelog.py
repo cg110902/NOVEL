@@ -271,6 +271,24 @@ def _diff_list(old: list, new: list, path: str, ops: list[dict]) -> None:
         if keyable:
             idx_old = dict(zip(keys_old, old))
             idx_new = dict(zip(keys_new, new))
+            # 若键集合相同但顺序不同（重排序），需显式记录顺序变更，
+            # 否则 fold 时 append 语义会保留旧顺序，导致 verify 哈希不一致。
+            # 检测顺序变化后，直接对整列表做 set（由上层 MAX_EVENTS 熔断兜底，
+            # 但此处即使未超限也需保序，故显式 set）。
+            if keys_old != keys_new:
+                # 键集合相同但顺序不同，或增删导致顺序变化且旧实现无法保序，
+                # 为保证 fold 结果与磁盘一致，直接 set 整个列表（稳定排序由调用方保证）。
+                # 仅当存在纯重排序（无增删且内容无变化）或顺序差异可能导致后续 fold 顺序错乱时触发。
+                # 为简化：只要顺序列表不相等，就 set 整个列表，确保折叠后顺序与新值一致。
+                # 该 set 会覆盖之前的增删 diff，故在此直接返回 set op。
+                if set(keys_old) == set(keys_new):
+                    # 纯重排序：无增删，仅顺序变
+                    ops.append({"op": "set", "path": path,
+                                "before": copy.deepcopy(old),
+                                "after": copy.deepcopy(new)})
+                    return
+                # 增删+重排序混合：仍需先处理增删，但为了保序，最终再 set 一次整表
+                # 先走增删 diff，再追加一次整表 set 以固化顺序（fold 时最后一次 set 赢）
             for k, item in idx_new.items():
                 if k not in idx_old:
                     ops.append({"op": "add", "path": f"{path}[{k}]",
@@ -281,6 +299,11 @@ def _diff_list(old: list, new: list, path: str, ops: list[dict]) -> None:
             for k in idx_old:
                 if k in idx_new:
                     _diff(idx_old[k], idx_new[k], f"{path}[{k}]", ops)
+            # 若顺序不同，追加一次整表 set 以保证最终顺序与 new 一致
+            if keys_old != keys_new:
+                ops.append({"op": "set", "path": path,
+                            "before": copy.deepcopy(old),
+                            "after": copy.deepcopy(new)})
             return
         # 无键 dict 列表：下标寻址（尾部增删，中段递归）
         common_len = min(len(old), len(new))

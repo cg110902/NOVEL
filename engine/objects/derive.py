@@ -69,6 +69,10 @@ def _derive_line_temps(book: Path, data: dict[str, dict]) -> list[dict]:
                 if st2 is not None and str(st2) != "":
                     closed_entry["status"] = str(st2)
                 closed.append(closed_entry)
+    # 为保证事件溯源折叠稳定性（fold 哈希一致），line_temps 必须按稳定键排序，
+    # 而非按 gap 动态排序（gap 会随章节推进变化，导致 diff 无法捕捉重排序，verify 失败）。
+    # 展示层的“越冷越前”排序由 memory.line_memory_map 负责，派生层仅需稳定存储。
+    out.sort(key=lambda r: r["id"])
     closed.sort(key=lambda r: r["id"])
     return out + closed
 
