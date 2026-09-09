@@ -50,7 +50,7 @@ schema_version: novel-studio.bible/v2
 <!-- 拒绝“无限弹药、无限耐久”。高阶道具与消耗品必须具备消耗规则，由 engine 的 state/ledger 与 entities 监控： -->
 
 1. **充能与次数限制**：
-   - 核心道具若存在次数限制（如某秘宝仅能保命3次），必须在卡片与 `state/entities.json` 中明确登记 `charges: N`，正文每次使用由 Reader 提案扣减；
+   - 核心道具若存在次数限制（如某秘宝仅能保命3次），必须在卡片与 `实体四表（persons/items/factions/places）` 中明确登记 `charges: N`，正文每次使用由 Reader 提案扣减；
 2. **持有者唯一性与缴获流转**：
    - 道具必须有明确的 `holder`。若主角在战斗中斩敌缴获，必须经历【击杀 ➔ 缴获储物戒 ➔ 抹去神识印记 ➔ 重炼或认主】的完整物理动作，绝不可凭空变出或遗忘！
 3. **装备升级与重铸机制**：

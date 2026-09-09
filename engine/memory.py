@@ -11,9 +11,10 @@
 
 性能口径（如实记录，勿误读）：本模块对 finals 的扫描是**每个公开函数入口
 各一遍**（line_memory_map 一遍、key_fact_memory 一遍），函数内部禁止再读盘；
-run_checks 全程因此是两遍全文扫描。200 章量级实测约 0.5~1s，可接受；
-单遍合并 / FTS 化是留给未来的优化空间，切换前须重校准阈值（FTS 分词匹配
-与子串匹配语义不等价）。
+R3 起正文来源优先走 SQLite 增量缓存（db.finals_from_index，指纹新鲜才用，
+失配/无库回退文件全扫）——匹配语义恒为子串匹配，FTS 只当缓存不当召回器，
+故阈值无需重校准（jieba 分词 MATCH 查全不能保证子串超集，不可当召回用，
+此即此前「切换前须重校准」警告的落地方案：不切换语义、只换数据源）。
 
 已知盲区（诚实清单，详见 PLAN_CONSISTENCY_50W §8）：
 - locked.fact 若不含任何已登记实体名/别名，提词为空 → 该条**静默脱离监控**
@@ -24,7 +25,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from . import common, evidence, state
+from . import common, db, evidence, state
 
 # 阈值默认值：按「读者记忆相对卷结构」定的经验值（日更读者 + 单卷 40~60 章），
 # 非实测。均可由 project.json 的 reader_memory 键覆盖（走 PARAM_SPEC，不硬编码）。
@@ -91,6 +92,21 @@ def _scan_last_seen(finals, terms: list[str]) -> tuple[int | None, int]:
     return last, hits
 
 
+def _finals(book: Path) -> list:
+    """R3 增量缓存读：索引新鲜时读 DB text 列，否则回退文件全扫。
+
+    匹配语义恒为调用方的子串匹配（FTS 只当缓存不当召回器），
+    指纹失配/无库一律回退——输出与 legacy 路径 bit 级一致。
+    """
+    try:
+        cached = db.finals_from_index(book)
+    except Exception:
+        cached = None
+    if cached is not None:
+        return cached
+    return list(evidence.final_chapters(book))
+
+
 def line_memory_map(book: Path, tiers: dict | None = None) -> list[dict]:
     """全部未闭环线的读者记忆画像（每公开入口只读一遍 finals）。
 
@@ -102,7 +118,7 @@ def line_memory_map(book: Path, tiers: dict | None = None) -> list[dict]:
     用 never_surfaced() 单独取，勿只看第一条。
     """
     tiers = tiers or tiers_for(book)
-    finals = list(evidence.final_chapters(book))          # 只读一次
+    finals = _finals(book)                                # 只读一次（R3：DB 缓存优先）
     if not finals:
         return []
     cur_ch = max(n for _, n, _ in finals)
@@ -145,17 +161,36 @@ def key_fact_memory(book: Path, tiers: dict | None = None) -> list[dict]:
     不含任何专名则提词只剩整句 → 大概率 never，即模块 docstring 所述盲区。
     """
     tiers = tiers or tiers_for(book)
-    finals = list(evidence.final_chapters(book))
+    finals = _finals(book)                                # R3：DB 缓存优先
     if not finals:
         return []
     cur_ch = max(n for _, n, _ in finals)
     reg_terms = [a for names in evidence.entity_lookup(book).values() for a in names]
     out: list[dict] = []
+    try:
+        _ents = state.load_state(book, "entities").get("entries", []) or []
+    except (ValueError, OSError):
+        _ents = []
+    _names_by_id: dict[str, list[str]] = {}
+    for _e in _ents:
+        if isinstance(_e, dict) and _e.get("id"):
+            _names_by_id[str(_e["id"])] = (
+                [str(_e.get("name", ""))]
+                + [str(a) for a in _e.get("aliases", []) or []])
 
     for le in state.load_state(book, "locked").get("entries", []) or []:
         fact = str(le.get("fact", ""))
         terms = [t for t in (fact.strip(),) if len(t) >= 4]
         terms += [a for a in reg_terms if len(a) >= 2 and a in fact]
+        # P2：refs 显式挂载的实体（id 或法定名）直接并入提词，不依赖 fact 文本命中
+        for _r in (le.get("refs") or []):
+            _r = str(_r or "").strip()
+            if not _r:
+                continue
+            if _r in _names_by_id:
+                terms += [t for t in _names_by_id[_r] if len(t) >= 2]
+            elif len(_r) >= 2:
+                terms.append(_r)
         last, _seen = _scan_last_seen(finals, terms)
         since = common.chapter_token_to_num(le.get("since_ch", "")) or 0
         gap = (cur_ch - last) if last is not None else None

@@ -44,6 +44,21 @@ class EntityRelation(BaseModel):
     target: str = Field(..., description="目标实体名称")
     type: str = Field(..., description="张力关系类型，如 debt, rival, ally, subordinate, distrust 等")
     desc: Optional[str] = Field(None, description="张力细节说明")
+    strength: Optional[int] = Field(None, ge=1, le=5, description="关系强度 1~5（1=泛泛之交/小过节，5=生死与共/不共戴天）")
+    status: Optional[str] = Field(None, pattern=r"^(active|resolved)$", description="关系状态：active 存续 | resolved 已了结")
+    since_ch: Optional[str] = Field(None, pattern=r"^ch_\d{3,}$", description="关系确立章节（如 ch_007）")
+
+
+# 已知关系谓词表（advisory 非穷举）：命中则静默通过，未命中仅出提示、不拒收——
+# 关系语义开放（测试即有用中文"宿敌"的先例），引擎只做拼写引导，不做语义立法。
+KNOWN_RELATION_PREDS: frozenset[str] = frozenset({
+    # 英文程序侧
+    "ally", "rival", "enemy", "friend", "debt", "subordinate", "distrust",
+    "lover", "kin", "master", "apprentice", "creditor", "colleague", "leader",
+    # 中文写作侧
+    "盟友", "宿敌", "仇敌", "朋友", "师徒", "主仆", "道侣", "亲人", "同门",
+    "上下级", "债主", "对手", "知己", "救命恩人",
+})
 
 
 class EntityEntry(BaseModel):
@@ -98,6 +113,11 @@ class EntityEntry(BaseModel):
     scope: Optional[str] = Field(None, description="所属分卷生命周期（如 vol_01；省略表示全书通用）")
     golden_quote: Optional[str] = Field(None, description="首次高光定稿切片（100~200字物象细节）")
     relations: list[EntityRelation] = Field(default_factory=list, description="与特定角色的动态张力关系")
+
+    # 对象化扩展（v2 加法字段：读者在意的可算属性）
+    injury_level: Optional[int] = Field(None, ge=0, le=5, description="伤势等级 0~5（0=无伤，5=濒死；人物专用）")
+    injury_desc: Optional[str] = Field(None, description="伤势文字说明（如\"左臂骨折\"，与 injury_level 同写）")
+    renown: Optional[int] = Field(None, description="声望/悬赏值（人物/势力；正负皆可，正=美名，负=恶名/悬赏）")
 
 
 class EntitiesState(BaseModel):

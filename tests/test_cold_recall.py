@@ -25,7 +25,7 @@ def _fast_memory(tb):
 
 
 def _seed(tb, text_extra=""):
-    tb.set_state("entities", {"entries": [
+    tb.set_state("persons", {"entries": [
         {"id": "p_001", "name": "林牧", "type": "person", "status": "active"},
         {"id": "p_002", "name": "赵莽", "type": "person", "status": "active"}]})
     tb.seed_chapter("ch_001", "林牧与赵莽进了城。" + text_extra)

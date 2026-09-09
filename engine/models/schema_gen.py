@@ -68,7 +68,7 @@ def _gate_patch(name: str, schema: dict) -> dict:
     """闸门补丁层：把「落盘必完整」类约束显式钉回生成的 schema（见模块 docstring）。"""
     props = schema.get("properties", {})
 
-    if name == "entities":
+    if name in ("entities", "persons", "items", "factions", "places"):
         # 手写闸门要求顶层必有 entries；模型有 default_factory 所以生成结果缺 required。
         schema["required"] = ["entries"]
 
@@ -119,6 +119,11 @@ def _gate_patch(name: str, schema: dict) -> dict:
                                ("consequences", "array")):
             props[sec] = {"type": container}
         # _draft 拒绝显式 null（缺省=非草稿；null 非法）
+        props["_draft"] = {"type": "boolean"}
+
+    elif name == "proposal_v3":
+        # 与 v2 同构：ops 深校验归 Pydantic（V3OpModel）+ 编译器，schema 只看容器。
+        props["ops"] = {"type": "array"}
         props["_draft"] = {"type": "boolean"}
 
     schema["$comment"] = BANNER

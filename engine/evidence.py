@@ -11,7 +11,7 @@ import math
 import re
 from pathlib import Path
 
-from . import common, state, vocab
+from . import changelog, common, state, vocab
 
 try:
     import jieba
@@ -36,10 +36,11 @@ REP_MIN = 8
 NAME_SCAN_MIN_COUNT = 3
 
 # --------------------------------------------------------------------------- 公共小件
-def final_chapters(book: Path) -> list[tuple[str, int, str]]:
-    """按 (卷, 章号) 升序的 [(ch_token, num, text)]，一章多文件时取版本号最大者（v10 > v2）。
-    注意：key = (卷, 章号)，避免跨卷同章号互相覆盖（vol_02/ch_001 不会被 vol_01/ch_001 顶掉）。
-    字数口径：仅去除首行章题标题行，保留正文中其他 # 开头的行（如“#号房”对话）。
+def final_chapter_files(book: Path) -> list[tuple[str, int, Path]]:
+    """定稿文件选择（R3 抽出：db 指纹与 final_chapters 共用同一选择）。
+
+    按 (卷, 章号) 去重，一章多文件取版本号最大者；返回 [(vol, num, path)]，
+    按 (卷, 章号) 升序。
     """
     by_ch: dict[tuple[str, int], tuple[str, int, Path]] = {}
     for f in common.find_chapter_files(book, "final"):
@@ -53,9 +54,17 @@ def final_chapters(book: Path) -> list[tuple[str, int, str]]:
             cur = by_ch.get(key)
             if cur is None or common.chapter_version_from_name(f.name) > common.chapter_version_from_name(cur[2].name):
                 by_ch[key] = (f"{vol}/ch_{n:03d}", n, f)
+    return [(vol, n, p) for (vol, n), (_, _, p) in sorted(by_ch.items())]
+
+
+def final_chapters(book: Path) -> list[tuple[str, int, str]]:
+    """按 (卷, 章号) 升序的 [(ch_token, num, text)]，一章多文件时取版本号最大者（v10 > v2）。
+    注意：key = (卷, 章号)，避免跨卷同章号互相覆盖（vol_02/ch_001 不会被 vol_01/ch_001 顶掉）。
+    字数口径：仅去除首行章题标题行，保留正文中其他 # 开头的行（如“#号房”对话）。
+    """
     out = []
-    for key in sorted(by_ch):
-        tok, _, p = by_ch[key]
+    for vol, n, p in final_chapter_files(book):
+        tok = f"{vol}/ch_{n:03d}"
         raw = p.read_text(encoding="utf-8", errors="replace")
         # 仅去除首个非空标题行（以 # 开头），而非全文所有 # 行，避免误删正文对话
         lines = raw.splitlines()
@@ -67,7 +76,7 @@ def final_chapters(book: Path) -> list[tuple[str, int, str]]:
             body = "\n".join(lines[idx + 1:])
         else:
             body = raw
-        out.append((tok, key[1], body))
+        out.append((tok, n, body))
     return out
 
 
@@ -144,7 +153,7 @@ def mentions(book: Path, target: str | None = None) -> dict:
                 break
     if target:
         if target not in lookup:
-            return {"kind": "mentions", "error": f"实体「{target}」未登记（先在 entities.json/提案注册）",
+            return {"kind": "mentions", "error": f"实体「{target}」未登记（先经提案 entities[] 注册，引擎按 kind 路由入四表）",
                     "unknown": True}
         names = lookup[target]
     else:
@@ -921,12 +930,70 @@ def form_distribution(book: Path) -> dict:
 
 
 # --------------------------------------------------------------------------- 只读取证三件套（ask / pov / names）
+def _cite_match(events: list[dict], tables: tuple[str, ...], path: str) -> list[dict]:
+    """changelog.blame 的内存版（events 由调用方一次读入，避免每命中读盘）。
+
+    匹配规则与 changelog.blame 逐字一致：table 命中 + path 相等/前缀命中，
+    新→旧排序。问书 2.0 引用链的章链来源。
+    """
+    out = []
+    for ev in events:
+        if ev.get("kind") or ev.get("table") not in tables:
+            continue
+        ev_path = str(ev.get("path") or "")
+        if path and not (ev_path == path or ev_path.startswith(path + ".")):
+            continue
+        out.append(ev)
+    out.sort(key=lambda e: -int(e.get("seq") or 0))
+    return out
+
+
+def _cite_chapters(evs: list[dict]) -> list[str]:
+    chs: list[str] = []
+    for ev in evs:
+        # 事件 ch 是 "ch_001" 字符串（apply 原样传入）或 int，归一后取
+        n = common.chapter_token_to_num(ev.get("ch"))
+        if not n:
+            continue
+        tok = f"ch_{n:03d}"
+        if tok not in chs:
+            chs.append(tok)
+    return chs[:6]
+
+
+def _cite(table: str, key: str, events: list[dict], paths: tuple[str, ...] = (),
+          extra_chapters: tuple[str, ...] = ()) -> dict:
+    """组装一条引用的 cite{表/键/章链}。章链 = 自带章戳 ∪ blame 章，缺失不编。
+
+    - table/key：条目级出处，恒有；
+    - chapters：章级出处（自带章戳优先、blame 补全），空 = changelog 无记录
+      （手术刀直改 / 老书 / 条目无章戳），调用方照直展示、不得脑补。
+    """
+    evs: list[dict] = []
+    for p in paths:
+        tables: tuple[str, ...] = (table,)
+        if table == state.LEGACY_ENTITIES_KEY:
+            tables = (*state.KIND_TABLES, state.LEGACY_ENTITIES_KEY)  # 扇出：搬迁前世
+        evs.extend(_cite_match(events, tables, p))
+    evs.sort(key=lambda e: -int(e.get("seq") or 0))
+    chs = list(extra_chapters) + [c for c in _cite_chapters(evs) if c not in extra_chapters]
+    cite: dict = {"table": table, "key": key, "chapters": chs[:6]}
+    if evs:
+        cite["latest_op"] = evs[0].get("op")
+        if evs[0].get("op_id"):
+            cite["latest_op_id"] = evs[0]["op_id"]
+    return cite
+
+
 def ask(book: Path, query: str) -> dict:
     """ask：全书事实检索机（只读取证，零裁决）。
 
     查询词先做别名展开（实体名/别名双向包含、账本池名、线索 ID 直查），再对
-    「八表结构化命中」与「final 正文原句」双域检索；所有命中均带章节/条目出处。
+    「十一表结构化命中」与「final 正文原句」双域检索；所有命中均带章节/条目出处。
     未命中 = 合法事实（该词暂无账面与正文记录），绝不臆造。
+
+    2.0 引用链：每条命中自带 cite{table, key, chapters[]}——条目级出处恒有，
+    章链 = 条目自带章戳 ∪ changelog blame，缺失照直空着、绝不编造。
     """
     q = str(query or "").strip()
     out: dict = {"kind": "ask", "query": q}
@@ -934,12 +1001,20 @@ def ask(book: Path, query: str) -> dict:
         out["error"] = "查询词为空（示例：studio ask 灵石 / ask 苏九娘 / ask GUN-001）"
         return out
     terms: list[str] = [q]
+    try:
+        _cl_events = changelog.load_events(book)
+    except OSError:
+        _cl_events = []
 
     # 1) 别名展开（实体）
-    try:
-        ents = state.load_state(book, "entities").get("entries", [])
-    except (ValueError, FileNotFoundError):
-        ents = []
+    ents: list[dict] = []
+    for _t in state.KIND_TABLES:  # 四表直读并标注归属（R1 后不再走合并视图）
+        try:
+            for _e in state.load_state(book, _t).get("entries", []) or []:
+                if isinstance(_e, dict):
+                    ents.append({**_e, "_table": _t})
+        except (ValueError, FileNotFoundError):
+            continue
     lookup = entity_lookup(book)
     ent_hits = []
     for e in ents:
@@ -947,9 +1022,14 @@ def ask(book: Path, query: str) -> dict:
             continue
         names = lookup.get(str(e.get("name", "")), [])
         if any(nm and len(nm) >= 2 and (nm in q or q in nm) for nm in names):
-            ent_hits.append({k: e.get(k) for k in
-                             ("name", "type", "aliases", "summary", "realm", "faction",
-                              "life_status", "holder", "location") if e.get(k) not in (None, "", [])})
+            hit = {k: e.get(k) for k in
+                   ("id", "name", "type", "aliases", "summary", "realm", "faction",
+                    "life_status", "holder", "location") if e.get(k) not in (None, "", [])}
+            hit["_table"] = e["_table"]
+            _eid = str(e.get("id") or "")
+            hit["cite"] = _cite(e["_table"], f"entries[{_eid or e.get('name')}]",
+                                _cl_events, (f"entries[{_eid}]",) if _eid else ())
+            ent_hits.append(hit)
             terms.extend(nm for nm in names if nm not in terms)
     if ent_hits:
         out["entities"] = ent_hits[:8]
@@ -999,9 +1079,12 @@ def ask(book: Path, query: str) -> dict:
             gid = str(g.get("id", ""))
             blob = " ".join(str(g.get(k, "")) for k in
                             ("id", "name", "plan", "content", "parties", "truth", "secret", "note"))
+            co_all = sorted(_touched_chapters(g))
             rec = {"id": gid, "kind": kind, "status": g.get("status"),
                    "target_ch": g.get("target_ch"),
-                   "desc": str(g.get("name") or g.get("secret") or g.get("content") or "")[:60]}
+                   "desc": str(g.get("name") or g.get("secret") or g.get("content") or "")[:60],
+                   "cite": {"table": "lines", "key": f"{arr}[{gid}]",
+                            "chapters": [f"ch_{n:03d}" for n in co_all[:6]]}}
             if q == gid or any(t in blob for t in terms):
                 direct.append(rec)
                 continue
@@ -1011,7 +1094,7 @@ def ask(book: Path, query: str) -> dict:
             if holders and any(nm and len(nm) >= 2 and any(nm in h or h in nm for h in holders)
                                for nm in terms):
                 via.append("holders 知情圈")
-            co = sorted(n for n in _touched_chapters(g)
+            co = sorted(n for n in co_all
                         if any(t in ch_entities.get(n, set()) for t in terms if len(t) >= 2))
             if co:
                 via.append("同章在场 " + "/".join(f"ch_{n:03d}" for n in co[:3]))
@@ -1035,41 +1118,68 @@ def ask(book: Path, query: str) -> dict:
             if len(t) >= 2 and (t in q or q in t):
                 pool_terms.add(pid)
     tx_hits = []
+    pool_last: dict[str, dict] = {}
     for t in reversed(led.get("transactions") or []):
+        pool_last.setdefault(str(t.get("pool")), t)
         subj = str(t.get("subject", ""))
         if t.get("pool") in pool_terms or any(s in subj for s in terms):
             tx_hits.append({"chapter": t.get("chapter"), "pool": t.get("pool"),
                             "delta": t.get("delta"), "subject": subj[:40],
-                            "balance_after": t.get("balance_after")})
+                            "balance_after": t.get("balance_after"),
+                            "cite": {"table": "ledger",
+                                     "key": f"{t.get('chapter')}/{t.get('pool')}/{subj[:18]}",
+                                     "chapters": [t.get("chapter")] if t.get("chapter") else []}})
         if len(tx_hits) >= 8:
             break
     if tx_hits:
         out["ledger"] = tx_hits
-        out["pools_now"] = {pid: p.get("current") for pid, p in (led.get("pools") or {}).items()}
+        out["pools_now"] = {}
+        for pid, p in (led.get("pools") or {}).items():
+            last = pool_last.get(str(pid), {})
+            out["pools_now"][pid] = {
+                "current": p.get("current"),
+                "cite": {"table": "ledger", "key": f"pool:{pid}",
+                         "chapters": [last.get("chapter")] if last.get("chapter") else []}}
 
     # 4) 编年史 / 危机时钟 / 梗概命中
     try:
         tl = state.load_state(book, "timeline")
     except (ValueError, FileNotFoundError):
         tl = {}
-    ev_hits = [{"time": e.get("time"), "event": str(e.get("event", ""))[:60], "chapter": e.get("chapter")}
-               for e in reversed(tl.get("events") or [])
-               if any(s in str(e.get("event", "")) for s in terms)][:8]
+    ev_hits = []
+    for e in reversed(tl.get("events") or []):
+        if any(s in str(e.get("event", "")) for s in terms):
+            ev_hits.append({"time": e.get("time"), "event": str(e.get("event", ""))[:60],
+                            "chapter": e.get("chapter"),
+                            "cite": {"table": "timeline",
+                                     "key": f"events[{e.get('id') or e.get('time')}]",
+                                     "chapters": [e.get("chapter")] if e.get("chapter") else []}})
+        if len(ev_hits) >= 8:
+            break
     if ev_hits:
         out["events"] = ev_hits
-    clock_hits = [{"name": c.get("name"), "target_ch": c.get("target_ch"), "status": c.get("status"),
-                   "desc": str(c.get("desc", ""))[:50]}
-                  for c in tl.get("clocks") or []
-                  if any(s in (str(c.get("name", "")) + str(c.get("desc", ""))) for s in terms)]
+    clock_hits = []
+    for c in tl.get("clocks") or []:
+        if any(s in (str(c.get("name", "")) + str(c.get("desc", ""))) for s in terms):
+            clock_hits.append({"name": c.get("name"), "target_ch": c.get("target_ch"),
+                               "status": c.get("status"), "desc": str(c.get("desc", ""))[:50],
+                               "cite": {"table": "timeline", "key": f"clocks[{c.get('name')}]",
+                                        "chapters": []}})
+        if len(clock_hits) >= 6:
+            break
     if clock_hits:
-        out["clocks"] = clock_hits[:6]
+        out["clocks"] = clock_hits
     try:
         syn = state.load_state(book, "synopsis").get("chapters", {})
     except (ValueError, FileNotFoundError):
         syn = {}
-    syn_hits = [{"chapter": tok, "title": v.get("title", ""), "synopsis": str(v.get("synopsis", ""))[:60]}
-                for tok, v in sorted(syn.items())
-                if any(s in (str(v.get("title", "")) + str(v.get("synopsis", ""))) for s in terms)]
+    syn_hits = []
+    for tok, v in sorted(syn.items()):
+        if any(s in (str(v.get("title", "")) + str(v.get("synopsis", ""))) for s in terms):
+            syn_hits.append({"chapter": tok, "title": v.get("title", ""),
+                             "synopsis": str(v.get("synopsis", ""))[:60],
+                             "cite": {"table": "synopsis", "key": f"chapters[{tok}]",
+                                      "chapters": [tok]}})
     if syn_hits:
         out["synopsis"] = syn_hits[-6:]
 
@@ -1080,11 +1190,21 @@ def ask(book: Path, query: str) -> dict:
         cur = {}
     if any(s in json.dumps(cur, ensure_ascii=False, default=str) for s in terms):
         out["current"] = {k: v for k, v in cur.items() if v not in ("", [], None)}
+        out["current"]["_cite"] = _cite("current", "snapshot", _cl_events, ("",))
 
     # 6) 不可逆事实与角色认知命中
     try:
         locked_st = state.load_state(book, "locked").get("entries", [])
-        locked_hits = [le for le in locked_st if any(t in str(le.get("fact", "")) for t in terms)]
+        locked_hits = []
+        for le in locked_st:
+            if any(t in str(le.get("fact", "")) for t in terms):
+                lid = str(le.get("id") or "")
+                row = dict(le)
+                row["cite"] = _cite("locked", f"entries[{lid or '?'}]", _cl_events,
+                                    (f"entries[{lid}]",) if lid else (),
+                                    ((str(le["since_ch"]),)
+                                     if isinstance(le.get("since_ch"), str) and le["since_ch"] else ()))
+                locked_hits.append(row)
         if locked_hits:
             out["locked"] = locked_hits[:6]
     except (ValueError, FileNotFoundError):
@@ -1092,7 +1212,16 @@ def ask(book: Path, query: str) -> dict:
 
     try:
         cog_st = state.load_state(book, "cognition").get("entries", [])
-        cog_hits = [ce for ce in cog_st if any(t in str(ce.get("content", "")) or t in str(ce.get("character", "")) for t in terms)]
+        cog_hits = []
+        for ce in cog_st:
+            if any(t in str(ce.get("content", "")) or t in str(ce.get("character", "")) for t in terms):
+                cid = str(ce.get("id") or "")
+                row = dict(ce)
+                row["cite"] = _cite("cognition", f"entries[{cid or '?'}]", _cl_events,
+                                    (f"entries[{cid}]",) if cid else (),
+                                    ((str(ce["since_ch"]),)
+                                     if isinstance(ce.get("since_ch"), str) and ce["since_ch"] else ()))
+                cog_hits.append(row)
         if cog_hits:
             out["cognition"] = cog_hits[:6]
     except (ValueError, FileNotFoundError):
@@ -1111,7 +1240,9 @@ def ask(book: Path, query: str) -> dict:
                 "terms": hit_terms[:3] if hit_terms else [q],
                 "quote": bh["text"].strip()[:90],
                 "bm25_rank": bh.get("bm25_rank"),
-                "score": bh.get("score")
+                "score": bh.get("score"),
+                "cite": {"table": "final", "key": bh["chapter"],
+                         "chapters": [bh["chapter"]]},
             })
     except Exception:
         pass
@@ -1123,7 +1254,9 @@ def ask(book: Path, query: str) -> dict:
                 hit_terms = [t for t in usable if t in sent]
                 if hit_terms:
                     text_hits.append({"chapter": tok, "terms": hit_terms[:3],
-                                      "quote": sent.strip()[:90]})
+                                      "quote": sent.strip()[:90],
+                                      "cite": {"table": "final", "key": tok,
+                                               "chapters": [tok]}})
                     per_ch += 1
                     if per_ch >= 3:
                         break
@@ -1131,7 +1264,10 @@ def ask(book: Path, query: str) -> dict:
                 break
     if text_hits:
         out["text_hits"] = text_hits
-    out["notes"] = ["未命中 = 合法事实（账面与正文均无记录）；本命令只读取证、零裁决，语义判断归主控。"]
+    out["ask_version"] = "2.0"
+    out["notes"] = ["2.0 引用链：每条命中自带 cite{table, key, chapters[]}；"
+                    "chapters 为空 = changelog 无记录（手术刀直改/老书/条目无章戳），不得脑补。",
+                    "未命中 = 合法事实（账面与正文均无记录）；本命令只读取证、零裁决，语义判断归主控。"]
     return out
 
 

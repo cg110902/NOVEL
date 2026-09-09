@@ -38,7 +38,7 @@ COMMAND_HELP = {
     "init": "创建/清理书工作区（脚手架+状态播种+模板槽位实例化）",
     "cockpit": "主控态势驾驶舱：工作流导航 + 戏剧动力学 + 伏笔雷达 + 自愈处方 + 催更雷达",
     "pack": "单章上下文三层装配（P0 热 / P1 别名触发 / P2 冷索引）",
-    "ask": "全书事实检索机（只读取证：别名展开→八表+final 原句双域，带章节出处；写细纲前先问书）",
+    "ask": "全书事实检索机（只读取证：别名展开→十一表+final 原句双域，带章节出处；写细纲前先问书）",
     "pov": "角色视角包（档案/持有/关系/出场足迹/他知道与不知道的/未了线——由账本推导，advisory）",
     "calendar": "未来 N 章排产日历（到期线/危机时钟/卷阶段里程碑投影；Stage 1 排产前置参考）",
     "evidence": "机械证据：all|mentions|gaps|names|dup|style|words|file|candidates|prev|index（纯 JSON，零裁决）",
@@ -47,7 +47,7 @@ COMMAND_HELP = {
     "doctor": "check 的同义别名（同一处理函数 cmd_check，输出逐字节相同）；习惯叫 doctor 的人用它",
     "checkpoint": "宏观航向校准点（每5章复盘分卷四分位里程碑与主线偏航）",
     "milestone": "主线里程碑管理：list ｜ add（Stage 0 播种主线里程碑与预期达成章节）",
-    "state": "状态速查与手术刀纠偏：show ｜ get/set <表.字段> ｜ at <章>（时点切面）｜ diff <章A> <章B> ｜ blame <表.路径>（溯源）｜ rollup <卷>（卷末态势摘要）",
+    "state": "状态速查与手术刀纠偏：show ｜ get/set <表.字段> ｜ object <id/名>（对象包络）｜ at <章>（时点切面）｜ diff <章A> <章B> ｜ blame <表.路径>（溯源）｜ rollup <卷>（卷末态势摘要）｜ recompute（派生重算）",
     "config": "书级参数手术刀：list|guide|suggest|get|set[--merge]|unset（主控供参通道，project.json；含 words_target/lines_cap 等项目级键）",
     "sync": "提案合并 → 状态体检 → 快照（Stage 5 闭环，可 --dry-run）",
     "ledger": "账本手术刀：recompute（余额与 balance_after 按流水全量重算修复）",
@@ -114,7 +114,7 @@ RECIPES = [
         "name": "写作前取证（问书三件套，严禁凭记忆脑补）",
         "stage_flow": "Stage 1",
         "steps": [
-            "python studio.py ask <关键词/实体名/线索ID>   # 全书事实检索：八表+正文原句，带章节出处",
+            "python studio.py ask <关键词/实体名/线索ID>   # 全书事实检索：十一表+正文原句，带章节出处",
             "python studio.py pov <角色名>                # 角色视角包：他知道什么/不知道什么/未了线",
             "python studio.py calendar [N]                # 未来 N 章排产日历：到期线/时钟/里程碑",
         ],
@@ -221,7 +221,7 @@ def _build_subparsers(sub: argparse._SubParsersAction) -> None:
                    help="清稿重来（清 raw 草稿与待办提案；保留 final 定稿/圣经/细纲/审计与状态；"
                         "--deep 才连 final 定稿一并清理）")
     q.add_argument("--deep", action="store_true",
-                   help="配合 --clean 使用：连 final 定稿一并删除（状态八表仍保留，事实源将分裂，慎用）")
+                   help="配合 --clean 使用：连 final 定稿一并删除（状态十一表仍保留，事实源将分裂，慎用）")
     q.add_argument("--force", action="store_true",
                    help="整本重开（仅限已登记书目录；原书整体移入 workspace/.trash/ 回收区备份，"
                         "不直接删除；确认无需后可手动清理回收区）")
@@ -240,7 +240,7 @@ def _build_subparsers(sub: argparse._SubParsersAction) -> None:
                    help="--open 的准读角色（默认 drafter=最严格；主控用 director/evolver 才有全量准读权）")
     q.set_defaults(func=cmd_pack)
 
-    q = sub.add_parser("ask", help="全书事实检索机（只读取证：八表+final 原句双域，带章节出处）")
+    q = sub.add_parser("ask", help="全书事实检索机（只读取证：十一表+final 原句双域，带章节出处）")
     _add_common_opts(q)
     q.add_argument("query", help="关键词/实体名/线索ID（如：灵石 / 苏九娘 / GUN-001）")
     q.set_defaults(func=cmd_ask)
@@ -348,7 +348,7 @@ def _build_subparsers(sub: argparse._SubParsersAction) -> None:
     r.set_defaults(func=cmd_milestone)
     q.set_defaults(func=cmd_milestone)
 
-    q = sub.add_parser("state", help="状态速查与手术刀纠偏：show ｜ get <表.字段> ｜ set <表.字段> <值>")
+    q = sub.add_parser("state", help="状态速查与手术刀纠偏：show ｜ get/set <表.字段> ｜ object <id/名> ｜ recompute")
     _add_common_opts(q)
     st_sub = q.add_subparsers(dest="state_action")
     r = st_sub.add_parser("show", help="速览当前现场状态 (current.json)")
@@ -366,7 +366,7 @@ def _build_subparsers(sub: argparse._SubParsersAction) -> None:
     r.add_argument("-w", "--workspace", default=argparse.SUPPRESS)
     r.add_argument("--json", action="store_true", default=argparse.SUPPRESS)
     r.set_defaults(func=cmd_state)
-    r = st_sub.add_parser("at", help="时点切面：第 N 章封存后的八表世界（changelog 重放）")
+    r = st_sub.add_parser("at", help="时点切面：第 N 章封存后的十一表世界（changelog 重放）")
     r.add_argument("chapter", help="章节（如 3 或 ch_003；超出最新封存则折叠到最新封存）")
     r.add_argument("--table", default=None, help="只看某张表（如 current / entities）")
     r.add_argument("-w", "--workspace", default=argparse.SUPPRESS)
@@ -378,13 +378,22 @@ def _build_subparsers(sub: argparse._SubParsersAction) -> None:
     r.add_argument("-w", "--workspace", default=argparse.SUPPRESS)
     r.add_argument("--json", action="store_true", default=argparse.SUPPRESS)
     r.set_defaults(func=cmd_state)
-    r = st_sub.add_parser("rollup", help="卷级态势摘要：从当前八表生成 state/rollups/vol_XX.json（卷末封存后执行）")
+    r = st_sub.add_parser("rollup", help="卷级态势摘要：从当前十一表生成 state/rollups/vol_XX.json（卷末封存后执行）")
     r.add_argument("vol", help="卷名（如 vol_01）")
     r.add_argument("-w", "--workspace", default=argparse.SUPPRESS)
     r.add_argument("--json", action="store_true", default=argparse.SUPPRESS)
     r.set_defaults(func=cmd_state)
     r = st_sub.add_parser("blame", help="字段级溯源：某表某路径的全部变更史（新→旧）")
     r.add_argument("target", help="表[.路径]，如 current ｜ entities.entries[p_003] ｜ ledger.transactions")
+    r.add_argument("-w", "--workspace", default=argparse.SUPPRESS)
+    r.add_argument("--json", action="store_true", default=argparse.SUPPRESS)
+    r.set_defaults(func=cmd_state)
+    r = st_sub.add_parser("recompute", help="重算派生表 derived.json（纯函数，可反复执行）")
+    r.add_argument("-w", "--workspace", default=argparse.SUPPRESS)
+    r.add_argument("--json", action="store_true", default=argparse.SUPPRESS)
+    r.set_defaults(func=cmd_state)
+    r = st_sub.add_parser("object", help="对象包络查询：id/名/别名 → 信封 + 关系/认知/挂旗/持有速览")
+    r.add_argument("target", help="对象 id/名/别名（如 p_001 / 林牧 / EVT-007）")
     r.add_argument("-w", "--workspace", default=argparse.SUPPRESS)
     r.add_argument("--json", action="store_true", default=argparse.SUPPRESS)
     r.set_defaults(func=cmd_state)
@@ -478,6 +487,7 @@ def _build_subparsers(sub: argparse._SubParsersAction) -> None:
     r.add_argument("-w", "--workspace", default=argparse.SUPPRESS)
     r.add_argument("--json", action="store_true", default=argparse.SUPPRESS)
     r.add_argument("--write", action="store_true", help="直接写入 state/inbox/ch_XXX.json（默认只打印）")
+    r.add_argument("--v3", action="store_true", help="生成 v3 寻址式提案骨架（ops 分区，防拼写碎片化）")
     r.set_defaults(func=cmd_proposal)
     r = pp.add_parser("auto", help="基于 beats 与 final 自动装配高精准度提案草案")
     r.add_argument("chapter")

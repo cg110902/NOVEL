@@ -634,7 +634,8 @@ def run_audit(book: Path, ch: str) -> dict[str, Any]:
     text = "\n".join(lines)
 
     locked_st = state.load_state(book, "locked") if (book / "state" / "locked.json").is_file() else {}
-    ents_st = state.load_state(book, "entities").get("entries", []) if (book / "state" / "entities.json").is_file() else []
+    _ent_ok = any((book / "state" / f"{k}.json").is_file() for k in state.KIND_TABLES)
+    ents_st = state.load_state(book, "entities").get("entries", []) if _ent_ok else []
     cur_st = state.load_state(book, "current") if (book / "state" / "current.json").is_file() else {}
     lines_st = state.load_state(book, "lines") if (book / "state" / "lines.json").is_file() else {}
     led_st = state.load_state(book, "ledger") if (book / "state" / "ledger.json").is_file() else {}

@@ -52,19 +52,25 @@ def has_fts5() -> bool:
 
 
 def register_entities_in_jieba(book: Path) -> None:
-    """将全书实体名与别名注入 Jieba 动态词典，保证分词时不被机械切碎。"""
+    """将全书实体名与别名注入 Jieba 动态词典，保证分词时不被机械切碎。
+
+    必须带专名词性 tag：无 tag 的 add_word 词性为 x，会被 proper_noun_tokens
+    的词性闸门滤掉——注入后同进程的专名提取反而认不出实体名（R3 测试暴露）。
+    """
     if not _HAS_JIEBA:
         return
     try:
         ents = state.load_state(book, "entities").get("entries", [])
         for e in ents:
+            tag = {"person": "nr", "place": "ns", "location": "ns",
+                   "faction": "nt"}.get(str(e.get("type", "")), "nz")
             name = str(e.get("name", "")).strip()
             if name and len(name) >= 2:
-                jieba.add_word(name)
+                jieba.add_word(name, tag=tag)
             for a in (e.get("aliases") or []):
                 a_str = str(a).strip()
                 if a_str and len(a_str) >= 2:
-                    jieba.add_word(a_str)
+                    jieba.add_word(a_str, tag=tag)
     except Exception:
         pass
 
@@ -196,16 +202,23 @@ def build_or_update_index(book: Path, force_rebuild: bool = False) -> dict:
     if force_rebuild:
         cur.execute("DELETE FROM chapters_fts;")
 
-    # 获取已索引的章节列表
-    cur.execute("SELECT DISTINCT chapter FROM chapters_fts;")
-    indexed_chs = {row["chapter"] for row in cur.fetchall()}
+    # 已索引章节的内容哈希（R3：增量按内容比对——旧逻辑按章名跳过，
+    # 定稿改后重刷索引会静默沿用旧文，与 finals_fp 指纹撕裂）
+    row = cur.execute("SELECT val FROM meta WHERE key='fts_ch_hash';").fetchone()
+    try:
+        ch_hash = json.loads(row["val"]) if row else {}
+        if not isinstance(ch_hash, dict):
+            ch_hash = {}
+    except (ValueError, TypeError):
+        ch_hash = {}
 
     final_chs = list(evidence.final_chapters(book))
     indexed_ch_count = 0
 
     for tok, n, text in final_chs:
         ch_tag = f"ch_{n:03d}" if n else tok
-        if not force_rebuild and ch_tag in indexed_chs:
+        body_hash = common.canonical_json_hash(text)
+        if not force_rebuild and ch_hash.get(ch_tag) == body_hash:
             continue
         # 先清除当章已有段落（增量重刷）
         cur.execute("DELETE FROM chapters_fts WHERE chapter = ?;", (ch_tag,))
@@ -216,6 +229,7 @@ def build_or_update_index(book: Path, force_rebuild: bool = False) -> dict:
                 "INSERT INTO chapters_fts(chapter, para_idx, text, content) VALUES (?, ?, ?, ?);",
                 (ch_tag, idx, para, segmented)
             )
+        ch_hash[ch_tag] = body_hash
         indexed_ch_count += 1
 
     # 2. 全量刷新 entities_index
@@ -318,6 +332,13 @@ def build_or_update_index(book: Path, force_rebuild: bool = False) -> dict:
         pass
 
     cur.execute("INSERT OR REPLACE INTO meta(key, val) VALUES ('last_indexed_at', ?);", (str(time.time()),))
+    try:
+        cur.execute("INSERT OR REPLACE INTO meta(key, val) VALUES ('finals_fp', ?);",
+                    (finals_fingerprint(book),))
+        cur.execute("INSERT OR REPLACE INTO meta(key, val) VALUES ('fts_ch_hash', ?);",
+                    (json.dumps(ch_hash, ensure_ascii=False),))
+    except OSError:
+        pass
     con.commit()
     # 索引后库里实际有多少章（此前 indexed_chapters 在增量模式下报「本次新刷了几章」、
     # 在 --rebuild 下报「总章数」，同一个字段两种语义，读数的人无从判断）。
@@ -341,6 +362,62 @@ def build_or_update_index(book: Path, force_rebuild: bool = False) -> dict:
         "time_ms": elapsed_ms,
         "db_path": str(db_path)
     }
+
+
+def finals_fingerprint(book: Path) -> str:
+    """定稿文件指纹（R3）：[(相对路径, mtime_ns, size)] 排序后哈希。
+
+    只读文件元数据、不读内容，供 finals_from_index 做毫秒级新鲜度判定。
+    文件选择与 evidence.final_chapters 同源（final_chapter_files）。
+    """
+    book = Path(book)
+    sig = []
+    for _vol, _n, p in evidence.final_chapter_files(book):
+        try:
+            st = p.stat()
+            sig.append([str(p.relative_to(book)), st.st_mtime_ns, st.st_size])
+        except OSError:
+            continue
+    return common.canonical_json_hash(sig)
+
+
+def finals_from_index(book: Path) -> list[tuple[str, int, str]] | None:
+    """R3 增量缓存读：指纹命中时从 chapters_fts.text 拼回各章正文。
+
+    返回 [(ch_tag, num, text)]（与 evidence.final_chapters 同形；tok 无卷前缀，
+    与 DB 现状 ch_tag 口径一致——跨卷同章号是 DB 预存局限，见 build_or_update）。
+    指纹失配/无库/读错一律回 None（调用方回退文件全扫，零行为变更）。
+    匹配语义仍是调用方的子串匹配——FTS 只当增量缓存，不当召回器
+    （jieba 分词下 MATCH 查全不能保证子串超集，等价性优先）。
+    """
+    try:
+        book = Path(book)
+        db_path = get_db_path(book)
+        if not db_path.is_file():
+            return None
+        con = sqlite3.connect(str(db_path), timeout=10.0)
+        con.row_factory = sqlite3.Row
+        try:
+            cur = con.cursor()
+            row = cur.execute("SELECT val FROM meta WHERE key='finals_fp';").fetchone()
+            if row is None or row["val"] != finals_fingerprint(book):
+                return None
+            rows = cur.execute(
+                "SELECT chapter, para_idx, text FROM chapters_fts "
+                "ORDER BY chapter, para_idx;").fetchall()
+        finally:
+            con.close()
+        by_ch: dict[str, list[str]] = {}
+        for r in rows:
+            by_ch.setdefault(str(r["chapter"]), []).append(str(r["text"] or ""))
+        out = []
+        for tag in sorted(by_ch):
+            n = common.chapter_token_to_num(tag)
+            if n:
+                out.append((tag, n, "\n\n".join(by_ch[tag])))
+        return out
+    except (sqlite3.Error, OSError, ValueError):
+        return None
 
 
 def search_chapters_bm25(book: Path, query: str, limit: int = 15) -> list[dict]:

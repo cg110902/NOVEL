@@ -45,7 +45,7 @@ def _stamp_final_hash(book: Path, ch: str) -> None:
 
 
 def _stamp_state_hashes(book: Path, ch: str) -> None:
-    """ P1-4：封存时对 state/*.json 八表盖章 SHA-256 → processed/state_hashes.json。
+    """ P1-4：封存时对 state/*.json 十一表盖章 SHA-256 → processed/state_hashes.json。
 
     「提案是唯一写入口」此前只是文档口径，没有任何机械证据：谁绕过提案手改了
     state/*.json 都查不出来（final 有 final_hashes、bible 有 bible_log，唯独 state 裸奔）。
@@ -250,6 +250,7 @@ def cmd_sync(args) -> int:
                  f"duplicates={overall.get('duplicates')} skipped={overall.get('skipped')} "
                  f"picked_up={overall.get('picked_up')}")
     verify_errors: list[str] = []
+    derived_seal: dict | None = None
     snap_msg, snap_ok = "", True
     applied_now = overall.get("applied", 0)
     # 阻断目标章的失败数：非目标章损坏提案已归档 failed/ 并带侧车，不应阻断
@@ -266,6 +267,12 @@ def cmd_sync(args) -> int:
         common.debug(f"verify_state（状态体检，含前置因果闸门）: {len(verify_errors)} 错误"
                      + (f"（{verify_errors[0]}）" if verify_errors else ""))
         if not verify_errors:
+            # 派生封存（derived = f(十一表+正文)；失败可见但不阻断主流程）
+            try:
+                from ..objects import seal_derived as _seal
+                derived_seal = _seal(book, ch)
+            except Exception as exc:  # noqa: BLE001 — 派生永不炸封存
+                derived_seal = {"sealed_ch": ch, "error": f"{type(exc).__name__}: {exc}"}
             # 封存时刻对当章 final 盖章（漂移检测的事实基线）
             _stamp_final_hash(book, ch)
             _stamp_state_hashes(book, ch)
@@ -281,6 +288,7 @@ def cmd_sync(args) -> int:
     payload = {"chapter": ch, "dry_run": args.dry_run, "apply": overall,
                "quote_notes": quote_notes, "verify_battery": battery,
                "review_gate": review_gate_msgs,
+               "derived": derived_seal,
                "verify_errors": verify_errors, "snapshot": {"ok": snap_ok, "name": snap_msg}
                if not args.dry_run and target_failed == 0 and applied_now > 0 else None}
     if verify_errors and not args.dry_run:
@@ -325,6 +333,13 @@ def cmd_sync(args) -> int:
                   "或 `snapshot rollback <上一封存点>` 回退后修复提案重提。")
         elif snap_msg:
             print(f" 📸 快照：{'✅ ' if snap_ok else '❌ '}{snap_msg}")
+        if derived_seal and not derived_seal.get("error"):
+            print(f" 🧮 派生已封存：线温 {derived_seal.get('line_temps', 0)} ｜"
+                  f"场景告警 {derived_seal.get('scene_violations', 0)} ｜"
+                  f"持有悬空 {derived_seal.get('holder_orphans', 0)} ｜"
+                  f"认知挂旗 {derived_seal.get('knowledge_flags', 0)}")
+        elif derived_seal:
+            print(f" ⚠️ 派生封存异常（不阻断）：{derived_seal.get('error')}")
     if target_failed or verify_errors or (not snap_ok and snap_msg):
         return 1
     # 增量更新 SQLite 只读投影与全文检索索引
@@ -770,14 +785,25 @@ def cmd_proposal(args) -> int:
             print(f"⚠️ {failed_hint}")
     from datetime import datetime
     mmdd = datetime.now().strftime("%m%d_%H%M%S")
-    skeleton = {
-        "schema": "novel-studio.state-mutation/v2", "chapter": ch,
-        "operation_id": f"{ch}.director.{mmdd}",
-        "current": {},
-        "entities": [], "lines": [],
-        "ledger": {"transactions": []}, "timeline": {"events": [], "arcs": []},
-        "synopsis": {"title": "", "text": ""},
-    }
+    is_v3 = bool(getattr(args, "v3", False))
+    if is_v3:
+        # v3 骨架：ops 留空待填（空 ops 会被编译器点名，正好引导去读 README 形状表）
+        skeleton = {
+            "schema": "novel-studio.state-mutation/v3", "chapter": ch,
+            "operation_id": f"{ch}.director.{mmdd}",
+            "ops": [],
+        }
+        fill_hint = "填 ops 寻址增量"
+    else:
+        skeleton = {
+            "schema": "novel-studio.state-mutation/v2", "chapter": ch,
+            "operation_id": f"{ch}.director.{mmdd}",
+            "current": {},
+            "entities": [], "lines": [],
+            "ledger": {"transactions": []}, "timeline": {"events": [], "arcs": []},
+            "synopsis": {"title": "", "text": ""},
+        }
+        fill_hint = "填六区"
     if getattr(args, "write", False):
         common.dump_json(inbox / f"{ch}.json", skeleton)
         if js_new:
@@ -788,12 +814,12 @@ def cmd_proposal(args) -> int:
         else:
             print(f"🧩 骨架已写入: {inbox / f'{ch}.json'}")
             sys.stdout.flush()
-            print(f"   填六区后 `python studio.py sync {ch} --dry-run` 预演；"
+            print(f"   {fill_hint}后 `python studio.py sync {ch} --dry-run` 预演；"
                   f"纪律与键形状见 {inbox / 'README.md'}", file=sys.stderr)
         return 0
     print(json.dumps(skeleton, ensure_ascii=False, indent=1))
     sys.stdout.flush()
-    print(f"🧩 骨架已打印（不落盘）：填六区后存为 state/inbox/{ch}.json；"
+    print(f"🧩 骨架已打印（不落盘）：{fill_hint}后存为 state/inbox/{ch}.json；"
           f"纪律与键形状见 {inbox / 'README.md'}；只写增量、事实须能在 {ch} final 找到出处",
           file=sys.stderr)
     return 0
@@ -855,7 +881,7 @@ def cmd_snapshot(args) -> int:
             if base:
                 def _quarantine(f, _book=book):
                     # 清理的稿件/细纲/注记不再直接 unlink，而是移入
-                    # workspace/.trash/（快照只含 state 八表，稿件一旦误删不可恢复）
+                    # workspace/.trash/（快照只含 state 十一表，稿件一旦误删不可恢复）
                     nonlocal removed
                     try:
                         rel = f.relative_to(_book).as_posix().replace("/", "_").replace("\\", "_")
@@ -1033,6 +1059,147 @@ def cmd_checkpoint(args) -> int:
 
 
 
+_OBJECT_ENTITY_KIND = {"person": "person", "人物": "person", "item": "item",
+                       "道具": "item", "faction": "faction", "势力": "faction",
+                       "place": "location", "location": "location"}
+
+
+def _object_payload(book, ref: str) -> dict:
+    """对象包络查询（B1）：id/名/别名 → 信封 + 跨表 derived 速览（只读）。"""
+    from ..objects.envelope import kind_of_id, to_envelope
+    from ..objects.registry import build_registry, resolve_ref
+    ref = str(ref or "").strip()
+    out: dict = {"ref": ref, "found": False}
+    if not ref:
+        return out
+
+    def _load(table: str) -> dict:
+        try:
+            return state.load_state(book, table)
+        except (ValueError, FileNotFoundError):
+            return {}
+
+    ents = _load("entities").get("entries", []) or []
+    reg = build_registry({"entries": ents})
+    ent = resolve_ref(reg, ref)
+    if ent is not None:
+        name = str(ent.get("name", ""))
+        aliases = [str(a) for a in ent.get("aliases", []) or []]
+        kind = kind_of_id(ent.get("id"))
+        if kind == "unknown":
+            kind = _OBJECT_ENTITY_KIND.get(str(ent.get("type", "")), "entity")
+        rels = []
+        for r in ent.get("relations", []) or []:
+            if not isinstance(r, dict):
+                continue
+            tgt = str(r.get("target", ""))
+            tgt_ent = resolve_ref(reg, tgt)
+            rels.append({"target": tgt,
+                         "target_id": str((tgt_ent or {}).get("id", "")) if tgt_ent else "",
+                         "type": r.get("type", ""), "strength": r.get("strength"),
+                         "status": r.get("status", ""), "since_ch": r.get("since_ch", "")})
+        beliefs = [{"id": str(b.get("id", "")), "kind": str(b.get("kind", "")),
+                    "content": str(b.get("content", ""))[:60],
+                    "truth_ref": str(b.get("truth_ref", "") or ""),
+                    "since_ch": str(b.get("since_ch", ""))}
+                   for b in _load("cognition").get("entries", []) or []
+                   if isinstance(b, dict) and str(b.get("character", "")) == name]
+        try:
+            flags = [f for f in _load("derived").get("knowledge_flags", []) or []
+                     if isinstance(f, dict) and f.get("character") == name]
+        except (ValueError, FileNotFoundError):
+            flags = []
+        holds = [str(e.get("name", "")) for e in ents
+                 if isinstance(e, dict) and str(e.get("holder", "") or "") == name]
+        cur = _load("current")
+        present = (name in (cur.get("present_characters") or [])
+                   or any((resolve_ref(reg, r) or {}).get("name") == name
+                          for r in (cur.get("present_refs") or [])))
+        locks = [str(le.get("id", "")) for le in _load("locked").get("entries", []) or []
+                 if isinstance(le, dict)
+                 and (name in str(le.get("fact", ""))
+                      or ref in (le.get("refs") or []) or name in (le.get("refs") or []))]
+        env = to_envelope(kind, ent,
+                          derived={"relations": rels, "beliefs": beliefs,
+                                   "knowledge_flags": flags, "holds": holds,
+                                   "present": present, "locks": locks},
+                          prov={"table": "entities"})
+        return {"ref": ref, "found": True, **env}
+
+    # 非实体：按 id 在线/事件/锁/认知四处搜
+    cand: tuple[str, dict] | None = None
+    lines = _load("lines")
+    for arr, skind in (("foreshadows", "foreshadow"),
+                       ("misunderstandings", "misunderstanding"),
+                       ("knowledge", "knowledge")):
+        hit = next((g for g in lines.get(arr, []) or []
+                    if isinstance(g, dict) and str(g.get("id", "")) == ref), None)
+        if hit is not None:
+            cand = (skind, hit)
+            break
+    if cand is None:
+        hit = next((e for e in _load("timeline").get("events", []) or []
+                    if isinstance(e, dict) and str(e.get("id", "")) == ref), None)
+        if hit is not None:
+            cand = ("event", hit)
+    if cand is None:
+        hit = next((e for e in _load("locked").get("entries", []) or []
+                    if isinstance(e, dict) and str(e.get("id", "")) == ref), None)
+        if hit is not None:
+            cand = ("lock", hit)
+    if cand is None:
+        hit = next((e for e in _load("cognition").get("entries", []) or []
+                    if isinstance(e, dict) and str(e.get("id", "")) == ref), None)
+        if hit is not None:
+            cand = ("belief", hit)
+    if cand is None:
+        return out
+    skind, entry = cand
+    derived: dict = {}
+    if skind == "belief":
+        flag = next((f for f in _load("derived").get("knowledge_flags", []) or []
+                     if isinstance(f, dict) and f.get("cog_id") == ref), None)
+        if flag:
+            derived["knowledge_flag"] = flag
+    env = to_envelope(skind, entry, derived=derived, prov={"table": skind})
+    return {"ref": ref, "found": True, **env}
+
+
+def _render_object_text(payload: dict) -> None:
+    """对象包络人话渲染（只打印非空节）。"""
+    a = payload.get("asserted", {}) or {}
+    d = payload.get("derived", {}) or {}
+    print(f"🔎 {payload.get('id', '')}（{payload.get('kind', '')}"
+          f"{'｜' + str(payload.get('status')) if payload.get('status') else ''}）")
+    core = {k: a.get(k) for k in ("name", "type", "aliases", "summary", "realm",
+                                  "faction", "life_status", "holder", "fact", "event",
+                                  "content", "secret", "character", "chapter")
+            if a.get(k) not in (None, "", [])}
+    for k, v in core.items():
+        print(f"  {k}: {v if not isinstance(v, str) or len(v) <= 80 else v[:80] + '…'}")
+    if d.get("relations"):
+        print("  关系:")
+        for r in d["relations"]:
+            extra = "｜".join(str(x) for x in
+                              (r.get("type"), r.get("strength"), r.get("status")) if x)
+            print(f"    → {r.get('target', '')}"
+                  + (f"（{r.get('target_id')}）" if r.get("target_id") else "")
+                  + (f" {extra}" if extra else ""))
+    if d.get("beliefs"):
+        print("  认知:")
+        for b in d["beliefs"]:
+            print(f"    • {b.get('id', '')}［{b.get('kind', '')}］{b.get('content', '')}"
+                  + (f" ⚓{b.get('truth_ref')}" if b.get("truth_ref") else ""))
+    for f in d.get("knowledge_flags") or ([d["knowledge_flag"]] if d.get("knowledge_flag") else []):
+        print(f"  挂旗: {f.get('cog_id', '')}→{f.get('verdict', '')}（{f.get('detail', '')}）")
+    if d.get("holds"):
+        print(f"  持有: {'、'.join(d['holds'])}")
+    if d.get("present"):
+        print("  在场: 是（当前现场）")
+    if d.get("locks"):
+        print(f"  相关锁: {'、'.join(d['locks'])}")
+
+
 def cmd_state(args) -> int:
     book = ws_gate(args)  # --json 错误路径也出 JSON 信封
     if book is None:
@@ -1062,6 +1229,43 @@ def cmd_state(args) -> int:
             print("=" * 60)
             for k, v in cur.items():
                 print(f" {k:<18}: {v}")
+        return 0
+
+    # ---- 派生重算：derived = f(十一表+正文)，纯函数，可反复执行 ----
+    if action == "recompute":
+        from ..objects import seal_derived as _seal
+        try:
+            cur_sealed = state.load_state(book, "derived").get("sealed_ch") or ""
+        except ValueError:
+            cur_sealed = ""
+        latest = common.latest_chapter_number(book, "final")
+        ch_tag = f"ch_{latest:03d}" if latest else (cur_sealed or "ch_000")
+        try:
+            summary = _seal(book, ch_tag)
+        except Exception as exc:
+            return _fail(f"派生重算失败: {exc}")
+        if js:
+            print(json.dumps({"ok": True, **summary}, ensure_ascii=False))
+        else:
+            print(f"🧮 派生已重算并封存（{summary['sealed_ch']}）：线温 {summary['line_temps']} ｜"
+                  f"场景告警 {summary['scene_violations']} ｜持有悬空 {summary['holder_orphans']} ｜"
+                  f"认知挂旗 {summary['knowledge_flags']}")
+        return 0
+
+    # ---- 对象包络查询（B1）：id/名/别名 → 信封 + 跨表 derived 速览 ----
+    if action == "object":
+        ref = str(getattr(args, "target", "") or "").strip()
+        if not ref:
+            return _fail("用法: state object <id/名/别名>（如 state object 林牧）", code=2)
+        payload = _object_payload(book, ref)
+        if not payload.get("found"):
+            return _fail(f"未找到对象「{ref}」"
+                         "（entities/lines/events/locked/cognition 均无此 id/名/别名）",
+                         code=1)
+        if js:
+            print(json.dumps(payload, ensure_ascii=False, indent=2))
+        else:
+            _render_object_text(payload)
         return 0
 
     # ---- 卷级 rollup（D1）：卷末封存后生成态势摘要 ----
@@ -1153,9 +1357,16 @@ def cmd_state(args) -> int:
                          code=2)
         parts = target.split(".", 1)
         table, path = parts[0], (parts[1] if len(parts) > 1 else "")
-        if table not in state.STATE_KEYS:
-            return _fail(f"未知状态分区: {table}（合法: {' / '.join(state.STATE_KEYS)}）", code=2)
-        events = changelog.blame(book, table, path)
+        if table == state.LEGACY_ENTITIES_KEY:
+            # legacy 别名：扇出四 kind 表 + 历史 entities 事件（搬迁实体的完整前世），seq 新→旧
+            events = []
+            for _t in (*state.KIND_TABLES, state.LEGACY_ENTITIES_KEY):
+                events.extend(changelog.blame(book, _t, path))
+            events.sort(key=lambda e: int(e.get("seq") or 0), reverse=True)
+        else:
+            if table not in state.STATE_KEYS:
+                return _fail(f"未知状态分区: {table}（合法: {' / '.join(state.STATE_KEYS)}）", code=2)
+            events = changelog.blame(book, table, path)
         if js:
             print(json.dumps({"target": target, "count": len(events), "events": events},
                              ensure_ascii=False, indent=2))
@@ -1178,7 +1389,7 @@ def cmd_state(args) -> int:
     part_name = parts[0]
     sub_path = parts[1] if len(parts) > 1 else ""
 
-    if part_name not in state.STATE_KEYS:
+    if part_name not in state.STATE_KEYS and part_name != state.LEGACY_ENTITIES_KEY:
         return _fail(f"未知状态分区: {part_name}（合法: {' / '.join(state.STATE_KEYS)}）",
                      code=2)
 
@@ -1190,7 +1401,7 @@ def cmd_state(args) -> int:
             val = st_data
         elif part_name == "current":
             val = st_data.get(sub_path)
-        elif part_name == "entities":
+        elif part_name == "entities" or part_name in state.KIND_TABLES:
             ent_parts = sub_path.split(".", 1)
             ename = ent_parts[0]
             ent = next((e for e in st_data.get("entries", []) if e.get("name") == ename), None)
@@ -1210,7 +1421,7 @@ def cmd_state(args) -> int:
         _missing = False
         if sub_path and val is None:
             _key = sub_path.split(".", 1)[0]
-            if part_name == "entities":
+            if part_name == "entities" or part_name in state.KIND_TABLES:
                 _missing = False  # 实体分支已自行处理未注册
             elif isinstance(_container, dict) and _key not in _container:
                 _missing = True
@@ -1229,6 +1440,9 @@ def cmd_state(args) -> int:
         return 0
 
     if action == "set":
+        if part_name == "derived":
+            return _fail("derived 为引擎派生表，禁止手术刀写入（重算请用 `state recompute`）",
+                         code=1)
         raw_val = getattr(args, "value", "")
         val = raw_val
         loose_note = False
@@ -1273,14 +1487,19 @@ def cmd_state(args) -> int:
             if not sub_path:
                 return _fail("修改 current 必须指定具体字段（例如 current.injury）", code=2)
             st_data[sub_path] = val
-        elif part_name == "entities":
+        elif part_name == "entities" or part_name in state.KIND_TABLES:
             ent_parts = sub_path.split(".", 1)
+            if part_name == "entities":
+                # legacy 别名：定位 owner kind 表，后续语义闸门与落盘一律走 kind 表
+                part_name, st_data, _found = state.find_entity_owner(book, ent_parts[0])
+                if _found is None:
+                    return _fail(f"实体「{ent_parts[0]}」不存在，拒绝猜测（请先注册该实体）", code=1)
             ename = ent_parts[0]
             ent = next((e for e in st_data.get("entries", []) if e.get("name") == ename), None)
             if ent is None:
                 return _fail(f"实体「{ename}」不存在，拒绝猜测（请先注册该实体）", code=1)
             if len(ent_parts) < 2:
-                return _fail(f"修改实体必须指定属性字段（例如 entities.{ename}.realm）", code=2)
+                return _fail(f"修改实体必须指定属性字段（例如 {part_name}.{ename}.realm）", code=2)
             ent[ent_parts[1]] = val
         else:
             st_data[sub_path] = val

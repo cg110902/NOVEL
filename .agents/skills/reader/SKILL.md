@@ -27,7 +27,7 @@ description: Universal factual auditor and state proposal generator for Novel St
 - 🟢 **准读清单（Strict Whitelist · 仅限 3 个文件）**：
   1. `manuscript/vol_XX/final/ch_XXX.md`（当章定稿正文，事实的唯一源头）；
   2. `outlines/vol_XX/beats/ch_XXX.md`（当章细纲，核对伏笔预期、目标动作与预期演变声明）；
-  3. `state/entities.json`（**仅用于核对已有实体物理 ID**，防止新赋 ID 重复碰撞）。
+  3. `state/persons.json`、`state/items.json`、`state/factions.json`、`state/places.json`（实体四表，**仅用于核对已有实体物理 ID**，防止新赋 ID 重复碰撞）。
 - 🔴 **禁读清单**：
   - 严禁读取草稿（`raw/*`）、`bible/*`、旧章正文或引擎源码；
   - 严禁读取其余账本（lines/ledger/timeline/locked/cognition 等）。
@@ -156,6 +156,37 @@ description: Universal factual auditor and state proposal generator for Novel St
    - `knowledge`（秘密）：action 可选 `plant` / `update` / `resolve`；
    - `misunderstanding`（误会）：action 可选 `plant` / `escalate` / `resolve`；
 7. **章题逐字对齐**：`synopsis.title` 必须与 `final` 首行章题完全一致。
+8. **对象化引用字段（v2，均选填；填了即享精确装配与机械校验）**：
+   - `current`：`time_day`（故事第N日整数）、`pov_ref`/`place_ref`（实体 id 或法定名）、
+     `present_refs`（在场实体 id 清单，与 `present_characters` 并存）；
+   - `entities[]`：`type` 务必显式声明（person / item / faction / place / location，缺省按 other 归入 persons）；
+     中文 人物/道具/势力/组织/地点 可写，会自动归一；type 变更会导致实体跨表搬迁；
+     人物伤势写 `injury_level`（0~5）+ `injury_desc`；声望写 `renown`（整数）；
+     `relations[]` 可带 `strength`（1~5）、`status`（active/resolved）、`since_ch`；
+   - `locked[].refs`：关联实体 id 清单（fact 里写不出实体名时**必须**填，否则记忆层盲区）；
+   - `cognition[].truth_ref`：真相锚点编号（GUN-/KNO-/EVT-/LOCK-），供引擎判定认知是否过期；
+   - `timeline.events[]`：可带 `participants`（参与实体）、`place`、`causes`/`consequences`
+     （EVT-编号）；修订旧事件优先用 `{"id": "EVT-00X", "replace": "..."}` 按 id 修订。
+   - 查某对象全貌用 `state object <id/名/别名>`（包络＋关系/认知/挂旗/持有速览，只读）。
+
+---
+
+### 3. v3 寻址式提案（与 v2 二选一，同一文件禁止混写）
+
+v2 `entities[].upsert` 按名匹配：实体名多写/少写一个字就静默新建一条（碎片化之源）。
+v3 按 kind 表 + id 双重寻址，错一位编译期就点名——**实体 ≥3 个的章优先用 v3**。
+骨架：`proposal new <ch> --v3`；完整 op 形状见 `state/inbox/README.md`「v3 寻址式提案」节。
+速查：
+- 新实体：`{"table":"persons","action":"create","entry":{"id":"p_010","name":"…",…}}`
+  （id/名双不存在才收；`type` 缺省按寻址表推断，写错表拒收）；
+- 改实体：`{"table":"items","action":"update","id":"it_003","set":{只写要改的键}}`
+  （id 不存在/表错位拒收——先 `state object <名>` 查到 id 与归属表再写；`set` 禁 `name`/`id`）；
+- 退场：`{"table":"places","action":"retire","id":"loc_002"}`；
+- 其余表：`current.update{set}` / `lines{kind+action}` / `timeline.append_event{event}` 等 /
+  `locked/cognition{plant/upsert/retire}` / `ledger.append_transaction{entry}|declare_pool{pool,spec}` /
+  `synopsis.set`——载荷键与 v2 同名。
+- 报错带 `[op#N table/action]` 定位，按号改；`locked_candidates`/`consequences` 无 v3 op，
+  要用请整案改写 v2。
 
 ---
 

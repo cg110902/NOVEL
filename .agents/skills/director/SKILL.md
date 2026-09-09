@@ -51,7 +51,7 @@ description: Universal director, chief playwright, and pipeline orchestrator for
    【章节工序派发令】
    - 书籍工作区：workspace/<书名>
    - 执行阶段：Stage 0B (Architect-Story: 人物大纲编织与通电)
-   - 执行任务：以已冻结 bible/ 为硬基准，生成 characters/、entities/ 与 outlines/，完成状态八表通电，check 0 报错即止。
+   - 执行任务：以已冻结 bible/ 为硬基准，生成 characters/、entities/ 与 outlines/，完成状态十一表通电，check 0 报错即止。
    ```
 3. **Stage 0B 完工回执唤醒 ➔ 零容忍验收门禁**：
    运行确定性体检对账：
@@ -98,12 +98,12 @@ description: Universal director, chief playwright, and pipeline orchestrator for
 > 💡 **至高叙事法则**：
 > 1. **大纲服务于好故事，故事绝不被死板大纲绑架**：剧情自然流淌导致原卷纲滞后时，主控直接微调 `outlines/vol_XX/outline.md` 后续 2~3 章简述，保持大纲与现实同频；
 > 2. **主控拥有最终细纲拍板权**：算法雷达、催更便签均为参谋情报（Advisory），主控享有 100% 裁决权；
-> 3. **二八实体分级心法**：仅为决定剧情命脉的核心人物建立 `.md` 专属全息卡；客栈老板、路人小厮等背景板小角色在细纲中交代，由 Reader 自动赋码登记入 `entities.json`（`card: ""`），杜绝碎片文件膨胀。
+> 3. **二八实体分级心法**：仅为决定剧情命脉的核心人物建立 `.md` 专属全息卡；客栈老板、路人小厮等背景板小角色在细纲中交代，由 Reader 经提案 `entities[]` 登记（引擎按 `type` 自动路由入四表，`card: ""`），杜绝碎片文件膨胀。
 
 ### 准备：事实与称谓对账
 运行 `python studio.py beats new ch_XXX --write -w "workspace/<书名>"` 生成脚手架，借助 CLI 速查对账：
 - `python studio.py lore compare <idA/角色A> <idB/角色B>`：核对位阶差距与法定互称；
-- `python studio.py lore entity <id/实体名>`：穿透调阅关键实体的全息档案（位阶/破坏力标尺/视觉物象/阵营/法定称谓对账表等，按实体实际填写情况渲染；模型共 33 个字段）；
+- `python studio.py lore entity <id/实体名>`：穿透调阅关键实体的全息档案（位阶/破坏力标尺/视觉物象/阵营/法定称谓对账表等，按实体实际填写情况渲染；模型共 36 个字段）；
 - `python studio.py ask "<线索或事件>"`：确认前情事实原句出处。
 
 ### 核心四步破局心法（事线破局 + 情线微澜 · 全题材通用）

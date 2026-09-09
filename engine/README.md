@@ -19,8 +19,8 @@
 | `errcodes.py` | 错误码注册表：全部体检码的 level/人话解释/修复建议（`python studio.py errcodes`，--json 供 Agent 自助修复，含 `entity_id_duplicate` 探针）；`checks.DEFAULT_REMEDIES` 由它派生 | 单一真源 |
 | `graph.py` | 实体拓扑与叙事中介寻路分析（`studio graph`） | **NetworkX**（最短破局链路、中介中心度排名、孤立资产排查） |
 | `common.py` | 工作区定位、章节号解析、front-matter、原子写、Windows 并发重试、规范哈希 | 标准库（Windows 重试微退避机制，四层回滚保护） |
-| `state.py` | 八表真值管理（含 locked/cognition）、**双键实体寻址合并（ID优先）**、语义补丁合并、复式记账重算、幂等登记簿、落盘前一致性体检、高危状态迁移守卫与时间线回退警示（advisory） | 确定性复式平衡算法与实体关系闭合校验 |
-| `rollup.py` | 卷级态势摘要层：`state/rollups/vol_XX.json` 从当前八表确定性派生（零 Token 纯算术）；`prior_volumes_digest` 供 pack p0 注入「前情卷末态势」（≤500 token，超限按优先级尾部裁剪），装配成本 O(当前卷)；与 snapshot（精确回滚点）/changelog（字段级事件史）三分：rollup 是写作上下文用粗粒度态势 | 标准库 |
+| `state.py` | 十一表真值管理（含 locked/cognition）、**双键实体寻址合并（ID优先）**、语义补丁合并、复式记账重算、幂等登记簿、落盘前一致性体检、高危状态迁移守卫与时间线回退警示（advisory） | 确定性复式平衡算法与实体关系闭合校验 |
+| `rollup.py` | 卷级态势摘要层：`state/rollups/vol_XX.json` 从当前十一表确定性派生（零 Token 纯算术）；`prior_volumes_digest` 供 pack p0 注入「前情卷末态势」（≤500 token，超限按优先级尾部裁剪），装配成本 O(当前卷)；与 snapshot（精确回滚点）/changelog（字段级事件史）三分：rollup 是写作上下文用粗粒度态势 | 标准库 |
 | `voiceprint.py` | 对白声纹层：引号段抽取 + 说话人归属启发式（宁漏报不误报）→ 每主要角色滚动基线（口头禅 n-gram（jieba）/ 句长 / 语气词密度）→ 近窗偏离出 `voiceprint_drift`（info，只测「怎么说话」不测人设）；阈值走 PARAM_SPEC `voiceprint` 键 | jieba（已在栈内） |
 | `changelog.py` | 事件溯源层：`state/changelog.jsonl` 字段级变更事件流（save_state 唯一写入咽喉自动派生；外部改动 load 时自动补录；快照回滚不清空历史而是记为事件）；`fold(base, events) == 磁盘` 核心不变量供 verify 对账；`state at <章>`（时点切面）/ `state diff` / `state blame`（字段级溯源）由本模块直接供底 | 标准库（追加式 JSONL + 规范哈希） |
 | `validator.py` + `schemas/` | mini JSON Schema 子集机械校验器（load/save 读写闸门 + 提案顶层）；`schemas/*.json` 为**构建产物**，由 `models/schema_gen.py` 从 Pydantic 模型生成（`python -m engine.models.schema_gen`），anyOf 失败时报告最接近分支的具体错误 | 模型唯一真源 + 闸门补丁层（落盘必完整） |
@@ -28,6 +28,7 @@
 | `evidence.py` | 机械证据（all 汇总 / words / style / file / dup / mentions / gaps / candidates / prev / names / index）与 ask 全书检索、pov 角色视角包（只读取证）只出数、零裁决 | **Jieba**（`posseg` 提取专有名词 NER 候选 + `analyse` 关键词口癖雷达） |
 | `pack.py` | 三层上下文装配（P0 现场 / P1 动态触发 / P2 冷索引），自动注入实体唯一物理 ID（`[ID: p_001]`）与称谓对校矩阵 | **NetworkX**（全书实体持有与归属拓扑图，1-Hop 强相关子图动态剪枝） |
 | `snapshot.py` | 快照管理（create / list / rollback，支持 `--clean-drafts` 清理超前稿件与旧版表补齐） | 原子目录快照与事务安全 |
+| `objects/` | 对象层：`registry` 三键寻址索引 / `envelope` 统一包络视图（`state object` 消费）/ `derive` 派生计算（derived.json 唯一写口） | 纯内存视图 + 纯函数（单节故障不污染他节） |
 
 ---
 
@@ -89,7 +90,7 @@
    - 若 ID 与 Name 均未命中，则作为全新实体入册。
 3. **机械防重与体检闸门**：
    - `models/entities.py`: Pydantic V2 模型校验器 `check_unique_ids` 拦截任何重复 ID；
-   - `checks.py`: 体检探针 `entity_id_duplicate` 机械扫描八表，杜绝 ID 碰撞。
+   - `checks.py`: 体检探针 `entity_id_duplicate` 机械扫描十一表，杜绝 ID 碰撞。
 4. **物理通用字段标准（与 Pydantic 模型完全一致）**：
    - `id`, `name`, `type`, `tier_rank`, `tier_name`, `power_benchmark`, `status`, `life_status`, `card`, `location`, `faction`, `attitude`, `holder`, `charges`, `max_charges`, `cost_per_use`, `durability`, `sensory_anchor`, `address_matrix`, `aliases`。
 

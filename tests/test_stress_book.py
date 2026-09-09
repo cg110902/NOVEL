@@ -78,7 +78,7 @@ class TestStressBook(unittest.TestCase):
     def test_implant_holder_blame(self):
         """植入⑤：中途改 holder → blame 精确到章与提案 operation_id。"""
         book = self._ensure()
-        evs = changelog.blame(book, "entities", "entries[it_ds].holder")
+        evs = changelog.blame(book, "items", "entries[it_ds].holder")
         self.assertTrue(evs, "断水剑 holder 变更必须有 changelog 记录")
         holder_evs = [e for e in evs if str(e.get("path", "")).endswith(".holder")]
         self.assertTrue(holder_evs)
@@ -115,7 +115,7 @@ class TestStressBook(unittest.TestCase):
         dt = time.time() - t0
         self.assertIsNone(err, err)
         self.assertLess(dt, 3.0, f"state at 重放 {dt:.1f}s 超预算")
-        self.assertEqual(len(folded["entities"]["entries"]), 8)
+        self.assertEqual(sum(len(folded[k]["entries"]) for k in ("persons", "items", "factions", "places")), 8)
 
     # ---- D1 上下文经济学验收（R4 验收门） ----
 
@@ -126,7 +126,7 @@ class TestStressBook(unittest.TestCase):
         folded, err = changelog.state_at(book, 50)
         self.assertIsNone(err, err)
         self.assertEqual(len(ru["entities"]),
-                         len(folded["entities"]["entries"]),
+                         sum(len(folded[k]["entries"]) for k in ("persons", "items", "factions", "places")),
                          "rollup 实体数应等于 vol_01 卷末切面")
         open_at_50 = sum(1 for f in folded["lines"]["foreshadows"]
                          if f.get("status") != "Resolved")

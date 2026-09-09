@@ -36,7 +36,7 @@ def _vol_num(vol: str) -> int:
 
 
 def build_rollup(book: Path, vol: str) -> dict:
-    """从当前八表确定性生成卷末态势摘要（纯派生，不写盘）。"""
+    """从当前十一表确定性生成卷末态势摘要（纯派生，不写盘）。"""
     vol = str(vol).strip()
     if _vol_num(vol) <= 0:
         raise ValueError(f"非法卷名: {vol!r}（示例: vol_02）")

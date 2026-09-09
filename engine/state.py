@@ -5,7 +5,7 @@
 - 提案 = 章节事实增量的唯一写入口：信封 schema + 分区规则校验 → 全部通过才落盘（内存事务：先全量合并到副本，
   任一分区报错则整体不写）；落盘阶段再带字节级备份，写失败即整体回滚。
   （边界说明：Stage 0 建书播种与跨卷改版由 architect/evolver 直接写 state/*.json，属设定层写入；
-   封存时 sync 会对八表盖章 SHA-256，绕过提案的离线手改由 check 的 state_offline_edit 档指名报出。）
+   封存时 sync 会对十一表盖章 SHA-256，绕过提案的离线手改由 check 的 state_offline_edit 档指名报出。）
 - 幂等：operation_id → canonical hash 登记于 .applied_operations.json；重复跳过、同 id 异内容拒绝。
 - 账本：余额永远由流水重算得出，balance_after/current 都不是 AI 可信字段——引擎重算后写回。
 - 迁移守卫（advisory）：高危实体状态迁移（复活/退场反转/立场大翻转/充能回升）与时间线回退
@@ -21,13 +21,23 @@ import json
 import re
 from pathlib import Path
 
-from . import changelog, common, migrations, validator, models
+from . import changelog, common, migrations, proposal_v3, validator, models
 
 MUTATION_SCHEMA = "novel-studio.state-mutation/v2"
 STATE_DIR_NAME = "state"
 INBOX_NAME = "inbox"
 MARKER_NAME = ".applied_operations.json"
-STATE_KEYS = ("current", "entities", "lines", "timeline", "ledger", "synopsis", "locked", "cognition")
+STATE_KEYS = ("current", "persons", "items", "factions", "places", "lines", "timeline", "ledger", "synopsis", "locked", "cognition", "derived")
+# 十一表真值（断言层）：Agent 可写；derived 为第十二张派生表，唯一写者是引擎（sync 封存/recompute）。
+# v6 起 entities 按 kind 物理拆为 persons/items/factions/places 四表；"entities" 键仅保留
+# 兼容读视图（load_state 合并返回）与提案分区名，save_state("entities") 拒绝写入。
+ASSERTED_KEYS = ("current", "persons", "items", "factions", "places", "lines", "timeline", "ledger", "synopsis", "locked", "cognition")
+KIND_TABLES = ("persons", "items", "factions", "places")
+LEGACY_ENTITIES_KEY = "entities"
+TYPE_TO_TABLE = {"person": "persons", "item": "items", "faction": "factions",
+                 "place": "places", "location": "places", "other": "persons"}
+TYPE_ALIASES = {"人物": "person", "道具": "item", "势力": "faction",
+                "组织": "faction", "地点": "place"}
 
 CH_RE = re.compile(r"ch_(\d{3,})$")
 GUN_ID_RE = re.compile(r"GUN-\d{3,}")
@@ -37,6 +47,7 @@ KNO_ID_RE = re.compile(r"KNO-\d{3,}")
 # 再定义一遍，三处并存；改格式时漏改一处就会让校验与落盘口径分裂）。
 from .models.cognition import COG_ID_RE  # noqa: E402
 from .models.locked import LOCK_ID_RE  # noqa: E402
+from .models.timeline import EVT_ID_RE  # noqa: E402
 NO_MERGE_SUFFIXES = (".draft.json", ".template.json", ".sample.json")
 
 _SCHEMA_CACHE: dict[str, dict] = {}
@@ -107,7 +118,7 @@ def defaults_for(key: str) -> dict:
                 "injury": "", "equipment": "", "assets": "", "situation": "", "mood": "",
                 "goal": "", "key_relationships": "", "present_characters": [],
                 "aftershock": "", "active_pressures": []}
-    if key == "entities":
+    if key == "entities" or key in KIND_TABLES:
         return {"entries": []}
     if key == "lines":
         return {"foreshadows": [], "misunderstandings": [], "knowledge": []}
@@ -123,6 +134,10 @@ def defaults_for(key: str) -> dict:
         return {"schema_version": "novel-studio.locked/v1", "entries": []}
     if key == "cognition":
         return {"schema_version": "novel-studio.cognition/v1", "entries": []}
+    if key == "derived":
+        return {"schema_version": "novel-studio.derived/v1", "sealed_ch": "", "sealed_at": "",
+                "line_temps": [], "scene_violations": [], "holder_orphans": [],
+                "knowledge_flags": [], "stats": {}}
     raise KeyError(f"未知状态键: {key}")
 
 
@@ -188,7 +203,14 @@ timeline.clocks 危机时钟口径（ P3-2：此前字段契约完全未文档�
   可携带 "quote": "凭印象摘录的本章 final 支撑句"——引擎模糊接地：相似度 ≥85% 视为命中；
   60~85% 提示「近似命中」；更低仅提示「存疑」。全程只出提示、绝不阻断 sync，
   摘录严禁逐字抠字眼浪费算力；但战死/退役等高危变更强烈建议附引文，便于日后回溯审计。
-注：提案写入后由 Stage 5 主控统一运行 `python studio.py sync ch_XXX` 校验并合并（支持 --dry-run 预演）。
+对象化引用字段（v2，均选填；填了即享精确装配与机械校验）：
+  current.time_day（正整数故事日计数）/ pov_ref / place_ref / present_refs（实体 id 或法定名）；
+  entities[].injury_level（0~5）/ injury_desc / renown（整数声望）；
+  entities[].relations[] 可带 strength（1~5）/ status（active/resolved）/ since_ch（ch_NNN）；
+  locked[].refs（关联实体引用，免记忆盲区）；cognition[].truth_ref（GUN-/KNO-/EVT-/LOCK-编号）；
+  timeline.events[] 可带 id（EVT-编号，缺省自动分配）/ participants / place / causes / consequences。
+  按 id 修订事件：{"id": "EVT-003", "replace": "新描述"}；补元数据：{"id": "EVT-003", "participants": [...]}。
+v3 寻址式提案（schema novel-studio.state-mutation/v3；与 v2 二选一，同一文件禁止混写）：\n  取 `proposal new --v3` 骨架；ops 数组每元素 = {table, action, …载荷}，寻址全十一表：\n  · persons/items/factions/places（严格寻址——v3 核心价值：名写错不再静默新建碎片）：\n    create {\"table\":\"persons\",\"action\":\"create\",\"entry\":{\"id\":\"…\",\"name\":\"…\",…}}——\n      id/名必须双不存在；type 缺省按寻址表推断（persons→person…），与地址表矛盾则拒收；\n    update {\"table\":\"items\",\"action\":\"update\",\"id\":\"…\",\"set\":{…}}——id 须存在且归属表一致，\n      set 非空、禁 name/id（改名走手术刀），set.type 变 kind 触发搬迁（警告留痕）；\n    retire {\"table\":\"places\",\"action\":\"retire\",\"id\":\"…\"}——id 须存在且归属表一致。\n    寻址失败（id 不存在/表错位/重名）整案拒收，错误带 [op#N table/action] 定位。\n  · current：{\"table\":\"current\",\"action\":\"update\",\"set\":{要刷新的字段}}（同案重复 set 同键拒收）。\n  · lines：{\"table\":\"lines\",\"action\":\"plant/remind/resolve/…\",\"kind\":\"foreshadow/…\",…余同 v2 条目字段}。\n  · timeline：append_event {\"event\":{…}} / revise_event {\"id\":\"EVT-…\",\"replace\":\"…\"} /\n    append_clock {\"clock\":{…五字段…}} / append_arc {\"arc\":{…}} / append_milestone {\"milestone\":{…}}。\n  · locked/cognition：{\"table\":\"locked\",\"action\":\"plant/upsert/retire\",…余同 v2 条目字段}。\n  · ledger：append_transaction {\"entry\":{…流水…}} / declare_pool {\"pool\":\"池键名\",\"spec\":{\"name\",\"unit\",\"initial\"}}。\n  · synopsis：{\"table\":\"synopsis\",\"action\":\"set\",…余同 v2 synopsis 字段}。\n  分层门：信封错→先修信封；寻址错→[op#N]点名；字段错→沿用 v2 措辞。\n  locked_candidates/consequences 无 v3 op（要用请写 v2 提案）。\n注：提案写入后由 Stage 5 主控统一运行 `python studio.py sync ch_XXX` 校验并合并（支持 --dry-run 预演）。
 Stage 4 Reader 仅需落盘本 JSON 即可交付。
 """
 
@@ -212,7 +234,7 @@ def init_state(book: Path) -> int:
     common.dump_json(migrations.version_path(book),
                      {"version": migrations.CURRENT_STATE_VERSION,
                       "created_at": datetime.date.today().isoformat()})
-    # 事件溯源：播种完成即激活（基线=八张默认表），此后一切写入都有事件
+    # 事件溯源：播种完成即激活（基线=十一张默认表），此后一切写入都有事件
     changelog.ensure_changelog(book)
     return seeded
 
@@ -227,6 +249,13 @@ def _fill_missing_required(key: str, data: dict) -> dict:
 
 def load_state(book: Path, key: str) -> dict:
     migrations.ensure_state_version(book)  # 懒触发：老书首次读取即迁移到当前状态机版本
+    if key == LEGACY_ENTITIES_KEY:
+        # v6 兼容读视图：四表合并（类数据库视图；只读，写请走 kind 表）。
+        # 各 kind 表走正常闸门（schema 校验 + 外部改动补录），此处只做拼接。
+        merged: list = []
+        for k in KIND_TABLES:
+            merged.extend(load_state(book, k).get("entries", []) or [])
+        return {"entries": merged}
     p = state_dir(book) / f"{key}.json"
     if not p.exists():
         raise ValueError(f"状态文件缺失: {p.name}（先运行 studio init）")
@@ -260,6 +289,9 @@ def save_state(book: Path, key: str, data: dict, *, source: str = "engine",
     source 取值（事件溯源的通道标签）：proposal（提案合并）/ state_set（手术刀）/
     ledger_recompute / milestone / migration / snapshot_rollback / init / engine（兜底）。
     """
+    if key == LEGACY_ENTITIES_KEY:
+        raise ValueError("entities 表已在 v6 拆分为 persons/items/factions/places 四表"
+                         "（读可用 load_state 兼容视图，写必须走 kind 表）")
     errors = validator.validate(data, _schema(key))
     if errors:
         raise ValueError(f"拒绝写入非法 {key}.json: " + "; ".join(errors[:5]))
@@ -395,6 +427,58 @@ def _guard_entity_transitions(name: str, old: dict, new: dict, rep: dict) -> Non
         rep["warnings"].append(f"🎒 实体「{name}」充能回升（{old_charges} → {new_charges}）——若为正常补充/升级请忽略")
 
 
+def canonical_entity_type(t) -> str | None:
+    """实体 type 归一：中文别名→法定枚举；缺省→other；未知→None（调用方决定硬错或兜底）。"""
+    if t is None or (isinstance(t, str) and not t.strip()):
+        return "other"
+    s = TYPE_ALIASES.get(str(t).strip(), str(t).strip())
+    return s if s in TYPE_TO_TABLE else None
+
+
+def split_entities_entries(entries: list) -> dict[str, list]:
+    """纯函数：实体条目按归一化 type 切分到四表（迁移/changelog 折叠/旧快照体检共用）。
+
+    附带把 entry["type"] 改写为法定枚举（中文→英文、缺省→other、未知→other）。
+    调用方须持有数据所有权（迁移/折叠/体检三处均为深拷贝或新 dict，安全）。
+    """
+    out: dict[str, list] = {k: [] for k in KIND_TABLES}
+    for e in entries or []:
+        if not isinstance(e, dict):
+            continue
+        t = canonical_entity_type(e.get("type")) or "other"
+        e["type"] = t
+        out[TYPE_TO_TABLE[t]].append(e)
+    return out
+
+
+def merged_entities_view(data: dict) -> list[dict]:
+    """合并实体视图：kind 四表优先；无 kind 键时回退 legacy data["entities"]（直调 verify 兼容）。"""
+    if any(isinstance(data.get(k), dict) for k in KIND_TABLES):
+        out: list[dict] = []
+        for k in KIND_TABLES:
+            t = data.get(k)
+            if isinstance(t, dict):
+                out.extend(e for e in (t.get("entries") or []) if isinstance(e, dict))
+        return out
+    leg = data.get("entities")
+    if isinstance(leg, dict):
+        return [e for e in (leg.get("entries") or []) if isinstance(e, dict)]
+    return []
+
+
+def find_entity_owner(book, name: str) -> tuple:
+    """手术刀 legacy 别名：按名定位实体归属 (kind 表, 表数据, 条目)，未找到返回 (None, None, None)。"""
+    for k in KIND_TABLES:
+        try:
+            d = load_state(book, k)
+        except (ValueError, OSError):
+            continue
+        for e in d.get("entries", []) or []:
+            if isinstance(e, dict) and e.get("name") == name:
+                return k, d, e
+    return None, None, None
+
+
 def _index_by(items: list[dict], key: str) -> dict:
     return {str(it.get(key, "")): it for it in items}
 
@@ -444,7 +528,7 @@ def normalize_proposal_aliases(proposal: Any) -> Any:
             if old_k in cur and new_k not in cur:
                 cur[new_k] = cur.pop(old_k)
 
-    # 2. 归一化 entities
+    # 2. 归一化 entities（含 type 中文别名→法定枚举的值归一）
     ents = proposal.get("entities")
     if isinstance(ents, list):
         ent_map = {
@@ -462,6 +546,8 @@ def normalize_proposal_aliases(proposal: Any) -> Any:
                 for old_k, new_k in ent_map.items():
                     if old_k in e and new_k not in e:
                         e[new_k] = e.pop(old_k)
+                if isinstance(e.get("type"), str) and e["type"].strip() in TYPE_ALIASES:
+                    e["type"] = TYPE_ALIASES[e["type"].strip()]
                 if "tier" in e and "tier_name" not in e:
                     val = e.pop("tier")
                     if isinstance(val, int) and "tier_rank" not in e:
@@ -490,11 +576,54 @@ def normalize_proposal_aliases(proposal: Any) -> Any:
     return proposal
 
 
-def validate_proposal(proposal, expected_chapter: str | None = None) -> tuple[list[str], dict]:
+def _validate_v3(proposal: dict, expected_chapter: str | None,
+                 book: Path | None) -> tuple[list[str], dict]:
+    """v3 寻址提案校验（分层门：信封 → 编译 → v2 深校验逐层放行）。
+
+    - 信封层（本函数前半）：schema 容器 + Pydantic 信封 + _draft/operation_id/
+      chapter 三检查；信封坏则直接返回，编译不跑（编译需要结构完整的 ops）。
+    - 编译层：book 给定时跑 compile_ops，存在性/表一致性错误并入 errors；
+      编译 warnings 由 apply_proposal 收集（本函数签名只回 errors+plan）。
+    - v2 深层：apply 编译出 v2 等价提案后重走 validate_proposal 全量 v2 校验，
+      字段级错误沿用 v2 措辞（单真源）。
+    """
+    errors: list[str] = []
+    plan: dict[str, str] = {}
+    errors.extend(validator.validate(proposal, _schema("proposal_v3")))
+    for pe in models.validate_with_model("proposal_v3", proposal):
+        if pe not in errors:
+            errors.append(pe)
+    if errors:
+        return errors, plan
+    if proposal.get("_draft"):
+        errors.append("这是草稿提案（_draft:true）：复核补全后另存为正式提案再 sync")
+    if not proposal.get("operation_id"):
+        errors.append("正式提案必须提供 operation_id（幂等身份）")
+    chapter = proposal.get("chapter")
+    if expected_chapter is not None and _canonical_ch(chapter) != _canonical_ch(expected_chapter):
+        errors.append(f"chapter 与同步目标不一致: {chapter} != {expected_chapter}")
+    if errors:
+        return errors, plan
+    if book is not None:
+        _, compile_errors, _ = proposal_v3.compile_ops(book, proposal)
+        errors.extend(compile_errors)
+    counts: dict[str, int] = {}
+    for op in proposal.get("ops", []) or []:
+        if isinstance(op, dict) and op.get("table"):
+            counts[op["table"]] = counts.get(op["table"], 0) + 1
+    for t in sorted(counts):
+        plan[t] = f"寻址 {t} × {counts[t]}"
+    return errors, plan
+
+
+def validate_proposal(proposal, expected_chapter: str | None = None,
+                      book: Path | None = None) -> tuple[list[str], dict]:
     errors: list[str] = []
     plan: dict[str, str] = {}
     if not isinstance(proposal, dict):
         return ["提案必须是 JSON 对象"], plan
+    if proposal.get("schema") == proposal_v3.V3_SCHEMA:
+        return _validate_v3(proposal, expected_chapter, book)
 
     # 提案进入强类型校验前，先行做柔性别名归一化
     normalize_proposal_aliases(proposal)
@@ -507,6 +636,8 @@ def validate_proposal(proposal, expected_chapter: str | None = None) -> tuple[li
     for k in proposal:
         if k.startswith("candidate_"):
             errors.append(f"{k}: 候选字段仅供复核，禁止直接进入合并")
+    if "derived" in proposal:
+        errors.append("derived 为引擎派生表（sync 自动封存），提案禁止写入")
     null_hits: list[str] = []
     for sec in ("current", "entities", "lines", "timeline", "ledger", "synopsis", "locked", "locked_candidates", "cognition", "cognition_delta"):
         if proposal.get(sec) is not None:
@@ -541,6 +672,16 @@ def validate_proposal(proposal, expected_chapter: str | None = None) -> tuple[li
                 errors.append("current.active_pressures 必须是字符串数组")
         if "aftershock" in cur and not isinstance(cur["aftershock"], str):
             errors.append("current.aftershock 必须是字符串")
+        if "time_day" in cur and (not isinstance(cur["time_day"], int)
+                                  or isinstance(cur["time_day"], bool) or cur["time_day"] < 1):
+            errors.append("current.time_day 必须为 ≥1 的整数（故事日计数）")
+        for _rf in ("pov_ref", "place_ref"):
+            if _rf in cur and (not isinstance(cur[_rf], str) or not cur[_rf].strip()):
+                errors.append(f"current.{_rf} 必须为非空字符串（实体 id 或法定名）")
+        if "present_refs" in cur:
+            _pr = cur["present_refs"]
+            if not isinstance(_pr, list) or any(not isinstance(x, str) or not x.strip() for x in _pr):
+                errors.append("current.present_refs 必须为实体引用字符串数组")
 
     ents = proposal.get("entities")
     if isinstance(ents, list):
@@ -552,7 +693,8 @@ def validate_proposal(proposal, expected_chapter: str | None = None) -> tuple[li
             "cost_per_use", "durability", "scale_tier", "core_assets", "diplomacy",
             "danger_tier", "environment_rules", "tier_rank", "tier_name",
             "power_benchmark", "sensory_anchor", "micro_actions", "address_matrix",
-            "dossier", "scope", "golden_quote", "relations"
+            "dossier", "scope", "golden_quote", "relations",
+            "injury_level", "injury_desc", "renown"
         }
         for i, e in enumerate(ents):
             if not isinstance(e, dict):
@@ -581,9 +723,15 @@ def validate_proposal(proposal, expected_chapter: str | None = None) -> tuple[li
                         errors.append(f"entities[{i}].charges({e['charges']}) 不能大于 max_charges({e['max_charges']})")
                 except Exception:
                     pass
+            if "injury_level" in e and (not isinstance(e["injury_level"], int)
+                    or isinstance(e["injury_level"], bool)
+                    or not 0 <= e["injury_level"] <= 5):
+                errors.append(f"entities[{i}].injury_level 必须为 0~5 的整数（0=无伤，5=濒死）")
+            if "renown" in e and (not isinstance(e["renown"], int) or isinstance(e["renown"], bool)):
+                errors.append(f"entities[{i}].renown 必须为整数（声望/悬赏值）")
             if "type" in e and e["type"] not in _ENTITY_TYPES:
                 errors.append(f"entities[{i}].type 非法: {e['type']!r}（合法：{'/'.join(sorted(_ENTITY_TYPES))}）")
-            for f in ("card", "summary", "holder", "location", "condition", "realm", "faction", "quote", "dossier", "scope", "golden_quote"):
+            for f in ("card", "summary", "holder", "location", "condition", "realm", "faction", "quote", "dossier", "scope", "golden_quote", "injury_desc"):
                 if f in e and not isinstance(e[f], str):
                     errors.append(f"entities[{i}].{f} 必须为字符串")
             if "aliases" in e:
@@ -605,6 +753,18 @@ def validate_proposal(proposal, expected_chapter: str | None = None) -> tuple[li
                             errors.append(f"entities[{i}].relations[{r_idx}].type 必填且为字符串")
                         if "desc" in rel and not isinstance(rel["desc"], str):
                             errors.append(f"entities[{i}].relations[{r_idx}].desc 必须为字符串")
+                        for _rk in rel:
+                            if _rk not in ("target", "type", "desc", "strength", "status", "since_ch"):
+                                errors.append(f"entities[{i}].relations[{r_idx}] 含未知字段: {_rk}")
+                        if "strength" in rel and (not isinstance(rel["strength"], int)
+                                or isinstance(rel["strength"], bool)
+                                or not 1 <= rel["strength"] <= 5):
+                            errors.append(f"entities[{i}].relations[{r_idx}].strength 必须为 1~5 的整数")
+                        if "status" in rel and rel["status"] not in ("active", "resolved"):
+                            errors.append(f"entities[{i}].relations[{r_idx}].status 必须为 active/resolved")
+                        if "since_ch" in rel and (not isinstance(rel["since_ch"], str)
+                                or not re.fullmatch(r"ch_\d{3,}", rel["since_ch"])):
+                            errors.append(f"entities[{i}].relations[{r_idx}].since_ch 须匹配 ch_NNN")
         # 同一提案内同名单/别名重复 upsert 目前会被 _merge_entities 静默折叠成一条
         # （后写覆盖先写），容易让不同 summary/type 的登记数据凭空丢失；改为显式拒收。
         _ent_names = [str(e.get("name", "")).strip() for e in ents if isinstance(e, dict)]
@@ -741,12 +901,21 @@ def validate_proposal(proposal, expected_chapter: str | None = None) -> tuple[li
             if not isinstance(ev, dict):
                 errors.append(f"timeline.events[{i}] 必须为对象")
                 continue
-            if (not isinstance(ev.get("time"), str) or not ev["time"].strip()
+            if "id" in ev and (not isinstance(ev["id"], str) or not EVT_ID_RE.match(ev["id"])):
+                errors.append(f"timeline.events[{i}].id 非法: {ev.get('id')!r}（必须符合 ^EVT-\\d{{3,}}$）")
+            if "id" not in ev and (not isinstance(ev.get("time"), str) or not ev["time"].strip()
                     or not isinstance(ev.get("event"), str) or not ev["event"].strip()):
-                errors.append(f"timeline.events[{i}] 必须含非空字符串 time 与 event")
+                errors.append(f"timeline.events[{i}] 必须含非空字符串 time 与 event（按 id 修订时可省略）")
             for k in ev:
-                if k not in ("time", "event", "replace", "quote"):
+                if k not in ("time", "event", "replace", "quote", "id",
+                             "participants", "place", "causes", "consequences"):
                     errors.append(f"timeline.events[{i}] 含未知字段: {k}")
+            for _lf in ("participants", "causes", "consequences"):
+                if _lf in ev and (not isinstance(ev[_lf], list)
+                        or any(not isinstance(x, str) or not x.strip() for x in ev[_lf])):
+                    errors.append(f"timeline.events[{i}].{_lf} 必须为引用字符串数组")
+            if "place" in ev and (not isinstance(ev["place"], str) or not ev["place"].strip()):
+                errors.append(f"timeline.events[{i}].place 必须为非空字符串")
             if "replace" in ev and (not isinstance(ev["replace"], str) or not ev["replace"].strip()):
                 errors.append(f"timeline.events[{i}].replace 必须为非空字符串")
             if "quote" in ev and (not isinstance(ev["quote"], str) or not ev["quote"].strip()):
@@ -900,7 +1069,7 @@ def validate_proposal(proposal, expected_chapter: str | None = None) -> tuple[li
     locked = proposal.get("locked")
     if isinstance(locked, list):
         _plan("locked", len(locked))
-        allowed_locked_keys = {"action", "id", "fact", "since_ch", "kind", "quote", "note", "reason"}
+        allowed_locked_keys = {"action", "id", "fact", "since_ch", "kind", "quote", "note", "reason", "refs"}
         for i, l in enumerate(locked):
             if not isinstance(l, dict):
                 errors.append(f"locked[{i}] 必须为对象")
@@ -936,11 +1105,14 @@ def validate_proposal(proposal, expected_chapter: str | None = None) -> tuple[li
             elif act == "retire":
                 if not l.get("reason"):
                     errors.append(f"locked[{i}] 归档退役必须提供 reason")
+            if "refs" in l and (not isinstance(l["refs"], list)
+                    or any(not isinstance(x, str) or not x.strip() for x in l["refs"])):
+                errors.append(f"locked[{i}].refs 必须为对象引用字符串数组")
 
     cog_full = proposal.get("cognition")
     if isinstance(cog_full, list):
         _plan("cognition", len(cog_full))
-        allowed_cog_full = {"action", "id", "character", "kind", "content", "since_ch", "quote", "note"}
+        allowed_cog_full = {"action", "id", "character", "kind", "content", "since_ch", "quote", "note", "truth_ref"}
         for i, item in enumerate(cog_full):
             if not isinstance(item, dict):
                 errors.append(f"cognition[{i}] 必须为对象")
@@ -953,6 +1125,9 @@ def validate_proposal(proposal, expected_chapter: str | None = None) -> tuple[li
             cid = item.get("id")
             if cid and not COG_ID_RE.match(str(cid)):
                 errors.append(f"cognition[{i}].id 非法: {cid!r}（必须符合 ^COG-\\d{{3,}}$）")
+            if "truth_ref" in item and (not isinstance(item["truth_ref"], str)
+                    or not item["truth_ref"].strip()):
+                errors.append(f"cognition[{i}].truth_ref 必须为非空字符串（GUN-/KNO-/EVT-/LOCK-编号）")
 
     cog = proposal.get("cognition_delta")
     if isinstance(cog, list):
@@ -1023,6 +1198,25 @@ def _merge_current(state: dict, patch: dict, rep: dict) -> None:
                 rep["errors"].append("current.active_pressures 必须为字符串数组")
                 continue
             state["active_pressures"] = [str(x) for x in v if str(x).strip()]
+        elif k == "time_day":
+            if not isinstance(v, int) or isinstance(v, bool) or v < 1:
+                rep["errors"].append("current.time_day 必须为 ≥1 的整数")
+                continue
+            old_day = state.get("time_day")
+            if (isinstance(old_day, int) and not isinstance(old_day, bool)
+                    and v < old_day):
+                rep["warnings"].append(
+                    f"⏳ 故事日回退：current.time_day {old_day} → {v}"
+                    "——若为闪回/倒叙章请忽略本提示")
+            state["time_day"] = v
+        elif k == "present_refs":
+            if not isinstance(v, list):
+                rep["errors"].append("current.present_refs 必须为字符串数组")
+                continue
+            if not v:
+                rep["warnings"].append("current.present_refs 为空数组，按未提供处理")
+                continue
+            state["present_refs"] = [str(x) for x in v if str(x).strip()]
         elif isinstance(v, str):
             if not v:
                 rep["warnings"].append(f"current.{k} 为空字符串，按未提供处理")
@@ -1036,30 +1230,56 @@ def _merge_current(state: dict, patch: dict, rep: dict) -> None:
         rep["updated"].append(f"📍 current.{k} 已更新")
 
 
-def _merge_entities(state: dict, items: list[dict], rep: dict) -> None:
-    id_idx = {ent["id"]: ent for ent in state["entries"] if ent.get("id")}
-    name_idx = _index_by(state["entries"], "name")
+def _merge_entities(data: dict, items: list[dict], rep: dict) -> None:
+    """v6：entities[] 提案按 type 路由到 persons/items/factions/places 四表。
+
+    - 查找跨四表（id 优先、名次之，last-wins——与单表时代 _index_by 语义一致）；
+    - 既有实体 type 变更导致归属表变化时整条搬迁（搬迁记 updated）；
+    - 缺 type → other → persons（与单表时代缺省一致，静默）；
+    - 中文 type 已在 normalize_proposal_aliases 归一；此处复算 canonical，未知=硬错。
+    """
+    tables: dict[str, dict] = {}
+    for k in KIND_TABLES:
+        t = data.get(k)
+        if not isinstance(t, dict):
+            t = data[k] = {"entries": []}
+        if not isinstance(t.get("entries"), list):
+            t["entries"] = []
+        tables[k] = t
+    id_idx: dict[str, tuple[str, dict]] = {}
+    name_idx: dict[str, tuple[str, dict]] = {}
+    for k in KIND_TABLES:
+        for ent in tables[k]["entries"]:
+            if not isinstance(ent, dict):
+                continue
+            if ent.get("id"):
+                id_idx[str(ent["id"])] = (k, ent)
+            if ent.get("name"):
+                name_idx[str(ent["name"])] = (k, ent)
     valid_types = _ENTITY_TYPES
     for e in items:
         action, name = e.get("action", "upsert"), e["name"]
         eid = e.get("id")
-        ent = None
-        if eid and eid in id_idx:
-            ent = id_idx[eid]
+        hit = None
+        if eid and str(eid) in id_idx:
+            hit = id_idx[str(eid)]
         elif name in name_idx:
-            ent = name_idx[name]
+            hit = name_idx[name]
 
         if action == "retire":
-            if ent is None:
+            if hit is None:
                 rep["errors"].append(f"retire 未登记实体「{name}」")
                 continue
-            ent["status"] = "retired"
+            hit[1]["status"] = "retired"
             rep["updated"].append(f"🗂️ 实体退役：{name}")
             continue
-        etype = e.get("type", "other")
-        if etype not in valid_types:
-            rep["errors"].append(f"实体「{name}」type 非法: {etype}")
+        raw_type = e.get("type", "other")
+        etype = canonical_entity_type(raw_type)
+        if etype is None or etype not in valid_types:
+            rep["errors"].append(f"实体「{name}」type 非法: {raw_type}")
             continue
+        ent = hit[1] if hit else None
+        owner = hit[0] if hit else None
         if "charges" in e and "max_charges" in e:
             try:
                 if int(e["charges"]) > int(e["max_charges"]):
@@ -1081,23 +1301,35 @@ def _merge_entities(state: dict, items: list[dict], rep: dict) -> None:
                 pass
         if ent is not None:
             _guard_entity_transitions(name, ent, e, rep)
+        dest = TYPE_TO_TABLE[etype]
         if ent is None:
             ent = {"name": name, "type": etype, "aliases": [], "card": "", "summary": "", "status": "active"}
             if eid:
                 ent["id"] = eid
-                id_idx[eid] = ent
-            state["entries"].append(ent)
-            name_idx[name] = ent
+                id_idx[str(eid)] = (dest, ent)
+            tables[dest]["entries"].append(ent)
+            name_idx[name] = (dest, ent)
         else:
             if eid:
                 ent["id"] = eid
-                id_idx[eid] = ent
+            if owner != dest:
+                tables[owner]["entries"].remove(ent)
+                tables[dest]["entries"].append(ent)
+                if eid:
+                    id_idx[str(eid)] = (dest, ent)
+                name_idx[name] = (dest, ent)
+                rep["updated"].append(f"🗂️ 实体搬迁：{name}（{owner}→{dest}，type 变更为 {etype}）")
+                owner = dest
+            elif eid:
+                id_idx[str(eid)] = (owner, ent)
         for f in ("id", "type", "card", "summary", "holder", "location", "condition",
                   "realm", "faction", "life_status", "attitude", "charges", "max_charges", "dossier",
                   "scope", "golden_quote", "tier_rank", "tier_name", "power_benchmark", "sensory_anchor",
-                  "cost_per_use", "durability", "scale_tier", "danger_tier"):
+                  "cost_per_use", "durability", "scale_tier", "danger_tier",
+                  "injury_level", "injury_desc", "renown"):
             if f in e and e[f] is not None:
                 ent[f] = e[f]
+        ent["type"] = etype  # 落盘恒为法定枚举（中文别名不进库）
         if "status" in e:
             ent["status"] = e["status"]
         if "aliases" in e:
@@ -1112,6 +1344,13 @@ def _merge_entities(state: dict, items: list[dict], rep: dict) -> None:
             ent.setdefault("diplomacy", {}).update({str(k): str(v) for k, v in e["diplomacy"].items()})
         if "environment_rules" in e and isinstance(e["environment_rules"], list):
             ent["environment_rules"] = sorted(set(ent.get("environment_rules", [])) | {str(a) for a in e["environment_rules"]})
+        for _rel in (e.get("relations") or []):
+            if isinstance(_rel, dict):
+                _pred = str(_rel.get("type", "")).strip()
+                if _pred and _pred not in models.KNOWN_RELATION_PREDS:
+                    rep["warnings"].append(
+                        f"🕸️ 实体「{name}」关系谓词「{_pred}」不在已知表——已入库"
+                        "（advisory；建议用 ally/rival/宿敌/师徒 等常规谓词）")
         if "relations" in e and isinstance(e["relations"], list):
             existing_rels = ent.setdefault("relations", [])
             for new_r in e["relations"]:
@@ -1122,8 +1361,6 @@ def _merge_entities(state: dict, items: list[dict], rep: dict) -> None:
                 else:
                     existing_rels.append(new_r)
         rep["updated"].append(f"🗂️ 实体登记/更新：{name}")
-
-
 def _same_line_content(kind: str, existing: dict, g: dict, ch_num: int) -> bool:
     """判断重复 plant 的传入内容与既有条目是否逐字段一致（幂等重放判定）。"""
     target, _ = _norm_target(g.get("target_ch"))
@@ -1307,24 +1544,45 @@ def _merge_lines(state: dict, items: list[dict], ch_num: int, rep: dict) -> None
 
 def _merge_timeline(state: dict, patch: dict, ch: str, rep: dict) -> None:
     existing = {(e.get("time", ""), e.get("event", "")) for e in state["events"]}
+    by_id = {str(e.get("id")): e for e in state["events"] if e.get("id")}
     added = replaced = skipped = 0
     for ev in patch.get("events", []) or []:
         key = (ev.get("time", ""), ev.get("event", ""))
         new_text = ev.get("replace")
+        eid = ev.get("id")
         if new_text is not None:
-            target = next((e for e in state["events"]
-                           if (e.get("time", ""), e.get("event", "")) == key), None)
+            target = by_id.get(str(eid)) if eid else next(
+                (e for e in state["events"]
+                 if (e.get("time", ""), e.get("event", "")) == key), None)
             if target is None:
-                rep["errors"].append(f"timeline 事件修订未命中: {key[0]}｜{str(key[1])[:30]}…")
+                rep["errors"].append(
+                    f"timeline 事件修订未命中: {eid or key[0] + '｜' + str(key[1])[:30] + '…'}")
                 continue
             target["event"] = new_text
             replaced += 1
             rep["updated"].append(f"📜 编年史修订：{key[0]}「{str(key[1])[:20]}…」→「{new_text[:32]}…」")
             continue
+        if eid and str(eid) in by_id:
+            target = by_id[str(eid)]
+            if key != (target.get("time", ""), target.get("event", "")) and (ev.get("time") or ev.get("event")):
+                rep["errors"].append(
+                    f"timeline 事件 {eid} 已存在且 time/event 不同——改文本请用 replace 通道")
+                continue
+            for _mf in ("participants", "place", "causes", "consequences"):
+                if _mf in ev:
+                    target[_mf] = ev[_mf]
+            rep["updated"].append(f"📜 编年史元数据更新：{eid}")
+            continue
         if key in existing:
             skipped += 1
             continue
-        state["events"].append({"time": ev["time"], "event": ev["event"], "chapter": ch})
+        entry = {"time": ev["time"], "event": ev["event"], "chapter": ch,
+                 "id": str(eid) if eid else _next_id(state["events"], "id", "EVT")}
+        for _mf in ("participants", "place", "causes", "consequences"):
+            if _mf in ev:
+                entry[_mf] = ev[_mf]
+        state["events"].append(entry)
+        by_id[entry["id"]] = entry
         existing.add(key)
         added += 1
     if added:
@@ -1633,14 +1891,20 @@ def _merge_locked(state: dict, patch: list, ch: str, rep: dict) -> None:
             }
             if item.get("note"):
                 new_entry["note"] = str(item.get("note")).strip()
+            if item.get("refs"):
+                new_entry["refs"] = [str(r).strip() for r in item["refs"] if str(r).strip()]
             if iid in entry_map:
                 old_entry = entry_map[iid]
                 old_fact = str(old_entry.get("fact", "")).strip()
                 # 防静默改史：不可逆事实一旦入账，同 ID 重写必须显式表态。
                 # 此前 .update() 直接吞掉旧事实（sync 仍报 ok），是无声数据丢失。
                 if old_fact == new_entry["fact"]:
-                    rep["updated"].append(
-                        f"🔒 不可逆事实 {iid} 与既有条目一致（幂等重放，不重复入账）")
+                    if new_entry.get("refs") and new_entry["refs"] != (old_entry.get("refs") or []):
+                        old_entry["refs"] = new_entry["refs"]
+                        rep["updated"].append(f"🔒 不可逆事实 {iid} 关联引用已补（事实一致，仅补 refs）")
+                    else:
+                        rep["updated"].append(
+                            f"🔒 不可逆事实 {iid} 与既有条目一致（幂等重放，不重复入账）")
                     continue
                 if action == "plant" or not item.get("overwrite"):
                     rep["errors"].append(
@@ -1724,6 +1988,8 @@ def _merge_cognition(state: dict, patch: list, ch: str, rep: dict) -> None:
                 "since_ch": str(item.get("since_ch") or ch),
                 "quote": quote or f"始于 {ch}",
             }
+            if item.get("truth_ref"):
+                new_entry["truth_ref"] = str(item.get("truth_ref")).strip()
             if note:
                 new_entry["note"] = note
             if existing:
@@ -1755,6 +2021,8 @@ def _merge_cognition(state: dict, patch: list, ch: str, rep: dict) -> None:
                 "since_ch": str(item.get("since_ch") or ch),
                 "quote": str(item.get("quote") or f"始于 {ch}").strip(),
             }
+            if item.get("truth_ref"):
+                new_entry["truth_ref"] = str(item.get("truth_ref")).strip()
             if item.get("note"):
                 new_entry["note"] = str(item.get("note")).strip()
             if iid in entry_map:
@@ -1798,7 +2066,7 @@ def _merge_proposal_into(data: dict, proposal: dict, ch, ch_num, rep: dict) -> N
     if proposal.get("current"):
         _merge_current(data["current"], proposal["current"], rep)
     if proposal.get("entities"):
-        _merge_entities(data["entities"], proposal["entities"], rep)
+        _merge_entities(data, proposal["entities"], rep)
         # 退役与同案在场冲突 → 自动从 present 剔除并醒目提示
         # （闪回/补叙章确需在场：请先在同案把该实体 status 改回 active 再声明 present）
         pcs = data["current"].get("present_characters")
@@ -1838,10 +2106,55 @@ def apply_proposal(book: Path, proposal: dict, expected_chapter: str | None = No
                    dry_run: bool = False) -> dict:
     rep: dict = {"updated": [], "warnings": [], "errors": [],
                  "chapter": proposal.get("chapter") if isinstance(proposal, dict) else None}
+    plan_override: dict | None = None
+    hash_src = proposal  # v3 亦按原文哈希（v2equiv 只走合并，不进登记簿）
+    if isinstance(proposal, dict) and proposal.get("schema") == proposal_v3.V3_SCHEMA:
+        # v3 头：预门 → 信封校验 → 编译为 v2 等价提案 → 下方 v2 管线原样跑。
+        # 预门（v3 专属）：编译的存在性检查跑在登记簿主门之前，若无预门，
+        # create 类提案重提（crash-retry）将先撞「已存在」而永不到门。
+        # 故同字节/同 op 重放在编译前短路为干净 skip；同效异写则落到编译，
+        # 如实报存在性错误（正是 typo-guard 的职责），不静默吞掉。
+        # 登记簿存 v3 原文哈希（v2 存 v2 原文：登记簿恒为「输入原文」语义，
+        # 无版本分支），v2equiv 只走合并、不进登记簿。
+        try:
+            _pre_marker = _load_marker(book)
+        except (ValueError, OSError):
+            _pre_marker = None  # 主门会如实报错，此处不抢戏
+        if _pre_marker is not None:
+            _raw_hash = common.canonical_json_hash(
+                {k: v for k, v in proposal.items() if k != "operation_id"})
+            _op = proposal.get("operation_id")
+            if _op in _pre_marker:
+                if _pre_marker[_op] != _raw_hash:
+                    rep["errors"] = [f"operation_id {_op} 已用于不同内容，拒绝复用"]
+                    return rep
+                rep["warnings"].append(f"operation_id {_op} 已应用过，跳过")
+                rep["duplicate"] = True
+                return rep
+            if _raw_hash in _pre_marker.values():
+                rep["warnings"].append("相同内容提案已应用过，跳过")
+                rep["duplicate"] = True
+                return rep
+        # compile_ops 纯函数，此处与 _validate_v3 各调一次（各取所需：彼取
+        # errors，此取 v2equiv+warnings），开销可忽略。
+        v3_errors, v3_plan = validate_proposal(proposal, expected_chapter, book=book)
+        if v3_errors:
+            rep["errors"] = v3_errors
+            rep["plan"] = v3_plan
+            return rep
+        v2equiv, compile_errors, compile_warnings = proposal_v3.compile_ops(book, proposal)
+        if compile_errors:
+            rep["errors"] = compile_errors
+            rep["plan"] = v3_plan
+            return rep
+        rep["warnings"].extend(compile_warnings)
+        proposal = v2equiv
+        plan_override = v3_plan
+        rep["chapter"] = proposal.get("chapter")
     errors, plan = validate_proposal(proposal, expected_chapter)
     common.debug(f"gate=validate_proposal: {len(errors)} 错误"
                  + (f"（{errors[0]}）" if errors else ""))
-    rep["plan"] = plan
+    rep["plan"] = plan_override if plan_override is not None else plan
     if errors:
         rep["errors"] = errors
         return rep
@@ -1849,7 +2162,7 @@ def apply_proposal(book: Path, proposal: dict, expected_chapter: str | None = No
     ch = _canonical_ch(proposal["chapter"])
     op = proposal["operation_id"]
     ch_num = _chapter_num(ch)
-    proposal_hash = common.canonical_json_hash({k: v for k, v in proposal.items() if k != "operation_id"})
+    proposal_hash = common.canonical_json_hash({k: v for k, v in hash_src.items() if k != "operation_id"})
     try:
         marker = _load_marker(book)
     except (ValueError, OSError) as exc:
@@ -2249,14 +2562,15 @@ def verify_data(data: dict[str, dict]) -> list[str]:
         bad = [x for x in ids if not id_re.fullmatch(x)]
         if bad:
             errors.append(f"{label}台账非法编号: {bad[:5]}")
-    names = [str(e.get("name", "")) for e in data["entities"].get("entries", [])]
+    ent_entries = merged_entities_view(data)
+    names = [str(e.get("name", "")) for e in ent_entries]
     dup = sorted({x for x in names if names.count(x) > 1})
     if dup:
         errors.append(f"实体注册表重名: {dup}")
 
     known = set(names)
     deceased_names = set()
-    for e in data["entities"].get("entries", []):
+    for e in ent_entries:
         known.update(str(a) for a in e.get("aliases", []) if a)
         if e.get("life_status") == "deceased":
             deceased_names.add(e["name"])
@@ -2266,8 +2580,34 @@ def verify_data(data: dict[str, dict]) -> list[str]:
             errors.append(f"current.present_characters 引用未登记实体「{name}」")
         elif str(name) in deceased_names:
             errors.append(f"current.present_characters 引用已离世实体「{name}」")
+    from .objects.registry import build_registry
+    from .objects.registry import resolve_ref as _reg_resolve
+    _reg = build_registry({"entries": ent_entries})
 
-    for e in data["entities"].get("entries", []):
+    def _resolve_ref(ref: str):
+        return _reg_resolve(_reg, ref)
+
+    for ref in data["current"].get("present_refs", []) or []:
+        ent = _resolve_ref(ref)
+        if ent is None:
+            errors.append(f"current.present_refs 引用未登记实体「{ref}」")
+        elif str(ent.get("life_status") or "") == "deceased":
+            errors.append(f"current.present_refs 引用已离世实体「{ref}」")
+    for _rf in ("pov_ref", "place_ref"):
+        _v = (data["current"].get(_rf) or "")
+        if str(_v).strip() and _resolve_ref(_v) is None:
+            errors.append(f"current.{_rf} 引用未登记实体「{_v}」")
+    _evt_ids = [str(e.get("id", "")) for e in data["timeline"].get("events", []) if e.get("id")]
+    _dup_evt = sorted({x for x in _evt_ids if _evt_ids.count(x) > 1})
+    if _dup_evt:
+        errors.append(f"编年史事件重复编号: {_dup_evt}")
+
+    # 跨表 ID 唯一（单表时代由 EntitiesState.check_unique_ids 承担；拆表后按合并视图补回）
+    _ids = [str(e.get("id")) for e in ent_entries if e.get("id")]
+    _dup_ids = sorted({x for x in _ids if _ids.count(x) > 1})
+    if _dup_ids:
+        errors.append(f"实体 ID 跨表重复: {_dup_ids}（persons/items/factions/places 四表内 id 必须全书唯一）")
+    for e in ent_entries:
         holder = str(e.get("holder", "")).strip()
         if holder and holder not in known:
             errors.append(f"实体「{e.get('name','')}」的 holder「{holder}」未登记")
@@ -2323,7 +2663,7 @@ def verify_data(data: dict[str, dict]) -> list[str]:
         for le in locked_entries:
             if le.get("kind") == "death":
                 fact_text = str(le.get("fact", ""))
-                for ent in data.get("entities", {}).get("entries", []):
+                for ent in ent_entries:
                     ename = ent.get("name", "")
                     if ename and ename in fact_text:
                         if ent.get("life_status") not in ("deceased", None):

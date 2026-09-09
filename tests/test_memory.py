@@ -146,7 +146,7 @@ class TestLineMemoryMap(unittest.TestCase):
         with TempBook() as tb:
             _finals(tb.book, list(range(1, 31)), lambda n: "相安无事。" if n != 2 else "张彪误判了李玄。")
             # 误会双方为已注册实体（真实场景必然如此）：reg_terms 提词张彪/李玄
-            tb.set_state("entities", {"entries": [
+            tb.set_state("persons", {"entries": [
                 {"name": "张彪", "type": "person", "status": "active"},
                 {"name": "李玄", "type": "person", "status": "active"},
             ]})
@@ -172,7 +172,7 @@ class TestKeyFactMemory(unittest.TestCase):
     def test_locked_and_revealed_knowledge(self):
         with TempBook() as tb:
             _finals(tb.book, [1, 2, 3], lambda n: "风平浪静。" if n != 2 else "赵莽倒在血泊里。")
-            tb.set_state("entities", {"entries": [
+            tb.set_state("persons", {"entries": [
                 {"name": "赵莽", "type": "person", "status": "active", "life_status": "deceased"},
             ]})
             tb.set_state("locked", {
@@ -334,7 +334,7 @@ class TestReaderMemoryGates(unittest.TestCase):
                                      "cold_line_base": 3, "cold_line_per_weight": 1}
             tb.write("project.json", json.dumps(proj, ensure_ascii=False))
             _finals(tb.book, list(range(1, 21)), lambda n: "风平浪静。" if n != 2 else "赵莽倒在血泊里。")
-            tb.set_state("entities", {"entries": [
+            tb.set_state("persons", {"entries": [
                 {"name": "赵莽", "type": "person", "status": "active", "life_status": "deceased"}]})
             tb.set_state("locked", {
                 "schema_version": "novel-studio.locked/v1",
@@ -346,7 +346,7 @@ class TestReaderMemoryGates(unittest.TestCase):
     def test_gate3_not_fired_when_recent(self):
         with TempBook() as tb:
             _finals(tb.book, [1, 2], lambda n: "赵莽倒在血泊里。")
-            tb.set_state("entities", {"entries": [
+            tb.set_state("persons", {"entries": [
                 {"name": "赵莽", "type": "person", "status": "active"}]})
             tb.set_state("locked", {
                 "schema_version": "novel-studio.locked/v1",
