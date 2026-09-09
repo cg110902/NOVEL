@@ -42,7 +42,7 @@ COMMAND_HELP = {
     "calendar": "未来 N 章排产日历（到期线/危机时钟/卷阶段里程碑投影；Stage 1 排产前置参考）",
     "evidence": "机械证据：all|mentions|gaps|names|dup|style|words|file|candidates|prev|index（纯 JSON，零裁决）",
     "index": "SQLite3 双平面投影索引：构建/重建 FTS5 BM25 全文检索与关系表缓存",
-    "check": "结构/schema/算术体检（errors 只允许事实级；有 errors 退出码 1；新书 Stage 0 待办不阻断）",
+    "check": "结构/schema/算术体检（errors 只允许事实级；有 errors 退出码 1；新书 Stage 0 待办不阻断；--trend 看一致性分数曲线）",
     "doctor": "check 的同义别名（同一处理函数 cmd_check，输出逐字节相同）；习惯叫 doctor 的人用它",
     "checkpoint": "宏观航向校准点（每5章复盘分卷四分位里程碑与主线偏航）",
     "milestone": "主线里程碑管理：list ｜ add（Stage 0 播种主线里程碑与预期达成章节）",
@@ -297,10 +297,13 @@ def _build_subparsers(sub: argparse._SubParsersAction) -> None:
 
     q = sub.add_parser("check", help="全息双核健康体检：系统运行时健康 + 叙事健康（errors 只允许事实级；doctor 为其别名）")
     _add_common_opts(q)
+    q.add_argument("--trend", action="store_true",
+                   help="不跑体检，只看近 N 次的一致性分数曲线（log/scorecard.jsonl）")
     q.set_defaults(func=cmd_check)
 
     q = sub.add_parser("doctor", help="check 的同义别名（同 cmd_check，输出一致）")
     _add_common_opts(q)
+    q.add_argument("--trend", action="store_true", help="同 check --trend")
     q.set_defaults(func=cmd_check)
 
     q = sub.add_parser("checkpoint", help="宏观航向校准点（每5章复盘分卷四分位里程碑与主线偏航）")

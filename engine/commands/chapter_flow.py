@@ -5,7 +5,7 @@ import json
 import re
 import sys
 
-from .. import audit, checks, common, evidence, state
+from .. import audit, checks, common, evidence, scorecard, state
 from .. import pack as pack_mod
 from .. import graph as graph_mod
 from .. import cockpit as cockpit_mod
@@ -168,7 +168,16 @@ def cmd_check(args) -> int:
     book = ws_gate(args)  # --json 错误路径也出 JSON 信封
     if book is None:
         return ws_gate_code()
+    if getattr(args, "trend", False):
+        # 分数曲线模式：不跑体检，只消费历史（测量史只增不改）
+        rows = scorecard.load_scores(book)
+        if args.json:
+            print(json.dumps({"trend": rows}, ensure_ascii=False, indent=2))
+        else:
+            print(scorecard.render_trend(book))
+        return 0
     report = checks.run_checks(book)
+    scorecard.append_score(book, report)  # 分数曲线积累（log/scorecard.jsonl）
     if args.json:
         print(json.dumps(report, ensure_ascii=False, indent=2))
     else:

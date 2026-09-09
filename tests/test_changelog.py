@@ -227,3 +227,29 @@ class TestTailSelfHealing(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestScorecardCurve(unittest.TestCase):
+    """D3 分数曲线：check 积累 / --trend 消费 / stdout 契约。—— R1-c4"""
+
+    def test_check_appends_and_trend_reads(self):
+        with TempBook() as tb:
+            r1 = tb.run_json("check")
+            self.assertNotIn("error", r1)
+            r2 = tb.run_json("check")
+            self.assertNotIn("error", r2)
+            p = tb.path("log/scorecard.jsonl")
+            self.assertTrue(p.is_file())
+            rows = [json.loads(x) for x in p.read_text(encoding="utf-8").splitlines() if x.strip()]
+            self.assertEqual(len(rows), 2)
+            self.assertIn("errors", rows[0])
+            self.assertIn("by_code", rows[0])
+            # --trend --json：返回历史行，不跑体检、不新增行
+            trend = tb.run_json("check", "--trend")
+            self.assertEqual(len(trend.get("trend", [])), 2)
+            rows2 = [json.loads(x) for x in p.read_text(encoding="utf-8").splitlines() if x.strip()]
+            self.assertEqual(len(rows2), 2, "trend 模式不得追加记录")
+            # 文本模式
+            out = tb.run("check", "--trend")
+            self.assertEqual(out.returncode, 0)
+            self.assertIn("分数曲线", out.stdout)
