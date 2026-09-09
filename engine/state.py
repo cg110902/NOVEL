@@ -1465,11 +1465,21 @@ def _merge_ledger(state: dict, patch: dict, ch: str, rep: dict) -> None:
     replay_used: dict[tuple, int] = {}
     applied_in_patch: dict[tuple, int] = {}
 
-    def _skip_dup(subject: str) -> None:
+    def _skip_dup(subject: str, pool: str, delta) -> None:
         """重复流水统一出口：与已入账流水（或本提案内先行的同内容流水）逐字段一致
-        = 按「重复/重放」跳过并明示，绝不静默双计。"""
+        = 按「重复/重放」跳过并明示，绝不静默双计。
+
+        幂等保护必然带一个代价：同章两笔**合法**的同价同货交易（如「买符纸」买两次）
+        会被并成 1 笔，账就少记一次。原告警只说「已跳过」，不说跳过了多少钱、也不说
+        怎么才能两笔都留下——钱少了而使用者以为记上了。故告警须带池名与金额，并给出
+        区分办法（在 subject/note 里写清差异，指纹就不同了）。"""
+        unit = str((pools.get(pool) or {}).get("unit") or "").strip()
+        amt = f"{int(delta):+}{unit}" if unit else f"{int(delta):+}"
         rep["warnings"].append(
-            f"♻️ 疑似重复/重放流水已跳过（幂等保护）：{subject[:24]}")
+            f"♻️ 疑似重复/重放流水已跳过（幂等保护）：{subject[:24]}"
+            f"（{pool} {amt}，本次未入账）——若确属崩溃重放/归档重提，忽略本条即可；"
+            f"若这是本章两笔独立的同价交易，请在 subject 或 note 里写清差异"
+            f"（如「买符纸·第二批」），指纹不同即两笔都入账")
 
     for t in patch.get("transactions", []) or []:
         pool = t["pool"]
@@ -1486,12 +1496,12 @@ def _merge_ledger(state: dict, patch: dict, ch: str, rep: dict) -> None:
         if existing_n > 0 and replay_used.get(k, 0) < existing_n:
             # 与既有流水逐字段一致：崩溃重放/重复归档重提 → 跳过（只允许与既有行同数）
             replay_used[k] = replay_used.get(k, 0) + 1
-            _skip_dup(str(t.get("subject", "")))
+            _skip_dup(str(t.get("subject", "")), pool, delta)
             continue
         if applied_in_patch.get(k, 0) >= 1 or existing_n > 0:
             # 本提案内第二条同内容流水（前一条已生效），或既有同内容流水数量已耗尽
             # 重放配额后仍出现同内容行——均为重复，跳过而非双计。
-            _skip_dup(str(t.get("subject", "")))
+            _skip_dup(str(t.get("subject", "")), pool, delta)
             continue
         applied_in_patch[k] = 1
         running[pool] += delta

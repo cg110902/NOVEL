@@ -1280,3 +1280,64 @@ class TestHandwrittenLiteralSync(unittest.TestCase):
             }, expected_chapter="ch_001")
             self.assertFalse([e for e in errs if "kind 必须" in e],
                              f"合法 kind={kind} 被误杀: {errs}")
+
+
+class TestLedgerDuplicateWarning(unittest.TestCase):
+    """同章同价同货流水被幂等折叠时，告警必须说清「少记了多少钱」和「怎么让两笔都留下」。
+
+    _merge_ledger 的指纹去重是崩溃重放的安全前提，但必然带一个代价：同章两笔合法的
+    同价交易（「买符纸」买两次）会被并成 1 笔。原告警只说「已跳过」，既不说跳过的
+    池与金额，也不说区分办法——钱少记了而使用者以为记上了。
+    """
+
+    @staticmethod
+    def _data():
+        return {"current": {}, "entities": {"entries": []},
+                "lines": {"foreshadows": [], "misunderstandings": [], "knowledge": []},
+                "timeline": {"events": [], "clocks": [], "milestones": []},
+                "ledger": {"pools": {"spirit": {"name": "灵石", "unit": "块",
+                                                "initial": 100, "current": 100}},
+                           "transactions": []},
+                "synopsis": {"chapters": {}}, "locked": {"entries": []},
+                "cognition": {"entries": []}}
+
+    @staticmethod
+    def _rep():
+        return {"updated": [], "warnings": [], "errors": []}
+
+    def test_collapsed_duplicate_warning_carries_amount_and_remedy(self):
+        data, rep = self._data(), self._rep()
+        state._merge_proposal_into(data, {"ledger": {"transactions": [
+            {"pool": "spirit", "delta": -10, "subject": "买符纸", "type": "expense"},
+            {"pool": "spirit", "delta": -10, "subject": "买符纸", "type": "expense"},
+        ]}}, "ch_002", 2, rep)
+        self.assertEqual(len(data["ledger"]["transactions"]), 1)
+        dup = [w for w in rep["warnings"] if "重复/重放" in w]
+        self.assertEqual(len(dup), 1, rep["warnings"])
+        msg = dup[0]
+        self.assertIn("spirit", msg, "告警须点明是哪个池")
+        self.assertIn("-10块", msg, "告警须点明未入账的金额与单位")
+        self.assertIn("subject", msg, "告警须给出区分办法")
+        self.assertIn("note", msg, "告警须给出区分办法")
+
+    def test_distinguishing_subject_lets_both_through(self):
+        data, rep = self._data(), self._rep()
+        state._merge_proposal_into(data, {"ledger": {"transactions": [
+            {"pool": "spirit", "delta": -10, "subject": "买符纸·第一批", "type": "expense"},
+            {"pool": "spirit", "delta": -10, "subject": "买符纸·第二批", "type": "expense"},
+        ]}}, "ch_002", 2, rep)
+        self.assertEqual(len(data["ledger"]["transactions"]), 2,
+                         "按告警提示区分 subject 后两笔都应入账")
+        self.assertEqual(data["ledger"]["pools"]["spirit"]["current"], 80)
+        self.assertEqual([w for w in rep["warnings"] if "重复/重放" in w], [])
+
+    def test_replay_still_idempotent_after_change(self):
+        data, rep = self._data(), self._rep()
+        seed = {"ledger": {"transactions": [
+            {"pool": "spirit", "delta": -30, "subject": "买刀", "type": "expense"}]}}
+        state._merge_proposal_into(data, seed, "ch_002", 2, rep)
+        rep2 = self._rep()
+        state._merge_proposal_into(data, seed, "ch_002", 2, rep2)
+        self.assertEqual(len(data["ledger"]["transactions"]), 1,
+                         "崩溃重放仍须幂等，不得双计")
+        self.assertEqual(data["ledger"]["pools"]["spirit"]["current"], 70)
