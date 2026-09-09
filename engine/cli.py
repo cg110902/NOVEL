@@ -1,9 +1,9 @@
-"""CLI 薄壳：30 个命令名（29 个处理函数，check 与 doctor 共用 cmd_check）参数解析与总调度；
-命令实现分置于 engine/commands/* 五模块。命令目录的唯一自查入口是 `python studio.py help --json`。
+"""CLI 薄壳：31 个命令名（30 个处理函数，check 与 doctor 共用 cmd_check）参数解析与总调度；
+命令实现分置于 engine/commands/* 六模块。命令目录的唯一自查入口是 `python studio.py help --json`。
 
 status / init / cockpit / pack / evidence / index / check / doctor / checkpoint / state / config /
 sync / snapshot / export / proposal / review / beats / critic / graph / errcodes / help / ask /
-pov / calendar / ledger / audit / recall / simulate / milestone / lore。
+pov / calendar / ledger / audit / recall / simulate / milestone / lore / reconcile。
 退出码：0=ok / 1=阻断（含 check errors、sync 失败）/ 2=用法错 /
 3=运行环境缺依赖（studio.py 在 import 期兜住并给出安装命令）。
 """
@@ -21,6 +21,7 @@ from .commands.chapter_flow import (cmd_ask, cmd_audit, cmd_beats, cmd_calendar,
                                     cmd_evidence, cmd_export, cmd_graph, cmd_index, cmd_pack,
                                     cmd_pov, cmd_review)
 from .commands.recall import cmd_recall
+from .commands.reconcile import cmd_reconcile
 from .commands.simulate import cmd_simulate
 from .commands.state_sync import (cmd_checkpoint, cmd_ledger, cmd_milestone, cmd_proposal, cmd_snapshot,
                                   cmd_state, cmd_sync)
@@ -58,6 +59,7 @@ COMMAND_HELP = {
     "critic": "老白读者催更便签：查看 Stage 4B 便签或落盘 SKELETON 预填骨架（骨架不替代子代理评审）",
     "audit": "确定性矛盾排查探针（8大机械探针：在场/充能/金额/KNO/不可逆/认知差/别名漂移/称谓对账；0 Token 候选清单）",
     "recall": "知乎残酷四问 0 Token 机械自证（主要人物知道什么/哪三条不能改/伏笔未兑现/下章红线）",
+    "reconcile": "卷末对账大修（Stage 4D）：全书不变量复扫 + 本卷8探针批量重跑 + 高危字段变更史 + 投影diff候选（未登记专名/零出现实体），产出 LLM 对账工作单",
     "simulate": "剧情推演沙盒与走向假说（impact 因果链测算 ｜ branch 多分支走向参谋件）",
     "graph": "实体拓扑沙盘与叙事中介寻路（NetworkX 强力赋能：path/neighbors/isolated/centrality）",
     "errcodes": "错误码注册表速查：全部体检码的 level/解释/修复建议（--json 供 Agent）",
@@ -84,7 +86,7 @@ STAGE_MAP = {
     "Stage 4 (多轨质检)": {
         "role": "Reader & Critic & Auditor",
         "description": "事实审计提案生成（轨A）、老白读者催更评测（轨B）与一致性仲裁（轨C）",
-        "commands": ["evidence", "audit", "critic", "proposal"],
+        "commands": ["evidence", "audit", "critic", "proposal", "reconcile"],
     },
     "Stage 5 (同步与封存)": {
         "role": "Director",
@@ -270,6 +272,13 @@ def _build_subparsers(sub: argparse._SubParsersAction) -> None:
     q.add_argument("chapter", nargs="?", default="", help="章节标识（如 ch_005，缺省默认最新章）")
     q.add_argument("--write", action="store_true", help="生成并落盘 log/audit/ch_XXX.md 仲裁初稿")
     q.set_defaults(func=cmd_audit)
+
+    q = sub.add_parser("reconcile", help="卷末对账大修：机械复扫+探针重跑+投影diff候选清单 → 工作单（Stage 4D）")
+    _add_common_opts(q)
+    q.add_argument("vol", help="卷名（如 vol_01）")
+    q.add_argument("--write", action="store_true",
+                   help="写入 log/review/reconcile_vol_XX.md（已存在则拒绝；默认只打印）")
+    q.set_defaults(func=cmd_reconcile)
 
     q = sub.add_parser("recall", help="知乎残酷四问 0 Token 机械自证（主要人物知道什么/哪三条不能改/伏笔未兑现/下章红线）")
     _add_common_opts(q)

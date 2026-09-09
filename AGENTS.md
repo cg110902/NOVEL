@@ -28,7 +28,7 @@ Novel Studio 是专为网络小说多智能体协同深度定制的创作流水�
 以下能力全部封装在确定性引擎（`engine/`，黑盒）内，各角色只经 CLI 消费、禁知实现源码：
 
 - **强类型状态机**：Pydantic V2 八表真值（current / entities / lines / timeline / ledger / synopsis / locked / cognition）；提案（proposal）为**章节事实增量**的唯一写入口，过 schema 校验、引文柔性接地、幂等登记、复式记账重算四道闸（设定层例外：Stage 0 建书播种与跨卷改版由 architect/evolver 直接写 `state/*.json`；每次 sync 会对八表盖章 SHA-256，绕过提案的离线手改由 `check` 的 `state_offline_edit` 档指名报出）；
-- **命令面（30 个命令名 / 29 个处理函数）**：`python studio.py help --json` 是命令目录、阶段配方与退出码契约的唯一自查入口——含 lore 底层词典与实体知识库速查对账、cockpit 态势驾驶舱、check 事实体检、audit 确定性机械探针、recall 残酷四问自证、simulate 剧情推演沙盒、milestone 主线里程碑管理、sync 状态封存、ledger recompute 账本修复、snapshot 回滚等；
+- **命令面（31 个命令名 / 30 个处理函数）**：`python studio.py help --json` 是命令目录、阶段配方与退出码契约的唯一自查入口——含 lore 底层词典与实体知识库速查对账、cockpit 态势驾驶舱、check 事实体检、audit 确定性机械探针、recall 残酷四问自证、simulate 剧情推演沙盒、milestone 主线里程碑管理、sync 状态封存、ledger recompute 账本修复、snapshot 回滚等；
 - **强援库**：jieba（专名与词频）、networkx（实体拓扑寻路）、rapidfuzz（引文模糊接地）、rich（终端渲染）、sqlite3（FTS5 检索加速）。
 
 ---

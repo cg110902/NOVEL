@@ -113,7 +113,7 @@ Evolution    Evolver     人类变更诉求的波及面测算与手术刀改版
 | 工作区/工序总览 | `python studio.py status` · `cockpit [ch]` |
 | 单章上下文装配 | `python studio.py pack ch_XXX [--lean|--full] [--open 路径 --as 角色]` |
 | 只读取证 | `python studio.py ask <关键词>` · `evidence <kind>` · `pov` · `calendar` |
-| 细纲与稿件流转 | `beats new ch_XXX --write` · `critic` · `audit ch_XXX --write` |
+| 细纲与稿件流转 | `beats new ch_XXX --write` · `critic` · `audit ch_XXX --write` · `reconcile vol_XX`（卷末对账） |
 | 提案 | `proposal check ch_XXX` · `proposal auto ch_XXX --write` · `sync ch_XXX [--dry-run]` |
 | 体检与自愈 | `check`（`doctor` 为其别名；`--trend` 分数曲线 / `--bisect` 快照二分） · `errcodes <码>` |
 | 图谱与索引 | `graph <action>` · `index [--rebuild]` · `recall` · `simulate` |
