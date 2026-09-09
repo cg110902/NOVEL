@@ -1470,3 +1470,63 @@ class TestProposalAtomicity(unittest.TestCase):
             self.assertTrue(r.get("dry_run"))
             self.assertEqual(state.load_state(tb.book, "cognition"), before,
                              "dry_run 不得写盘")
+
+
+class TestMilestoneMergeIdentity(unittest.TestCase):
+    """里程碑归并必须与实体同口径：ID 未命中时按 title 回退，不得静默新建重复条目。
+
+    原写法 `m_idx.get(mid) if mid else m_title_idx.get(title)` 是二选一：提案带了一个
+    尚不存在的 ID + 一个已登记的 title 时只看 ID，于是把同一里程碑静默新建成第二条。
+    实测 MS-001「夺取断刀」pending 与 MS-009「夺取断刀」achieved 并存、全程无告警——
+    主控本想标记达成，结果里程碑凭空多一条，旧的那条还停在 pending。
+    而 _merge_entities 在同样情形下会走名字回退，两者口径本就不一致。
+    """
+
+    @staticmethod
+    def _data():
+        return {"events": [], "arcs": [], "clocks": [],
+                "milestones": [{"id": "MS-001", "title": "夺取断刀", "target_ch": 5,
+                                "status": "pending", "desc": ""}]}
+
+    @staticmethod
+    def _rep():
+        return {"updated": [], "warnings": [], "errors": []}
+
+    def _merge(self, patch, data=None):
+        d = data if data is not None else self._data()
+        rep = self._rep()
+        state._merge_timeline(d, patch, "ch_005", rep)
+        return d, rep
+
+    def test_unknown_id_with_known_title_merges_not_duplicates(self):
+        d, rep = self._merge({"milestones": [{"id": "MS-009", "title": "夺取断刀",
+                                              "status": "achieved"}]})
+        self.assertEqual(len(d["milestones"]), 1, "不得新建重复里程碑")
+        self.assertEqual(d["milestones"][0]["id"], "MS-001", "应归并到既有条目，保留原 ID")
+        self.assertEqual(d["milestones"][0]["status"], "achieved", "更新须真的生效")
+        self.assertTrue(any("归并" in w for w in rep["warnings"]),
+                        "ID 与 title 指向不同条目时必须明示，不得静默")
+
+    def test_title_only_merges(self):
+        d, _ = self._merge({"milestones": [{"title": "夺取断刀", "status": "achieved"}]})
+        self.assertEqual(len(d["milestones"]), 1)
+        self.assertEqual(d["milestones"][0]["status"], "achieved")
+
+    def test_known_id_update_does_not_duplicate(self):
+        d, _ = self._merge({"milestones": [{"id": "MS-001", "status": "achieved"}]})
+        self.assertEqual(len(d["milestones"]), 1)
+        self.assertEqual(d["milestones"][0]["status"], "achieved")
+
+    def test_new_title_without_id_gets_next_auto_id(self):
+        d, _ = self._merge({"milestones": [{"title": "揭开身世", "target_ch": 9}]})
+        self.assertEqual([m["id"] for m in d["milestones"]], ["MS-001", "MS-002"])
+
+    def test_new_title_with_explicit_id_uses_it(self):
+        d, _ = self._merge({"milestones": [{"id": "MS-007", "title": "揭开身世"}]})
+        self.assertEqual([m["id"] for m in d["milestones"]], ["MS-001", "MS-007"])
+
+    def test_two_new_milestones_in_one_proposal_get_distinct_ids(self):
+        d, _ = self._merge({"milestones": [{"title": "甲"}, {"title": "乙"}]})
+        ids = [m["id"] for m in d["milestones"]]
+        self.assertEqual(len(ids), 3)
+        self.assertEqual(len(set(ids)), 3, "自动 ID 不得互撞")

@@ -1355,7 +1355,19 @@ def _merge_timeline(state: dict, patch: dict, ch: str, rep: dict) -> None:
     for m in patch.get("milestones", []) or []:
         mid = m.get("id")
         title = m.get("title", "")
-        ment = m_idx.get(str(mid)) if mid else m_title_idx.get(str(title))
+        # 与 _merge_entities 同口径：ID 未命中时按 title 回退，而不是二选一。
+        # 原写法 `m_idx.get(mid) if mid else m_title_idx.get(title)` 在「提案带了一个
+        # 尚不存在的 ID + 一个已登记的 title」时只看 ID，于是把同一里程碑静默新建成
+        # 第二条——实测 MS-001「夺取断刀」pending 与 MS-009「夺取断刀」achieved 并存，
+        # 全程无告警：主控本想标记达成，结果里程碑凭空多了一条还停在 pending。
+        ment = m_idx.get(str(mid)) if mid else None
+        if ment is None and title:
+            ment = m_title_idx.get(str(title))
+            if ment is not None and mid and str(mid) != str(ment.get("id", "")):
+                rep["warnings"].append(
+                    f"🚩 里程碑「{title}」已登记为 {ment.get('id')}，提案给的 id={mid} 未登记"
+                    f"——按 title 归并到 {ment.get('id')}（不新建重复里程碑；"
+                    f"若确为另一条里程碑请改用不同 title）")
         if ment is None:
             max_ms_id += 1
             if not mid:
@@ -1377,6 +1389,8 @@ def _merge_timeline(state: dict, patch: dict, ch: str, rep: dict) -> None:
             for f in ("title", "target_ch", "status", "desc", "achieved_ch"):
                 if f in m:
                     ment[f] = m[f]
+            # title 被改过时同步 title 索引，防同提案后续条目按旧 title 找不到
+            m_title_idx[str(ment.get("title", ""))] = ment
             rep["updated"].append(f"🚩 主线里程碑「{ment['title']}」已更新（状态: {ment.get('status')}）")
 
 
