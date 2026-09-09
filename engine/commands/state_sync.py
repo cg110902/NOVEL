@@ -1064,6 +1064,91 @@ def cmd_state(args) -> int:
                 print(f" {k:<18}: {v}")
         return 0
 
+    # ---- 溯源查询族：at / diff / blame（changelog 重放，零 Token） ----
+    if action == "at":
+        n = common.chapter_token_to_num(getattr(args, "chapter", ""))
+        if not n:
+            return _fail(f"无法解析章节编号: {getattr(args, 'chapter', '')!r}", code=2)
+        folded, err = changelog.state_at(book, n)
+        if err:
+            return _fail(err)
+        want_table = getattr(args, "table", None)
+        if want_table:
+            if want_table not in state.STATE_KEYS:
+                return _fail(f"未知状态分区: {want_table}（合法: {' / '.join(state.STATE_KEYS)}）", code=2)
+            payload = {"chapter": f"ch_{n:03d}", "table": want_table,
+                       "state": folded.get(want_table)}
+        else:
+            payload = {"chapter": f"ch_{n:03d}", "tables": folded}
+        if js:
+            print(json.dumps(payload, ensure_ascii=False, indent=2))
+        else:
+            print(f"🕰️  ch_{n:03d} 封存后的世界切面（changelog 重放）")
+            if want_table:
+                print(json.dumps(folded.get(want_table), ensure_ascii=False, indent=2))
+            else:
+                cur = folded.get("current", {})
+                for k, v in cur.items():
+                    print(f" current.{k:<16}: {v}")
+                for key in state.STATE_KEYS:
+                    if key == "current":
+                        continue
+                    node = folded.get(key) or {}
+                    size = sum(len(v) for v in node.values()) if isinstance(node, dict) else 0
+                    print(f" {key:<18}: {len(node)} 键 / {size} 项")
+        return 0
+
+    if action == "diff":
+        na = common.chapter_token_to_num(getattr(args, "chapter_a", ""))
+        nb = common.chapter_token_to_num(getattr(args, "chapter_b", ""))
+        if not na or not nb:
+            return _fail("章节编号无法解析（示例: 3 或 ch_003）", code=2)
+        result = changelog.diff_points(book, na, nb)
+        if "error" in result:
+            return _fail(result["error"])
+        if js:
+            print(json.dumps({"ch_a": f"ch_{na:03d}", "ch_b": f"ch_{nb:03d}",
+                              "diff": result["diff"]}, ensure_ascii=False, indent=2))
+        else:
+            print(f"🔀 ch_{na:03d} → ch_{nb:03d} 的世界差异")
+            ops_all = result["diff"]
+            if not ops_all:
+                print(" （无差异）")
+            for table, ops in ops_all.items():
+                print(f" [{table}] {len(ops)} 处变更")
+                for o in ops[:8]:
+                    print(f"   {o['op']:>6} {o['path']}"
+                          f"  {str(o.get('before'))[:32]!r} → {str(o.get('after'))[:32]!r}")
+                if len(ops) > 8:
+                    print(f"   …另有 {len(ops) - 8} 处")
+        return 0
+
+    if action == "blame":
+        if not changelog.active(book):
+            return _fail("事件流未激活（本书在 changelog 之前创建，跑任意 sync 后开始积累）")
+        target = getattr(args, "target", "")
+        if not target:
+            return _fail("请指定溯源目标（例如: entities.entries[p_003] 或 ledger.transactions）",
+                         code=2)
+        parts = target.split(".", 1)
+        table, path = parts[0], (parts[1] if len(parts) > 1 else "")
+        if table not in state.STATE_KEYS:
+            return _fail(f"未知状态分区: {table}（合法: {' / '.join(state.STATE_KEYS)}）", code=2)
+        events = changelog.blame(book, table, path)
+        if js:
+            print(json.dumps({"target": target, "count": len(events), "events": events},
+                             ensure_ascii=False, indent=2))
+            return 0
+        print(f"🔎 {target} 的变更史（新→旧，共 {len(events)} 条）")
+        for ev in events[:30]:
+            when = f"ch_{ev.get('ch')}" if ev.get("ch") else ev.get("ts", "")
+            print(f"  #{ev.get('seq'):>4} [{ev.get('source')}] {when} {ev.get('op')}: "
+                  f"{ev.get('path')}  {str(ev.get('before'))[:36]!r} → {str(ev.get('after'))[:36]!r}"
+                  + (f"  (op_id={ev.get('op_id')})" if ev.get("op_id") else ""))
+        if len(events) > 30:
+            print(f"  …另有 {len(events) - 30} 条（--json 看全量）")
+        return 0
+
     target = getattr(args, "target", "")
     if not target:
         return _fail("请指定要查询或修改的字段路径（例如: current.injury 或 entities.林舟.realm）", code=2)

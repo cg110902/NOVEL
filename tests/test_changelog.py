@@ -348,3 +348,115 @@ class TestBisectSnapshots(unittest.TestCase):
             out = tb.run("check", "--bisect")
             self.assertEqual(out.returncode, 0)
             self.assertIn("快照不变量二分", out.stdout)
+
+
+class TestStateAtAndBlame(unittest.TestCase):
+    """B2 state at / diff + B3 blame —— R3（快照金标准交叉验证）。"""
+
+    def _seal_two_chapters(self, tb):
+        tb.seed_chapter("ch_001", "林牧走进城隍庙，张彪递上一炷香。" * 60)
+        tb.write("log/audit/ch_001.md", _AUDIT_OK)
+        tb.write("state/inbox/ch_001.json", json.dumps({
+            "schema": "novel-studio.state-mutation/v2", "chapter": "ch_001",
+            "operation_id": "ch_001.reader.a",
+            "current": {"mood": "警惕"},
+            "entities": [{"action": "upsert", "id": "p_002", "name": "张彪",
+                          "type": "person", "summary": "庙祝"}],
+            "lines": [{"kind": "foreshadow", "action": "plant", "id": "GUN-001",
+                       "name": "玄铁令", "target_ch": 5}]}, ensure_ascii=False))
+        self.assertTrue(tb.run_json("sync", "ch_001").get("snapshot", {}).get("ok"))
+        # 封存之间做一次手术刀（属于 ch_001 与 ch_002 之间的「进行中」世界）
+        tb.run_json("state", "set", "current.mood", "过渡态")
+        tb.seed_chapter("ch_002", "林牧夜探后院，挖出玄铁令。" * 60)
+        tb.write("log/audit/ch_002.md", _AUDIT_OK)
+        tb.write("state/inbox/ch_002.json", json.dumps({
+            "schema": "novel-studio.state-mutation/v2", "chapter": "ch_002",
+            "operation_id": "ch_002.reader.b",
+            "current": {"mood": "恍然"},
+            "lines": [{"kind": "foreshadow", "action": "plant", "id": "GUN-002",
+                       "name": "灯下黑", "target_ch": 9}]}, ensure_ascii=False))
+        self.assertTrue(tb.run_json("sync", "ch_002").get("snapshot", {}).get("ok"))
+
+    def test_state_at_matches_seal_snapshot_golden(self):
+        with TempBook() as tb:
+            self._seal_two_chapters(tb)
+            at1 = tb.run_json("state", "at", "ch_001")
+            tables = at1.get("tables", {})
+            # 切面语义：ch_001 世界 = P1 已生效、手术刀与 P2 未发生
+            self.assertEqual(tables["current"]["mood"], "警惕")
+            ids = {g["id"] for g in tables["lines"]["foreshadows"]}
+            self.assertEqual(ids, {"GUN-001"})
+            # 快照金标准：fold(ch_001 seal) 与 ch_001_done 快照逐表等值
+            snap_dir = next(d for d in (tb.path("state/snapshots")).iterdir()
+                            if "ch_001_done" in d.name)
+            for key in state.STATE_KEYS:
+                disk = json.loads((snap_dir / f"{key}.json").read_text(encoding="utf-8"))
+                self.assertEqual(common.canonical_json_hash(disk),
+                                 common.canonical_json_hash(tables.get(key)),
+                                 f"{key} 切面与封存快照不一致")
+            # ch_002 切面 == 当前磁盘
+            at2 = tb.run_json("state", "at", "ch_002")
+            for key in state.STATE_KEYS:
+                live = state.load_state(tb.book, key)
+                self.assertEqual(common.canonical_json_hash(live),
+                                 common.canonical_json_hash(at2["tables"].get(key)),
+                                 f"{key} 最新切面与当前状态不一致")
+
+    def test_state_at_beyond_latest_folds_to_latest(self):
+        with TempBook() as tb:
+            self._seal_two_chapters(tb)
+            out = tb.run_json("state", "at", "ch_999")
+            self.assertEqual(out["tables"]["current"]["mood"], "恍然")
+
+    def test_state_at_table_filter(self):
+        with TempBook() as tb:
+            self._seal_two_chapters(tb)
+            out = tb.run_json("state", "at", "ch_001", "--table", "current")
+            self.assertEqual(out["table"], "current")
+            self.assertEqual(out["state"]["mood"], "警惕")
+
+    def test_diff_points(self):
+        with TempBook() as tb:
+            self._seal_two_chapters(tb)
+            out = tb.run_json("state", "diff", "ch_001", "ch_002")
+            diff = out.get("diff", {})
+            self.assertIn("current", diff)
+            paths = {o["path"] for o in diff["current"]}
+            self.assertIn("mood", paths)
+            self.assertIn("lines", diff)
+            same = tb.run_json("state", "diff", "ch_001", "ch_001")
+            self.assertEqual(same.get("diff"), {})
+
+    def test_blame_reverse_chron_and_scoping(self):
+        with TempBook() as tb:
+            self._seal_two_chapters(tb)
+            out = tb.run_json("state", "blame", "current.mood")
+            events = out.get("events", [])
+            self.assertGreaterEqual(len(events), 3, events)
+            seqs = [e["seq"] for e in events]
+            self.assertEqual(seqs, sorted(seqs, reverse=True), "必须新→旧")
+            sources = {e["source"] for e in events}
+            self.assertIn("proposal", sources)
+            self.assertIn("state_set", sources)
+            # 全表 blame 与路径段边界
+            full = tb.run_json("state", "blame", "lines")
+            self.assertGreaterEqual(full["count"], 2)
+            narrow = tb.run_json("state", "blame", "lines.foreshadows[GUN-001]")
+            self.assertLessEqual(narrow["count"], full["count"])
+            for e in narrow["events"]:
+                self.assertTrue(e["path"] == "foreshadows[GUN-001]"
+                                or e["path"].startswith("foreshadows[GUN-001]."))
+
+    def test_blame_unknown_table_rejected(self):
+        with TempBook() as tb:
+            out = tb.run_json("state", "blame", "not_a_table")
+            self.assertFalse(out.get("ok", True))
+
+    def test_blame_inactive_book(self):
+        # 老书（无 changelog）：明确人话提示而非裸错
+        with TempBook() as tb:
+            for name in changelog.CHANGELOG_FILES:
+                (tb.book / "state" / name).unlink()
+            out = tb.run_json("state", "blame", "current")
+            self.assertFalse(out.get("ok", True))
+            self.assertIn("事件流", out.get("error", ""))

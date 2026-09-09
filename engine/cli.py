@@ -46,7 +46,7 @@ COMMAND_HELP = {
     "doctor": "check 的同义别名（同一处理函数 cmd_check，输出逐字节相同）；习惯叫 doctor 的人用它",
     "checkpoint": "宏观航向校准点（每5章复盘分卷四分位里程碑与主线偏航）",
     "milestone": "主线里程碑管理：list ｜ add（Stage 0 播种主线里程碑与预期达成章节）",
-    "state": "状态速查与手术刀纠偏：state show ｜ get <表.字段> ｜ set <表.字段> <值>（如 state get current.time；防真值幻觉）",
+    "state": "状态速查与手术刀纠偏：show ｜ get/set <表.字段> ｜ at <章>（时点切面）｜ diff <章A> <章B> ｜ blame <表.路径>（字段级溯源；防真值幻觉）",
     "config": "书级参数手术刀：list|guide|suggest|get|set[--merge]|unset（主控供参通道，project.json；含 words_target/lines_cap 等项目级键）",
     "sync": "提案合并 → 状态体检 → 快照（Stage 5 闭环，可 --dry-run）",
     "ledger": "账本手术刀：recompute（余额与 balance_after 按流水全量重算修复）",
@@ -354,6 +354,23 @@ def _build_subparsers(sub: argparse._SubParsersAction) -> None:
     r = st_sub.add_parser("set", help="直接设置/纠偏指定字段（例如: current.injury \"轻伤已愈\"）")
     r.add_argument("target", help="字段路径")
     r.add_argument("value", help="新值（支持普通文本或 JSON 结构）")
+    r.add_argument("-w", "--workspace", default=argparse.SUPPRESS)
+    r.add_argument("--json", action="store_true", default=argparse.SUPPRESS)
+    r.set_defaults(func=cmd_state)
+    r = st_sub.add_parser("at", help="时点切面：第 N 章封存后的八表世界（changelog 重放）")
+    r.add_argument("chapter", help="章节（如 3 或 ch_003；超出最新封存则折叠到最新封存）")
+    r.add_argument("--table", default=None, help="只看某张表（如 current / entities）")
+    r.add_argument("-w", "--workspace", default=argparse.SUPPRESS)
+    r.add_argument("--json", action="store_true", default=argparse.SUPPRESS)
+    r.set_defaults(func=cmd_state)
+    r = st_sub.add_parser("diff", help="两切面对照：ch_A 与 ch_B 封存后的世界差异")
+    r.add_argument("chapter_a", help="章节 A（如 3 或 ch_003）")
+    r.add_argument("chapter_b", help="章节 B（如 7 或 ch_007）")
+    r.add_argument("-w", "--workspace", default=argparse.SUPPRESS)
+    r.add_argument("--json", action="store_true", default=argparse.SUPPRESS)
+    r.set_defaults(func=cmd_state)
+    r = st_sub.add_parser("blame", help="字段级溯源：某表某路径的全部变更史（新→旧）")
+    r.add_argument("target", help="表[.路径]，如 current ｜ entities.entries[p_003] ｜ ledger.transactions")
     r.add_argument("-w", "--workspace", default=argparse.SUPPRESS)
     r.add_argument("--json", action="store_true", default=argparse.SUPPRESS)
     r.set_defaults(func=cmd_state)

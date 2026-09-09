@@ -175,10 +175,18 @@ def ensure_changelog(book: Path) -> bool:
             base[k] = data
             head[k] = common.canonical_json_hash(data)
         ts = _now()
+        # 激活时的最新定稿章号：新书为 0（基线=默认表，早于一切章节）；
+        # 老书为当前连载进度（基线晚于更早章节，`state at` 据此拒绝越界重放）
+        try:
+            from . import evidence as _ev
+            at_final_ch = max((n for _, n, _ in _ev.final_chapters(book)), default=0)
+        except Exception:
+            at_final_ch = 0
         common.dump_json(base_path(book), base)
         meta = {"format": 1, "seq": 1, "head": head, "created_at": ts}
         changelog_path(book).write_text(
             _line({"seq": 1, "ts": ts, "kind": "genesis", "ch": None,
+                   "at_final_ch": at_final_ch,
                    "note": "事件流起点：基线为此刻磁盘八表，此前历史不可重放"}) + "\n",
             encoding="utf-8")
         _write_meta(book, meta)
@@ -521,3 +529,99 @@ def verify(book: Path) -> tuple[bool, str]:
             return False, (f"{k}.json 与事件流折叠结果不一致"
                            "（存在未被补录的外部改动或事件丢失，跑任意 state 读取可自愈补录）")
     return True, "ok"
+
+
+# ---------------------------------------------------------------------------
+# 溯源查询（B2 state at / B3 blame / 两切面 diff）
+# ---------------------------------------------------------------------------
+
+def seal_seq_for(book: Path, ch_num: int) -> int | None:
+    """≤ ch_num 的最后一次 chapter_sealed 的 seq（无则 None）。"""
+    best: int | None = None
+    for ev in load_events(book):
+        if ev.get("kind") != "chapter_sealed":
+            continue
+        n = common.chapter_token_to_num(ev.get("ch"))
+        if n and n <= ch_num:
+            seq = int(ev.get("seq") or 0)
+            if best is None or seq > best:
+                best = seq
+    return best
+
+
+def genesis_at_final_ch(book: Path) -> int | None:
+    """genesis 事件记录的激活时最新定稿章号（缺失=None，按保守处理）。"""
+    for ev in load_events(book):
+        if ev.get("kind") == "genesis":
+            v = ev.get("at_final_ch")
+            return v if isinstance(v, int) and not isinstance(v, bool) else None
+    return None
+
+
+def fold_to_seq(book: Path, seq: int) -> dict:
+    """折叠到指定 seq（含）为止的状态。"""
+    base = common.load_json(base_path(book), default={}) or {}
+    return fold(base, [e for e in load_events(book)
+                       if int(e.get("seq") or 0) <= seq])
+
+
+def state_at(book: Path, ch_num: int) -> tuple[dict | None, str | None]:
+    """第 ch_num 章封存后的世界切面。返回 (状态, 错误消息)——二者互斥。
+
+    - ch_num 超出最新封存 → 折叠到最新封存（世界「截至最后一次封存」）；
+    - ch_num 早于首次封存且晚于 genesis 基线（老书）→ 拒绝（历史不可重放）；
+    - ch_num 早于 genesis 基线（新书默认表）→ 返回基线。
+    """
+    if not active(book):
+        return None, "事件流未激活（本书在 changelog 之前创建，跑任意 sync 后开始积累）"
+    seq = seal_seq_for(book, ch_num)
+    if seq is not None:
+        folded = fold_to_seq(book, seq)
+        folded.pop(STALE_KEY, None)
+        return folded, None
+    # 无 ≤ ch_num 的封存点：判基线是否早于请求章
+    at_final = genesis_at_final_ch(book)
+    if at_final is not None and at_final > ch_num:
+        return None, (f"ch_{ch_num:03d} 早于事件流起点（changelog 激活时已连载至 "
+                      f"ch_{at_final:03d}，此前历史不可重放）")
+    folded = fold_to_seq(book, 0)
+    folded.pop(STALE_KEY, None)
+    return folded, None
+
+
+def blame(book: Path, table: str, path: str = "") -> list[dict]:
+    """某表某路径的全部变更事件，新→旧排序。
+
+    匹配规则：event.table == table 且（path 为空 = 全表，或 event.path 按路径段
+    前缀命中：`entries[p_003]` 命中 `entries[p_003].holder`，但不命中
+    `entries[p_0031]`）。
+    """
+    out = []
+    prefix = f"{table}.{path}" if path else table
+    for ev in load_events(book):
+        if ev.get("kind") or ev.get("table") != table:
+            continue
+        ev_path = str(ev.get("path") or "")
+        if path:
+            hit = ev_path == path or ev_path.startswith(path + ".")
+        else:
+            hit = True
+        if hit:
+            out.append(ev)
+    out.sort(key=lambda e: -int(e.get("seq") or 0))
+    return out
+
+
+def diff_points(book: Path, ch_a: int, ch_b: int) -> dict:
+    """两个时点切面之间的全部差异（按表分组的 diff ops）。"""
+    fa, err_a = state_at(book, ch_a)
+    fb, err_b = state_at(book, ch_b)
+    if err_a or err_b:
+        return {"error": err_a or err_b}
+    from . import state as state_mod
+    out: dict[str, list[dict]] = {}
+    for k in state_mod.STATE_KEYS:
+        ops = diff_states(fa.get(k), fb.get(k))
+        if ops:
+            out[k] = ops
+    return {"diff": out}
