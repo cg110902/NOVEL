@@ -148,6 +148,9 @@ description: Universal factual auditor and state proposal generator for Novel St
    - 两表都**禁止**用已存在的 ID 覆写他人/旧条目：命中既有 ID 且 fact/character/content 变了会被
      拒绝（`locked_entry_id_reuse` 等）；改写历史走 `action:"retire"` 留痕后另立新 ID。
    - `locked[].kind` 仅限 `['death', 'destruction', 'disbandment', 'irreversible_action', 'rule', 'promise', 'pact']`；
+   - `locked[].fact` 里**必须写出相关实体名/别名**（写「林牧之子死于剑下」而非「那人死于剑下」）——
+     fact 不含任何已登记实体名时，读者记忆层无法追踪这条事实（`locked_fact_untraceable` 提示），
+     「关键事实久未重现」的守护会静默失效；	
 6. **`lines[].kind` 与 `action` 对应**：
    - `foreshadow`（伏笔）：action 可选 `plant` / `remind` / `resolve`；
    - `knowledge`（秘密）：action 可选 `plant` / `update` / `resolve`；

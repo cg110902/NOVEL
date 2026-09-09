@@ -85,7 +85,8 @@ description: Universal director, chief playwright, and pipeline orchestrator for
    - 角色视角与知情边界：`python studio.py pov "<角色名>" -w "workspace/<书名>"`
    - 实体属性与位阶对校：`python studio.py lore entity "<实体名>"` / `lore compare <A> <B>`
    - 运行与叙事体检：`python studio.py check -w "workspace/<书名>" --json` / `cockpit`
-   - 未来排产日历：`python studio.py calendar 5 -w "workspace/<书名>"`
+   - 未来排产日历：`python studio.py calendar 5 -w "workspace/<书名>"`；
+   - 时点切面与字段溯源：`python studio.py state at <章号>`（该章封存时的完整世界切面，回忆杀/倒叙直接取用）／ `state diff <章A> <章B>`（两时点差异）／ `state blame <表.路径>`（任一字段是谁在哪章哪次提案改的）。
    - 提炼核心事实，以**生动、通俗的金牌编剧口吻大白话解答**。
 2. **Tier 2：重量级跨章深度研判（派发临时沙盒子代理）**：
    - 涉及通读数万字历史正文的深度分析（如主角性格演化、多角色人设重合度），主控**绝不亲自翻阅多章全文**，现场派发临时调研子代理完成重读，回传 300~500 字诊断简报后即刻销毁。
@@ -150,7 +151,10 @@ graph LR
 5. **Stage 5 状态同步与交付**：
    - 执行 `python studio.py sync ch_XXX -w "workspace/<书名>"` 完成原子合并、重算与快照归档；
    - 向人类作者交付定稿章节名称、看点概括并主动询问后续规划。
-
+6. **卷末节奏（每逢卷界章 ch_050 / ch_100 / … 封存后追加执行）**：
+   - `python studio.py state rollup vol_XX -w "workspace/<书名>"`：生成卷末前情态势——下一卷写作包（pack）的「前情卷末态势」注入源，不跑则下卷写作缺前情锚点；
+   - 派发 Librarian 执行卷末对账大修（见其 SKILL 卷末工序：`reconcile vol_XX --write` 工作单 + 投影差异裁决），差账修补经下一章在途提案随 sync 合并。
+   
 ---
 
 ## 🩺 六、 双核全息健康体检矩阵 (Health Matrix)
@@ -161,6 +165,15 @@ graph LR
 |---|---|---|---|
 | **Core 1: 系统工程运行时健康** | 运行依赖、文件编码、单章工件链完整度（beats ➔ raw ➔ final）、正文截断、Schema 规范 | `final_without_beats`<br/>`unfilled_slot`<br/>`state_inconsistent`<br/>`manuscript_truncation` | 阻断封存，立即指示对应角色补齐或修复。 |
 | **Core 2: 商业小说叙事健康** | 张力疲劳度（连续高压/平淡）、主角出场聚焦度（词频占比）、去冷脸监测、伏笔饥饿度、战力反通胀 | `tension_burnout`<br/>`protagonist_pov_drift`<br/>`line_overdue`<br/>`plotline_starvation` | 主控在 Stage 1 细纲中主动调控：穿插缓冲章、强化主角高光、安排伏笔回响。 |
+
+
+---
+
+**长程体检纪律（50 万字防漂移）**：
+
+- 单次 `check` 是快照，**分数曲线才是漂移检测**——周期性跑 `python studio.py check --trend`，盯 warnings 是否逐卷爬升（长篇的敌人是缓慢变烂，不是突然变烂）；
+- 体检忽然变红且近期有手术刀/回滚操作时，跑 `python studio.py check --bisect` 二分定位首个破坏不变量的封存快照（取证工具：只覆盖 state 级不变量、退出码恒 0、不阻断）；
+- 新命令与参数细节的权威目录一律 `python studio.py help --json` 自查，本手册不复制参数（防两处漂移）。
 
 ---
 

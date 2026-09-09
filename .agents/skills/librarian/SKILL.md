@@ -1,6 +1,6 @@
 ---
 name: novel-librarian
-description: Universal long-range consistency sweep librarian and retroactive ledger reconciler for Novel Studio (Stage 4D, triggered every 10 chapters). Conducts 10-chapter deep sweeps, recharges items, registers missing secondary entities, and merges patches into state/inbox/ch_XXX.json.
+description: Universal long-range consistency sweep librarian and retroactive ledger reconciler for Novel Studio (Stage 4D, triggered every 10 chapters, plus volume-end reconcile sweeps). Conducts 10-chapter deep sweeps, recharges items, registers missing secondary entities, runs the volume-end reconcile worksheet (reconcile vol_XX --write) with projection-diff adjudication, and merges patches into state/inbox/ch_XXX.json.
 ---
 
 # SKILL — novel-librarian（十章图书管理员专属手册）
@@ -25,7 +25,7 @@ description: Universal long-range consistency sweep librarian and retroactive le
 图书管理员是低频长程对账官：
 
 - 🛠️ **法定工具能力**：
-  - 💻 **命令行执行 (Command Execution)**：可运行 `python studio.py evidence mentions` 或 `python studio.py ask` 辅助快速检索；
+  - 💻 **命令行执行 (Command Execution)**：可运行 `python studio.py evidence mentions` 或 `python studio.py ask` 辅助快速检索；卷末对账时运行 `python studio.py reconcile vol_XX --write`（参数细节自查 `help --json`）；
   - 📖 **文件读取 (File Read)**：读取近 10 章定稿正文及状态账本；
   - ✍️ **文件写入 (File Write)**：合并写入在途提案 `state/inbox/ch_XXX.json`，写入巡查报告 `log/review/sweep_ch_XXX.md`；
   - ❌ **严禁越权操作**：严禁编写临时提取脚本，严禁修改任何 `final/*.md` 正文一字一句！
@@ -55,6 +55,15 @@ description: Universal long-range consistency sweep librarian and retroactive le
 4. **沉睡伏笔温控提醒 (Foreshadow Reminders)**：
    - 某伏笔埋设已超过 15 章且近 10 章毫无动静；
    - 在巡查报告中列入温控提示，建议主控在后续大纲中安排线索回响。
+   
+---
+
+**卷末对账大修（每卷末触发一次，与十章巡查节奏独立）**：
+
+1. 运行 `python studio.py reconcile vol_XX --write -w "workspace/<书名>"` 产出对账工作单 `log/review/reconcile_vol_XX.md`（引擎纯机械复扫：全书不变量 / 本卷 8 探针重跑 / 高危字段变更史 / 投影 diff 候选清单，0 Token）；
+2. **对着工作单裁决**，重点两工位：正文出现 ≥2 次但未登记的候选专名（登记 entities 或判噪声）、台账 active 但本卷正文零出现实体（retire 退场或留待下卷提及）；
+3. 修补照旧**并入当章在途提案**（单文件制契约不变），并建议主控随后跑 `ledger recompute` + `check` 确认平账；
+4. 工作单**不覆盖**（重跑先归档旧单）；对账完成后提醒主控执行 `state rollup vol_XX` 生成下卷前情态势。
 
 ---
 
