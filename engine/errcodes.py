@@ -96,6 +96,15 @@ REGISTRY: dict[str, ErrCode] = {c.code: c for c in (
     # ---- 伏笔暗线 ----
     _reg("plotline_starvation", "warning", "线索长期未推进（伏笔饥饿）",
          "该线索长期未推进，请在当章或后续章节 beats 中安排线索推进（advancement）或提及（remind）。"),
+    _reg("line_never_surfaced", "warning", "线索已登记入账，但正文中从未真正出现过",
+         "该线只存在于台账、读者从未读到。请先在正文中把它写实（哪怕一句侧写），"
+         "否则日后回收等于凭空兑现。若确不打算写，请用 resolve/retire 收掉该条。"),
+    _reg("line_recall_cold", "warning", "计划回收的线索在正文中久未重现，读者可能已遗忘",
+         "建议本章先 remind 回响一次（提案 lines 里带 "
+         "{\"action\":\"remind\",\"id\":\"<线ID>\"}），或把回收改期到回响之后。"),
+    _reg("reader_memory_stale", "warning", "关键事实（不可逆事实/已揭示秘密）久未在正文重现",
+         "读者可能已忘记这条设定。建议在后续章节安排一次自然回响（借对话或场景侧写带出），"
+         "不要等到要用它时才重新解释。"),
     _reg("prerequisite_missing", "warning", "线索声明的依赖项在台账中不存在",
          "在 state/lines.json 中补齐前置线索定义，或修正该线索的 requires 依赖项。"),
     _reg("prerequisite_unmet", "error", "前置线索未达成就尝试收网/揭晓",

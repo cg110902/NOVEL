@@ -227,3 +227,158 @@ class TestFinalsReadOnce(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# ---------------------------------------------------------------------------
+# R2-c5：三条读者记忆闸门（advisory，全部 warning 级）
+# ---------------------------------------------------------------------------
+from engine import checks as checks_mod  # noqa: E402
+
+_BEATS_COLD = """---
+chapter: {ch}
+vol: vol_01
+form: 危机逼近
+pov: 主角视角
+words: 2000-3000
+tension_curve: 逼近 → 破局
+tension_score: 6
+stage_mode: Simmering
+style_notes: 通俗直白大白话
+---
+
+## 本章坐标与核心戏剧目标
+
+- **本章核心戏剧目标**：主角回收旧伏笔。
+
+## 交付契约
+
+- **核心看点**：旧线兑现。
+- **验收要点**：
+  1. 主角取得物证。
+
+## 线索动作
+
+- resolve GUN-001（回收玄铁令）
+"""
+
+
+def _warning_codes(report: dict) -> set[str]:
+    out = set()
+    for section in ("system_health", "narrative_health"):
+        for item in report.get(section, {}).get("warnings", []) or []:
+            out.add(item.get("code"))
+    return out
+
+
+class TestReaderMemoryGates(unittest.TestCase):
+
+    def test_gate1_line_never_surfaced(self):
+        with TempBook() as tb:
+            _finals(tb.book, [1, 2, 3], lambda n: "赤鳞蛇横在山道上。")
+            tb.set_state("lines", _lines_state(
+                foreshadows=[{"id": "GUN-001", "name": "玄铁令", "plant_ch": 1,
+                              "status": "Planted"}]))
+            codes = _warning_codes(checks_mod.run_checks(tb.book))
+            self.assertIn("line_never_surfaced", codes)
+
+    def test_gate1_not_fired_when_surfaced(self):
+        with TempBook() as tb:
+            _finals(tb.book, [1, 2, 3], lambda n: "玄铁令在袖中发烫。")
+            tb.set_state("lines", _lines_state(
+                foreshadows=[{"id": "GUN-001", "name": "玄铁令", "plant_ch": 1,
+                              "status": "Planted"}]))
+            codes = _warning_codes(checks_mod.run_checks(tb.book))
+            self.assertNotIn("line_never_surfaced", codes)
+
+    def test_gate2_line_recall_cold(self):
+        with TempBook() as tb:
+            # 玄铁令只在 ch_002 出现 → gap=28 > 25（weight=1 阈值）
+            _finals(tb.book, list(range(1, 31)), lambda n: "山道无事。" if n != 2 else "玄铁令初现。")
+            tb.set_state("lines", _lines_state(
+                foreshadows=[{"id": "GUN-001", "name": "玄铁令", "plant_ch": 1,
+                              "status": "Planted"}]))
+            tb.write("outlines/vol_01/beats/ch_030.md", _BEATS_COLD.format(ch="ch_030"))
+            report = checks_mod.run_checks(tb.book)
+            codes = _warning_codes(report)
+            self.assertIn("line_recall_cold", codes)
+            # 线在 ch_002 出现过一次 → 不是 never 档（闸门 1 只报零出现）
+            self.assertNotIn("line_never_surfaced", codes)
+
+    def test_gate2_not_fired_when_recent(self):
+        with TempBook() as tb:
+            # 最近一章仍提及 → gap=0 不冷 → 不报
+            _finals(tb.book, list(range(1, 31)), lambda n: "山道无事。" if n < 30 else "玄铁令再现。")
+            tb.set_state("lines", _lines_state(
+                foreshadows=[{"id": "GUN-001", "name": "玄铁令", "plant_ch": 1,
+                              "status": "Planted"}]))
+            tb.write("outlines/vol_01/beats/ch_030.md", _BEATS_COLD.format(ch="ch_030"))
+            codes = _warning_codes(checks_mod.run_checks(tb.book))
+            self.assertNotIn("line_recall_cold", codes)
+
+    def test_gate2_not_fired_for_resolved_line(self):
+        with TempBook() as tb:
+            _finals(tb.book, list(range(1, 31)), lambda n: "山道无事。" if n != 2 else "玄铁令初现。")
+            tb.set_state("lines", _lines_state(
+                foreshadows=[{"id": "GUN-001", "name": "玄铁令", "plant_ch": 1,
+                              "status": "Resolved"}]))
+            tb.write("outlines/vol_01/beats/ch_030.md", _BEATS_COLD.format(ch="ch_030"))
+            codes = _warning_codes(checks_mod.run_checks(tb.book))
+            self.assertNotIn("line_recall_cold", codes)
+            self.assertNotIn("line_never_surfaced", codes)
+
+    def test_gate3_reader_memory_stale_with_config_override(self):
+        with TempBook() as tb:
+            # 覆盖阈值让测试轻量化：working 3 / fuzzy 6 → gap ≥ 7 即印象区
+            proj = json.loads(tb.read("project.json"))
+            proj["reader_memory"] = {"working_window": 3, "fuzzy_window": 6,
+                                     "cold_line_base": 3, "cold_line_per_weight": 1}
+            tb.write("project.json", json.dumps(proj, ensure_ascii=False))
+            _finals(tb.book, list(range(1, 21)), lambda n: "风平浪静。" if n != 2 else "赵莽倒在血泊里。")
+            tb.set_state("entities", {"entries": [
+                {"name": "赵莽", "type": "person", "status": "active", "life_status": "deceased"}]})
+            tb.set_state("locked", {
+                "schema_version": "novel-studio.locked/v1",
+                "entries": [{"id": "LOCK-001", "fact": "赵莽死于剑下", "since_ch": "ch_002",
+                             "kind": "death", "quote": "赵莽倒在血泊里。"}]})
+            codes = _warning_codes(checks_mod.run_checks(tb.book))
+            self.assertIn("reader_memory_stale", codes)
+
+    def test_gate3_not_fired_when_recent(self):
+        with TempBook() as tb:
+            _finals(tb.book, [1, 2], lambda n: "赵莽倒在血泊里。")
+            tb.set_state("entities", {"entries": [
+                {"name": "赵莽", "type": "person", "status": "active"}]})
+            tb.set_state("locked", {
+                "schema_version": "novel-studio.locked/v1",
+                "entries": [{"id": "LOCK-001", "fact": "赵莽死于剑下", "since_ch": "ch_001",
+                             "kind": "death", "quote": "赵莽倒在血泊里。"}]})
+            codes = _warning_codes(checks_mod.run_checks(tb.book))
+            self.assertNotIn("reader_memory_stale", codes)
+
+    def test_no_finals_no_reader_memory_noise(self):
+        with TempBook() as tb:
+            tb.set_state("lines", _lines_state(
+                foreshadows=[{"id": "GUN-001", "name": "玄铁令", "plant_ch": 1,
+                              "status": "Planted"}]))
+            codes = _warning_codes(checks_mod.run_checks(tb.book))
+            self.assertNotIn("line_never_surfaced", codes)
+            self.assertNotIn("line_recall_cold", codes)
+            self.assertNotIn("reader_memory_stale", codes)
+
+    def test_param_spec_mem_map_validation(self):
+        self.assertIsNone(checks_mod.validate_param_value(
+            "reader_memory", {"working_window": 30}))
+        self.assertIsNotNone(checks_mod.validate_param_value(
+            "reader_memory", {"fuzzy_window": "八十"}))
+        self.assertIsNotNone(checks_mod.validate_param_value(
+            "reader_memory", {"unknown_key": 5}))
+        self.assertIsNotNone(checks_mod.validate_param_value(
+            "reader_memory", [25, 70]))
+
+    def test_three_codes_registered_as_warning(self):
+        from engine import errcodes
+        for code in ("line_never_surfaced", "line_recall_cold", "reader_memory_stale"):
+            self.assertIn(code, errcodes.REGISTRY)
+            self.assertEqual(errcodes.REGISTRY[code].level, "warning", code)
+            self.assertNotIn(code, checks_mod.SYSTEM_CHECK_CODES,
+                             f"{code} 应入叙事核（不入 SYSTEM_CHECK_CODES）")

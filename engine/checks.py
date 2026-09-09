@@ -27,7 +27,7 @@ import json
 import re
 from pathlib import Path
 
-from . import common, errcodes, evidence, state, vocab
+from . import common, errcodes, evidence, memory, state, vocab
 from .models.entities import LOCATION_TYPES
 
 try:
@@ -606,6 +606,13 @@ PARAM_SPEC: dict[str, dict] = {
         "choices": ["strict", "advisory", "off"],
         "desc": "Stage 4C 事实一致性审校闸门模式（strict: 必须有 log/audit 报告且 hard=0 或已裁定才能 sync；advisory: 存在硬矛盾仅出 warning；off: 关闭检查）",
         "example": "strict"},
+    "reader_memory": {"shape": "mem_map", "gap": False,
+        "desc": "读者记忆派生阈值 {working_window, fuzzy_window, cold_line_base, "
+                "cold_line_per_weight}。工作记忆窗口 / 模糊记忆边界（超过即入印象区）/ "
+                "冷线阈值基数 / 每级 weight 放宽章数。默认 25/70/25/8，按本书题材与"
+                "更新频率调整；不配走默认值，不提示。",
+        "example": {"working_window": 25, "fuzzy_window": 70,
+                    "cold_line_base": 25, "cold_line_per_weight": 8}},
 }
 WORDLIST_SPEC = {k: v["desc"] for k, v in PARAM_SPEC.items() if v.get("gap")}
 
@@ -761,6 +768,15 @@ def validate_param_value(key: str, value) -> str | None:
                        or not isinstance(v, int) or isinstance(v, bool) or v < 1
                        for k, v in value.items())):
             return f"「{key}」必须是 配额键→正整数 的对象（合法键 {sorted(allowed_keys)}，形状示例：{eg}）"
+    elif shape == "mem_map":
+        allowed_keys = {"working_window", "fuzzy_window",
+                        "cold_line_base", "cold_line_per_weight"}
+        if (not isinstance(value, dict) or not value
+                or any(not isinstance(k, str) or k not in allowed_keys
+                       or not isinstance(v, int) or isinstance(v, bool) or v < 1
+                       for k, v in value.items())):
+            return (f"「{key}」必须是 阈值键→正整数 的对象"
+                    f"（合法键 {sorted(allowed_keys)}，形状示例：{eg}）")
     elif shape == "str_choice":
         choices = spec.get("choices", [])
         if not isinstance(value, str) or value not in choices:
@@ -1375,6 +1391,38 @@ def run_checks(book: Path) -> dict:
             warnings.append(_err("plotline_starvation",
                                  f"伏笔/暗线 {gid} 预定 ch_{tch:03d} 解决，当前已连载至 ch_{latest_final:03d}（严重饥饿，请尽快安排回响或闭环）"))
 
+    # ---- 读者记忆闸门（一/三）：画像全文扫描只此一次，闸门 2 的冷线判定共用 ----
+    # 与既有线闸门家族的分工（勿「去重」误删）：
+    #   plotline_starvation / line_overdue = 台账时间轴（预定章 vs 连载进度）；
+    #   line_recall_cold                   = 读者记忆轴 × 回收意图（beats 写了 resolve 才触发）。
+    # 两者对同一条线可能双报——一个是账务信号、一个是读者信号，语义不同。
+    try:
+        _mem_rows = memory.line_memory_map(book)
+    except (ValueError, OSError):
+        _mem_rows = []
+    _cold_by_id = {r["id"]: r for r in _mem_rows if r["is_cold"]}
+    # 闸门 1：已入账但正文从未落笔——硬事实判定（台账有、正文零出现），无阈值猜测。
+    # 与 present_unmentioned 同构：那是「在场声明零提及」，这是「线索登记零落笔」。
+    for _r in memory.never_surfaced(_mem_rows):
+        warnings.append(_err(
+            "line_never_surfaced",
+            f"{_r['id']}《{_r['label']}》已登记入账（plant ch_{(_r['plant_ch'] or 0):03d}），"
+            f"但正文从未出现过——读者压根没见过这条线，日后回收等于凭空兑现"))
+    # 闸门 3：已声明重要的事实（locked + 已揭示 knowledge）久未重现，进入读者印象区。
+    # 范围严格限定这两个集合（书自己声明为重要的），不对全部认知条目生效——
+    # 否则一次性事实会刷屏。locked.fact 不含已登记专名时提词退化 → 漏报（不是误报），
+    # 见 memory 模块 docstring 的盲区清单。
+    try:
+        for _r in memory.key_fact_memory(book):
+            # tier == "impression" 已隐含 gap 非 None；never 档不报（否则空提词刷屏）
+            if _r["tier"] == "impression" and _r["gap"] is not None:
+                warnings.append(_err(
+                    "reader_memory_stale",
+                    f"[{_r['source']}] {_r['id']}「{_r['label']}」已 {_r['gap']} 章未在正文重现"
+                    f"（上次 ch_{_r['last_seen_ch']:03d}）——已进入读者印象区"))
+    except (ValueError, OSError):
+        pass
+
     # 因果依赖图校验 (Prerequisite DAG Check)
     all_lines_map: dict[str, dict] = {}
     try:
@@ -1501,6 +1549,8 @@ def run_checks(book: Path) -> dict:
         planned_skips = set(re.findall(
             r"(?:skip|hold|defer|不涉及|不推进|顺延)\s*[:：]?\s*((?:GUN|MIS|KNO)-\d{3,})",
             action_sec))
+        planned_resolves = set(re.findall(
+            r"(?:resolve|回收|收束|揭示)\s*[:：]?\s*((?:GUN|MIS|KNO)-\d{3,})", action_sec))
         orphans = sorted(set(re.findall(r"(?:GUN|MIS|KNO)-\d{3,}", action_sec)) - ledger_line_ids
                          - planned_plants - planned_skips)
         if orphans:
@@ -1513,6 +1563,15 @@ def run_checks(book: Path) -> dict:
             warnings.append(_err("line_action_missing",
                                  f"{f.name}: 到期/逾期线 {', '.join(missing_ids[:5])} 未出现在「线动作」栏"
                                  "（不还须在 beats 写明顺延理由，归主控 Stage 1 裁决）"))
+        # 读者记忆闸门（二）：beats 计划回收 × 该线已冷（gap 超过按 weight 缩放的阈值）。
+        # 只在「本章真要回收」时才报——把提醒推到动作发生的那一刻，而非全程噪声。
+        for _lid in sorted(planned_resolves & set(_cold_by_id)):
+            _r = _cold_by_id[_lid]
+            warnings.append(_err(
+                "line_recall_cold",
+                f"{f.name}: {_lid}《{_r['label']}》计划本章回收，但正文已 {_r['gap']} 章未重现"
+                f"（上次出现 ch_{_r['last_seen_ch']:03d}，冷线阈值 {_r['cold_threshold']} 章）"
+                "——读者可能已忘记埋过此线，回收时无爽感"))
 
         if locked_entries:
             active_locks = [
