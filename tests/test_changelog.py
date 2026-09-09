@@ -302,3 +302,49 @@ class TestLockedNoteRequired(unittest.TestCase):
             self.assertEqual(len(loaded["entries"]), 1)
             out = tb.run_json("check")
             self.assertNotIn("error", out)
+
+
+class TestBisectSnapshots(unittest.TestCase):
+    """B4：check --bisect 快照不变量二分定位。—— R2-c8"""
+
+    def _seal(self, tb, ch: str):
+        tb.seed_chapter(ch, "林牧走进城隍庙，张彪递上一炷香。" * 60)
+        tb.write(f"log/audit/{ch}.md", _AUDIT_OK)
+        tb.write(f"state/inbox/{ch}.json", json.dumps({
+            "schema": "novel-studio.state-mutation/v2", "chapter": ch,
+            "operation_id": f"{ch}.reader.b4",
+            "synopsis": {"text": "推进一章。"}}, ensure_ascii=False))
+        out = tb.run_json("sync", ch)
+        self.assertTrue(out.get("snapshot", {}).get("ok"), out)
+
+    def test_bisect_locates_first_break(self):
+        with TempBook() as tb:
+            self._seal(tb, "ch_001")
+            self._seal(tb, "ch_002")
+            # 全健康 → 无破坏点
+            out = tb.run_json("check", "--bisect")
+            self.assertIsNone(out.get("first_break"))
+            # 手工破坏账本算术并拍快照
+            led = tb.state("ledger")
+            led["pools"]["standard_currency"]["current"] = 999  # 与流水不一致
+            tb.set_state("ledger", led)
+            tb.run("snapshot", "create", "broken_point")
+            out = tb.run_json("check", "--bisect")
+            self.assertIn("broken_point", str(out.get("first_break")))
+            self.assertIsNotNone(out.get("previous_ok"))
+            rows = out.get("rows", [])
+            self.assertTrue(rows, "至少包含当前 state 一站")
+
+    def test_bisect_no_snapshots_still_scans_live(self):
+        with TempBook() as tb:
+            out = tb.run_json("check", "--bisect")
+            names = [r["name"] for r in out.get("rows", [])]
+            self.assertEqual(names, ["(当前 state)"])
+            self.assertIsNone(out.get("first_break"))
+
+    def test_bisect_text_mode(self):
+        with TempBook() as tb:
+            self._seal(tb, "ch_001")
+            out = tb.run("check", "--bisect")
+            self.assertEqual(out.returncode, 0)
+            self.assertIn("快照不变量二分", out.stdout)
