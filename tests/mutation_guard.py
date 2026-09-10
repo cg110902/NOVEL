@@ -140,6 +140,13 @@ MUTATIONS = [
      '  3. `bible/06_style_guidelines.md`（全书文风宪法与微动作词库）。',
      '  3. `bible/06_style_guidelines.md`（全书文风宪法与微动作词库）；\n'
      '  4. `characters/<在场角色>.md`（当章出场的核心角色卡）。'),
+    # ---- 27~28：state/inbox/README.md 契约（此前零测试覆盖，改了不会红）----
+    # 27：引文接地阈值悄悄改动 → 与 README 写的「≥85% / 60~85%」脱节
+    (27, "引文接地阈值与 README 脱节", "engine/checks.py",
+     'QUOTE_PASS_RATIO = 85.0', 'QUOTE_PASS_RATIO = 80.0'),
+    # 28：README 的 lines.kind 退回「foreshadow/…」，Agent 只能猜三个合法值
+    (28, "README 的 lines.kind 退回只写 foreshadow/…", "engine/state.py",
+     'foreshadow|misunderstanding|knowledge', 'foreshadow/…'),
 ]
 
 KILLER = {
@@ -156,6 +163,7 @@ KILLER = {
     21: "tests.test_engine", 22: "tests.test_engine",
     23: "tests.test_engine", 24: "tests.test_engine",
     25: "tests.test_role_policy", 26: "tests.test_role_policy",
+    27: "tests.test_inbox_contract", 28: "tests.test_inbox_contract",
 }
 
 
@@ -203,11 +211,21 @@ def main() -> int:
         print(f"  [{num:2d}] {mark:24s} {name}")
         print(f"        {note}")
         survived += verdict == "SURVIVED"
+    skipped = sum(1 for r in results if r[2] == "SKIP")
+    killed = len(results) - survived - skipped
+    # ⚠️ SKIP 绝不能算进「被杀死」：锚点没找到意味着这个变异**根本没跑**，
+    # 报「N/N 被杀死」会让人以为防线完好。此前正是这么写的，实测把一个 SKIP
+    # 与一个真 KILLED 混成「2/2 被杀死」。
     print(f"{'='*72}")
-    print(f"结论：{len(results) - survived}/{len(results)} 被杀死"
-          + ("——全部变异被捕获，测试无自欺" if not survived else
-             f"；{survived} 个存活变异需要补测试！"))
-    return 1 if survived else 0
+    print(f"结论：{killed} 被杀死 / {survived} 存活 / {skipped} 跳过（共 {len(results)} 个）")
+    if survived:
+        print(f"  ❌ {survived} 个变异存活——测试自欺，需要补测试！")
+    if skipped:
+        print("  ⚠️  有变异被跳过（锚点未命中）：这些变异**没有验证任何东西**，"
+              "请核对锚点文本后重跑。")
+    if not survived and not skipped:
+        print("  ✅ 全部变异被捕获，测试无自欺")
+    return 1 if (survived or skipped) else 0
 
 
 if __name__ == "__main__":
