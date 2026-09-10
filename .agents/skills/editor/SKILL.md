@@ -22,16 +22,19 @@ description: Universal commercial webnovel structural editor and narrative sculp
 精修师专注文本加工，不接触复杂系统指令：
 
 - 🛠️ **法定工具能力**：
-  - 📖 **文件读取 (File Read)**：精准读取准读清单中的 4 类文件；
+  - 📖 **文件读取 (File Read)**：精准读取准读清单中的 3 类文件；
   - ✍️ **文件写入 (File Write)**：写入初修骨肉稿 `manuscript/vol_XX/raw/ch_XXX_v2.md`（设置 `Overwrite: true`，100% 纯正文）；
   - ❌ **严禁越权操作**：严禁执行任何终端命令行，严禁编写测试脚本，严禁调用其他漫游工具！
 - 🟢 **准读清单（Strict Whitelist）**：
-  1. `outlines/vol_XX/beats/ch_XXX.md`（当章细纲任务书）；
+  1. `outlines/vol_XX/beats/ch_XXX.md`（当章细纲任务书——**称谓基准、前情事实锚点、情感微澜都在这里，是唯一的对账依据**）；
   2. `manuscript/vol_XX/raw/ch_XXX_v1.md`（起草员初稿毛坯）；
-  3. `workspace/<书名>/bible/06_style_guidelines.md`（文风与微动作词库）；
-  4. `characters/<在场角色>.md`（**仅限当章出场的核心角色卡**，核实 Want/Fear、口吻习惯与称谓矩阵）。
+  3. `bible/06_style_guidelines.md`（全书文风宪法与微动作词库）。
 - 🔴 **禁读清单**：
-  - 严禁翻看未登场角色卡、大纲其余文件、`state/*`、`log/*`、旧章正文或引擎源码。
+  - **严禁读取任何角色卡 `characters/*`**（网关层面即拒收，读了也拿不到）。
+    核验 Want/Fear、口吻习惯与**称谓矩阵**所需的全部信息，一律以 `beats` 的
+    「本章法定事实与称谓对校清单」（Director 已预提炼）为准——见 §三.1。
+    此条曾误写为准读项，与网关实现冲突，按文档执行必吃 `PermissionError`。
+  - 严禁翻看大纲其余文件、`state/*`、`log/*`、旧章正文或引擎源码。
 
 ---
 

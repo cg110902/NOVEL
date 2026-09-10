@@ -175,7 +175,6 @@ def cmd_init(args) -> int:
             "title": args.title or "",
             "genre": args.genre or "",
             "protagonist": args.protagonist or "",
-            "mode": "automatic",
             "audit_mode": "strict",
             "words_target": [2000, 3000],
             "lines_cap": {
@@ -274,7 +273,6 @@ def _book_brief(book: Path) -> dict:
         "workspace": str(book),
         "title": proj.get("title", ""),
         "genre": proj.get("genre", ""),
-        "mode": proj.get("mode", "automatic"),
         "finalized_chapters": len(final_files),
         "latest_finalized": latest,
         "total_words": words,

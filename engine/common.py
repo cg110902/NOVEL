@@ -17,6 +17,8 @@ import sys
 import tempfile
 import threading
 import time
+
+from . import vocab
 from pathlib import Path
 
 CH_NAME_RE = re.compile(r"ch[_-]?0*(\d+)(?![0-9])", re.IGNORECASE)
@@ -61,6 +63,62 @@ def _cn_chapter_to_int(s: str) -> int | None:
     if s in _CN_NUM_MAP and _CN_NUM_MAP[s] != 0:
         return _CN_NUM_MAP[s]
     return None
+
+
+# 中文数字解析的规范实现（万/亿按「节」进位，内嵌阿拉伯数字串按裸数处理）。
+#
+# 背景：本项目此前散落 3 份各自为政的中文数字解析器（audit/checks/evidence），
+# 且都把「万/亿」当普通量级单位做扁平累加，于是：
+#     十二万 → 20010（应 120000）    三十万 → 10030（应 300000）
+#     一千万 → 11000（应 10000000）  三亿   → 100000000（应 300000000）
+# checks 那份更直接把 万/亿 挡在字符集之外，导致「由三万变为五万」这类大额
+# 算术校验整段静默——而修仙/玄幻题材里 灵石 过万才是常态，闸门形同虚设。
+# 现统一收敛到本函数：audit/checks/evidence 三处一律委托过来。
+_CN_DIGITS_ALL = {**vocab.CN_DIGITS, "〇": 0}
+_CN_UNITS_SMALL = {"十": 10, "百": 100, "千": 1000}
+_CN_UNITS_SECTION = {"万": 10 ** 4, "亿": 10 ** 8}
+_ARABIC_RUN_RE = re.compile(r"\d+")
+
+
+def cn_to_int(s: object) -> int | None:
+    """中文数字 → int。含无法识别的字符（或空串）返回 None。
+
+    支持：零一二两両三四五六七八九 / 十百千 / 万·亿分级 / 内嵌阿拉伯数字串。
+    例：十三=13 二十=20 一百二十三=123 十二万=120000 一千万=10000000
+        三亿=300000000 一万零五百=10500 3万=30000 1万5千=15000
+    """
+    if s is None:
+        return None
+    text = str(s).strip()
+    if not text:
+        return None
+    if text.isdigit():
+        return int(text)
+    total = 0          # 已完成大节（万/亿）的累加
+    section = 0        # 当前节内的累加值
+    num: int | None = None   # 尚未落到节里的裸数
+    i, n = 0, len(text)
+    while i < n:
+        m = _ARABIC_RUN_RE.match(text, i)
+        if m:
+            num = int(m.group())
+            i = m.end()
+            continue
+        ch = text[i]
+        i += 1
+        if ch in _CN_DIGITS_ALL:
+            num = _CN_DIGITS_ALL[ch]
+        elif ch in _CN_UNITS_SMALL:
+            section += (num or 1) * _CN_UNITS_SMALL[ch]
+            num = None
+        elif ch in _CN_UNITS_SECTION:
+            # 万/亿 是「节」：把本节的累计值整体乘上去，而不是当普通单位加一次。
+            total += ((section + (num or 0)) or 1) * _CN_UNITS_SECTION[ch]
+            section = 0
+            num = None
+        else:
+            return None   # 出现无法识别的字符 → 不猜，交回调用方按「未识别」处理
+    return total + section + (num or 0)
 
 
 def reconfigure_utf8() -> None:

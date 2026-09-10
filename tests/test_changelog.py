@@ -118,20 +118,31 @@ class TestProposalFlow(unittest.TestCase):
             events = changelog.load_events(tb.book)
             data_events = [e for e in events if not e.get("kind")]
             self.assertTrue(data_events)
-            # sync 会同时产生 proposal 与 derived 两类数据事件（derived 封存为修复后新增），
-            # 故仅校验 proposal 子集的契约，而非全部 data_events
-            proposal_events = [e for e in data_events if e.get("source") == "proposal"]
-            self.assertTrue(proposal_events, "必须存在 proposal 来源的数据事件")
-            self.assertTrue(all(e["ch"] == "ch_001" for e in proposal_events))
-            self.assertTrue(all(e["op_id"] == "ch_001.reader.t1" for e in proposal_events))
+            # 范围：断言层（十一表）的事件必须全部来自提案通道——提案是唯一写入口。
+            # derived 是第十二张派生表，唯一合法写者是引擎（sync 封存/recompute），
+            # 其事件 source="derived" 属正确行为，不计入本断言。
+            # （此前此断言把 derived 一并纳入，因 derived 封存长期失败而"碰巧通过"：
+            #  封存失败 → 无 derived 事件 → 看起来全是 proposal 事件。修复封存后暴露。）
+            asserted_events = [e for e in data_events
+                               if e["table"] != "derived"]
+            self.assertTrue(asserted_events)
+            self.assertTrue(
+                all(e["source"] == "proposal" for e in asserted_events),
+                [e for e in asserted_events if e["source"] != "proposal"])
+            # 反向断言：derived 若被封存，其写者必须是引擎而非提案
+            derived_events = [e for e in data_events if e["table"] == "derived"]
+            for e in derived_events:
+                self.assertEqual(e["source"], "derived", "派生表只能由引擎写入")
+            self.assertTrue(all(e["ch"] == "ch_001" for e in asserted_events))
+            self.assertTrue(all(e["op_id"] == "ch_001.reader.t1" for e in asserted_events))
             # 覆盖各分区：current/persons/lines/ledger 都有事件（v6 起实体事件按 kind 表记账）
-            tables = {e["table"] for e in proposal_events}
+            tables = {e["table"] for e in data_events}
             self.assertIn("current", tables)
             self.assertIn("persons", tables)
             self.assertIn("lines", tables)
             self.assertIn("ledger", tables)
-            # 路径寻址样例：实体按 id、流水按下标（仅看 proposal）
-            paths = {e["path"] for e in proposal_events}
+            # 路径寻址样例：实体按 id、流水按下标
+            paths = {e["path"] for e in data_events}
             self.assertTrue(any("p_002" in p for p in paths), paths)
             self.assertTrue(any(p.startswith("transactions[") for p in paths), paths)
             # 封存锚点
@@ -393,10 +404,23 @@ class TestStateAtAndBlame(unittest.TestCase):
             snap_dir = next(d for d in (tb.path("state/snapshots")).iterdir()
                             if "ch_001_done" in d.name)
             for key in state.STATE_KEYS:
+                if key == "derived":
+                    # derived 是引擎计算缓存，**不入事件流**——changelog.record_save
+                    # 显式跳过它（「重算即合法变更，缓存语义」），因此折叠重建不出
+                    # 历史版本，state_at 对它的处理是「返回磁盘最新值」。
+                    # 故时点切面的逐表等值只覆盖断言层十一表，derived 不参与本断言。
+                    # 若日后改为事件溯源，此分支与 changelog.state_at 里的覆盖需一并移除。
+                    continue
                 disk = json.loads((snap_dir / f"{key}.json").read_text(encoding="utf-8"))
                 self.assertEqual(common.canonical_json_hash(disk),
                                  common.canonical_json_hash(tables.get(key)),
                                  f"{key} 切面与封存快照不一致")
+            # 反向钉住 derived 的缓存语义：时点切面返回的是磁盘**最新** derived
+            # 而非该章封存值——这是当前设计，改动它必须同步本断言与 state_at。
+            live_derived = state.load_state(tb.book, "derived")
+            self.assertEqual(tables.get("derived", {}).get("sealed_ch"),
+                             live_derived.get("sealed_ch"),
+                             "derived 时点切面应返回磁盘最新值（缓存语义，非事件溯源）")
             # ch_002 切面 == 当前磁盘
             at2 = tb.run_json("state", "at", "ch_002")
             for key in state.STATE_KEYS:

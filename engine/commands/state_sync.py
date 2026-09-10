@@ -1323,6 +1323,14 @@ def cmd_state(args) -> int:
         folded, err = changelog.state_at(book, n)
         if err:
             return _fail(err)
+        # 事件流未激活时 state_at 会回退到磁盘当前状态（兼容 changelog 之前建的老书，
+        # 避免 state at 直接报错）。但**回退不等于等价**：把"此刻的世界"说成
+        # "第 N 章封存后的世界切面"是误导，必须显式声明——本项目通篇的规矩是
+        # 「不猜、绝不静默兜底」，此处不能例外。
+        if not changelog.active(book):
+            print("⚠️  事件流未激活（本书创建于 changelog 之前）：以下为**磁盘当前状态**，"
+                  f"并非 ch_{n:03d} 的真实历史切面；跑任意一次 sync 后即可重放真实历史。",
+                  file=sys.stderr)
         want_table = getattr(args, "table", None)
         if want_table:
             if want_table not in state.STATE_KEYS:
@@ -1399,7 +1407,8 @@ def cmd_state(args) -> int:
             return 0
         print(f"🔎 {target} 的变更史（新→旧，共 {len(events)} 条）")
         for ev in events[:30]:
-            when = f"ch_{ev.get('ch')}" if ev.get("ch") else ev.get("ts", "")
+            # ev["ch"] 已是规范章号（ch_NNN），此前再套一层 f"ch_{}" 渲染成 ch_ch_001
+            when = str(ev.get("ch") or ev.get("ts", ""))
             print(f"  #{ev.get('seq'):>4} [{ev.get('source')}] {when} {ev.get('op')}: "
                   f"{ev.get('path')}  {str(ev.get('before'))[:36]!r} → {str(ev.get('after'))[:36]!r}"
                   + (f"  (op_id={ev.get('op_id')})" if ev.get("op_id") else ""))

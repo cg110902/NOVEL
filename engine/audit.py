@@ -63,40 +63,15 @@ def _deceased_speaks(content: str, name: str) -> bool:
             or f"{name}」" in content or f"{name}”" in content)
 
 
-_CN_NUM_MAP = vocab.CN_NUM_MAP
-
-
 
 def _parse_cn_number(s: str) -> int | None:
-    """简易中文数字转整数（覆盖常用小额银钱数额）。"""
-    s = s.strip()
-    if s.isdigit():
-        return int(s)
-    try:
-        if len(s) == 1 and s in _CN_NUM_MAP:
-            return _CN_NUM_MAP[s]
-        if len(s) == 2 and s.startswith("十") and s[1] in _CN_NUM_MAP:
-            return 10 + _CN_NUM_MAP[s[1]]
-        if "万" in s:
-            parts = s.split("万", 1)
-            w_part = _parse_cn_number(parts[0]) or 1
-            r_part = _parse_cn_number(parts[1]) if parts[1] else 0
-            return w_part * 10000 + (r_part or 0)
-        total = 0
-        cur = 0
-        for ch in s:
-            v = _CN_NUM_MAP.get(ch)
-            if v is None:
-                continue
-            if v in (10, 100, 1000):
-                total += (cur or 1) * v
-                cur = 0
-            else:
-                cur = v
-        total += cur
-        return total if total > 0 else None
-    except Exception:
-        return None
+    """中文数字转整数（委托 common.cn_to_int，唯一实现）。
+
+    旧实现把「亿」当普通数字位处理：三亿 → cur 被 100000000 覆盖成 100000000、
+    两亿同样得 100000000；且遇到不认识的字是 `continue` 静默跳过（如「二十个」
+    会被算成 20）。现统一走 common.cn_to_int：万/亿按节进位，未知字符返回 None。
+    """
+    return common.cn_to_int(s)
 
 
 def _find_mentions_with_lines(lines: list[str], keyword: str) -> list[tuple[int, str]]:
@@ -307,7 +282,8 @@ def probe_amount_ledger(text: str, lines: list[str], led_st: dict) -> list[dict]
     # 正则交替取先匹配者，于是「九十两银子」只捕获到 "两"、「九十块灵石」只捕获到 "块"，
     # 后面按单位名找池的分支全部落空——探针形同不存在。按长度降序即可。
     _units_pat = "|".join(sorted(vocab.CURRENCY_UNITS, key=len, reverse=True))
-    money_pat = re.compile(rf"(?:{_verbs_pat})\s*([0-9一二两三四五六七八九十百千万]+)\s*({_units_pat})")
+    # 亿 原先不在数字字符集里，「花费三亿灵石」整句匹配不上 → 探针静默。补上。
+    money_pat = re.compile(rf"(?:{_verbs_pat})\s*([0-9一二两三四五六七八九十百千万亿]+)\s*({_units_pat})")
     # 池键解析改为对齐本书真实账本：单位词命中某池的 name/unit 即认定该池。
     # 此前只认 silver/spirit_stone/copper/gold 四个硬编码英文键，而引擎内置池叫
     # standard_currency、书里的池键名由作者自定（中文/拼音都可能），于是绝大多数书
@@ -365,9 +341,84 @@ def probe_amount_ledger(text: str, lines: list[str], led_st: dict) -> list[dict]
 _SPEAKER_MODS = vocab.SPEAKER_MODS_PATTERN
 
 
+# 引号对白区间（用于把旁白从行里剥出来）
+_QUOTE_SPAN_RE = re.compile(r"[“「『\"]([^”」』\"\n]{0,200})[”」』\"]")
+_INNER_THOUGHT = vocab.INNER_THOUGHT_MARKERS
+_NEGATION = vocab.SECRET_NEGATION_MARKERS
+
+
+def _entity_roster(ents_st: list[dict] | None) -> dict[str, str]:
+    """{实体 id / 法定名 / 别名 → 法定名}：把各种写法归一到法定名。"""
+    roster: dict[str, str] = {}
+    for e in ents_st or []:
+        if not isinstance(e, dict):
+            continue
+        name = str(e.get("name", "")).strip()
+        if not name:
+            continue
+        keys = [str(e.get("id", "")).strip(), name]
+        keys += [str(a).strip() for a in (e.get("aliases") or [])]
+        for k in keys:
+            if k and k not in roster:
+                roster[k] = name
+    return roster
+
+
+def _resolve_pov_character(book: Path, cur_st: dict | None,
+                           ents_st: list[dict] | None, n: int) -> str | None:
+    """解析本章视角角色的法定名；指名不到就返回 None。
+
+    **只在能指名到具体角色时才返回值**——这是本探针不误报的关键：
+      · 「群像切片 / 双线交替 / 主角视角」这类是视角**模式**，不是角色名。
+        群像与全知视角下，旁白陈述任何人都不知情的秘密是合法的，必须放过；
+      · 指名不到时，旁白里的「他」无从归因，宁可不报。
+
+    取值顺序：① `current.pov_ref`（结构化引用，且被 verify_state 校验过）；
+    ② beats front-matter 的 `pov`（形如「林牧·视角」，剥掉后缀后须命中实体名册）。
+    """
+    roster = _entity_roster(ents_st)
+    if not roster:
+        return None
+    ref = str((cur_st or {}).get("pov_ref") or "").strip()
+    if ref:
+        hit = roster.get(ref)
+        if hit:
+            return hit
+    try:
+        beats = common.find_chapter_files(book, "beats", n)
+    except (OSError, ValueError):
+        beats = []
+    for bf in (beats[-1:]) if beats else ():
+        try:
+            fm = common.parse_front_matter(bf.read_text(encoding="utf-8", errors="replace"))
+        except OSError:
+            continue
+        cand = str(fm.get("pov") or "").strip()
+        for suf in ("·视角", "·視角", "视角", "視角", "·POV", " POV", "POV",
+                    "·之视角", "之视角"):
+            if cand.endswith(suf):
+                cand = cand[: -len(suf)]
+                break
+        cand = cand.strip(" ··-—:：")
+        if cand and cand in roster:
+            return cand
+    return None
+
+
 def probe_secret_leakage(text: str, lines: list[str], lines_st: dict,
-                         ents_st: list[dict] | None = None) -> list[dict]:
-    """探针 5：KNO 秘密知情差泄露（检查不知情者在对话中直接谈及秘密）。"""
+                         ents_st: list[dict] | None = None,
+                         pov_name: str | None = None) -> list[dict]:
+    """探针 5：KNO 秘密知情差泄露。
+
+    两条射程：
+      ① 对白：不知情角色的台词直接谈及秘密（原有限度）；
+      ② **旁白 / 心理描写**：本章视角角色不在知情圈内，旁白却把秘密当既定事实陈述
+         ——视角人物不可能知道，属视角穿帮。此路只有 `pov_name` 指名到具体角色
+         时才判定（群像/全知视角下旁白知情合法，指名不到一律放过，见
+         `_resolve_pov_character`）。
+
+    两路共用同一套关键词命中口径，且都只出 `candidate_soft` 交由 Auditor 仲裁。
+    """
     candidates = []
     knowledge = lines_st.get("knowledge", []) if isinstance(lines_st, dict) else []
     # 说话人候选名册：注册实体名 + 别名（越长者优先匹配——先验：引号前紧邻的已知人名
@@ -404,6 +455,7 @@ def probe_secret_leakage(text: str, lines: list[str], lines_st: dict,
             continue
 
         for line_no, line in enumerate(lines, start=1):
+            flagged_this_line = False
             for m_q in re.finditer(r"[“「『\"]([^”」』\"\n]{4,80})[”」』\"]", line):
                 q = m_q.group(1)
                 hit_kws = [kw for kw in keywords if kw in q]
@@ -437,7 +489,43 @@ def probe_secret_leakage(text: str, lines: list[str], lines_st: dict,
                             "state_ref": kid,
                             "suggestion": "核查该台词是否属于泄密穿帮；若是试探套话应写明心机，若不知情则需调整用词。"
                         })
+                        flagged_this_line = True
                         break
+            if flagged_this_line:
+                continue
+
+            # ---- ② 旁白 / 心理描写：视角人物不该知道，旁白却当既定事实陈述 ----
+            if not (pov_name and knower and pov_name not in knower):
+                continue
+            narration = _QUOTE_SPAN_RE.sub(" ", line)
+            if len(narration.strip()) < 4:
+                continue
+            hit_kws = [kw for kw in keywords if kw in narration]
+            if not (len(hit_kws) >= 2
+                    or (len(hit_kws) == 1 and len(hit_kws[0]) >= 4)):
+                continue
+            # 「他不知道水井下藏着银子」是反证，不是泄密——没有这道闸就是笑话
+            if any(neg in narration for neg in _NEGATION):
+                continue
+            channel = ("心理描写" if any(m in narration for m in _INNER_THOUGHT)
+                       else "旁白")
+            candidates.append({
+                "probe": "secret_leakage",
+                "severity": "candidate_soft",
+                "line_no": line_no,
+                "also_flagged_by": None,
+                "title": (f"知情差穿帮存疑：[{kid}] 秘密疑似在{channel}中泄露"
+                          f"（视角角色「{pov_name}」不在知情圈内）"),
+                "description": (f"未公开知情线 [{kid}]（知情人: {','.join(knower) or '仅主角'}），"
+                                f"本章视角角色「{pov_name}」不在知情圈内，但{channel}把秘密当既定事实"
+                                f"陈述（命中：{', '.join(hit_kws)}）——该视角人物无从知晓。"),
+                "evidence": f"L{line_no}: {line.strip()[:80]}",
+                "state_ref": kid,
+                "suggestion": (f"核查本章视角是否确为「{pov_name}」：若是，{channel}不得陈述其不知情的秘密，"
+                               f"可改为猜测/存疑句式，或把这段交给知情者视角的章节。"
+                               f"若本章本就是全知/群像视角，请把 beats 的 pov 写成模式名"
+                               f"（如「群像切片」「双线交替」）而不是角色名，以免误报。"),
+            })
     return candidates
 
 
@@ -646,7 +734,9 @@ def run_audit(book: Path, ch: str) -> dict[str, Any]:
     raw_candidates.extend(probe_location_presence(text, lines, cur_st, ents_st))
     raw_candidates.extend(probe_charges_possession(text, lines, ents_st, cur_st))
     raw_candidates.extend(probe_amount_ledger(text, lines, led_st))
-    raw_candidates.extend(probe_secret_leakage(text, lines, lines_st, ents_st))
+    # 视角角色：只有指名得到具体角色，旁白/心理描写的知情差穿帮才可判定
+    pov_name = _resolve_pov_character(book, cur_st, ents_st, n)
+    raw_candidates.extend(probe_secret_leakage(text, lines, lines_st, ents_st, pov_name))
     raw_candidates.extend(probe_cognition_stubs(text, lines, lines_st, cog_st))
     raw_candidates.extend(probe_alias_drift(text, lines, ents_st))
     raw_candidates.extend(probe_address_mismatch(text, lines, book, n, ents_st))
@@ -675,6 +765,8 @@ def run_audit(book: Path, ch: str) -> dict[str, Any]:
         "chapter": tok,
         "file": rel_path,
         "fallback_raw": is_raw_fallback,
+        # 本章视角角色（None = 指名不到，旁白/心理描写的知情差扫描不启用）
+        "pov": pov_name,
         "total_candidates": len(candidates),
         "hard_count": hard_count,
         "soft_count": soft_count,
