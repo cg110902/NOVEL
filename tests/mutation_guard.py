@@ -63,6 +63,36 @@ MUTATIONS = [
     (12, "reconcile 高危字段过滤失效（永远无高危变更）", "engine/commands/reconcile.py",
      'if not any(path == f or path.endswith(f".{f}") for f in _HIGH_RISK_FIELDS):\n                continue',
      'if True:\n                continue'),
+    # 13：derived 封存静默失败的元凶。闸门层全局拒绝显式 null，而 derive 若把
+    # 零落笔线/闭环线的 last_seen_ch、gap 写成 null，整张派生表**静默降级为空表**
+    # （"派生永不炸封存"）。这是最容易被忽略的失效模式——失败不可见。
+    (13, "derived 线温恢复显式 null（派生表封存静默失败）", "engine/objects/derive.py",
+     '        for _k in ("last_seen_ch", "gap"):\n            if r.get(_k) is not None:\n                row[_k] = r[_k]',
+     '        row["last_seen_ch"] = r.get("last_seen_ch")\n        row["gap"] = r.get("gap")'),
+    (14, "derived 闭环线快照恢复显式 null", "engine/objects/derive.py",
+     '                closed.append({"id": str(g.get("id", "")), "kind": kind,\n'
+     '                               "temp": "closed", "status": str(g.get("status", ""))})',
+     '                closed.append({"id": str(g.get("id", "")), "kind": kind,\n'
+     '                               "temp": "closed", "last_seen_ch": None, "gap": None,\n'
+     '                               "status": str(g.get("status", ""))})'),
+    # ---- 15~18：故障注入套件（tests/test_fault_injection.py）的配套变异 ----
+    # 拆除闸门后对应负向用例必须变红，否则该闸门"文档上承诺、实测上不存在"。
+    (15, "资源池未知字段闸门失效", "engine/state.py",
+     '                        if k not in ("name", "unit", "initial"):\n'
+     '                            errors.append(f"ledger.pools[{pid}] 含未知字段: {k}")',
+     '                        if False:\n'
+     '                            errors.append(f"ledger.pools[{pid}] 含未知字段: {k}")'),
+    (16, "locked.note 必填闸门失效", "engine/state.py",
+     '                if not str(l.get("note") or "").strip():',
+     '                if False:'),
+    (17, "前置因果闭环保失效（合并期不再拦）", "engine/state.py",
+     '        errors.extend(_prereq_errors(data["lines"]))',
+     '        pass'),
+    (18, "跨章流水注入闸失效", "engine/state.py",
+     '            if (t.get("chapter") is not None and expected_chapter\n'
+     '                    and re.fullmatch(r"ch_\\d{3,}", str(t["chapter"]))\n'
+     '                    and str(t["chapter"]) != expected_chapter):',
+     '            if False:'),
 ]
 
 KILLER = {
@@ -72,6 +102,9 @@ KILLER = {
     8: "tests.test_memory", 9: "tests.test_voiceprint",
     10: "tests.test_voiceprint", 11: "tests.test_cold_recall",
     12: "tests.test_reconcile",
+    13: "tests.test_objects", 14: "tests.test_objects",
+    15: "tests.test_fault_injection", 16: "tests.test_fault_injection",
+    17: "tests.test_fault_injection", 18: "tests.test_fault_injection",
 }
 
 

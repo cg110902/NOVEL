@@ -32,10 +32,17 @@ def _derive_line_temps(book: Path, data: dict[str, dict]) -> list[dict]:
     from .. import state as state_mod
     out = []
     for r in memory_mod.line_memory_map(book):
-        out.append({"id": r["id"], "kind": r["kind"],
-                    "temp": _TEMP_MAP.get(r.get("tier"), "never"),
-                    "last_seen_ch": r.get("last_seen_ch"), "gap": r.get("gap"),
-                    "status": r.get("status", "")})
+        row = {"id": r["id"], "kind": r["kind"],
+               "temp": _TEMP_MAP.get(r.get("tier"), "never"),
+               "status": r.get("status", "")}
+        # 闸门语义：「落盘必完整」——Optional 键要么缺席、要么为合法值，显式 null 非法
+        # （schema_gen._strip_null_branches 全局摘除 anyOf 的 null 分支）。
+        # 零落笔线的 last_seen_ch/gap 为 None（读者从未见过这条线），此前显式写 null
+        # 会让整张派生表封存失败并静默降级为空表——这是最容易长期不被发现的失效模式。
+        for _k in ("last_seen_ch", "gap"):
+            if r.get(_k) is not None:
+                row[_k] = r[_k]
+        out.append(row)
     # 已闭环线逐条快照（temp=closed，不参与温度排序；闭环口径=各线种 resolved 值）
     lines = data.get("lines", {}) or {}
     closed = []
@@ -48,9 +55,9 @@ def _derive_line_temps(book: Path, data: dict[str, dict]) -> list[dict]:
             if not isinstance(g, dict):
                 continue
             if str(g.get("status", "")).strip().lower() == resolved:
+                # 同上：闭环线快照不写 last_seen_ch/gap（缺席而非 null）
                 closed.append({"id": str(g.get("id", "")), "kind": kind,
-                               "temp": "closed", "last_seen_ch": None, "gap": None,
-                               "status": str(g.get("status", ""))})
+                               "temp": "closed", "status": str(g.get("status", ""))})
     closed.sort(key=lambda r: r["id"])
     return out + closed
 

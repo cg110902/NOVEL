@@ -197,6 +197,39 @@ class TestDerivedSeal(unittest.TestCase):
             self.assertEqual(s["sealed_ch"], "ch_001")
             self.assertEqual(tb.state("derived")["sealed_ch"], "ch_001")
 
+    def test_seal_survives_never_and_closed_lines(self):
+        """回归：零落笔线与已闭环线的 last_seen_ch/gap 为 None 时封存不得失败。
+
+        背景：闸门层全局拒绝显式 null（schema_gen._strip_null_branches），而 derive
+        曾硬编码写 "last_seen_ch": None —— 只要存在「零落笔线」或「已闭环线」中任意
+        一条，整张派生表就封存失败并**静默降级为空表**（设计为"派生永不炸封存"）。
+        中后期连载几乎必然命中，却因失败不可见而长期无人发现。
+        修复口径：Optional 键缺席而非置 null。
+        """
+        from engine.objects import seal_derived
+        with TempBook() as tb:
+            tb.seed_chapter("ch_001", "林牧走进大殿，掌柜抬头看了他一眼。")
+            tb.set_state("lines", {"foreshadows": [
+                # 零落笔线：正文从未出现过「断刀来历」
+                {"id": "GUN-001", "name": "断刀来历", "plant_ch": 1,
+                 "status": "Planted", "target_ch": 30, "weight": 2},
+                # 已闭环线
+                {"id": "GUN-002", "name": "旧年血债", "plant_ch": 1,
+                 "status": "Resolved", "target_ch": 3, "weight": 1},
+            ], "misunderstandings": [], "knowledge": []})
+            r = seal_derived(tb.book, "ch_001")
+            self.assertEqual(r["sealed_ch"], "ch_001")
+            d = tb.state("derived")
+            # 两条线都必须入表（不是空表）
+            self.assertEqual(len(d["line_temps"]), 2)
+            by_id = {row["id"]: row for row in d["line_temps"]}
+            self.assertEqual(by_id["GUN-001"]["temp"], "never")
+            self.assertEqual(by_id["GUN-002"]["temp"], "closed")
+            # 关键：None 值必须表现为「键缺席」，不得出现显式 null
+            for row in d["line_temps"]:
+                self.assertNotIn(None, row.values(),
+                                 f"{row['id']} 含显式 null，会撞上闸门并被静默丢弃")
+
     def test_sync_seals_derived_e2e(self):
         with TempBook() as tb:
             tb.seed_chapter("ch_001", "林牧拔出断水剑。")

@@ -118,9 +118,23 @@ class TestProposalFlow(unittest.TestCase):
             events = changelog.load_events(tb.book)
             data_events = [e for e in events if not e.get("kind")]
             self.assertTrue(data_events)
-            self.assertTrue(all(e["source"] == "proposal" for e in data_events))
-            self.assertTrue(all(e["ch"] == "ch_001" for e in data_events))
-            self.assertTrue(all(e["op_id"] == "ch_001.reader.t1" for e in data_events))
+            # 范围：断言层（十一表）的事件必须全部来自提案通道——提案是唯一写入口。
+            # derived 是第十二张派生表，唯一合法写者是引擎（sync 封存/recompute），
+            # 其事件 source="derived" 属正确行为，不计入本断言。
+            # （此前此断言把 derived 一并纳入，因 derived 封存长期失败而"碰巧通过"：
+            #  封存失败 → 无 derived 事件 → 看起来全是 proposal 事件。修复封存后暴露。）
+            asserted_events = [e for e in data_events
+                               if e["table"] != "derived"]
+            self.assertTrue(asserted_events)
+            self.assertTrue(
+                all(e["source"] == "proposal" for e in asserted_events),
+                [e for e in asserted_events if e["source"] != "proposal"])
+            # 反向断言：derived 若被封存，其写者必须是引擎而非提案
+            derived_events = [e for e in data_events if e["table"] == "derived"]
+            for e in derived_events:
+                self.assertEqual(e["source"], "derived", "派生表只能由引擎写入")
+            self.assertTrue(all(e["ch"] == "ch_001" for e in asserted_events))
+            self.assertTrue(all(e["op_id"] == "ch_001.reader.t1" for e in asserted_events))
             # 覆盖各分区：current/persons/lines/ledger 都有事件（v6 起实体事件按 kind 表记账）
             tables = {e["table"] for e in data_events}
             self.assertIn("current", tables)
