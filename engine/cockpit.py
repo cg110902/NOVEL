@@ -589,7 +589,12 @@ def build_cockpit_briefing(book: Path, ch: str | None = None) -> dict[str, Any]:
             audit_state = "no_frontmatter"
         else:
             audit_ready = True
-            audit_state = ("blocked" if int(_fm.get("hard", 0) or 0) > 0
+            try:
+                _logic_n = int(_fm.get("logic", 0) or 0)
+            except (TypeError, ValueError):
+                _logic_n = 0
+            # 与 sync 闸门同口径：hard 或 logic 任一未裁定都算 blocked（驾驶舱不能比闸门松）
+            audit_state = ("blocked" if (int(_fm.get("hard", 0) or 0) > 0 or _logic_n > 0)
                            and not bool(_fm.get("adjudicated", False)) else "pass")
 
     syn = cur["synopsis"].get("chapters", {})

@@ -31,13 +31,17 @@ description: Universal worldbuilding architect and setup generator for Novel Stu
 ## 🔒 二、 工具网关与权限契约 (Gateway & Capabilities)
 
 - 🛠️ **法定工具能力**：
-  - 📖 **文件读取 (File Read)**：查阅 `templates/*` 脚手架模板与 `engine/schemas/*` 规范，查阅已冻结的 `bible/`（Stage 0B 必备输入）；
+  - 📖 **文件读取 (File Read)**：查阅 `templates/*` 脚手架模板与 `templates/README.md`
+    （第四节的实体字段白名单与 Pydantic 模型同源，**它就是你的 schema 契约**），
+    查阅已冻结的 `bible/`（Stage 0B 必备输入）；
+    ⚠️ **不要读 `engine/schemas/*.json`**：那是构建产物（由 `models/schema_gen.py` 生成、给引擎读），
+    人读的等价信息已在 `templates/README.md` 第四节；写错字段时 `check`/`sync` 的报错会直接点名
+    （如 `entities[i] 含未知字段: leader`），按报错修比读 schema 快得多；
   - ✍️ **文件写入 (File Write)**：创建并写入 `workspace/<书名>/` 下的设定、卡片、大纲与状态表文件；
   - 💻 **命令行执行 (Command Execution)**：仅限运行脚手架初始化、里程碑登记与机械体检（`studio init`, `studio milestone add`, `studio check`）；
   - ❌ **严禁越权操作**：严禁调用其他漫游搜索工具，严禁打扰人类作者，严禁编写临时提取或统计脚本！
 - 🟢 **准读清单**：
-  - `templates/` 下的全部模板与结构指南；
-  - `engine/schemas/entities.schema.json` 等强类型白名单；
+  - `templates/` 下的全部模板与结构指南（含 `templates/README.md` 第四节的实体字段白名单）；
   - `workspace/<书名>/bible/`（Stage 0B 的硬性物理基准）。
 - 🟢 **准写清单（`workspace/<书名>/`）**：
   - `project.json`
@@ -57,8 +61,26 @@ description: Universal worldbuilding architect and setup generator for Novel Stu
 
 1. **初始化工作区**：
    运行命令：`python studio.py init -w "workspace/<书名>" -t "<书名>" -g "<题材>" -p "<主角名>"`；
-2. **打磨 `project.json`**：
-   配置题材分类、字数带目标、题材通用敏感词与高频 AI 套话黑名单；
+2. **题材化 `project.json` 词表面（脚手架给的是跨题材兜底种子，不是终稿）**：
+   - 脚手架播种**引擎旋钮**（`words_target`、`lines_cap`、`audit_mode`、`tier_shift_grace`、`voiceprint`、
+     `reader_memory`、`latin_allowlist`、`candidate_stopwords`），**外加七张词表**
+     （`generic_stopwords` /
+     `critical_injury_words` / `abstract_phrases` / `empty_criteria_words` / `high_heat_forms` /
+     `hook_words` 六张题材词表 + `state_watch` 监测词表）。**种子保证新书开箱就有启发式可跑**，
+     但里面混着别册题材的词（仙侠书里的「芯片过载」「基因崩溃」、都市词「乘务员」），
+     **你的活是逐键重写/增删成本书口径**：漏配 → 该档空转；错配 → 该档误报。三态语义要分清：
+     **键缺席＝该档停用**（`check` 会持续输出 `wordlist_unconfigured` info 逐键提醒）、
+     **显式 `[]`＝明确关闭**（不报警，但必须在 `bible/06` 写下关闭理由）、非空＝按题材生效；
+   - 七张表逐键职责：`generic_stopwords`（本书通用职业/路人称谓）· `critical_injury_words`（题材化重伤词）·
+     `abstract_phrases`（假大空套话）· `empty_criteria_words`（空泛验收词）·
+     `high_heat_forms`（本书高压章型名）· `hook_words`（strong/suspense/anticlimax 三档章尾钩子）·
+     `state_watch`（位阶/伤势监测词）；
+   - 标准工序（0 Token，别靠记忆编）：`python studio.py config guide` 看型号单 →
+     `python studio.py config suggest` 取正文机器候选 → 按题材裁决增删 →
+     `python studio.py config set <键> --merge '["词", …]'` 落盘；
+   - ⚠️ 口径：**确属本书不需要的检测**才写 `[]`（= 明确关闭，`check` 从此不再提示），
+     并在 `bible/06_style_guidelines.md` 注明关闭理由；**没想清楚就干脆别写这个键**（保留 info 提醒，
+     将来补配即时生效）——把键写成空表会让相应体检静默失效；
 3. **逐一填实 `bible/` 7 大世界观公理词典（高密度填实，消除所有槽位）**：
    - **`01_world_axioms.md`（世界公理）**：核心 Logline、空间地理尺度、3~5 条不可逾越的底层法则公理、历史因果断代、主角金手指/特殊能力机制与代偿限制；
    - **`02_power_system.md`（实力标尺）**：构建全书 1~12 级常量梯阶（`tier_rank`），为每一级绑定具象的【物理破坏力/防御力/社会能量标尺】（全题材通用，如从常人极限、以一敌百到摧毁街区、灭国级），明确跨阶鸿沟与反通胀硬指标；
@@ -97,7 +119,9 @@ description: Universal worldbuilding architect and setup generator for Novel Stu
    - **认知差矩阵 (`state/cognition.json`)**：登记各方开局核心信息差；
    - **财务账本 (`state/ledger.json`)**：配置初始资源池（pools）与开局流水余额。
 5. **机械体检自证**：
-   运行 `python studio.py check -w "workspace/<书名>"`，确保 0 errors，输出 Stage 0B 完工回执。
+   运行 `python studio.py check -w "workspace/<书名>"`，确保 **0 errors**，输出 Stage 0B 完工回执
+   （⚠️ 建书期直写 `state/*.json` 属设定层合法例外，但会留下 `state_offline_edit` 的 warning 痕迹——
+   那是"未经提案"的留痕而非错误，**不要去伪造提案消警**；首次 `sync` 重新盖章后自然归零）；
 
 ---
 

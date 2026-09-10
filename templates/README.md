@@ -42,22 +42,22 @@ templates/
 
 | 模板源文件 | `studio.py init` 目标路径 | 负责角色 | 核心功能与引擎联动 |
 |---|---|---|---|
-| `project.json` | `project.json` | 引擎自动 | 播种全题材通用停用词、AI味黑名单、高压章型、伤残监测等探针 |
+| `project.json` | `project.json` | 引擎自动 | **20 个顶层键**：建档元数据 + 引擎旋钮（`words_target`/`lines_cap`/`audit_mode`/`tier_shift_grace`/`voiceprint`/`reader_memory`/`state_watch`）+ 取证词表 + **六张题材词表**（脚手架带跨题材兜底种子，Architect 须按本书题材**重写**；缺席＝该档停用、`[]`＝明确关闭。供参流程：`config guide` → `config suggest` → `config set <键> --merge`） |
 | `bible/01_world_axioms.md` | `bible/01_world_axioms.md` | Architect | 世界底层物理与逻辑公理，金手指运转机制 |
-| `bible/02_power_system.md` | `bible/02_power_system.md` | Architect | 力量/社会地位实物标尺，被 `pack` 恒常注入 P0 时空胶囊 |
-| `bible/03_factions_geography.md` | `bible/03_factions_geography.md` | Architect | 地缘版图与势力利益冲突拓扑，被 `pack` 恒常注入 P0 |
+| `bible/02_power_system.md` | `bible/02_power_system.md` | Architect | 力量/社会地位实物标尺，默认恒给 `pack` P0；细纲声明 `world_refs` 后改为按章取用 |
+| `bible/03_factions_geography.md` | `bible/03_factions_geography.md` | Architect | 地缘版图与势力利益冲突拓扑，默认恒给 `pack` P0（同上，可被 `world_refs` 收窄） |
 | `bible/04_economy_items.md` | `bible/04_economy_items.md` | Architect | 货币购买力平价锚点，道具品阶与损耗充能账本 |
 | `bible/05_special_mechanics.md` | `bible/05_special_mechanics.md` | Architect | 独家机制、体质相生相克与反噬走火入魔代偿法则 |
 | `bible/06_style_guidelines.md` | `bible/06_style_guidelines.md` | Architect | 通俗直白大白话规范、微表情多样性库 |
 | `bible/07_deviations.md` | `bible/07_deviations.md` | Architect | 本书偏离清单（`pack` 强制提取注入 P0 时空胶囊） |
-| `characters/protagonist.md` | `characters/protagonist.md` | Architect | 主角全息卡（含绝对称谓矩阵，被 `pack` 恒常注入） |
+| `characters/protagonist.md` | `characters/protagonist.md` | Architect | 主角全息卡（含绝对称谓矩阵）；卡是**人读视图**，称谓基准由主控抄进细纲、由 `pack` 从台账侧注入 |
 | `characters/character_card_standard.md` | 按需手工复制到 `characters/<角色名>.md` | 主控 / Architect | 重要角色/女主/宿敌全息卡（锁定法定称谓对账表） |
 | `entities/item_card.md` | 按需手工复制到 `entities/items/<道具名>.md` | 主控 / Architect | 核心道具/装备/神舟卡（追踪充能、持有者流转） |
 | `entities/faction_card.md` | 按需手工复制到 `entities/factions/<势力名>.md` | 主控 / Architect | 核心势力卡（组织架构与对外关系） |
 | `entities/location_card.md` | 按需手工复制到 `entities/locations/<地名>.md` | 主控 / Architect | 核心地标与第一案发现场空间格局 |
 | `outlines/main_plot.md` | `outlines/main_plot.md` | Architect | 全书主线脊柱、核心三幕与长线里程碑 |
 | `outlines/volume_outline.md` | `outlines/vol_01/outline.md` | Architect | 首卷分卷大纲与四分位剧情航标 |
-| `beats.md` | `studio.py beats new [章节] --write` 自动装配生成 | 主控 (Director) | 单章细纲任务书（反套路推演、场景脉络、法定事实对校） |
+| `beats.md` | `studio.py beats new [章节] --write` 自动装配生成（`beats` 只有 `new` 一个子命令；在场人册来自 `state/current.json.present_characters`，注入速查节） | 主控 (Director) | 单章细纲任务书（反套路推演、场景脉络、法定事实对校）；选填 `world_refs` 决定本章取用哪些 bible 锚点 |
 
 ---
 
@@ -111,7 +111,8 @@ templates/
      - `attitude`: 对主角/阵营的政治态度（严格枚举：`hostile` 敌对, `neutral` 中立, `friendly` 友善, `allied` 结盟，严禁用 `disposition`）
    - ⚔️ **道具与重器专用**：
      - `holder`: 当前实际支配/持有者角色名（`str`，严禁用 `current_owner`）
-     - `charges`: 剩余可用充能/催动次数（`int >= 0`；**非计数型道具直接省略本字段**，写 `-1` 会被模型 `ge=0` 拒绝并连带报 `entities_schema_invalid`）
+     - `charges`: 剩余可用充能/催动次数（`int >= 0`；**非计数型道具直接省略本字段**，写 `-1` 会被模型 `ge=0` 拒绝——
+       `proposal check`/`sync` 会以「`entities[i].charges` …」的形式逐条点名字段路径，**没有独立错误码**，按路径改即可）
      - `max_charges`: 最大充能上限（`int >= 1`）
      - `cost_per_use`: 单次催动代价/消耗说明（`str`）
      - `durability`: 物理磨损/耐久度（`str`）
@@ -137,9 +138,28 @@ templates/
    - **改（境界突破/道具流转/称谓变更）**：通过 beats 声明演进，Reader 提取更新（引擎以 `id` 为第一主键优先索引，即使改名改换品阶也绝不丢失生命周期）；
    - **查（对校核验）**：Auditor 结合细纲预提炼清单、人物卡称谓矩阵与机械探针，逐行对账正文，杜绝任何擅自越级或漂移。
 
-6. **CLI 底层词典秒级查询工具链 (Studio Lore CLI)**：
+6. **与引擎的三条对账关系（改模板前必读）**：
+   - **模板 ↔ JSON Schema 同源**：本目录是字段契约的**人读侧**，机读侧是 `engine/schemas/*.json`
+     （由 `python -m engine.models.schema_gen` 从 Pydantic 模型生成，勿手改）；三者（模板 / Pydantic 模型 /
+     Schema）任一改动都必须同步其余两个。子代理**不读 schemas**——给它们的当章合同是 `beats new` 注入的
+     `### 📐 提案通道与键形状` 小节；`state/inbox/README.md` 面向主控与人类。
+   - **表数口径**：`state/*.json` = **十一表**（`ASSERTED_KEYS`，Agent 可写）+ `derived.json`（第十二张，
+     引擎派生缓存）；`project.json` 是 **STATE_KEYS 之外**的书级配置表，**不占表号**（表号只编到第十二张）。
+     `pack` 只装 6 张表（current / entities / lines / synopsis / timeline / locked）而不是十二表——
+     其余表是**账本**，写手不需要看；`--lean` 只给 P0 热层。实体四表（persons/items/factions/places）
+     按 kind 物理拆分，`entities/` 目录只是人读投影（pack 走合并读视图）。
+   - **装配预算**：`pack` 总量上限 **2W token**，超预算按压缩阶梯由远及近裁（P2 冷索引 → P2 旧章指针 →
+     P1 间接关联 → P1 脊柱 → P0 上章余温）；细纲全文 / current / 硬提醒 / 不可逆事实 / 钉住的锚点**永不自动裁**。
+   - **`world_refs` 三态语义**（写细纲时按这三态理解，它不是开关）：
+     ① 未声明 → **恒给**全部核心锚点节（旧书零改动）；② 声明且命中 → 只装命中节（**refs 最多取前 8 个**，`MAX_WORLD_ANCHOR_REFS`，超出忽略并点名），且当「世界公理 /
+     战力标尺 / 势力地理 / 经济品阶 / 特殊机制」某一组在 bible 里存在却没被覆盖时，pack 打印
+     ⚠️ 点名缺哪一组（宁提醒不擅自扩注入）；③ 声明但零命中 → **回退恒给**并回列「可钉的节」供照抄。
+     **任何一态都不会让 Drafter 看不到世界观**；钉住的节不受 `world_anchor_tokens` 截断，多钉不挤压别的内容。
+
+7. **CLI 底层词典秒级查询工具链 (Studio Lore CLI)**：
    - `python studio.py lore list`：全景列出所有已注册实体的物理 ID、名称与卡片状态；
    - `python studio.py lore entity <id/name>`：按 ID 或名称穿透调阅实体全息档案（EntityEntry 共 36 个字段，按实际填写渲染）；
    - `python studio.py lore compare <idA/nameA> <idB/nameB>`：秒级对校两实体位阶差距与法定互称矩阵；
    - `python studio.py lore scale`：查看阶梯破坏力与实物标尺；
-   - `python studio.py lore rules`：查看不可违背的世界物理与设定公理。
+   - `python studio.py lore rules`：查看不可违背的世界物理与设定公理；
+   - `python studio.py errcodes <码>`：单码详解（含义 / 触发条件 / 处置处方），`--json` 机读；全表 `errcodes [--level error]`。

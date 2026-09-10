@@ -36,13 +36,13 @@ python studio.py check -w workspace/我的书
 
 ```
 Stage 0A/0B  Architect   世界观公理 + 人物大纲 + 十一表播种（设定层直写）
-Stage 1      Director    细纲构思 beats（引擎注入一致性速查 / 资源池键名 / ID 水位线）
+Stage 1      Director    细纲构思 beats（引擎注入一致性速查 / 资源池键名+ID 水位线 / 提案键形状）
 Stage 2      Drafter     初稿 raw_v1
 Stage 3A     Editor      骨肉重塑 raw_v2
 Stage 3B     Stylist     通俗脱水 final（全书唯一法定定稿）
 Stage 4A     Reader      事实提案 state/inbox/ch_XXX.json
 Stage 4B     Critic      老白催更便签 log/critic/ch_XXX.md
-Stage 4C     Auditor     一致性仲裁 log/audit/ch_XXX.md（带 front-matter，Stage 5 硬闸门）
+Stage 4C     Auditor     三轨一致性仲裁 log/audit/ch_XXX.md（front-matter: hard/soft/logic，Stage 5 硬闸门）
 Stage 4D     Librarian   每 10 章长程巡检（近 10 章定稿 vs 四张台账平账）
 Stage 5      Director    sync：提案合并 + 十一表盖章 + 快照封存
 Evolution    Evolver     人类变更诉求的波及面测算与手术刀改版
@@ -50,6 +50,14 @@ Evolution    Evolver     人类变更诉求的波及面测算与手术刀改版
 
 完整流程图、派发令/回执单格式、各角色准读准写清单见 **`AGENTS.md`**；
 每个角色的工艺纪律见 **`.agents/skills/<角色>/SKILL.md`**。
+
+> 📜 **beats 是当章唯一合同**：`outlines/vol_XX/beats/ch_XXX.md` 由主控写，Editor / Stylist / Reader / Auditor
+> 四路子代理**直读**，Drafter 经 `pack` P0 拿到**逐字全文**，Critic 与 Librarian 明令**禁读**（前者要纯读者
+> 盲审、后者只对账不读意图）。动机：`state/` 只知"已发生什么"、不知"本章要写什么"，beats 把 bible + 台账 +
+> 本意压成 O(1) 当章快照，让五个下游共享同一基准而不必各翻账本；代价是它同时是最大注入物与最脆单点——
+> 细纲写虚整条流水线一起歪，故引擎对其有 5 档 `beats_*` 闸门（`beats_missing_form`／`beats_fm_extra_keys`／`beats_scene_abstract`／
+> `beats_overlap`／`beats_form_repeat_without_reason`）与 `sync` 的"beats 齐"硬合同；注意 `goal`/`hook` **没有**机械校验，
+> 细纲写虚只能靠下游角色上报——这是 Editor/Auditor 负有"基准缺失即上报"义务的原因。
 
 ---
 
@@ -102,8 +110,35 @@ Evolution    Evolver     人类变更诉求的波及面测算与手术刀改版
 - **账本口径**：余额永远由流水重算，`balance_after` / `current` 不是可信输入字段。
 - **改史留痕**：不可逆事实（locked）与角色认知（cognition）禁止同 ID 静默覆盖——
   幂等重放放行，改写历史需 `action="retire"` 或显式 `"overwrite": true`。
+- **审计三轨硬闸门**：`audit <章> --write` 生成带 front-matter 的仲裁骨架，`sync` 据此放行——
+  `hard > 0`（机械矛盾）或 🧠 `logic > 0`（语义出戏）且未 `adjudicated: true` 一律拒封
+  （`audit_mode: advisory` 降为提示）。🧠 轨是 **Auditor 的 LLM 专属判断**：世界观类目污染 / 违背世界公理 /
+  性格突变 / 因果与代价断链 / 现场常识与时空矛盾，这类"读者当场出戏"的问题 `check` **结构上查不出来**
+  （引擎没有散文语义能力），所以做成第三轨而不是第四张探针清单；处置三选一：改正文（Stylist 手术刀）/
+  转办 Evolver（设定层）/ 降级为 🟡 存疑（不计入 `logic`）。
+- **装配预算契约**（`pack`）：各层自报 token（文本模式 `budget:` 行，`--json` 走 `budget_report`，
+  含 `over_budget` / `compressed` / `hard_cap_breached`），总量上限 **2W**；超预算按**压缩阶梯**由远及近裁
+  （P2 冷索引 → P2 旧章指针 → P1 间接关联 → P1 脊柱 → P0 上章余温），而**细纲全文 / current 块 / 硬提醒 /
+  不可逆事实 / 钉住的世界锚点永不自动裁**，裁尽仍超则如实报 `hard_cap_breached` 交主控取舍。
+  `world_anchors` 按细纲 front-matter 的 `world_refs:`（逗号/顿号分隔、**须用设定原文用词**）取用——
+  命中 `bible` 的哪些 `##`/`###` 小节就只装那些（**最多取前 8 个 refs**，超出忽略并在包里点名）；
+  缺省＝恒给（旧书零改动）；声明了却零命中 → 回退恒给并
+  回列「可钉的节」；命中但漏掉基础组（世界公理 / 战力标尺 / 势力地理 / 经济品阶 / 特殊机制）→ 包里
+  打印 ⚠️ 点名缺哪组（引擎不擅自扩大注入，避免"收窄"变成"偷偷多给"）。
+  `pack --open` 与子代理的 `file_index` 同过准读网关（`ROLE_DENY` / `ROLE_ALLOW_EXTRA`）：被禁文件只报数量不报路径。
+- **书级配置真源**：`project.json` 共 **20 个顶层键**——建档元数据（`schema` `title` `genre` `protagonist` `created_at`）
+  ＋引擎旋钮（`words_target` `lines_cap` `audit_mode` `tier_shift_grace` `voiceprint` `reader_memory` `state_watch`）
+  ＋取证词表（`candidate_stopwords` `latin_allowlist`）＋**六张题材词表**（`generic_stopwords`
+  `critical_injury_words` `abstract_phrases` `high_heat_forms` `empty_criteria_words` `hook_words`）；
+  六张词表脚手架给的是**跨题材兜底种子**（保证新书开箱即有启发式可跑），Architect 的职责是按本书题材
+  **重写/增删**而不是填空；**语义三分**：键缺席＝该档停用（`check` 报 `wordlist_unconfigured` info 逐键提醒）、
+  显式 `[]`＝明确关闭（不报，须在 `bible/06` 留理由）、非空＝按题材生效。
+  以 `templates/project.json` 为唯一真源（逐键注释就写在该文件里，语义说明见 `templates/README.md` 第一节）；
+  它是 STATE_KEYS **之外**的配置表（不参与提案、指纹与留痕），只由 `config set` 与用户手改写入；
+  `status` / `check` 报出的键名缺失都以此文件为基准。
 
-提案字段契约的逐项说明见书工作区内的 `state/inbox/README.md`（由 `init` 生成）。
+提案字段契约的逐项说明见书工作区内的 `state/inbox/README.md`（由 `init` 生成）；子代理（Reader）不必读它，
+其键形状由 `beats new` 注入的 `📐 提案通道与键形状` 一节就地给出。
 
 ---
 
@@ -113,9 +148,9 @@ Evolution    Evolver     人类变更诉求的波及面测算与手术刀改版
 |---|---|
 | 命令目录与阶段配方 | `python studio.py help --json` |
 | 工作区/工序总览 | `python studio.py status` · `cockpit [ch]` |
-| 单章上下文装配 | `python studio.py pack ch_XXX [--lean|--full] [--open 路径 --as 角色]` |
+| 单章上下文装配 | `python studio.py pack ch_XXX [--lean／--full] [--open 路径 --as 角色]`（2W token 预算，超量自动压缩） |
 | 只读取证 | `python studio.py ask <关键词>`（2.0 引用链：每条命中带 cite 出处） · `evidence <kind>` · `pov` · `calendar` |
-| 细纲与稿件流转 | `beats new ch_XXX --write` · `critic` · `audit ch_XXX --write` · `reconcile vol_XX`（卷末对账） |
+| 细纲与稿件流转 | `beats new ch_XXX --write`（注入一致性速查 / 资源池 / ID 水位线 / 提案键形状，并支持 `world_refs` 按章取设定） · `critic` · `audit ch_XXX --write`（三轨仲裁） · `reconcile vol_XX`（卷末对账） |
 | 提案 | `proposal new [--v3] ch_XXX`（骨架；--v3 为寻址式防错版） · `proposal check ch_XXX` · `proposal auto ch_XXX --write` · `sync ch_XXX [--dry-run]` |
 | 体检与自愈 | `check`（`doctor` 为其别名；`--trend` 分数曲线 / `--bisect` 快照二分） · `errcodes <码>` |
 | 图谱与索引 | `graph <action>` · `index [--rebuild]` · `recall` · `simulate` |
@@ -127,7 +162,9 @@ Evolution    Evolver     人类变更诉求的波及面测算与手术刀改版
 
 退出码契约：`0` = 正常 / `1` = 阻断（含 `check` 有 errors、`sync` 失败）/ `2` = 用法错 /
 `3` = 运行环境缺依赖（会打印缺失模块与安装命令，不抛裸 traceback）。
-错误码的机器可读说明书：`python studio.py errcodes <码>`（注册表在 `engine/errcodes.py`）。
+错误码的机器可读说明书：`python studio.py errcodes <码>` 查单码（含义 / 触发条件 / 处置处方，`--json` 机读），
+`python studio.py errcodes` 看全表（当前 92 条闸门码，`--level error` 过滤）；注册表在 `engine/errcodes.py`，
+新增体检码必须在此注册（文档里的码数由 `tests/test_docs_parity.py` 与本表实时对账）。
 
 ---
 
@@ -140,4 +177,9 @@ Evolution    Evolver     人类变更诉求的波及面测算与手术刀改版
   禁止在校验分支里再手写字面量集合。
 - 新增 `check` 错误码必须在 `engine/errcodes.py` 注册。
 - 用户可见文案里的数量口径（命令数、状态表数、字段数）改动时，同步更新
-  `AGENTS.md` / `engine/README.md` / `templates/README.md`。
+  `AGENTS.md` / `engine/README.md` / `templates/README.md`——这些口径由 `python -m tests.test_docs_parity`
+  自动比对（命令数 = `len(COMMAND_HELP)`、状态表数 = `len(STATE_KEYS)`、错误码数 = `len(CATALOG)`），
+  跑不过就回去改文档，不要反过来把数字改小。
+- 状态表口径的唯一说法：**十一表** = 11 张断言表（`ASSERTED_KEYS`，Agent 可写）；
+  **第十二张表** = `derived.json` 派生缓存（`STATE_KEYS` = 十一表 + derived）；
+  `project.json` 是 STATE_KEYS 之外的书级配置表，**不占表号**（表号只编到第十二张）。

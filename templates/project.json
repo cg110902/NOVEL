@@ -3,7 +3,6 @@
   "title": "{{slot:title|书名}}",
   "genre": "{{slot:genre|题材}}",
   "protagonist": "{{slot:protagonist|主角名}}",
-  "mode": "automatic",
   "audit_mode": "strict",
   "words_target": [
     2000,

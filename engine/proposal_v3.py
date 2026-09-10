@@ -7,7 +7,7 @@ v3 核心价值 = typo-safe 的精确寻址：
 
 架构：
 - v3 提案只含 ops 分区（全十一表皆有 op，不混写 v2 分区；locked_candidates /
-  consequences 两个 v2 专属分区除外——要用它们请用 v2）；
+  两个 v2 专属分区除外——locked_candidates 要用请写 v2；consequences 已废弃、不落盘）；
 - compile_ops 把 ops 编译为等价 v2 提案；新语义代码仅限寻址/存在性/表一致性
   检查（本模块），字段级校验与合并重用 v2 管线（validate/merge/verify 原样跑）；
 - 存在性检查面向编译时刻的 live 状态；幂等按 v3 原文哈希 + 编译前预门
@@ -340,3 +340,37 @@ def compile_ops(book: Path | None, proposal: dict
     if v_synopsis:
         v2["synopsis"] = v_synopsis
     return v2, [], warnings
+
+
+# ---------------------------------------------------------------------------
+# 提案形状速查（单一真源）
+# ---------------------------------------------------------------------------
+# 为什么在这里而不是只写在 state/inbox/README.md：README 是**人类与主控**的完整契约，
+# 而 Stage 4 Reader 的角色网关禁读 `state/`（ROLE_DENY），它拿不到 README。
+# 本表由 `beats new` 注入到「本章一致性速查」小节——beats 在 Reader 的准读清单内，
+# 于是键形状与它唯一的写入口同处一纸，不再要求子代理越权取证。
+# ⚠️ 改动 compile_ops 支持的动作/载荷键时，必须同步本表（tests/test_docs_parity.py 会断言
+#    本表动作名全部被 compile_ops 认得）。
+V3_OP_SHAPES: tuple[tuple[str, str, str], ...] = (
+    ("persons/items/factions/places", "create", '{"entry":{"id":"p_010","name":"…","type?":"…","…":"实体字段"}}'),
+    ("persons/items/factions/places", "update", '{"id":"it_003","set":{"只写要改的键（禁 id/name）"}}'),
+    ("persons/items/factions/places", "retire", '{"id":"loc_002"}'),
+    ("current", "update", '{"set":{"location":"…","time?":"…","present_refs?":[…],"…"}}'),
+    ("lines", "plant/update/remind/resolve/escalate",
+     '{"kind":"foreshadow|misunderstanding|knowledge"（必填）,"action":…,"id":"GUN-004"（plant 可省）,'
+     '"target_ch":30（plant 必填：int / ch_NNN / "第N章" / "longline"）,"…":"同 v2 条目字段"}'),
+    ("timeline", "append_event / revise_event / append_clock / append_arc / append_milestone",
+     '{"event":{"time","event","quote?"}} ｜ {"id":"EVT-003","replace":"…"} ｜ '
+     '"clock" 只五键：name/target_ch(int)/urgency/desc/status'),
+    ("locked", "plant/upsert/retire",
+     '{"id":"LOCK-001"（必填，^LOCK-\\d{3,}$，从水位线之后起号）,"fact","kind","note"（必填红线提示）,'
+     '"since_ch","quote?"}'),
+    ("cognition", "plant/upsert/retire",
+     '{"character","content","kind":"fact","since_ch","quote?"}（id 省略=引擎自动编号并按指纹去重）'),
+    ("ledger", "append_transaction / declare_pool",
+     '{"entry":{"chapter":"ch_001","pool":"已声明池键","delta":-30,"type":"expense","subject","note?","quote?"}} '
+     '｜ {"pool":"stone","spec":{"name","unit","initial"}}（三键必填、禁 current）'),
+    ("synopsis", "set", '{"title":"逐字拷贝 final 首行章题","text":"1~2 句梗概","quote?"}'),
+)
+
+V3_UNAVAILABLE_V2_ONLY: tuple[str, ...] = ("locked_candidates", "consequences")

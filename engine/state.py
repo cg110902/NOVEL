@@ -1,7 +1,7 @@
 """状态机核心（SSOT + 提案确定性合并）。
 
 全部「死板」操作：
-- 8 个 JSON 状态文件（STATE_KEYS）为机器真值；读写都过 engine/schemas/ 的声明式校验，引擎自身也不写非法数据。
+- 12 个 JSON 状态文件（STATE_KEYS＝11 张断言表 + derived 派生缓存）为机器真值；读写都过 engine/schemas/ 的声明式校验，引擎自身也不写非法数据。
 - 提案 = 章节事实增量的唯一写入口：信封 schema + 分区规则校验 → 全部通过才落盘（内存事务：先全量合并到副本，
   任一分区报错则整体不写）；落盘阶段再带字节级备份，写失败即整体回滚。
   （边界说明：Stage 0 建书播种与跨卷改版由 architect/evolver 直接写 state/*.json，属设定层写入；
@@ -210,7 +210,10 @@ timeline.clocks 危机时钟口径（ P3-2：此前字段契约完全未文档�
   locked[].refs（关联实体引用，免记忆盲区）；cognition[].truth_ref（GUN-/KNO-/EVT-/LOCK-编号）；
   timeline.events[] 可带 id（EVT-编号，缺省自动分配）/ participants / place / causes / consequences。
   按 id 修订事件：{"id": "EVT-003", "replace": "新描述"}；补元数据：{"id": "EVT-003", "participants": [...]}。
-v3 寻址式提案（schema novel-studio.state-mutation/v3；与 v2 二选一，同一文件禁止混写）：\n  取 `proposal new --v3` 骨架；ops 数组每元素 = {table, action, …载荷}，寻址全十一表：\n  · persons/items/factions/places（严格寻址——v3 核心价值：名写错不再静默新建碎片）：\n    create {\"table\":\"persons\",\"action\":\"create\",\"entry\":{\"id\":\"…\",\"name\":\"…\",…}}——\n      id/名必须双不存在；type 缺省按寻址表推断（persons→person…），与地址表矛盾则拒收；\n    update {\"table\":\"items\",\"action\":\"update\",\"id\":\"…\",\"set\":{…}}——id 须存在且归属表一致，\n      set 非空、禁 name/id（改名走手术刀），set.type 变 kind 触发搬迁（警告留痕）；\n    retire {\"table\":\"places\",\"action\":\"retire\",\"id\":\"…\"}——id 须存在且归属表一致。\n    寻址失败（id 不存在/表错位/重名）整案拒收，错误带 [op#N table/action] 定位。\n  · current：{\"table\":\"current\",\"action\":\"update\",\"set\":{要刷新的字段}}（同案重复 set 同键拒收）。\n  · lines：{\"table\":\"lines\",\"action\":\"plant/remind/resolve/…\",\"kind\":\"foreshadow|misunderstanding|knowledge\",…余同 v2 条目字段}（kind 必填，只认这三个值，漏填整案拒收）。\n  · timeline：append_event {\"event\":{…}} / revise_event {\"id\":\"EVT-…\",\"replace\":\"…\"} /\n    append_clock {\"clock\":{…五字段…}} / append_arc {\"arc\":{…}} / append_milestone {\"milestone\":{…}}。\n  · locked/cognition：{\"table\":\"locked\",\"action\":\"plant/upsert/retire\",…余同 v2 条目字段}。\n  · ledger：append_transaction {\"entry\":{…流水…}} / declare_pool {\"pool\":\"池键名\",\"spec\":{\"name\",\"unit\",\"initial\"}}。\n  · synopsis：{\"table\":\"synopsis\",\"action\":\"set\",…余同 v2 synopsis 字段}。\n  分层门：信封错→先修信封；寻址错→[op#N]点名；字段错→沿用 v2 措辞。\n  locked_candidates/consequences 无 v3 op（要用请写 v2 提案）。\n注：提案写入后由 Stage 5 主控统一运行 `python studio.py sync ch_XXX` 校验并合并（支持 --dry-run 预演）。
+v3 寻址式提案（schema novel-studio.state-mutation/v3；与 v2 二选一，同一文件禁止混写）：\n  取 `proposal new --v3` 骨架；ops 数组每元素 = {table, action, …载荷}，寻址全十一表：\n  · persons/items/factions/places（严格寻址——v3 核心价值：名写错不再静默新建碎片）：\n    create {\"table\":\"persons\",\"action\":\"create\",\"entry\":{\"id\":\"…\",\"name\":\"…\",…}}——\n      id/名必须双不存在；type 缺省按寻址表推断（persons→person…），与地址表矛盾则拒收；\n    update {\"table\":\"items\",\"action\":\"update\",\"id\":\"…\",\"set\":{…}}——id 须存在且归属表一致，\n      set 非空、禁 name/id（改名走手术刀），set.type 变 kind 触发搬迁（警告留痕）；\n    retire {\"table\":\"places\",\"action\":\"retire\",\"id\":\"…\"}——id 须存在且归属表一致。\n    寻址失败（id 不存在/表错位/重名）整案拒收，错误带 [op#N table/action] 定位。\n  · current：{\"table\":\"current\",\"action\":\"update\",\"set\":{要刷新的字段}}（同案重复 set 同键拒收）。\n  · lines：{\"table\":\"lines\",\"action\":\"plant/remind/resolve/…\",\"kind\":\"foreshadow|misunderstanding|knowledge\",…余同 v2 条目字段}（kind 必填，只认这三个值，漏填整案拒收）。\n  · timeline：append_event {\"event\":{…}} / revise_event {\"id\":\"EVT-…\",\"replace\":\"…\"} /\n    append_clock {\"clock\":{…五字段…}} / append_arc {\"arc\":{…}} / append_milestone {\"milestone\":{…}}。\n  · locked/cognition：{\"table\":\"locked\",\"action\":\"plant/upsert/retire\",…余同 v2 条目字段}。\n  · ledger：append_transaction {\"entry\":{…流水…}} / declare_pool {\"pool\":\"池键名\",\"spec\":{\"name\",\"unit\",\"initial\"}}。\n  · synopsis：{\"table\":\"synopsis\",\"action\":\"set\",…余同 v2 synopsis 字段}。\n  分层门：信封错→先修信封；寻址错→[op#N]点名；字段错→沿用 v2 措辞。\n  locked_candidates 无 v3 op（要用请写 v2 提案）。
+  ⚠️ consequences 是历史遗留分区：引擎只出提示、**不落盘**（合并时显式降级警告）——
+     因果后果请写进 `cognition_delta`（角色认知变化）或 `timeline.events[].causes/consequences`；
+     细纲声明"本章应发生而正文没写"的事，写进回执备注交主控，**不要**用 consequences 记账。\n注：提案写入后由 Stage 5 主控统一运行 `python studio.py sync ch_XXX` 校验并合并（支持 --dry-run 预演）。
 Stage 4 Reader 仅需落盘本 JSON 即可交付。
 """
 

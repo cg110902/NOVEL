@@ -215,14 +215,35 @@ def cmd_sync(args) -> int:
                 fm = None
             if fm is None:
                 if audit_mode == "strict":
-                    return _fail(f"{ch} 的仲裁报告缺少 YAML front-matter 或格式损坏（须包含 hard 与 adjudicated）",
-                                 hint=f"检查 {audit_file} 顶部 front-matter（格式：---\\nhard: 0\\nadjudicated: false\\n---）")
+                    return _fail(f"{ch} 的仲裁报告缺少 YAML front-matter 或格式损坏"
+                                 f"（须包含 hard / soft / logic / adjudicated 四键）",
+                                 hint=f"检查 {audit_file} 顶部 front-matter（格式：---\\nhard: 0\\nsoft: 0\\n"
+                                      f"logic: 0\\nadjudicated: false\\n---），"
+                                      f"或重跑 `python studio.py audit {ch} --write` 由引擎生成骨架")
                 else:
                     if not js:
                         print(f"⚠️ [audit_mode=advisory] 仲裁报告 front-matter 无法解析")
             else:
                 hard_count = int(fm.get("hard", 0))
                 adjudicated = bool(fm.get("adjudicated", False))
+                # 轨 3（语义逻辑与出戏审查）与机械硬矛盾同闸：确凿出戏条目未裁定不放行。
+                try:
+                    logic_count = int(fm.get("logic", 0) or 0)
+                except (TypeError, ValueError):
+                    logic_count = 0
+                if logic_count > 0 and not adjudicated:
+                    if audit_mode == "strict":
+                        return _fail(f"语义一致性仲裁未通过：{audit_file.name} 存在 {logic_count} 处"
+                                     f"确凿出戏/世界观矛盾（logic > 0）且未裁定（adjudicated=false）",
+                                     hint="逐条实施定向手术刀（正文层）或转办 Evolver（设定/历史层）后，"
+                                          "重跑 `python studio.py audit %s --write`；"
+                                          "确属有意演变请在报告「交叉核实排除」留痕并置 adjudicated: true" % ch)
+                    else:
+                        if not js:
+                            print(f"⚠️ [audit_mode=advisory] 仲裁报告提示存在 {logic_count} 处语义/出戏条目未裁定")
+                elif logic_count > 0 and adjudicated:
+                    if not js:
+                        print(f"ℹ️ [audit] 仲裁报告含 {logic_count} 处语义/出戏条目，但已标记 adjudicated=true，放行封存。")
                 if hard_count > 0 and not adjudicated:
                     if audit_mode == "strict":
                         return _fail(f"事实一致性仲裁未通过：{audit_file.name} 存在 {hard_count} 处确凿硬矛盾（hard > 0）且未裁定（adjudicated=false）",
@@ -819,7 +840,8 @@ def cmd_proposal(args) -> int:
             "operation_id": f"{ch}.director.{mmdd}",
             "ops": [],
         }
-        fill_hint = "填 ops 寻址增量"
+        fill_hint = ("填 ops 寻址增量（op 形状见本章 beats「📐 提案通道与键形状」小节，"
+                     "已含全部表的动作与载荷键）")
     else:
         skeleton = {
             "schema": "novel-studio.state-mutation/v2", "chapter": ch,

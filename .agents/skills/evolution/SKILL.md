@@ -70,7 +70,14 @@ graph TD
 ### 4. Phase 3：十一表平账与全面体检
 - 修正 `state/` 十一表真值；
 - 运行 `python studio.py ledger recompute` 修复全量账本流水；
-- 运行 `python studio.py check`，确保 0 errors、0 warnings；
+- **重盖章收尾（必做，否则平账痕迹会被误判成违规手改）**：你在 Phase 2 直写 `state/*.json` 属
+  设定层合法例外，但每次封存都对十一表盖过 SHA-256，直写必然触发 `state_offline_edit`（warning）。
+  处理口径二选一，**严禁为了"清零 warning"去伪造提案**：
+  ① 若本书已有在途提案（如刚写完的 ch_XXX）：正常 `python studio.py sync ch_XXX`，盖章自动刷新；
+  ② 若纯手术刀改版、无在途提案：在 `log/review/evolution_<主题>.md` 里记一行「谁、改了哪张表、为什么」
+     作为合法来源说明，把该 warning 原样留给主控知悉（它不影响放行，`check` 只有 errors 才阻断）；
+- 运行 `python studio.py check`，确保 **0 errors**（warnings 只要求"逐条可解释"：
+  除 ② 的 `state_offline_edit` 留痕外，其余必须清零）；
 - 输出标准完工回执。
 
 ---
@@ -82,7 +89,7 @@ graph TD
   【章节工序完工回执】
   - 完工阶段：Stage Evolution 剧情演进与重构 (Evolver)
   - 产出路径：[受影响的主要文件路径]
-  - 核心指标：快照已建立 ｜ 跨层修改落地 ｜ ledger重算平账 ｜ check 0 报错 ｜ 零脚本直接落盘
+  - 核心指标：快照已建立 ｜ 跨层修改落地 ｜ ledger重算平账 ｜ check 0 errors（warning 已逐条解释） ｜ 零脚本直接落盘
   ```
 
 - **轨 B：阻断与破局选项回执（遇硬冲突需作者裁决）**：

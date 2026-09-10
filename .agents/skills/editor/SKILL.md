@@ -30,7 +30,14 @@ description: Universal commercial webnovel structural editor and narrative sculp
   2. `manuscript/vol_XX/raw/ch_XXX_v1.md`（Drafter初稿毛坯）；
   3. `bible/06_style_guidelines.md`（文风基线、微动作词库与去 AI 叙事纪律）。
 - 🔴 **禁读清单**：
-  - 严禁读取任何角色卡 `characters/*`核验 Want/Fear、口吻习惯与**称谓矩阵**所需的全部信息，一律以 `beats`细纲为准。
+  - 严禁读取角色卡 `characters/*` 与设定 `bible/*`：口吻习惯、Want/Fear、称谓矩阵所需信息**已由主控写进细纲**，
+    确需的台账数值用 `python studio.py pack ch_XXX --open state/current.json --as editor`
+    （`state/current.json` 在 editor 准读范围内）；其余缺口写进回执交主控，不要自行翻账本或猜设定。
+- ⚠️ **第 0 步（读细纲，直读原文）**：动笔前先完整读 `outlines/vol_XX/beats/ch_XXX.md` 原文（含 front-matter）。
+  它是当章**唯一基准**而非参考之一：front-matter 的 `pov`/`words`/`form`/`tension_score`/`style_notes`、「本章坐标与核心戏剧目标」的 goal/hook、「场景脉络」的地点与潮汐功能、「本章法定事实与称谓对校清单」四小节（动态称谓基准／前情事实与修饰词锚点／预期状态演变／战力与消耗底线）全部以它为准
+  称谓基准全部以它为准。**基准缺失就是最高优先级的上报项**——细纲未写称谓基准、地点与台账不符、`goal` 缺失等，
+  必须立即上报主控补 beats——**引擎不机械校验 goal/hook 是否填实**（`beats_*` 只覆盖 form 缺失、章型连用无因、
+    场景抽象、区间重叠、front-matter 多余键这 5 档），所以"细纲写虚"只有你能发现，**严禁凭记忆或臆测补齐**。
   - 严禁翻看大纲其余文件、`state/*`、`log/*`、旧章正文或引擎源码。
 
 ---
@@ -57,6 +64,12 @@ description: Universal commercial webnovel structural editor and narrative sculp
 
 
 ---
+
+> 🧠 **语义/出戏问题的判归（你无权处理，但必须上报）**：Stage 3A 之后、Stage 4C 之前，若你发现
+> **世界观类目污染**（丹药写成符箓这类跨类挪用）、**违背世界公理**、**人物性格突变**、**因果或代价断链**：
+> 这不属于骨肉重塑范围，既不该照改也不该沉默。**把原句＋冲突点（涉及哪条已入账事实 / 哪节设定）写进回执备注**
+> 上报主控，由主控转 Auditor 记入报告 🧠 段（`logic > 0` 会阻断 Stage 5）。
+> 只"读起来怪"而说不出冲突点的，按个人偏好处理：不写、不改。
 
 ## 🛑 四、 极简标准完工回执 (Receipts)
 

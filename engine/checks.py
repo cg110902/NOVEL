@@ -595,7 +595,9 @@ def _err(code: str, msg: str, remedy: str = "", can_auto_heal: bool = True) -> d
 
 _BEATS_FM_KEYS = {"chapter", "vol", "form", "pov", "words", "style_notes", "form_reason",
                   "editor_extra", "tension_curve", "tension_score",
-                  "stage_mode", "suppression_factors", "release_trigger"}
+                  "stage_mode", "suppression_factors", "release_trigger",
+                  # V3.2：按章钉住世界锚点的关键词（pack 消费；空/缺省 = 沿用恒给口径）
+                  "world_refs"}
 
 PARAM_SPEC: dict[str, dict] = {
     "generic_stopwords": {"shape": "str_list", "gap": True,
@@ -647,9 +649,10 @@ PARAM_SPEC: dict[str, dict] = {
     "world_anchor_tokens": {"shape": "nonneg_int", "gap": False,
         "desc": "pack 世界锚点（world_anchors）预算帽：bible 中命中关键词的标题小节会逐章"
                 "注入 Drafter 上下文，此值限定其 token 上限，超出按节截断并提示用 "
-                "`studio lore rules` 按需取。0 = 不注入世界锚点。默认 2000；"
-                "设为 0 且 bible 很厚时可最大化上下文余量。",
-        "example": 2000},
+                "`studio lore rules` 按需取。默认 10000（＝硬上限，再大也会被夹到 10000）；"
+                "设为 0 且 bible 很厚时可最大化上下文余量。细纲 beats 若声明了 `world_refs`，"
+                "命中的小节按「钉住」注入、不受本帽裁剪。",
+        "example": 10000},
     "voiceprint": {"shape": "voiceprint_map", "gap": False,
         "desc": "对白声纹漂移检测阈值 {min_lines, recent_lines, window, len_shift, "
                 "mood_shift, sig_min_count}（check voiceprint_drift 档，info 级）。"
