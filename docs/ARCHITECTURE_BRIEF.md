@@ -216,6 +216,13 @@ transactions: [{chapter, pool, delta(带符号), type, subject, counterparty, no
 「读者知道 A，角色 B 不知道 A」。`cognition` 把每个角色的认知边界显式记账，
 `probe_secret_leakage` / `probe_cognition_stubs` 两个探针专门抓「知情差穿帮」。
 
+`probe_secret_leakage` 有两条射程：**对白**（不知情角色的台词谈及秘密）与
+**旁白 / 心理描写**（本章视角角色不在知情圈内，旁白却把秘密当既定事实陈述）。
+后者**只在能指名本章视角角色时才判定**——视角角色取自 `current.pov_ref`，
+其次取 beats front-matter 的 `pov`（形如「林牧·视角」）。
+像「群像切片 / 双线交替」这类是视角**模式**而非角色名，群像与全知视角下
+旁白知情是合法的，指名不到一律放过（宁可不报，也不误报）。
+
 `truth_ref`（挂 `GUN-`/`KNO-`/`EVT-`/`LOCK-`）让引擎能机械判定认知与真相是否冲突，
 `derived.knowledge_flags` 输出 `aligned / contradicted / unresolved`，
 其中 `contradicted` 含 **B2 穿帮探针**：`belief.since_ch` 早于真相 EVT 章 → 「穿帮嫌疑」。

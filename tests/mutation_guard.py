@@ -147,6 +147,19 @@ MUTATIONS = [
     # 28：README 的 lines.kind 退回「foreshadow/…」，Agent 只能猜三个合法值
     (28, "README 的 lines.kind 退回只写 foreshadow/…", "engine/state.py",
      'foreshadow|misunderstanding|knowledge', 'foreshadow/…'),
+    # ---- 29~31：旁白/心理描写知情差泄露（原盲区）----
+    # 29：旁白扫描整段关掉 → 盲区复活（本轮最初钉的就是这条）
+    (29, "旁白/心理描写知情差扫描关闭（盲区复活）", "engine/audit.py",
+     '            if not (pov_name and knower and pov_name not in knower):',
+     '            if not (False and knower and pov_name not in knower):'),
+    # 30：否定式闸拿掉 → 「他不知道 X」被当成泄密（最尴尬的误报）
+    (30, "否定式（他不知道X）被当成泄密", "engine/audit.py",
+     '            if any(neg in narration for neg in _NEGATION):\n                continue',
+     '            if False:\n                continue'),
+    # 31：视角模式被当成角色名 → 群像/全知视角下旁白全成穿帮（误报洪水）
+    (31, "视角模式（群像切片）被误当角色名", "engine/audit.py",
+     '        if cand and cand in roster:\n            return cand',
+     '        if cand:\n            return cand'),
 ]
 
 KILLER = {
@@ -164,6 +177,8 @@ KILLER = {
     23: "tests.test_engine", 24: "tests.test_engine",
     25: "tests.test_role_policy", 26: "tests.test_role_policy",
     27: "tests.test_inbox_contract", 28: "tests.test_inbox_contract",
+    29: "tests.test_fault_injection", 30: "tests.test_fault_injection",
+    31: "tests.test_fault_injection",
 }
 
 

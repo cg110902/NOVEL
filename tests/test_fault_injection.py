@@ -387,24 +387,114 @@ class TestAuditProbes(unittest.TestCase):
             self.assertIn("locked_facts",
                           [c["probe"] for c in r["candidates"]], r["candidates"])
 
-    def test_narration_secret_leak_is_blind_spot(self):
-        """★ 已知盲区（文档化，非断言"应该抓到"）：
+    # ------------------------------------------------------------------
+    # 知情差：旁白 / 心理描写（原盲区，现已补上）
+    # ------------------------------------------------------------------
+    # 关键前提：旁白里的「他」无从归因，**只有本章视角角色能指名时才可判定**。
+    # 群像/全知视角下旁白知情是合法的，指名不到必须放过——否则全是误报。
+    _SECRET = {"id": "KNO-001", "secret": "水井下藏着三百两银子",
+               "plant_ch": 1, "status": "Concealed", "weight": 2, "target_ch": 10}
 
-        probe_secret_leakage 只扫引号内的对白，旁白/心理描写里的知情差穿帮
-        不在射程内。本用例把这个盲区**钉住**，日后若有人补上了旁白扫描，
-        此断言会失败并提醒同步更新文档。
-        """
+    def _pov_book(self, tb, body, holders=("玄阳子",), pov_ref="p_001"):
+        """铺一本「视角角色=林牧(p_001)、知情者=玄阳子(p_002)」的书。"""
+        tb.seed_chapter("ch_001", body)
+        tb.set_state("persons", {"entries": [
+            {"id": "p_001", "name": "林牧", "type": "person"},
+            {"id": "p_002", "name": "玄阳子", "type": "person"}]})
+        if pov_ref:
+            tb.set_state("current", {"pov_ref": pov_ref})
+        tb.set_state("lines", {"foreshadows": [], "misunderstandings": [],
+                               "knowledge": [{**self._SECRET, "holders": list(holders)}]})
+        return self._audit(tb)
+
+    def _secret_leaks(self, rep):
+        return [c for c in rep["candidates"] if c["probe"] == "secret_leakage"]
+
+    def test_narration_leak_by_unaware_pov_is_caught(self):
+        """★ 原盲区：视角人物不知情，心理描写却把秘密当既定事实陈述。"""
         with TempBook() as tb:
-            tb.seed_chapter("ch_001", "他心里清楚，那笔藏在水井下的银子一共三百两。")
+            r = self._pov_book(tb, "他心里清楚，那笔藏在水井下的银子一共三百两。")
+            hits = self._secret_leaks(r)
+            self.assertEqual(len(hits), 1, f"旁白/心理描写泄密未抓到：{r['candidates']}")
+            self.assertEqual(hits[0]["severity"], "candidate_soft")
+            self.assertIn("林牧", hits[0]["title"])
+            self.assertIn("心理描写", hits[0]["title"])
+
+    def test_plain_narration_leak_is_caught(self):
+        """不带内心标记的一般旁白同样在射程内（视角人物仍不知情）。"""
+        with TempBook() as tb:
+            r = self._pov_book(tb, "那口废井的井底压着三百两银子，水井边爬满青苔。")
+            self.assertEqual(len(self._secret_leaks(r)), 1, r["candidates"])
+            self.assertIn("旁白", self._secret_leaks(r)[0]["title"])
+
+    def test_aware_pov_stays_silent(self):
+        """视角人物本就在知情圈内 → 不得误报。"""
+        with TempBook() as tb:
+            r = self._pov_book(tb, "他心里清楚，那笔藏在水井下的银子一共三百两。",
+                               pov_ref="p_002")
+            self.assertEqual(self._secret_leaks(r), [], r["candidates"])
+
+    def test_narration_without_pov_is_not_judged(self):
+        """指名不到视角角色 → 无从归因，宁可不报（这是不误报的代价）。"""
+        with TempBook() as tb:
+            r = self._pov_book(tb, "他心里清楚，那笔藏在水井下的银子一共三百两。",
+                               pov_ref=None)
+            self.assertIsNone(r["pov"], "不该解析出视角角色")
+            self.assertEqual(self._secret_leaks(r), [], r["candidates"])
+
+    def test_omniscient_pov_mode_is_not_misread_as_character(self):
+        """「群像切片 / 主角视角」是视角**模式**不是角色名，不得当成视角角色。"""
+        with TempBook() as tb:
+            tb.seed_chapter("ch_001", "那口废井的井底，压着三百两银子。")
+            tb.set_state("persons", {"entries": [
+                {"id": "p_001", "name": "林牧", "type": "person"},
+                {"id": "p_002", "name": "玄阳子", "type": "person"}]})
             tb.set_state("lines", {"foreshadows": [], "misunderstandings": [],
-                                   "knowledge": [{"id": "KNO-001",
-                                                  "secret": "水井下藏着三百两银子",
-                                                  "plant_ch": 1, "status": "Concealed",
-                                                  "weight": 2, "target_ch": 10}]})
+                                   "knowledge": [{**self._SECRET,
+                                                  "holders": ["玄阳子"]}]})
+            r = self._audit(tb)   # beats 的 pov 是模板默认的「主角视角」
+            self.assertIsNone(r["pov"], "视角模式被误当成了角色名")
+            self.assertEqual(self._secret_leaks(r), [], r["candidates"])
+
+    def test_negated_narration_is_not_a_leak(self):
+        """「他不知道 X」是反证，不是泄密——没有这道闸就是笑话。"""
+        with TempBook() as tb:
+            r = self._pov_book(tb, "他不知道水井下藏着三百两银子。")
+            self.assertEqual(self._secret_leaks(r), [], r["candidates"])
+
+    def test_beats_pov_name_is_resolved(self):
+        """beats front-matter 写「林牧·视角」时也能解析出视角角色。"""
+        with TempBook() as tb:
+            tb.write("outlines/vol_01/beats/ch_001.md",
+                     "---\nchapter: ch_001\nvol: vol_01\npov: 林牧·视角\n---\n")
+            tb.set_state("persons", {"entries": [
+                {"id": "p_001", "name": "林牧", "type": "person"},
+                {"id": "p_002", "name": "玄阳子", "type": "person"}]})
+            tb.set_state("lines", {"foreshadows": [], "misunderstandings": [],
+                                   "knowledge": [{**self._SECRET,
+                                                  "holders": ["玄阳子"]}]})
+            tb.seed_chapter("ch_001", "他心里清楚，那笔藏在水井下的银子一共三百两。")
+            # seed_chapter 会覆盖 beats，故在其之后再写一次（带视角角色名的版本）
+            tb.write("outlines/vol_01/beats/ch_001.md",
+                     "---\nchapter: ch_001\nvol: vol_01\npov: 林牧·视角\n---\n")
             r = self._audit(tb)
-            probes = [c["probe"] for c in r["candidates"]]
-            self.assertNotIn("secret_leakage", probes,
-                             "旁白扫描已补上——请同步更新本用例与 AGENTS/文档说明")
+            self.assertEqual(r["pov"], "林牧", "beats 的 pov 未解析出角色")
+            self.assertEqual(len(self._secret_leaks(r)), 1, r["candidates"])
+
+    def test_dialogue_leak_still_caught(self):
+        """原有对白射程不得被本次改动破坏。"""
+        with TempBook() as tb:
+            tb.seed_chapter("ch_001", '林牧道："水井下的银子，一共三百两。"')
+            tb.set_state("persons", {"entries": [
+                {"id": "p_001", "name": "林牧", "type": "person"},
+                {"id": "p_002", "name": "玄阳子", "type": "person"}]})
+            tb.set_state("lines", {"foreshadows": [], "misunderstandings": [],
+                                   "knowledge": [{**self._SECRET,
+                                                  "holders": ["玄阳子"]}]})
+            r = self._audit(tb)
+            hits = self._secret_leaks(r)
+            self.assertEqual(len(hits), 1, r["candidates"])
+            self.assertIn("道出", hits[0]["title"])
 
 
 # ---------------------------------------------------------------------------
