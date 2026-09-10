@@ -1334,7 +1334,7 @@ def cmd_state(args) -> int:
             print(f"📦 卷末态势摘要已生成：{out_path.relative_to(book)}"
                   f"（实体 {len(data['entities'])} ｜ 未兑线 {len(data['open_lines'])} ｜"
                   f" 至 ch_{data['at_final_ch']:03d}）")
-            print("   后卷章节 pack 将自动注入「前情卷末态势」块（≤500 token）")
+            print("   后卷章节 pack 将自动注入「前情卷末态势」块（≤1000 token）")
         return 0
 
     # ---- 溯源查询族：at / diff / blame（changelog 重放，零 Token） ----

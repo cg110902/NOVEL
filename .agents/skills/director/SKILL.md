@@ -110,7 +110,7 @@ description: Universal director, chief playwright, and pipeline orchestrator for
 ### 准备：事实与称谓对账
 运行 `python studio.py beats new ch_XXX --write -w "workspace/<书名>"` 生成脚手架。
 
-> 🌍 **顺手钉住本章世界锚点（省 token 的唯一正门）**：beats front-matter 可选键
+> 🌍 **顺手钉住本章世界锚点**：beats front-matter 可选键
 > `world_refs: 灵石经济, 辟海境` —— 声明后 `pack` 只把命中的 bible 节注入 P0（按章取用），
 > 不再恒给全书世界观；一条都没命中会回退为全量并报警（措辞写错即可察觉）。
 > 留空/删除该行 = 沿用恒给口径。判据：本章真正需要哪几条世界法则？写关键词即可，不必抄原文。

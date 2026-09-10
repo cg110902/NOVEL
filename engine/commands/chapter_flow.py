@@ -439,7 +439,7 @@ def _render_audit_md(payload: dict) -> str:
         f"hard: {hard_count}",
         f"soft: {soft_count}",
         # logic：轨 3（语义逻辑与出戏审查）的确凿条目数，由 Auditor 手填、引擎不计算。
-        # 与 hard 同闸：logic>0 且未 adjudicated 时 sync 拒绝封存（V3.2）。
+        # 与 hard 同闸：logic>0 且未 adjudicated 时 sync 拒绝封存（V3.1）。
         "logic: 0",
         "adjudicated: false",
         "---",

@@ -116,8 +116,7 @@ Evolution    Evolver     人类变更诉求的波及面测算与手术刀改版
   性格突变 / 因果与代价断链 / 现场常识与时空矛盾，这类"读者当场出戏"的问题 `check` **结构上查不出来**
   （引擎没有散文语义能力），所以做成第三轨而不是第四张探针清单；处置三选一：改正文（Stylist 手术刀）/
   转办 Evolver（设定层）/ 降级为 🟡 存疑（不计入 `logic`）。
-- **装配预算契约**（`pack`）：各层自报 token（文本模式 `budget:` 行，`--json` 走 `budget_report`，
-  含 `over_budget` / `compressed` / `hard_cap_breached`），总量上限 **2W**；超预算按**压缩阶梯**由远及近裁
+- **装配预算契约**（`pack`）：总量上限 **2W TOKEN**；超预算按**压缩阶梯**由远及近裁
   （P2 冷索引 → P2 旧章指针 → P1 间接关联 → P1 脊柱 → P0 上章余温），而**细纲全文 / current 块 / 硬提醒 /
   不可逆事实 / 钉住的世界锚点永不自动裁**，裁尽仍超则如实报 `hard_cap_breached` 交主控取舍。
   `world_anchors` 按细纲 front-matter 的 `world_refs:`（逗号/顿号分隔、**须用设定原文用词**）取用——

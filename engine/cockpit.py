@@ -683,7 +683,7 @@ def build_cockpit_briefing(book: Path, ch: str | None = None) -> dict[str, Any]:
             target_f = (f"state/inbox/{ch_tok}.json | log/critic/{ch_tok}.md | "
                         f"log/audit/{ch_tok}.md")
             instruct = ("在单次 invoke_subagent 调用中并发唤起 Reader (事实提案)、Critic (催更便签) "
-                        "与 Auditor (双轨仲裁报告)")
+                        "与 Auditor (三轨仲裁报告)")
         elif not status["audit"]:
             actor = "Auditor"
             target_f = f"log/audit/{ch_tok}.md"

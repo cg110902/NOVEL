@@ -37,8 +37,8 @@ check --trend 分数曲线 / --bisect 快照二分等；
 只测「怎么说话」不测人设）；全部不阻断，阈值走 `project.json` 的 `reader_memory` / `voiceprint` 键
 （PARAM_SPEC 单一真源）；
 - **规模经济**：changelog 事件溯源（state at 重放任意章切面 / blame 字段级溯源 / external_edit 自愈补录）、
-卷级 rollup（前情态势 ≤500 token 注入 pack，装配成本 O(当前卷)）、卷末 reconcile 对账大修（投影误差的周期性维护）；
-- **装配预算契约**：`pack` 各层自报 token（`budget:` 行；`--json` 走 `budget_report`，含 `compressed` / `hard_cap_breached`），总量上限 **2W**；超预算按压缩阶梯由远及近裁
+卷级 rollup（前情态势 ≤1000 token 注入 pack，装配成本 O(当前卷)）、卷末 reconcile 对账大修（投影误差的周期性维护）；
+- **装配预算契约**：`pack` 预算 token 总量上限 **2W**；超预算按压缩阶梯由远及近裁
   （P2 冷索引 → P2 旧章指针 → P1 间接关联 → P1 脊柱 → P0 上章余温），**beats 全文 / current / 硬提醒 /
   不可逆事实 / 钉住的世界锚点永不自动裁**；世界锚点支持按章取用（beats front-matter `world_refs`：
   未声明＝恒给、命中＝只装命中节并对漏掉的基础组打 ⚠️、零命中＝回退恒给并列「可钉的节」）；**refs 最多取前 8 个**（`MAX_WORLD_ANCHOR_REFS`，超出忽略并点名——

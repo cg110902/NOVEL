@@ -3,7 +3,7 @@
 问题：第 200 章时实体几百个，pack 装配成本 O(全书)。解法与 LSM-tree 分层
 合并同构：**历史越远粒度越粗**——每卷封存后生成一份卷末态势快照
 （state/rollups/vol_XX.json，确定性派生、零 Token），pack 给后卷章节装配时
-注入「前情卷末态势」块（预算上限 500 token，超限按优先级裁剪，不挤 p0 主体），
+注入「前情卷末态势」块（预算上限 1000 token，超限按优先级裁剪，不挤 p0 主体），
 使装配成本回到 O(当前卷)。
 
 与 changelog/snapshot 的分工：snapshot 是精确回滚点，changelog 是字段级事件史，
@@ -23,7 +23,7 @@ ROLLUP_DIR = "rollups"
 _ENTITY_FIELDS = ("id", "name", "type", "tier_rank", "tier_name", "life_status",
                   "status", "holder", "charges", "max_charges", "faction")
 # pack 注入块的 token 预算上限（超限按优先级从尾部裁剪）
-PRIOR_VOLUMES_TOKEN_CAP = 500
+PRIOR_VOLUMES_TOKEN_CAP = 1000
 
 
 def rollups_dir(book: Path) -> Path:

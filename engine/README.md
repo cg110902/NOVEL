@@ -22,7 +22,7 @@
 | `state.py` | 十一表真值管理（含 locked/cognition）、**双键实体寻址合并（ID优先）**、语义补丁合并、复式记账重算、幂等登记簿、落盘前一致性体检、高危状态迁移守卫与时间线回退警示（advisory） | 确定性复式平衡算法与实体关系闭合校验 |
 | `proposal_v3.py` | 寻址式提案编译器：v3 ops（全十一表寻址）→ 编译为 v2 等价提案后走同一管线；实体寻址严格性（防重名/表错位）+ 编译前幂等预门 | 纯函数（可反复调用），与 v2 语义对齐 by construction |
 | `memory.py` | 读者记忆派生：未闭环线/关键事实的 last_seen/gap/tier 画像（checks advisory 消费）；R3 起正文优先读 SQLite 增量缓存（指纹新鲜才用，失配回退文件扫），匹配语义恒为子串 | 缓存命中 ms 级，阈值免校准 |
-| `rollup.py` | 卷级态势摘要层：`state/rollups/vol_XX.json` 从当前十一表确定性派生（零 Token 纯算术）；`prior_volumes_digest` 供 pack p0 注入「前情卷末态势」（≤500 token，超限按优先级尾部裁剪），装配成本 O(当前卷)；与 snapshot（精确回滚点）/changelog（字段级事件史）三分：rollup 是写作上下文用粗粒度态势 | 标准库 |
+| `rollup.py` | 卷级态势摘要层：`state/rollups/vol_XX.json` 从当前十一表确定性派生（零 Token 纯算术）；`prior_volumes_digest` 供 pack p0 注入「前情卷末态势」（≤1000 token，超限按优先级尾部裁剪），装配成本 O(当前卷)；与 snapshot（精确回滚点）/changelog（字段级事件史）三分：rollup 是写作上下文用粗粒度态势 | 标准库 |
 | `voiceprint.py` | 对白声纹层：引号段抽取 + 说话人归属启发式（宁漏报不误报）→ 每主要角色滚动基线（口头禅 n-gram（jieba）/ 句长 / 语气词密度）→ 近窗偏离出 `voiceprint_drift`（info，只测「怎么说话」不测人设）；阈值走 PARAM_SPEC `voiceprint` 键 | jieba（已在栈内） |
 | `changelog.py` | 事件溯源层：`state/changelog.jsonl` 字段级变更事件流（save_state 唯一写入咽喉自动派生；外部改动 load 时自动补录；快照回滚不清空历史而是记为事件）；`fold(base, events) == 磁盘` 核心不变量供 verify 对账；`state at <章>`（时点切面）/ `state diff` / `state blame`（字段级溯源）由本模块直接供底 | 标准库（追加式 JSONL + 规范哈希） |
 | `validator.py` + `schemas/` | mini JSON Schema 子集机械校验器（load/save 读写闸门 + 提案顶层）；`schemas/*.json` 为**构建产物**，由 `models/schema_gen.py` 从 Pydantic 模型生成（`python -m engine.models.schema_gen`），anyOf 失败时报告最接近分支的具体错误 | 模型唯一真源 + 闸门补丁层（落盘必完整） |

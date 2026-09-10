@@ -133,7 +133,7 @@ def _deviation_lines(book: Path) -> list[str]:
 MAX_WORLD_ANCHOR_REFS = 8
 
 # 世界锚点（world_anchors）预算帽：project.json.world_anchor_tokens 可调，缺省与上限同为 10000。
-# ⚠️ 设计口径（V3.2 议题）：世界锚点不应「恒给全书」，而应按章取用——现阶段已支持
+# ⚠️ 设计口径（V3.1议题）：世界锚点不应「恒给全书」，而应按章取用——现阶段已支持
 # 用 beats front-matter 的 `world_refs` 钉住本章需要的节（见 _bible_core_anchors），
 # 未声明时回退为按关键词全量恒给（保持既有行为）。
 MAX_WORLD_ANCHOR_TOKENS = 10000
@@ -623,7 +623,7 @@ def build_pack(book: Path, ch: str, lean: bool = False, full: bool = False,
         "hard_reminders": _hard_reminders(book, ch, ch_num),
     }
     # 前情卷末态势（D1 卷级 rollup）：装配成本 O(当前卷) 的关键——远卷只给态势
-    # 摘要（≤500 token，超限从尾部裁剪），细节走 lore/entity 卡按需取
+    # 摘要（≤1000 token，超限从尾部裁剪），细节走 lore/entity 卡按需取
     try:
         from . import rollup as rollup_mod
         _prior = rollup_mod.prior_volumes_digest(book, cur_vol)
@@ -875,7 +875,7 @@ def build_pack(book: Path, ch: str, lean: bool = False, full: bool = False,
             if original_len > 25:
                 budget["original_file_index_count"] = original_len
 
-    # 压缩阶梯（V3.2）：冷索引裁空仍超 2W 预算时，按「离创作现场由远及近」继续裁。
+    # 压缩阶梯（V3.1）：冷索引裁空仍超 2W 预算时，按「离创作现场由远及近」继续裁。
     # 永不裁：beats 全文 / current / 硬提醒 / 不可逆事实 / 钉住的世界锚点——那是本章合同与事实底座。
     def _recount(layer: str) -> None:
         rendered[layer] = render_layer(layer, payload.get(layer), full=full)

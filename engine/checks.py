@@ -596,7 +596,7 @@ def _err(code: str, msg: str, remedy: str = "", can_auto_heal: bool = True) -> d
 _BEATS_FM_KEYS = {"chapter", "vol", "form", "pov", "words", "style_notes", "form_reason",
                   "editor_extra", "tension_curve", "tension_score",
                   "stage_mode", "suppression_factors", "release_trigger",
-                  # V3.2：按章钉住世界锚点的关键词（pack 消费；空/缺省 = 沿用恒给口径）
+                  # V3.1：按章钉住世界锚点的关键词（pack 消费；空/缺省 = 沿用恒给口径）
                   "world_refs"}
 
 PARAM_SPEC: dict[str, dict] = {
