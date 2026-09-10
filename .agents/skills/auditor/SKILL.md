@@ -15,6 +15,7 @@ description: Universal deterministic consistency auditor and contradiction arbit
 > - 实行 **【三轨核验制】**：
 >   - **轨 1（确定性机械探针）**：运行 `python studio.py audit ch_XXX --json` 提取底层 8 大候选探针；
 >   - **轨 2（细纲法定事实对账）**：读取 `beats` 中的「本章法定事实与称谓对校清单」，逐项比对 `final` 正文，坚决拦截称谓与设定漂移！
+>   - **轨 3（逻辑法官）**：使用LLM自带的语义理解和内容识别功能，全面检查本章内容逻辑，见【语义逻辑与出戏风险】。
 
 ---
 
