@@ -128,6 +128,18 @@ MUTATIONS = [
      '        else:\n'
      '            return None\n'
      '    return total + num'),
+    # ---- 25~26：SKILL 准读清单 ↔ pack 角色网关 一致性 ----
+    # 25：editor 的「文风宪法」白名单例外被拿掉 → 文档授权、网关拒收
+    (25, "editor 失去 bible/06 白名单例外（文档授权但网关拒收）", "engine/pack.py",
+     '    "editor": ("bible/06_style_guidelines.md",),\n'
+     '    "stylist": ("bible/06_style_guidelines.md",),',
+     '    "stylist": ("bible/06_style_guidelines.md",),'),
+    # 26：SKILL 文档又把「角色卡」列回 editor 的准读清单（网关禁读 characters/）
+    (26, "editor SKILL 又把角色卡列为准读（文档授权但网关拒收）",
+     ".agents/skills/editor/SKILL.md",
+     '  3. `bible/06_style_guidelines.md`（全书文风宪法与微动作词库）。',
+     '  3. `bible/06_style_guidelines.md`（全书文风宪法与微动作词库）；\n'
+     '  4. `characters/<在场角色>.md`（当章出场的核心角色卡）。'),
 ]
 
 KILLER = {
@@ -143,6 +155,7 @@ KILLER = {
     19: "tests.test_engine", 20: "tests.test_rollup",
     21: "tests.test_engine", 22: "tests.test_engine",
     23: "tests.test_engine", 24: "tests.test_engine",
+    25: "tests.test_role_policy", 26: "tests.test_role_policy",
 }
 
 

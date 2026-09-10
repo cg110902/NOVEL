@@ -121,7 +121,7 @@
 
 ### P1 — 小成本、高回报
 
-#### ⑤ 给 `world_anchors` 加预算帽 ★Token/注意力双收益
+#### ⑤ 给 `world_anchors` 加预算帽 ★Token/注意力双收益  ✅ 已完成
 
 - **问题**：占 P0 的 61%（3314 tok），**无上限、逐章重复、不可裁剪**。真实 bible 写厚后可轻松破 10k，单枪匹马撑爆 `PACK_TOKEN_CAP=18000`（而超预算只裁 P2，P0 保留）。
 - **更深的问题**：它违背 pack 自己的设计哲学——P2 明说「本包未装的一律视为你不需要知道」，而 world_anchors 是"每章硬塞"。**恒定内容不该占每章的上下文**。
@@ -146,11 +146,14 @@
 - **收益**：Editor/Stylist 输入降 ~65%，**注意力集中在其真正负责的维度上**——正是你要的效果。
 - **成本**：纯文档改动，零引擎改动。
 
-#### ⑦ 清理 `project.json` 的死字段 `mode`
+#### ⑦ 清理 `project.json` 的死字段 `mode`  ✅ 已完成
 
-- **问题**：`"mode": "automatic"` 被 grep 确认**无任何逻辑消费**，只有 `config list` 回显。
-- **动作**：要么删掉，要么**让它真正驱动** Stage 裁剪（见 ⑧）。
+- **问题**：`"mode": "automatic"` 被 grep 确认**无任何逻辑消费**，只有 `_book_brief` 回显。
+- **已做**：从 `templates/project.json`、`book_setup.py` 的 init 默认值、`_book_brief` 回显三处一并删除。
 - **理由**：配置字段没有消费者就是噪声，且会误导 Agent 以为存在"自动模式"。
+- **顺带体检的结论（好消息）**：`PARAM_SPEC` 登记的 15 个参数**全部**有真实消费方，
+  且 `gap=True` 的词表参数全部在 `templates/project.json` 有初值——配置面本身是自洽的。
+  唯一的不自洽在 `engine/vocab.py`（见 §6 F）。
 
 ---
 
@@ -247,6 +250,10 @@ Phase 3 放最后，因为 harness 跑出来的结果要有可信度，前提是
 | D | **正文↔账本算术闸门对大额整段静默** | `checks.py` 的 `amount_arith_unverified` 数字字符集不含 `万/亿`：「灵石由三万变为五万」而账本记 `+30000`，`check` 全程 `ok`。而修仙题材里 灵石 过万才是常态——**这道闸门对绝大多数真实数额是关着的** | `_NUMPAT` 补 `万/亿` 并放宽长度；`_cn2int` 委托 `common.cn_to_int` | 22 |
 | E | 中文数字把 `万/亿` 当普通单位扁平累加 | 三处各自为政的解析器：`十二万→20010`、`三十万→10030`、`一千万→11000`、`三亿→100000000` | 统一收敛到 `common.cn_to_int`（万/亿按「节」进位，内嵌阿拉伯数字串按裸数处理）；`audit`/`checks`/`evidence` 三处一律委托 | 21 / 23 / 24 |
 
+| F | `engine/vocab.py` 三份 DEFAULT_* 词表**全无引用**（双份真相） | 注释写着「Checks 某某档的默认值」，但 `checks.py` 走 `proj.get(k)`、取不到就明确提示「未配置，该档已跳过」，**从不回落到 vocab**。真正的默认值住在 `templates/project.json`。其中 `DEFAULT_AI_TELL_WORDS` 是空表（注释「暂时缺省」），且 `PARAM_SPEC` 里根本没有 `ai_tell_words`——**配置面与代码面都不存在**，属未接线功能 | 删除三份死常量，并在 vocab 留下「唯一真相源是 templates/project.json」的说明；`checks` 不回落的行为保持不变（题材词表必须按题材配，套用通用玄幻表反而误报） | — |
+| H | **Editor 的 SKILL 准读清单第 4 项 `characters/<在场角色>.md`：文档授权、网关拒收** | `engine/pack.py` 的 `ROLE_DENY["editor"]` 含 `characters/`，Agent 严格照 SKILL 执行必吃 `PermissionError`。且该 SKILL 自己的 §三.1 SOP 写的是「严格对照 **beats** 中的『现场在场角色动态称谓基准』」——三处口径里网关与 SOP 一致，只有准读清单是过期的（与 `bible/06` 同批修漏的那一条） | 按「文档错」修正：准读清单改为 3 项并删去角色卡，禁读清单显式写入 `characters/*`，并注明称谓/Want-Fear 一律以 beats 的称谓对校清单为准（Director 已预提炼，见 `templates/beats.md:88`） | 25 / 26 |
+| G | `project.json` 死字段 `mode` | `"mode": "automatic"` 无任何逻辑消费，只有 `_book_brief` 回显，会误导 Agent 以为存在「自动模式」 | 模板 / init 默认值 / 回显三处一并删除 | — |
+
 ### 6.1 实测（DEFECT D，修前 → 修后）
 
 | 正文 | 账本净变动 | 修前 | 修后 |
@@ -268,5 +275,8 @@ Phase 3 放最后，因为 harness 跑出来的结果要有可信度，前提是
    会让「正常路径仍可读」的断言报 `ValueError`。两本书分开验证。
 4. **测试绿了，可能是因为 bug 还在。** `test_sync_emits_proposal_events_and_seal`
    当初通过，正是因为派生封存坏掉、压根没产生派生事件。
-5. **别手搓变异注入。** 临时 `str.replace` 会静默 no-op，制造假的「已杀死」。
+5. **文档与代码的契约要双向钉死。** 新增 `tests/test_role_policy.py`：
+   一边断言「SKILL 准读清单里的路径网关必须放行」，一边断言「测试表里的字面量在 SKILL 里还在」
+   ——任一侧漂移都会红。它刚写完就立刻抓到我自己表里 librarian 的 `ch_{N-9..N}` 写成了 `ch_XXX`。
+6. **别手搓变异注入。** 临时 `str.replace` 会静默 no-op，制造假的「已杀死」。
    用 `tests/mutation_guard.py`（锚点找不到会报 `SKIP`，并逐字节校验还原）。
