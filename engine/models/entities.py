@@ -72,8 +72,9 @@ class EntityEntry(BaseModel):
     summary: Optional[str] = Field(None, description="一句话实体简介")
     status: Optional[EntityStatus] = Field(None, description="活跃/退场状态")
 
-    # 实力与层级标尺（全题材通用）
-    tier_rank: Optional[int] = Field(None, ge=1, le=12, description="标准化实力/阶层档位(1-12数字标尺，便于跨题材比大小)")
+    # 实力与层级标尺（全题材通用）- 区间由 checks 层 entity_tier_invalid 守卫（1-12），
+    # 模型层不设 ge/le 以便该检查码可达（此前模型层直接拒收，导致该码为死码）。
+    tier_rank: Optional[int] = Field(None, description="标准化实力/阶层档位(1-12数字标尺，便于跨题材比大小)")
     tier_name: Optional[str] = Field(None, description="阶层全称（如：辟海境后期 / S级战略异能者 / 集团执行总裁）")
     power_benchmark: Optional[str] = Field(None, description="破坏力/表现力物理实物标尺（如：单手掷出万斤巨石，剑气裂百米悬崖）")
     realm: Optional[str] = Field(None, description="人物境界/阶位/社会职务（兼容旧版字段）")
