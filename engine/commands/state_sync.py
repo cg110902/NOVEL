@@ -1373,7 +1373,8 @@ def cmd_state(args) -> int:
             return 0
         print(f"🔎 {target} 的变更史（新→旧，共 {len(events)} 条）")
         for ev in events[:30]:
-            when = f"ch_{ev.get('ch')}" if ev.get("ch") else ev.get("ts", "")
+            # ev["ch"] 已是规范章号（ch_NNN），此前再套一层 f"ch_{}" 渲染成 ch_ch_001
+            when = str(ev.get("ch") or ev.get("ts", ""))
             print(f"  #{ev.get('seq'):>4} [{ev.get('source')}] {when} {ev.get('op')}: "
                   f"{ev.get('path')}  {str(ev.get('before'))[:36]!r} → {str(ev.get('after'))[:36]!r}"
                   + (f"  (op_id={ev.get('op_id')})" if ev.get("op_id") else ""))

@@ -17,6 +17,7 @@ from engine import errcodes  # noqa: E402
 from engine.commands import chapter_flow, state_sync  # noqa: E402
 from engine.commands._shared import parse_audit_frontmatter  # noqa: E402
 from engine.models.entities import LOCATION_TYPES, EntityEntry  # noqa: E402
+from engine import pack  # noqa: E402
 from engine.pack import ROLE_ALLOW_EXTRA, ROLE_DENY, deny_reason  # noqa: E402
 from tests._fixtures import TempBook  # noqa: E402
 
@@ -334,6 +335,47 @@ class TestRoleGateway(unittest.TestCase):
         self.assertIsNotNone(reason)
         for role in ("stylist", "auditor", "librarian", "evolver"):
             self.assertIn(role, reason)
+
+    def test_symlink_cannot_pivot_whitelist(self):
+        """符号链接不得成为白名单跳板：检查的路径必须等于打开的路径。
+
+        deny_reason 用 os.path.normpath（不跟随符号链接），而
+        common.safe_child_path 用 Path.resolve()（跟随）。二者口径不一致时，
+        把 bible/06_style_guidelines.md 软链到 state/ledger.json，editor 就能
+        借「准读文风宪法」读到被禁的账本——实测成立，故改为先解析再过网关。
+        """
+        with TempBook() as tb:
+            bible = tb.book / "bible"
+            bible.mkdir(parents=True, exist_ok=True)
+            tb.write("state/ledger.json", '{"note":"账本","pools":{},"transactions":[]}')
+
+            # 关键：链接必须占住「白名单路径本身」，否则会被 bible/ 前缀直接禁掉，
+            # 测不出这个缺陷（曾因此写出一个恒真的无效用例，被 mutation_guard 逮到）。
+            legit = bible / "06_style_guidelines.md"
+            if legit.exists() or legit.is_symlink():
+                legit.unlink()
+            legit.symlink_to(tb.book / "state" / "ledger.json")
+            # editor 准读 06 文风宪法，但解析后是 state/ledger.json → 必须拦
+            with self.assertRaises(PermissionError) as ctx:
+                pack.open_file(tb.book, "bible/06_style_guidelines.md", "editor")
+            self.assertIn("state/", str(ctx.exception),
+                          "拦截理由应指向解析后的真实路径，而不是链接名")
+
+            # 还原为真实文件后，正常白名单路径必须放行（不得误伤）
+            legit.unlink()
+            legit.write_text("# 文风宪法\n大白话。\n", encoding="utf-8")
+            self.assertIn("文风宪法", pack.open_file(
+                tb.book, "bible/06_style_guidelines.md", "editor")["text"])
+
+    def test_open_file_denies_before_opening(self):
+        """网关判定发生在打开之前：`..` 变形写法不得绕过（检查与打开同口径）。"""
+        with TempBook() as tb:
+            tb.write("state/ledger.json", '{"note":"账本","pools":{},"transactions":[]}')
+            for rel in ("state/ledger.json", "state/current.json/../ledger.json",
+                        "./state/ledger.json", "manuscript/../state/ledger.json"):
+                with self.subTest(rel=rel):
+                    with self.assertRaises(PermissionError):
+                        pack.open_file(tb.book, rel, "auditor")
 
     def test_auditor_whitelist_and_denials(self):
         book = Path("/tmp/book")
@@ -1543,3 +1585,119 @@ class TestMilestoneMergeIdentity(unittest.TestCase):
         ids = [m["id"] for m in d["milestones"]]
         self.assertEqual(len(ids), 3)
         self.assertEqual(len(set(ids)), 3, "自动 ID 不得互撞")
+
+
+# ---------------------------------------------------------------------------
+# 中文数字解析：万/亿 必须按「节」进位（三份重复实现的历史回归）
+# ---------------------------------------------------------------------------
+class TestCnToInt(unittest.TestCase):
+    """common.cn_to_int 是本项目中文数字解析的唯一实现。
+
+    背景：audit / checks / evidence 曾各有一份拷贝，且都把 万/亿 当普通量级单位
+    扁平累加——十二万→20010、三十万→10030、一千万→11000、三亿→100000000；
+    checks 那份更把 万/亿 挡在字符集之外，使「由三万变为五万」的大额算术校验
+    整段静默。以下用例即这批缺陷的回归防线。
+    """
+
+    CASES = {
+        "零": 0, "〇": 0, "一": 1, "两": 2, "両": 2, "十": 10,
+        "十三": 13, "二十": 20, "九十": 90, "九十九": 99, "十五": 15,
+        "一百": 100, "一百零五": 105, "一百一十": 110, "一百二十三": 123,
+        "两百": 200, "三百": 300, "两千": 2000, "三千": 3000,
+        # —— 万/亿 分节（历史缺陷重灾区）——
+        "一万": 10_000, "三万": 30_000, "十二万": 120_000, "三十万": 300_000,
+        "三十五万": 350_000, "一万二千": 12_000, "一千万": 10_000_000,
+        "一百二十三万": 1_230_000, "一亿": 100_000_000, "三亿": 300_000_000,
+        "两亿": 200_000_000, "一亿二千三百万": 123_000_000, "一万零五百": 10_500,
+        # —— 内嵌阿拉伯数字串 ——
+        "12": 12, "3万": 30_000, "1万5千": 15_000,
+    }
+
+    def test_table(self):
+        for text, want in self.CASES.items():
+            self.assertEqual(common.cn_to_int(text), want, f"cn_to_int({text!r})")
+
+    def test_unrecognised_char_returns_none(self):
+        """不猜：出现表外字符一律 None，交回调用方按「未识别」处理。"""
+        for text in ["", "   ", "二十个", "三无", "abc", "－五", None]:
+            self.assertIsNone(common.cn_to_int(text), f"cn_to_int({text!r}) 应返回 None")
+
+    def test_three_call_sites_agree(self):
+        """audit / evidence / checks 必须委托同一实现，防止再次分叉。"""
+        from engine import audit, evidence
+        for text in ["十二万", "三十万", "一千万", "三亿", "一万零五百", "一百二十三", "3万"]:
+            want = common.cn_to_int(text)
+            self.assertEqual(audit._parse_cn_number(text), want, f"audit 与 canonical 分歧: {text}")
+            self.assertEqual(evidence._cn_num_to_int(text), want, f"evidence 与 canonical 分歧: {text}")
+
+    def test_evidence_keeps_its_liang_ambiguity_guard(self):
+        """evidence 独有的「三两」歧义闸门（3 两？还是约数？）必须保留。"""
+        from engine import evidence
+        self.assertIsNone(evidence._cn_num_to_int("三两"))
+        self.assertIsNone(evidence._cn_num_to_int("二両"))
+        self.assertEqual(evidence._cn_num_to_int("两万"), 20_000)
+
+
+class TestAmountArithGateLargeNumbers(unittest.TestCase):
+    """checks 的正文↔账本算术闸门对大额（万/亿）不能静默。
+
+    修仙/玄幻题材里 灵石 过万才是常态，旧实现的数字字符集不含 万/亿，
+    等于把这道闸门对绝大多数真实数额关掉了。
+    """
+
+    @staticmethod
+    def _seed(tb, net_delta: int, text: str) -> None:
+        b = tb.book
+        final_dir = b / "manuscript" / "vol_01" / "final"
+        final_dir.mkdir(parents=True, exist_ok=True)
+        (final_dir / "ch_001.md").write_text(text, encoding="utf-8")
+        (b / "state" / "ledger.json").write_text(json.dumps({
+            "pools": {"standard_currency": {
+                "name": "灵石", "unit": "块",
+                "initial": 100_000, "current": 100_000 + net_delta}},
+            "transactions": [{
+                "chapter": "ch_001", "pool": "standard_currency", "type": "income",
+                "delta": net_delta, "subject": "卖符",
+                "balance_after": 100_000 + net_delta}],
+        }, ensure_ascii=False), encoding="utf-8")
+
+    def _warnings(self, net_delta: int, text: str) -> list[dict]:
+        with TempBook() as tb:
+            self._seed(tb, net_delta, text)
+            rep = checks.run_checks(tb.book)
+            return [w for w in rep.get("warnings", []) if w.get("code") == "amount_arith_unverified"]
+
+    def test_wan_level_mismatch_is_reported(self):
+        """正文称 +20000，账本记 +30000 → 必须报警（旧实现静默放行）。"""
+        hit = self._warnings(30_000, "他数了数，灵石由三万变为五万。\n")
+        self.assertEqual(len(hit), 1, "万级数额的算术不闭合被静默放行了")
+
+    def test_wan_level_match_stays_silent(self):
+        """正文与账本一致 → 不得误报。"""
+        self.assertEqual(self._warnings(20_000, "他数了数，灵石由三万变为五万。\n"), [])
+
+    def test_yi_level_mismatch_is_reported(self):
+        hit = self._warnings(300_000_000, "他数了数，灵石由一亿变为三亿。\n")
+        self.assertEqual(len(hit), 1, "亿级数额的算术不闭合被静默放行了")
+
+    def test_small_amounts_unchanged(self):
+        """小额行为不得被本次改动破坏：错则报、对则静默。"""
+        self.assertEqual(len(self._warnings(30, "他数了数，灵石由三十变为五十。\n")), 1)
+        self.assertEqual(self._warnings(20, "他数了数，灵石由三十变为五十。\n"), [])
+
+
+class TestAmountProbeYi(unittest.TestCase):
+    """audit 的金额探针：亿 原先不在数字字符集里，整句匹配不上。"""
+
+    def test_yi_amount_is_parsed(self):
+        from engine import audit
+        pools = {"s": {"name": "灵石", "unit": "块", "current": 1000}}
+        out = audit.probe_amount_ledger("他付了三亿灵石。", ["他付了三亿灵石。"], {"pools": pools})
+        self.assertTrue(out, "亿级支出未被探针识别")
+        self.assertIn("300000000", out[0]["title"])
+
+    def test_twelve_wan_is_twelve_myriad_not_twenty_thousand_ten(self):
+        from engine import audit
+        pools = {"s": {"name": "灵石", "unit": "块", "current": 1000}}
+        out = audit.probe_amount_ledger("他付了十二万灵石。", ["他付了十二万灵石。"], {"pools": pools})
+        self.assertIn("120000", out[0]["title"])

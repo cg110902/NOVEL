@@ -644,6 +644,12 @@ PARAM_SPEC: dict[str, dict] = {
         "desc": "位阶单调性探针（tier_shift_without_event）的事件匹配窗口：位阶变更章"
                 "±N 章内需有提及该实体的突破/被废类 timeline 事件。默认 1；0=严格同章。",
         "example": 1},
+    "world_anchor_tokens": {"shape": "nonneg_int", "gap": False,
+        "desc": "pack 世界锚点（world_anchors）预算帽：bible 中命中关键词的标题小节会逐章"
+                "注入 Drafter 上下文，此值限定其 token 上限，超出按节截断并提示用 "
+                "`studio lore rules` 按需取。0 = 不注入世界锚点。默认 2000；"
+                "设为 0 且 bible 很厚时可最大化上下文余量。",
+        "example": 2000},
     "voiceprint": {"shape": "voiceprint_map", "gap": False,
         "desc": "对白声纹漂移检测阈值 {min_lines, recent_lines, window, len_shift, "
                 "mood_shift, sig_min_count}（check voiceprint_drift 档，info 级）。"
@@ -1299,32 +1305,24 @@ def run_checks(book: Path) -> dict:
     try:
         _led2 = state.load_state(book, "ledger")
         _pools2 = _led2.get("pools") or {}
-        _CN = vocab.CN_DIGITS
-
         def _cn2int(s: str) -> int | None:
-            s = s.strip()
-            if s.isdigit():
-                return int(s)
-            if not s or any(c not in "零一二两三四五六七八九十百千" for c in s):
-                return None
-            total, num = 0, 0
-            for c in s:
-                if c in _CN:
-                    num = _CN[c]
-                elif c == "十":
-                    total += (num or 1) * 10; num = 0
-                elif c == "百":
-                    total += (num or 1) * 100; num = 0
-                elif c == "千":
-                    total += (num or 1) * 1000; num = 0
-            return total + num
+            # 曾经的本地实现有两处硬伤：
+            #   ① 字符集白名单「零一二两三四五六七八九十百千」不含 万/亿，
+            #      任何 ≥ 一万 的数额直接返回 None → 与下面的 _NUMPAT 一起，
+            #      把「由三万变为五万」这类大额算术校验整段静默掉；
+            #   ② 万/亿 即便放行也只会被当普通单位加一次（十二万 → 20010）。
+            # 现统一委托 common.cn_to_int（万/亿按节进位）。
+            return common.cn_to_int(s)
 
         _net: dict[tuple[str, str], int] = {}
         for _t in (_led2.get("transactions") or []):
             if isinstance(_t.get("delta"), int):
                 _k = (str(_t.get("chapter", "")), str(_t.get("pool", "")))
                 _net[_k] = _net.get(_k, 0) + int(_t["delta"])
-        _NUMPAT = r"(\d+|[零一二两三四五六七八九十百千]{1,6})"
+        # 万/亿 原先不在字符集里：「由三万变为五万」根本捕获不到，正文↔账本
+        # 的唯一一道算术闸门对大额（修仙题材的常态）完全失效。补上并放宽长度
+        # 到 12，容纳「一亿二千三百四十五万」这类长数额。
+        _NUMPAT = r"(\d+|[零一二两三四五六七八九十百千万亿]{1,12})"
         _pat = re.compile(
             rf"(?:{'|'.join(re.escape(str(p.get('name'))) for p in _pools2.values() if p.get('name'))})"
             rf"[^。！？\n]{{0,12}}?由\s*{_NUMPAT}\s*(?:盏|枚|个)?\s*"

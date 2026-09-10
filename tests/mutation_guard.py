@@ -93,6 +93,41 @@ MUTATIONS = [
      '                    and re.fullmatch(r"ch_\\d{3,}", str(t["chapter"]))\n'
      '                    and str(t["chapter"]) != expected_chapter):',
      '            if False:'),
+    # ---- 19~20：本轮新修缺陷的配套变异 ----
+    # 19：退回「用原始路径过网关」→ 符号链接可把白名单当跳板
+    (19, "open_file 退回原始路径过网关（符号链接跳板复活）", "engine/pack.py",
+     '    reason = deny_reason(book, rel_checked, role)',
+     '    reason = deny_reason(book, rel, role)'),
+    # 20：world_anchors 预算帽失效 → 恒定内容重回「占满上下文且无法裁剪」
+    (20, "world_anchors 预算帽失效", "engine/pack.py",
+     '        if kept and used + t > budget:\n            break',
+     '        if False:\n            break'),
+    # ---- 21~24：中文数字解析（万/亿 分节）的配套变异 ----
+    # 21：万/亿 退回「当普通单位扁平累加」→ 十二万→20010、三十万→10030
+    (21, "cn_to_int 万/亿 退回扁平累加", "engine/common.py",
+     '            total += ((section + (num or 0)) or 1) * _CN_UNITS_SECTION[ch]',
+     '            total += (num or 1) * _CN_UNITS_SECTION[ch]'),
+    # 22：正文↔账本算术闸门的字符集退回不含 万/亿 → 大额再次整段静默
+    (22, "算术闸门 _NUMPAT 退回不含万/亿", "engine/checks.py",
+     r'        _NUMPAT = r"(\d+|[零一二两三四五六七八九十百千万亿]{1,12})"',
+     r'        _NUMPAT = r"(\d+|[零一二两三四五六七八九十百千]{1,6})"'),
+    # 23：audit 金额探针的字符集退回不含 亿 → 「付了三亿灵石」匹配不上
+    (23, "audit 金额正则退回不含亿", "engine/audit.py",
+     r'rf"(?:{_verbs_pat})\s*([0-9一二两三四五六七八九十百千万亿]+)\s*({_units_pat})"',
+     r'rf"(?:{_verbs_pat})\s*([0-9一二两三四五六七八九十百千万]+)\s*({_units_pat})"'),
+    # 24：evidence 不再委托 canonical → 三份实现重新分叉
+    (24, "evidence 数字解析退回自带扁平实现（三份实现重新分叉）", "engine/evidence.py",
+     '    return common.cn_to_int(s)',
+     '    total, num = 0, 0\n'
+     '    for ch in s:\n'
+     '        if ch in _CN_DIGITS:\n'
+     '            num = _CN_DIGITS[ch]\n'
+     '        elif ch in _CN_UNITS:\n'
+     '            total += (num or 1) * _CN_UNITS[ch]\n'
+     '            num = 0\n'
+     '        else:\n'
+     '            return None\n'
+     '    return total + num'),
 ]
 
 KILLER = {
@@ -105,6 +140,9 @@ KILLER = {
     13: "tests.test_objects", 14: "tests.test_objects",
     15: "tests.test_fault_injection", 16: "tests.test_fault_injection",
     17: "tests.test_fault_injection", 18: "tests.test_fault_injection",
+    19: "tests.test_engine", 20: "tests.test_rollup",
+    21: "tests.test_engine", 22: "tests.test_engine",
+    23: "tests.test_engine", 24: "tests.test_engine",
 }
 
 
@@ -115,7 +153,9 @@ def run_module(mod: str) -> int:
 
 
 def main() -> int:
-    only = {int(sys.argv[1])} if len(sys.argv) > 1 else None
+    # 曾只取 argv[1]：`python tests/mutation_guard.py 21 22 23 24` 会静默丢掉后三个，
+    # 让人误以为四个变异都验过了。改为接受任意多个编号。
+    only = {int(a) for a in sys.argv[1:]} or None
     results = []
     for num, name, rel, old, new in MUTATIONS:
         if only and num not in only:

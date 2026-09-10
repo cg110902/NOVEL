@@ -98,8 +98,43 @@ def _deviation_lines(book: Path) -> list[str]:
     return out
 
 
+# 世界锚点（world_anchors）预算帽。
+#
+# 实测（200 章压力书，bible 合计 14.8k tok）：world_anchors 高达 **13 330 tok**，
+# 占 pack 总预算（18 000）的 74%，且**逐章完全相同**。两重代价：
+#   1) token：每章为同一段恒定内容重复付费；
+#   2) 注意力：逐章不变的内容会被模型学会忽略，等于白占预算并稀释有效上下文。
+# 更严重的是 pack 的超预算硬裁只裁 P2（P0/P1 保留），bible 再厚一点就会
+# 单枪匹马撑破 18 000 且无法裁剪。
+#
+# 这与 pack 自身的装配哲学冲突——P2 明说「本包未装的一律视为你不需要知道」。
+# 恒定内容就该按需取（studio lore rules / studio lore entity），不该每章硬塞。
+MAX_WORLD_ANCHOR_TOKENS = 2000
+_WORLD_ANCHOR_HINT = (
+    "…（世界锚点已按预算截断，完整世界公理/战力标尺/势力分布请按需取："
+    "`python studio.py lore rules` ｜ `python studio.py lore entity <实体>`）")
+
+
+def _world_anchor_budget(book: Path) -> int:
+    """世界锚点预算：project.json.world_anchor_tokens（非负整数），缺省 2000。"""
+    try:
+        proj = common.load_json(book / "project.json", default={}) or {}
+    except (ValueError, OSError):
+        return MAX_WORLD_ANCHOR_TOKENS
+    v = proj.get("world_anchor_tokens")
+    if isinstance(v, int) and not isinstance(v, bool) and v >= 0:
+        return v
+    return MAX_WORLD_ANCHOR_TOKENS
+
+
 def _bible_core_anchors(book: Path) -> str:
-    """提取 bible/ 中的世界规则、战力标尺、势力分布与特殊机制（恒常注入 P0）。"""
+    """提取 bible/ 中的世界规则、战力标尺、势力分布与特殊机制（恒常注入 P0）。
+
+    按预算逐节截断（确定性：始终保留靠前的节，bible 01/02 最基础）。
+    """
+    budget = _world_anchor_budget(book)
+    if budget <= 0:
+        return ""
     bible_dir = book / "bible"
     if not bible_dir.is_dir():
         return ""
@@ -140,7 +175,21 @@ def _bible_core_anchors(book: Path) -> str:
             if content:
                 sections.append(f"### {current_title}\n{content}")
 
-    return "\n\n".join(sections)
+    if not sections:
+        return ""
+    # 逐节累加，超出预算即停（保留靠前节：bible 01/02 的世界公理与战力标尺最基础）
+    kept: list[str] = []
+    used = 0
+    for sec in sections:
+        t = common.est_tokens(sec)
+        if kept and used + t > budget:
+            break
+        kept.append(sec)
+        used += t
+    out = "\n\n".join(kept)
+    if len(kept) < len(sections):
+        out += "\n\n" + _WORLD_ANCHOR_HINT
+    return out
 
 
 
@@ -670,6 +719,9 @@ def build_pack(book: Path, ch: str, lean: bool = False, full: bool = False) -> d
     budget["total"] = sum(budget.values())
     budget["cap"] = PACK_TOKEN_CAP
     budget["over_budget"] = budget["total"] > PACK_TOKEN_CAP
+    # 可观测：world_anchors 曾长期占 P0 的 61%~74% 却完全不可见（只混在 p0 总数里）
+    budget["world_anchor_tokens"] = common.est_tokens(
+        payload.get("p0", {}).get("world_anchors") or "")
 
     # 超预算硬裁：优先裁 P2 冷索引，修复计数失真
     if budget["over_budget"] and payload.get("p2"):
@@ -890,14 +942,26 @@ def deny_reason(book: Path, rel: str, role: str) -> str | None:
 
 
 def open_file(book: Path, rel: str, role: str = "drafter") -> dict:
-    reason = deny_reason(book, rel, role)
+    # 先解析真实路径、再拿解析后的相对路径过网关，确保「检查的就是打开的」。
+    #
+    # 背景（符号链接绕过）：deny_reason 用 os.path.normpath（不跟随符号链接），
+    # 而 common.safe_child_path 用 Path.resolve()（跟随符号链接）。二者口径不一致时，
+    # 白名单会变成跳板——实测把 bible/06_style_guidelines.md 软链到
+    # state/ledger.json，editor 就能借「准读文风宪法」读到被禁的账本。
+    # 项目自身在 find_chapter_files / state._archive 均显式拒绝符号链接，
+    # 本处此前漏了这道，属同族不一致。
+    p = common.safe_child_path(book, rel)
+    try:
+        rel_checked = str(p.relative_to(Path(book).resolve()))
+    except ValueError:  # 理论上不可达（safe_child_path 已保证在根内），保守回退
+        rel_checked = rel
+    reason = deny_reason(book, rel_checked, role)
     if reason:
-        common.debug(f"pack --open 网关拦截: {rel} as={role}（{reason}）")
+        common.debug(f"pack --open 网关拦截: {rel_checked} as={role}（{reason}）")
         raise PermissionError(
-            f"{reason}：{rel}\n"
+            f"{reason}：{rel_checked}\n"
             f"   确需越权读取请显式声明角色：pack --open {rel} --as director"
             "（仅主控有全量准读权；子代理不得自行提权）")
-    p = common.safe_child_path(book, rel)
     if not p.is_file():
         raise ValueError(f"--open 目标不存在: {rel}")
     return {"path": rel, "text": p.read_text(encoding="utf-8", errors="replace")}

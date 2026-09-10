@@ -63,40 +63,15 @@ def _deceased_speaks(content: str, name: str) -> bool:
             or f"{name}」" in content or f"{name}”" in content)
 
 
-_CN_NUM_MAP = vocab.CN_NUM_MAP
-
-
 
 def _parse_cn_number(s: str) -> int | None:
-    """简易中文数字转整数（覆盖常用小额银钱数额）。"""
-    s = s.strip()
-    if s.isdigit():
-        return int(s)
-    try:
-        if len(s) == 1 and s in _CN_NUM_MAP:
-            return _CN_NUM_MAP[s]
-        if len(s) == 2 and s.startswith("十") and s[1] in _CN_NUM_MAP:
-            return 10 + _CN_NUM_MAP[s[1]]
-        if "万" in s:
-            parts = s.split("万", 1)
-            w_part = _parse_cn_number(parts[0]) or 1
-            r_part = _parse_cn_number(parts[1]) if parts[1] else 0
-            return w_part * 10000 + (r_part or 0)
-        total = 0
-        cur = 0
-        for ch in s:
-            v = _CN_NUM_MAP.get(ch)
-            if v is None:
-                continue
-            if v in (10, 100, 1000):
-                total += (cur or 1) * v
-                cur = 0
-            else:
-                cur = v
-        total += cur
-        return total if total > 0 else None
-    except Exception:
-        return None
+    """中文数字转整数（委托 common.cn_to_int，唯一实现）。
+
+    旧实现把「亿」当普通数字位处理：三亿 → cur 被 100000000 覆盖成 100000000、
+    两亿同样得 100000000；且遇到不认识的字是 `continue` 静默跳过（如「二十个」
+    会被算成 20）。现统一走 common.cn_to_int：万/亿按节进位，未知字符返回 None。
+    """
+    return common.cn_to_int(s)
 
 
 def _find_mentions_with_lines(lines: list[str], keyword: str) -> list[tuple[int, str]]:
@@ -307,7 +282,8 @@ def probe_amount_ledger(text: str, lines: list[str], led_st: dict) -> list[dict]
     # 正则交替取先匹配者，于是「九十两银子」只捕获到 "两"、「九十块灵石」只捕获到 "块"，
     # 后面按单位名找池的分支全部落空——探针形同不存在。按长度降序即可。
     _units_pat = "|".join(sorted(vocab.CURRENCY_UNITS, key=len, reverse=True))
-    money_pat = re.compile(rf"(?:{_verbs_pat})\s*([0-9一二两三四五六七八九十百千万]+)\s*({_units_pat})")
+    # 亿 原先不在数字字符集里，「花费三亿灵石」整句匹配不上 → 探针静默。补上。
+    money_pat = re.compile(rf"(?:{_verbs_pat})\s*([0-9一二两三四五六七八九十百千万亿]+)\s*({_units_pat})")
     # 池键解析改为对齐本书真实账本：单位词命中某池的 name/unit 即认定该池。
     # 此前只认 silver/spirit_stone/copper/gold 四个硬编码英文键，而引擎内置池叫
     # standard_currency、书里的池键名由作者自定（中文/拼音都可能），于是绝大多数书

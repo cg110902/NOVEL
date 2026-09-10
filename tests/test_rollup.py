@@ -15,6 +15,78 @@ from engine import common, pack, rollup, state  # noqa: E402
 from tests._fixtures import TempBook  # noqa: E402
 
 
+class TestWorldAnchorBudget(unittest.TestCase):
+    """world_anchors 预算帽（pack 上下文经济学）。
+
+    实测依据：bible 合计 14.8k tok 时，world_anchors 曾高达 13 330 tok，
+    占 pack 总预算（18 000）的 74%，且**逐章完全相同**——既重复烧 token，
+    又用恒定内容稀释注意力。而 pack 超预算硬裁只裁 P2（P0/P1 保留），
+    bible 再厚一点就会单枪匹马撑破预算且无法裁剪。
+    """
+
+    _FAT = "### 境界细分补充\n" + "五行灵根各有偏重，修炼速度差异显著。" * 60 + "\n"
+
+    def _thicken_bible(self, tb):
+        for f in sorted((tb.book / "bible").glob("0[1-5]*.md")):
+            f.write_text(f.read_text(encoding="utf-8") + "\n\n" + self._FAT * 3,
+                         encoding="utf-8")
+
+    def test_thick_bible_is_capped(self):
+        with TempBook() as tb:
+            tb.seed_chapter("ch_001", "林牧走进大殿。")
+            self._thicken_bible(tb)
+            p = pack.build_pack(tb.book, "ch_001")
+            wa = p["budget_report"]["world_anchor_tokens"]
+            self.assertLessEqual(wa, pack.MAX_WORLD_ANCHOR_TOKENS,
+                                 f"世界锚点未受预算约束: {wa} tok")
+            # 截断必须给出「去哪取完整内容」的出口，不能静默丢失
+            self.assertIn("按需取", p["p0"].get("world_anchors", ""),
+                          "截断后未提示按需取完整世界公理")
+
+    def test_budget_report_exposes_world_anchor(self):
+        """可观测：此开销曾长期混在 p0 总数里，完全不可见。"""
+        with TempBook() as tb:
+            tb.seed_chapter("ch_001", "林牧走进大殿。")
+            r = pack.build_pack(tb.book, "ch_001")["budget_report"]
+            self.assertIn("world_anchor_tokens", r)
+            self.assertIsInstance(r["world_anchor_tokens"], int)
+
+    def test_project_json_overrides_budget(self):
+        with TempBook() as tb:
+            tb.seed_chapter("ch_001", "林牧走进大殿。")
+            self._thicken_bible(tb)
+            proj = tb.read("project.json")
+            import json as _j
+            d = _j.loads(proj)
+            for want in (0, 5000):
+                d["world_anchor_tokens"] = want
+                tb.write("project.json", _j.dumps(d, ensure_ascii=False))
+                wa = pack.build_pack(tb.book, "ch_001")["budget_report"]["world_anchor_tokens"]
+                if want == 0:
+                    self.assertEqual(wa, 0, "设为 0 应完全不注入世界锚点")
+                else:
+                    self.assertGreater(wa, pack.MAX_WORLD_ANCHOR_TOKENS,
+                                       "自定义预算应覆盖默认值")
+
+    def test_truncation_is_deterministic(self):
+        """截断不得引入非确定性（同输入必须逐字节一致）。"""
+        with TempBook() as tb:
+            tb.seed_chapter("ch_001", "林牧走进大殿。")
+            self._thicken_bible(tb)
+            a = pack.render_pack(pack.build_pack(tb.book, "ch_001"))
+            b = pack.render_pack(pack.build_pack(tb.book, "ch_001"))
+            self.assertEqual(a, b)
+
+    def test_thin_bible_not_truncated(self):
+        """薄 bible 不该被误截断（否则提示噪声会污染每章上下文）。"""
+        with TempBook() as tb:
+            tb.seed_chapter("ch_001", "林牧走进大殿。")
+            p = pack.build_pack(tb.book, "ch_001")
+            wa = p["budget_report"]["world_anchor_tokens"]
+            self.assertNotIn("按需取", p["p0"].get("world_anchors", ""),
+                             f"薄 bible（{wa} tok）被误截断，阈值偏低")
+
+
 class TestRollup(unittest.TestCase):
 
     def _rich_book(self, tb):

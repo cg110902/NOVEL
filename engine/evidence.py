@@ -227,22 +227,18 @@ _NUM_RE = r"[0-9][0-9,，]*|[零一二两両三四五六七八九十百千]{1,6}
 
 
 def _cn_num_to_int(s: str) -> int | None:
+    """中文数量词 → int。
+
+    保留本处独有的「三两 / 二两」歧义闸门（「三两」既可能是 3 两重量也可能是
+    「三两个」的约数，一律返回 None 交给调用方跳过）；数值换算本身委托
+    common.cn_to_int。旧实现把 万/亿 当普通单位扁平累加：十二万 → 20010、
+    三十万 → 10030、一千万 → 11000，现分别修正为 120000/300000/10000000。
+    """
     if not s:
         return None
     if ("两" in s or "両" in s) and re.search(r"[一二三四五六七八九][两両]", s):
         return None
-    total, num = 0, 0
-    for ch in s:
-        if ch in _CN_DIGITS:
-            if num != 0 and ch in ("两", "両"):
-                return None
-            num = _CN_DIGITS[ch]
-        elif ch in _CN_UNITS:
-            total += (num or 1) * _CN_UNITS[ch]
-            num = 0
-        else:
-            return None
-    return total + num
+    return common.cn_to_int(s)
 
 
 _GENERIC_UNITS = vocab.GENERIC_UNITS
