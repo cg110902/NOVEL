@@ -721,6 +721,32 @@ def _cmd_proposal_auto(book: Path, ch: str, args) -> int:
         }
     }
 
+    # R5 防呆：beats 未填完时 proposal auto 会把 {{slot:xxx}} 原样写进状态
+    # （实测 ch_053 auto 的 situation/synopsis 含 {{slot:scene_1_pivot}}），
+    # 状态被模板占位符污染后 sync 仍能通过（字符串非空即合法），造成静默脏数据。
+    # 现对全提案做 slot 残留扫描，命中即拒收并提示先填 beats。
+    def _has_slot(obj) -> bool:
+        if isinstance(obj, str):
+            return "{{slot:" in obj
+        if isinstance(obj, dict):
+            return any(_has_slot(v) for v in obj.values())
+        if isinstance(obj, (list, tuple)):
+            return any(_has_slot(x) for x in obj)
+        return False
+
+    if _has_slot(proposal) or _has_slot(beats_text):
+        # beats_text 含 slot 说明细纲本身未填完，直接拒收比让 auto 产出脏提案更早失败
+        slot_samples = re.findall(r"\{\{slot:[^}]+\}\}", beats_text)[:3]
+        sample_str = "、".join(slot_samples) if slot_samples else "{{slot:...}}"
+        msg = (f"{ch} 的 beats 细纲仍含未填充槽位 {sample_str}，proposal auto 拒绝生成脏提案；"
+               f"请先填完 {beats_files[-1].relative_to(book)} 中的槽位后再 auto")
+        if js:
+            print(json.dumps({"chapter": ch, "ok": False, "code": "slot_unfilled",
+                              "error": msg, "samples": slot_samples}, ensure_ascii=False))
+        else:
+            print(f"❌ {msg}")
+        return 1
+
     if getattr(args, "write", False):
         js_auto = bool(getattr(args, "json", False))
         target = inbox / f"{ch}.json"
