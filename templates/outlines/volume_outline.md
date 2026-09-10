@@ -11,7 +11,7 @@ schema_version: novel-studio.outline/v2
 
 # {{slot:vol_id|vol_01}} 卷纲（《{{slot:title|书名}}》）
 
-## 本卷承诺与核心看点（The Volume Promise）
+## 本卷承诺与核心看点（The Volume Promise）（仅为示例，灵活填写）
 
 <!-- 读者翻开这一卷的核心期待与爽点承诺：
      一次重大危机破局 / 一段关键阶层跨越 / 一场扬眉吐气的商战反杀 / 一段重要关系突破？卷末必须正面兑现，绝不烂尾！ -->
@@ -19,7 +19,7 @@ schema_version: novel-studio.outline/v2
 
 ---
 
-## 本卷主冲突与核心驱动力（Main Conflict & Driver）
+## 本卷主冲突与核心驱动力（Main Conflict & Driver）（仅为示例，灵活填写）
 
 <!-- 核心驱动：谁（主角/亲善阵营）因什么（生存/夺宝/守护/利益），与谁（核心对手/反派势力）展开不可调和的生死博弈？ -->
 - **冲突主体**：{{slot:conflict_parties|主角林牧 & 萧灵汐（水云圣宫） vs 厉焚天 & 厉苍天（焚天神谷）及圣宫内奸周通}}
@@ -74,7 +74,7 @@ schema_version: novel-studio.outline/v2
 
 ---
 
-## 本卷埋线 / 还线清单（对齐 state/lines.json）
+## 本卷埋线 / 还线清单（对齐 state/lines.json）（仅为示例，灵活填写）
 
 <!-- 对齐 state/lines.json 的 5 大法定动线：plant 首次埋设 / remind 伏笔回响 / update 属性更新 / escalate 误会激化 / resolve 闭环回收 -->
 - **GUN（伏笔/暗线）**：

@@ -176,7 +176,7 @@ description: Universal factual auditor and state proposal generator for Novel St
 v2 `entities[].upsert` 按名匹配：实体名多写/少写一个字就静默新建一条（碎片化之源）。
 v3 按 kind 表 + id 双重寻址，错一位编译期就点名——**实体 ≥3 个的章优先用 v3**。
 骨架：`proposal new <ch> --v3`；完整 op 形状见 `state/inbox/README.md`「v3 寻址式提案」节；
-填好的范例见 `templates/proposals/v3_example.json`（照着仿写，ID 换成真实的）。
+填好的范例见 3.1【v3_example.json】参考（照着仿写，ID 换成真实的）。
 速查：
 - 新实体：`{"table":"persons","action":"create","entry":{"id":"p_010","name":"…",…}}`
   （id/名双不存在才收；`type` 缺省按寻址表推断，写错表拒收）；
@@ -188,6 +188,30 @@ v3 按 kind 表 + id 双重寻址，错一位编译期就点名——**实体 �
   `synopsis.set`——载荷键与 v2 同名。
 - 报错带 `[op#N table/action]` 定位，按号改；`locked_candidates`/`consequences` 无 v3 op，
   要用请整案改写 v2。
+  
+#### 3.1【v3_example.json】参考
+
+```json  
+{
+  "schema": "novel-studio.state-mutation/v3",
+  "chapter": "ch_001",
+  "operation_id": "ch_001.reader.example01",
+  "ops": [
+    {"table": "current", "action": "update", "set": {"location": "临江城"}},
+    {"table": "persons", "action": "create", "entry": {"id": "p_001", "name": "林牧", "summary": "灯铺少主"}},
+    {"table": "items", "action": "create", "entry": {"id": "it_001", "name": "断水剑", "holder": "林牧"}},
+    {"table": "persons", "action": "update", "id": "p_001", "set": {"summary": "灯铺少主，刀断"}},
+    {"table": "lines", "action": "plant", "kind": "foreshadow", "id": "GUN-001", "name": "断刀来历", "target_ch": 30},
+    {"table": "timeline", "action": "append_event", "event": {"time": "正午", "event": "林牧拔刀"}},
+    {"table": "ledger", "action": "declare_pool", "pool": "stone", "spec": {"name": "灵石", "unit": "块", "initial": 100}},
+    {"table": "ledger", "action": "append_transaction", "entry": {"chapter": "ch_001", "pool": "stone", "delta": -30, "type": "expense", "subject": "买刀"}},
+    {"table": "locked", "action": "plant", "id": "LOCK-001", "fact": "林牧之刀断于江边", "kind": "destruction", "note": "断刀不可复原", "quote": "咔嚓一声"},
+    {"table": "cognition", "action": "plant", "character": "张彪", "content": "他知道刀已断裂", "kind": "fact", "quote": "刀断了"},
+    {"table": "synopsis", "action": "set", "title": "第一章 拔刀", "text": "林牧拔刀，刀断。"}
+  ]
+}
+
+```
 
 ---
 

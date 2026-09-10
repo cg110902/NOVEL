@@ -37,7 +37,7 @@ schema_version: novel-studio.character/v2
 
 ---
 
-## 核心欲望与心理机制（Psychological Engine）
+## 核心欲望与心理机制（Psychological Engine）（仅为示例，灵活填写）
 
 - **Want（当前核心欲望与首要目标）**：
   {{slot:char_want|化解体内剧毒/洗刷家族冤屈/肃清派系内奸/夺回被窃资产}}

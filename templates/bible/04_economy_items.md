@@ -10,7 +10,7 @@ schema_version: novel-studio.bible/v2
      （例如前期一千两银子或一千灵石是巨款，中期吃顿饭突然甩出一千万，没有任何锚定物）。
      本模块为全书确立强力购买力平价（PPP）与物品道具台账规范。 -->
 
-# 《{{slot:title|书名}}》经济通货、购买力锚点与物资道具品阶
+# 《{{slot:title|书名}}》经济通货、购买力锚点与物资道具品阶（根据不同的题材灵活填写）
 
 ## 货币体系与实物购买力锚点（Purchasing Power Anchors）
 
@@ -35,7 +35,7 @@ schema_version: novel-studio.bible/v2
 
 ---
 
-## 物资、装备与道具品阶阶梯（Item Grading Scale）
+## 物资、装备与道具品阶阶梯（Item Grading Scale）（仅为示例，灵活填写）
 
 <!-- 全书涉及的武器、防具、载具、秘药、丹药或科技道具，严格划分为以下品阶： -->
 
@@ -49,7 +49,7 @@ schema_version: novel-studio.bible/v2
 
 ---
 
-## 道具损耗、充能与记账法则（State Ledger Rules）
+## 道具损耗、充能与记账法则（State Ledger Rules）（仅为示例，灵活填写）
 
 <!-- 拒绝“无限弹药、无限耐久”。高阶道具与消耗品必须具备消耗规则，由 engine 的 state/ledger 与实体四表监控： -->
 

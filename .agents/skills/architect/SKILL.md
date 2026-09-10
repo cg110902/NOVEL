@@ -12,11 +12,13 @@ description: Universal worldbuilding architect and setup generator for Novel Stu
 
 **【两大执行阶段】**：
 
-1. **Stage 0A：【世界观公理筑基 (Genesis-World)】**：承接开书核心脑洞，在独立沙盒中完成 `project.json` 与 `bible/` 7 大底层公理的高密度编织（10,000~30,000 字），落盘即冻结，产出全书绝对物理底座；
+1. **Stage 0A：【世界观公理筑基 (Genesis-World)】**：承接开书核心脑洞，在独立沙盒中完成 `project.json` 与 `bible/` 7 大底层公理的高密度编织（10,000~20,000+ 字），落盘即冻结，产出全书绝对物理底座；
 2. **Stage 0B：【人物大纲编织与通电 (Genesis-Story)】**：以已冻结的 `bible/` 为不可违背的硬输入，雕琢主角与首批核心人物卡（`characters/`）、核心实体卡（`entities/`）、全书与分卷大纲（`outlines/`），完成状态机十一表通电与体检自证。
 
 
-**【Architect填写注意事项】**：模板中的预填信息仅为占位，请根据当前题材与设定灵活填写，可自行补充更多！
+**【Architect 填写注意事项】**：
+
+模板中的预填信息**仅为占位**，请根据当前题材与设定**灵活填写**，可自行补充更多来完善世界观！
 
 > 🏆 **【架构师铁律】**：
 > 1. **主控零污染与独立沙盒**：长篇设定编织在独立沙盒完成，落盘即交卷，为主控（Director）维持 100% 纯净算力；
@@ -80,8 +82,8 @@ description: Universal worldbuilding architect and setup generator for Novel Stu
 2. **核心非人物实体建卡 (`entities/`)**：
    - 核心重器/法宝建卡于 `entities/items/`；核心势力建卡于 `entities/factions/`；核心据点建卡于 `entities/locations/`；次要实体免建卡；
 3. **编织主线脊柱与首卷四分位大纲 (`outlines/`)**：
-   - **`outlines/main_plot.md`**：全书开局 ➔ 4~6 卷宏观里程碑规划 ➔ 终局闭环，标明主线核心动力引擎；
-   - **`outlines/vol_01/outline.md`**：规划 15~30 章体量，执行四分位戏剧节奏（铺垫蓄势 ➔ 矛盾升级 ➔ 爆发逆转 ➔ 悬顶收尾），列清 `GUN`（伏笔）、`KNO`（信息差）、`MIS`（误会）前置清单；
+   - **`outlines/main_plot.md`**：全书开局 ➔ 4~10+（根据体量自由设定） 卷宏观里程碑规划 ➔ 终局闭环，标明主线核心动力引擎；
+   - **`outlines/vol_01/outline.md`**：规划 15~30+ （根据体量自由设定）章体量，执行四分位戏剧节奏（例如：铺垫蓄势 ➔ 矛盾升级 ➔ 爆发逆转 ➔ 悬顶收尾，你也可以自己设计），列清 `GUN`（伏笔）、`KNO`（信息差）、`MIS`（误会）前置清单；
 4. **状态机真值装配与十一表通电 (`state/`)**：
    - **实体台账（`state/persons.json` / `items.json` / `factions.json` / `places.json` 四表，按 `type` 归位）**：
      - 主角恒定为 `id: "p_001"`，重要配角赋 `p_002`, `p_003`...，道具 `it_001`...，势力 `fac_001`...，地点 `loc_001`...；

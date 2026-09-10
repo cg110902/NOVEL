@@ -25,7 +25,7 @@ schema_version: novel-studio.character/v2
 
 # {{slot:protagonist|主角名}}
 
-## 基础档案与外在伪装
+## 基础档案与外在伪装（仅为示例，灵活填写）
 
 - **真实身份与核心底蕴**：
   {{slot:mc_true_identity|【玄幻】万年太古禁忌混沌神尊 / 【都市】掌控万亿暗流的离岸资本操盘手 / 【科幻】第三纪元最后一位超弦领航员 / 【历史】先帝密诏托孤帝师}}
@@ -36,7 +36,7 @@ schema_version: novel-studio.character/v2
 
 ---
 
-## 核心心理四维与绝对逆鳞（Psychological Engine）
+## 核心心理四维与绝对逆鳞（Psychological Engine）（仅为示例，灵活填写）
 
 - **Want（表面最强烈直接的欲望目标）**：
   {{slot:mc_want|解决眼前危机、夺回核心王牌、横扫当前阻碍、踏破既得利益阻网}}
@@ -68,7 +68,7 @@ schema_version: novel-studio.character/v2
 
 ---
 
-## 习惯微动作与神态库（去冷脸专属动作指令）
+## 习惯微动作与神态库（去冷脸专属动作指令）（仅为示例，灵活填写）
 
 <!-- Stylist 与 Editor 必须在此提取专属微动作，严禁全篇机械复读“神色淡然、面无表情”： -->
 
@@ -76,7 +76,7 @@ schema_version: novel-studio.character/v2
 - **动怒/杀意浮现时**：{{slot:mc_act_angry|自行设定}}
 - **戏谑/看待小丑挑衅时**：{{slot:mc_act_irony|自行设定}}
 - **温和/对待信任伙伴时**：{{slot:mc_act_warm|自行设定}}
-- （列举更多情景）
+- **（自行列举更多情景）**
 
 ---
 
@@ -98,10 +98,9 @@ schema_version: novel-studio.character/v2
   - 核心角色 / 第一搭档：{{slot:deuteragonist_addr_to_mc|「称谓」}}
   - 内部成员 / 门人下属：{{slot:subordinates_addr_to_mc|「太上神尊」 / 「先生」 / 「长官」}}
   - 敌对势力 / 外界不知情者：{{slot:enemies_addr_to_mc|「狂徒」 / 「神秘人」 / 「阁下」}}
+ 
   
-  
-  
-  **（更多补充）**
+- **（更多补充）**
 
 ---
 

@@ -13,11 +13,11 @@ schema_version: novel-studio.outline/v2
 
 - **题材类型**：{{slot:genre|题材（玄幻/都市/科幻/历史/悬疑等）}}
 - **核心主角**：{{slot:protagonist|主角名}}
-- **规划体量**：{{slot:total_volumes|5}} 卷 ｜ 预估总字数：{{slot:total_words_plan|100万~150万字}}
+- **规划体量**：{{slot:total_volumes|N}} 卷 ｜ 预估总字数：{{slot:total_words_plan|XX万~XX万字}}
 
 ---
 
-## 核心动力引擎（Story Engine）
+## 核心动力引擎（Story Engine）（仅为示例，灵活填写）
 
 <!-- 一个词组概括这本书靠什么根本动力源源不断往前推：
      例如：万载神劫真相调查与复仇登顶 / 阶层跨越与商业帝国构筑 / 逃离毁灭降临与星际开拓 / 守护红颜至亲与规则重塑 -->
@@ -25,7 +25,7 @@ schema_version: novel-studio.outline/v2
 
 ---
 
-## 全书起止状态（Beginning & Endgame）
+## 全书起止状态（Beginning & Endgame）（仅为示例，灵活填写）
 
 - **开局初始状态（Starting Point）**：
   {{slot:start_state|主角神躯受创自封沉睡万载，修为归零，孤立无援；因绝色女主逃入古洞强行双修求生而意外唤醒；面临强敌堵门围杀。}}
@@ -58,7 +58,7 @@ schema_version: novel-studio.outline/v2
 
 ---
 
-## 全书长线核心线索布局（Longline Lines）
+## 全书长线核心线索布局（Longline Lines）（仅为示例，灵活填写）
 
 - **GUN-001（伏笔/暗线）**：太古九劫混沌神棺中深藏的万界星图与神纹之谜；
 - **KNO-001（知情差）**：林牧太古混沌神尊的真正跟脚与记忆底蕴，世人皆以为其是得机缘的神秘青年，信息差引爆装逼打脸；

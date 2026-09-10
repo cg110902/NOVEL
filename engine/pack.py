@@ -127,17 +127,8 @@ def _deviation_lines(book: Path) -> list[str]:
 
 
 # 世界锚点（world_anchors）预算帽。
-#
-# 实测（200 章压力书，bible 合计 14.8k tok）：world_anchors 高达 **13 330 tok**，
-# 占 pack 总预算（18 000）的 74%，且**逐章完全相同**。两重代价：
-#   1) token：每章为同一段恒定内容重复付费；
-#   2) 注意力：逐章不变的内容会被模型学会忽略，等于白占预算并稀释有效上下文。
-# 更严重的是 pack 的超预算硬裁只裁 P2（P0/P1 保留），bible 再厚一点就会
-# 单枪匹马撑破 18 000 且无法裁剪。
-#
-# 这与 pack 自身的装配哲学冲突——P2 明说「本包未装的一律视为你不需要知道」。
-# 恒定内容就该按需取（studio lore rules / studio lore entity），不该每章硬塞。
-MAX_WORLD_ANCHOR_TOKENS = 2000
+
+MAX_WORLD_ANCHOR_TOKENS = 10000
 _WORLD_ANCHOR_HINT = (
     "…（世界锚点已按预算截断，完整世界公理/战力标尺/势力分布请按需取："
     "`python studio.py lore rules` ｜ `python studio.py lore entity <实体>`）")
