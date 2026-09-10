@@ -118,17 +118,20 @@ class TestProposalFlow(unittest.TestCase):
             events = changelog.load_events(tb.book)
             data_events = [e for e in events if not e.get("kind")]
             self.assertTrue(data_events)
-            self.assertTrue(all(e["source"] == "proposal" for e in data_events))
-            self.assertTrue(all(e["ch"] == "ch_001" for e in data_events))
-            self.assertTrue(all(e["op_id"] == "ch_001.reader.t1" for e in data_events))
+            # sync 会同时产生 proposal 与 derived 两类数据事件（derived 封存为修复后新增），
+            # 故仅校验 proposal 子集的契约，而非全部 data_events
+            proposal_events = [e for e in data_events if e.get("source") == "proposal"]
+            self.assertTrue(proposal_events, "必须存在 proposal 来源的数据事件")
+            self.assertTrue(all(e["ch"] == "ch_001" for e in proposal_events))
+            self.assertTrue(all(e["op_id"] == "ch_001.reader.t1" for e in proposal_events))
             # 覆盖各分区：current/persons/lines/ledger 都有事件（v6 起实体事件按 kind 表记账）
-            tables = {e["table"] for e in data_events}
+            tables = {e["table"] for e in proposal_events}
             self.assertIn("current", tables)
             self.assertIn("persons", tables)
             self.assertIn("lines", tables)
             self.assertIn("ledger", tables)
-            # 路径寻址样例：实体按 id、流水按下标
-            paths = {e["path"] for e in data_events}
+            # 路径寻址样例：实体按 id、流水按下标（仅看 proposal）
+            paths = {e["path"] for e in proposal_events}
             self.assertTrue(any("p_002" in p for p in paths), paths)
             self.assertTrue(any(p.startswith("transactions[") for p in paths), paths)
             # 封存锚点

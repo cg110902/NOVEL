@@ -216,7 +216,10 @@ def build_or_update_index(book: Path, force_rebuild: bool = False) -> dict:
     indexed_ch_count = 0
 
     for tok, n, text in final_chs:
-        ch_tag = f"ch_{n:03d}" if n else tok
+        # R4 修复：多卷同章号时 ch_001 会互相覆盖，DB 只剩一卷。改用 vol/ch_001
+        # 作为章键（与 evidence.final_chapters 的 tok 口径一致），DISTINCT 计数
+        # 才能反映真实卷数。旧库重建后自动迁移。
+        ch_tag = tok if tok else (f"ch_{n:03d}" if n else "")
         body_hash = common.canonical_json_hash(text)
         if not force_rebuild and ch_hash.get(ch_tag) == body_hash:
             continue
@@ -384,21 +387,15 @@ def finals_fingerprint(book: Path) -> str:
 def finals_from_index(book: Path) -> list[tuple[str, int, str]] | None:
     """R3 增量缓存读：指纹命中时从 chapters_fts.text 拼回各章正文。
 
-    返回 [(ch_tag, num, text)]（与 evidence.final_chapters 同形；tok 无卷前缀，
-    与 DB 现状 ch_tag 口径一致——跨卷同章号是 DB 预存局限，见 build_or_update）。
+    返回 [(ch_tag, num, text)]（与 evidence.final_chapters 同形；R4 起 tok 含卷
+    前缀 vol_01/ch_001，跨卷同章号不再冲突，守卫已移除——旧库含纯 ch_XXX 键时
+    仍能回退）。
     指纹失配/无库/读错一律回 None（调用方回退文件全扫，零行为变更）。
     匹配语义仍是调用方的子串匹配——FTS 只当增量缓存，不当召回器
     （jieba 分词下 MATCH 查全不能保证子串超集，等价性优先）。
     """
     try:
         book = Path(book)
-        # 跨卷同章号守卫：DB 章键无卷前缀（预存局限），vol_01/ch_001 与
-        # vol_02/ch_001 会互相覆盖只剩其一——此时不用缓存，回退文件扫保正确。
-        seen_nums: set[int] = set()
-        for _vol, _n, _p in evidence.final_chapter_files(book):
-            if _n in seen_nums:
-                return None
-            seen_nums.add(_n)
         db_path = get_db_path(book)
         if not db_path.is_file():
             return None

@@ -32,10 +32,21 @@ def _derive_line_temps(book: Path, data: dict[str, dict]) -> list[dict]:
     from .. import state as state_mod
     out = []
     for r in memory_mod.line_memory_map(book):
-        out.append({"id": r["id"], "kind": r["kind"],
-                    "temp": _TEMP_MAP.get(r.get("tier"), "never"),
-                    "last_seen_ch": r.get("last_seen_ch"), "gap": r.get("gap"),
-                    "status": r.get("status", "")})
+        entry: dict = {
+            "id": r["id"],
+            "kind": r["kind"],
+            "temp": _TEMP_MAP.get(r.get("tier"), "never"),
+        }
+        # Optional 字段：按 schema_gen 全局规则，显式 null 非法，None 时应省略而非写 null
+        if r.get("last_seen_ch") is not None:
+            entry["last_seen_ch"] = r.get("last_seen_ch")
+        if r.get("gap") is not None:
+            entry["gap"] = r.get("gap")
+        # status 可能为空字符串，但不应为 None
+        st = r.get("status", "")
+        if st is not None and str(st) != "":
+            entry["status"] = str(st)
+        out.append(entry)
     # 已闭环线逐条快照（temp=closed，不参与温度排序；闭环口径=各线种 resolved 值）
     lines = data.get("lines", {}) or {}
     closed = []
@@ -48,9 +59,20 @@ def _derive_line_temps(book: Path, data: dict[str, dict]) -> list[dict]:
             if not isinstance(g, dict):
                 continue
             if str(g.get("status", "")).strip().lower() == resolved:
-                closed.append({"id": str(g.get("id", "")), "kind": kind,
-                               "temp": "closed", "last_seen_ch": None, "gap": None,
-                               "status": str(g.get("status", ""))})
+                # closed 线的 last_seen_ch/gap 本就无意义，按落盘完整性闸门省略而非写 null
+                closed_entry: dict = {
+                    "id": str(g.get("id", "")),
+                    "kind": kind,
+                    "temp": "closed",
+                }
+                st2 = g.get("status", "")
+                if st2 is not None and str(st2) != "":
+                    closed_entry["status"] = str(st2)
+                closed.append(closed_entry)
+    # 为保证事件溯源折叠稳定性（fold 哈希一致），line_temps 必须按稳定键排序，
+    # 而非按 gap 动态排序（gap 会随章节推进变化，导致 diff 无法捕捉重排序，verify 失败）。
+    # 展示层的“越冷越前”排序由 memory.line_memory_map 负责，派生层仅需稳定存储。
+    out.sort(key=lambda r: r["id"])
     closed.sort(key=lambda r: r["id"])
     return out + closed
 
