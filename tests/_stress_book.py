@@ -156,7 +156,8 @@ def run_cli(book: Path, *args: str) -> subprocess.CompletedProcess:
     env = {**os.environ, "NOVEL_STUDIO_WORKSPACE_ROOT": str(book.parent),
            "PYTHONIOENCODING": "utf-8"}
     return subprocess.run([PY, str(ROOT / "studio.py"), *args, "-w", str(book)],
-                          capture_output=True, text=True, timeout=300, env=env)
+                          capture_output=True, text=True, encoding="utf-8",
+                          timeout=300, env=env)
 
 
 def build_stress_book(book: Path) -> dict:

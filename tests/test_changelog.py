@@ -404,10 +404,23 @@ class TestStateAtAndBlame(unittest.TestCase):
             snap_dir = next(d for d in (tb.path("state/snapshots")).iterdir()
                             if "ch_001_done" in d.name)
             for key in state.STATE_KEYS:
+                if key == "derived":
+                    # derived 是引擎计算缓存，**不入事件流**——changelog.record_save
+                    # 显式跳过它（「重算即合法变更，缓存语义」），因此折叠重建不出
+                    # 历史版本，state_at 对它的处理是「返回磁盘最新值」。
+                    # 故时点切面的逐表等值只覆盖断言层十一表，derived 不参与本断言。
+                    # 若日后改为事件溯源，此分支与 changelog.state_at 里的覆盖需一并移除。
+                    continue
                 disk = json.loads((snap_dir / f"{key}.json").read_text(encoding="utf-8"))
                 self.assertEqual(common.canonical_json_hash(disk),
                                  common.canonical_json_hash(tables.get(key)),
                                  f"{key} 切面与封存快照不一致")
+            # 反向钉住 derived 的缓存语义：时点切面返回的是磁盘**最新** derived
+            # 而非该章封存值——这是当前设计，改动它必须同步本断言与 state_at。
+            live_derived = state.load_state(tb.book, "derived")
+            self.assertEqual(tables.get("derived", {}).get("sealed_ch"),
+                             live_derived.get("sealed_ch"),
+                             "derived 时点切面应返回磁盘最新值（缓存语义，非事件溯源）")
             # ch_002 切面 == 当前磁盘
             at2 = tb.run_json("state", "at", "ch_002")
             for key in state.STATE_KEYS:

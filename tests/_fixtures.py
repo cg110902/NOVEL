@@ -48,7 +48,8 @@ class TempBook:
     # ---- 便捷方法 ----
     def run(self, *args: str) -> subprocess.CompletedProcess:
         return subprocess.run([PYTHON, str(STUDIO), *args, "-w", str(self.book)],
-                              capture_output=True, text=True, cwd=str(REPO_ROOT),
+                              capture_output=True, text=True, encoding="utf-8",
+                              cwd=str(REPO_ROOT),
                               env={**os.environ, "PYTHONIOENCODING": "utf-8"})
 
     def run_json(self, *args: str) -> dict:

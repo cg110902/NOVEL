@@ -107,6 +107,17 @@ def _gate_patch(name: str, schema: dict) -> dict:
     elif name == "cognition":
         schema["required"] = ["entries"]
 
+    elif name == "derived":
+        # 冷线字段 Nullable：刚埋设未落笔时 last_seen_ch/gap 为 null，需放宽
+        try:
+            lt_props = props.get("line_temps", {}).get("items", {}).get("properties", {})
+            if "last_seen_ch" in lt_props:
+                lt_props["last_seen_ch"] = {"type": ["integer", "null"]}
+            if "gap" in lt_props:
+                lt_props["gap"] = {"type": ["integer", "null"]}
+        except (AttributeError, KeyError, TypeError):
+            pass
+
     elif name == "proposal":
         # 浅层信封原则（与现状闸门分工一致）：分区深校验归 Pydantic 轨道
         #（validate_proposal 中 models.validate_with_model），schema 只看容器类型；

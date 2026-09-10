@@ -37,9 +37,37 @@ FILE_INDEX_AREAS = [
 # 素材小件
 # ---------------------------------------------------------------------------
 def _beats_text(book: Path, ch: str) -> str:
-    files = common.find_chapter_files(book, "beats", ch)
+    """读取细纲原文，支持 vol_XX/ch_XXX 显式卷前缀以避免多卷同章号覆盖。
+
+    - 若 ch 含卷前缀（如 vol_02/ch_001），仅在该卷内选版本最大者；
+    - 否则（ch_001）按全书 (卷,章,版本) 升序取末尾，兼容旧口径但显式卷更精确；
+    - 额外解析 beats front-matter 的 vol 字段作为二次校验（若文件内声明 vol 与路径不一致，路径优先）。
+    """
+    vol_explicit = None
+    ch_token = ch.strip()
+    # 解析 vol_XX/ch_XXX
+    mm = re.fullmatch(r"(vol_\d+)/ch_(\d{3,})", ch_token)
+    if mm:
+        vol_explicit = mm.group(1)
+        ch_token = f"ch_{int(mm.group(2)):03d}"
+    files = common.find_chapter_files(book, "beats", ch_token)
     if not files:
         raise ValueError(f"未找到 {ch} 的 beats（Stage 1 未完成，pack 无的放矢）")
+    if vol_explicit:
+        filtered = []
+        for f in files:
+            try:
+                v = f.relative_to(book / "outlines").parts[0]
+            except Exception:
+                v = ""
+            if v == vol_explicit:
+                filtered.append(f)
+        if filtered:
+            files = filtered
+    # 同卷同章多版本：取版本号最大者；跨卷同章号未指定卷时，取自然排序末尾（最高卷）
+    files = sorted(files, key=lambda p: (common.volume_of_path(p), common.chapter_version_from_name(p.name), p.name))
+    # 再按 natural_chapter_sort_key 保序，末尾即最高卷+最高版本
+    files = sorted(files, key=common.natural_chapter_sort_key)
     return files[-1].read_text(encoding="utf-8", errors="replace")
 
 

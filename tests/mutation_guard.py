@@ -66,15 +66,22 @@ MUTATIONS = [
     # 13：derived 封存静默失败的元凶。闸门层全局拒绝显式 null，而 derive 若把
     # 零落笔线/闭环线的 last_seen_ch、gap 写成 null，整张派生表**静默降级为空表**
     # （"派生永不炸封存"）。这是最容易被忽略的失效模式——失败不可见。
+    # 13/14 锚点随 main 的 derive.py 重写而更新：main 与我们修的是同一个 bug
+    # （Optional 键显式写 null → 整张派生表封存静默失败），口径一致（省略而非 null），
+    # 且 main 还多修了 status 空串与 line_temps 稳定排序，故直接采用其实现。
     (13, "derived 线温恢复显式 null（派生表封存静默失败）", "engine/objects/derive.py",
-     '        for _k in ("last_seen_ch", "gap"):\n            if r.get(_k) is not None:\n                row[_k] = r[_k]',
-     '        row["last_seen_ch"] = r.get("last_seen_ch")\n        row["gap"] = r.get("gap")'),
+     '        if r.get(\"last_seen_ch\") is not None:\n            entry[\"last_seen_ch\"] = r.get(\"last_seen_ch\")\n        if r.get(\"gap\") is not None:\n            entry[\"gap\"] = r.get(\"gap\")',
+     '        entry[\"last_seen_ch\"] = r.get(\"last_seen_ch\")\n        entry[\"gap\"] = r.get(\"gap\")'),
     (14, "derived 闭环线快照恢复显式 null", "engine/objects/derive.py",
-     '                closed.append({"id": str(g.get("id", "")), "kind": kind,\n'
-     '                               "temp": "closed", "status": str(g.get("status", ""))})',
-     '                closed.append({"id": str(g.get("id", "")), "kind": kind,\n'
-     '                               "temp": "closed", "last_seen_ch": None, "gap": None,\n'
-     '                               "status": str(g.get("status", ""))})'),
+     '                closed_entry: dict = {\n                    \"id\": str(g.get(\"id\", \"\")),\n                    \"kind\": kind,\n                    \"temp\": \"closed\",\n                }',
+     '                closed_entry: dict = {\n                    \"id\": str(g.get(\"id\", \"\")),\n                    \"kind\": kind,\n                    \"temp\": \"closed\",\n                    \"last_seen_ch\": None,\n                    \"gap\": None,\n                }'),
+    # ---- 32：state at 未激活事件流时的「不许静默兜底」声明 ----
+    # main 把 state_at 改为回退磁盘当前状态（兼容老书），但回退若一声不吭，
+    # 就是把"此刻的世界"冒充成"第 N 章的历史切面"。去掉提示 = 重新变成误导。
+    (32, "state at 回退后不再声明（静默把当前状态当历史切面）",
+     "engine/commands/state_sync.py",
+     '        if not changelog.active(book):',
+     '        if False:'),
     # ---- 15~18：故障注入套件（tests/test_fault_injection.py）的配套变异 ----
     # 拆除闸门后对应负向用例必须变红，否则该闸门"文档上承诺、实测上不存在"。
     (15, "资源池未知字段闸门失效", "engine/state.py",
@@ -179,6 +186,7 @@ KILLER = {
     27: "tests.test_inbox_contract", 28: "tests.test_inbox_contract",
     29: "tests.test_fault_injection", 30: "tests.test_fault_injection",
     31: "tests.test_fault_injection",
+    32: "tests.test_acceptance",
 }
 
 

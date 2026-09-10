@@ -66,14 +66,20 @@ class TestIndexScanEquivalence(unittest.TestCase):
             self.assertIsNone(db.finals_from_index(tb.book))
 
     def test_cross_volume_duplicate_falls_back(self):
-        # 跨卷同章号：DB 章键无卷前缀会互覆盖 → 不用缓存，回退文件扫，结果仍正确
+        # 跨卷同章号：R4 起 DB 章键含卷前缀 vol_01/ch_001 / vol_02/ch_001，不再互覆盖
+        # 旧逻辑会因覆盖导致指纹失配回退 None；新逻辑应保留双卷并返回缓存
         from engine import db, memory
         with TempBook() as tb:
             _seed(tb)
             tb.write("manuscript/vol_02/final/ch_001.md",
                      "# ch_001\n\n张彪在江边独饮，江风猎猎。" * 20)
             db.build_or_update_index(tb.book)
-            self.assertIsNone(db.finals_from_index(tb.book))
+            cached = db.finals_from_index(tb.book)
+            # 新实现：跨卷同章号应保留双卷，不再回退 None
+            self.assertIsNotNone(cached)
+            tags = {t for t, _, _ in cached}
+            self.assertIn("vol_01/ch_001", tags)
+            self.assertIn("vol_02/ch_001", tags)
             rows = memory.line_memory_map(tb.book)
             gun = [r for r in rows if r["id"] == "GUN-001"][0]
             self.assertEqual(gun["last_seen_ch"], 1)

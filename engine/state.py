@@ -2239,8 +2239,15 @@ def apply_proposal(book: Path, proposal: dict, expected_chapter: str | None = No
         # 安全前提：所有 _merge_* 函数对同一提案的重放须幂等
         # （transactions: _tx_replay_key 去重；cognition: 内容指纹去重；
         #  lines: _same_line_content 去重；entities/timeline/locked: by-key upsert）。
-        for key in STATE_KEYS:
-            save_state(book, key, data[key], source="proposal", ch=ch, op_id=op)
+        # 事务批处理：十一表变更合并为一次 changelog 追加，减少 fsync 次数与 seq 碎片。
+        changelog._begin_transaction()
+        try:
+            for key in STATE_KEYS:
+                save_state(book, key, data[key], source="proposal", ch=ch, op_id=op)
+            changelog._commit_transaction(book)
+        except Exception:
+            changelog._abort_transaction()
+            raise
         marker[op] = proposal_hash
         common.dump_json(marker_path, marker)
     except Exception as exc:
