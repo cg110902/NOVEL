@@ -10,8 +10,3 @@ __pycache__/
 *.db
 *.db-journal
 *.db-wal
-state/.index/
-
-# 测试隔离区（NOVEL_STUDIO_WORKSPACE_ROOT 指向的临时测试现场与回归脚本）
-.test_area/
-.coverage

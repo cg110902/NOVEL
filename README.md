@@ -65,7 +65,6 @@ Evolution    Evolver     人类变更诉求的波及面测算与手术刀改版
 | `.agents/skills/*/SKILL.md` | 10 个角色的技能卡（准读/准写/工艺/回执） |
 | `templates/` | 建书脚手架：bible 七表、人物卡、大纲、beats、`project.json` |
 | `templates/README.md` | 模板字段逐项说明（与 Pydantic 模型同口径） |
-| `tests/` | stdlib `unittest` 回归测试 |
 | `requirements.txt` | 运行时依赖（与 `pyproject.toml` 同源） |
 
 书工作区（`workspace/<书名>/`）内的目录契约：
@@ -132,26 +131,13 @@ Evolution    Evolver     人类变更诉求的波及面测算与手术刀改版
 
 ---
 
-## 六、测试
 
-```bash
-python -m unittest discover -s tests -v
-```
-
-测试用 `tempfile` + `NOVEL_STUDIO_WORKSPACE_ROOT` 建隔离书工作区，不碰仓库里的 `workspace/`。
-覆盖范围包括：证据统计与候选噪声门控、locked/cognition 防静默覆盖、仲裁报告合并（保留/回落裁决）、
-YAML front-matter 引号键解析、引擎不自触发闸门、`type=location` 与 `place` 同等地位、
-字数出带判定、角色读权限网关、state 盖章与离线改动检出、驾驶舱 3A/3B/4C 指针、
-beats 资源池与 ID 水位线注入、错误码注册表完备性、枚举单一真源。
-
----
-
-## 七、开发约定
+## 六、开发约定
 
 - `engine/schemas/*.json` 由 `python -m engine.models.schema_gen` 生成；改模型后重跑，
   仓库里不应出现漂移。
 - 枚举与类型集合一律从 Pydantic 模型派生（如 `LOCATION_TYPES`、`state._ATTITUDE`），
   禁止在校验分支里再手写字面量集合。
-- 新增 `check` 错误码必须在 `engine/errcodes.py` 注册（`tests` 会当场报警）。
+- 新增 `check` 错误码必须在 `engine/errcodes.py` 注册。
 - 用户可见文案里的数量口径（命令数、状态表数、字段数）改动时，同步更新
   `AGENTS.md` / `engine/README.md` / `templates/README.md`。

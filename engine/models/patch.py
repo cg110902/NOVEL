@@ -115,7 +115,7 @@ class ProposalModel(BaseModel):
 
 
 # —— v3 寻址式提案：与 state.ASSERTED_KEYS 同步（刻意重复：models 层禁止导入
-# state 防循环；漂移由 tests/test_proposal_v3.py::test_v3_table_literal_matches_asserted_keys 钉住） ——
+# state 防循环 ——
 V3_TABLES = ("current", "persons", "items", "factions", "places", "lines",
              "timeline", "ledger", "synopsis", "locked", "cognition")
 
