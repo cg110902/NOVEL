@@ -48,7 +48,9 @@ def cmd_pack(args) -> int:
     try:
         if ch is None and not args.open_path:
             return _err("pack 需要章节号（如 pack ch_006），或仅 --open <相对路径> 取原文")
-        payload = pack_mod.build_pack(book, ch, lean=args.lean, full=args.full) if ch else {"chapter": None}
+        payload = (pack_mod.build_pack(book, ch, lean=args.lean, full=args.full,
+                                      role=getattr(args, "as_role", "drafter"))
+                 if ch else {"chapter": None})
         if args.open_path:
             payload["opened"] = pack_mod.open_file(book, args.open_path,
                                                    role=getattr(args, "as_role", "drafter"))
@@ -436,6 +438,9 @@ def _render_audit_md(payload: dict) -> str:
         f"audit_chapter: {tok}",
         f"hard: {hard_count}",
         f"soft: {soft_count}",
+        # logic：轨 3（语义逻辑与出戏审查）的确凿条目数，由 Auditor 手填、引擎不计算。
+        # 与 hard 同闸：logic>0 且未 adjudicated 时 sync 拒绝封存（V3.2）。
+        "logic: 0",
         "adjudicated: false",
         "---",
         "",
@@ -488,6 +493,14 @@ def _render_audit_md(payload: dict) -> str:
     lines.extend([
         "---",
         "",
+        "## 🧠 语义逻辑与出戏审查（轨 3 · Auditor 手写，引擎不覆盖）",
+        "<!-- 逐条填「世界观一致性 / 人物行为逻辑 / 因果与代价闭环 / 现场常识与时空」四类"
+        "确凿出戏点：正文原句 ➔ 为什么读者会出戏 ➔ 定向手术刀指令或 Evolution 转办单。"
+        "填完后把顶部 logic 改成条目数（0 = 无确凿问题）；存疑但不确凿的写进 🟡 段并走 soft 出口。"
+        "本节正文在重跑 audit --write 时被原样保留，logic 计数随本节一并沿用 -->",
+        "",
+        "---",
+        "",
         "## ✅ 交叉核实排除（误报归档）",
         "<!-- 若经人工或 Auditor 核实上述某条属于语境误报（如回忆、同名新道具等），在此记录排除理由并将 hard 扣减或将顶部 adjudicated 设为 true -->",
         "",
@@ -497,6 +510,7 @@ def _render_audit_md(payload: dict) -> str:
 
 _AUDIT_HARD_HEAD = r"^##\s*🔴"
 _AUDIT_EXCLUDE_HEAD = r"^##\s*✅\s*交叉核实排除"
+_AUDIT_SEMANTIC_HEAD = r"^##\s*🧠\s*语义逻辑与出戏审查"
 
 
 def _audit_hard_block(text: str) -> str:
@@ -511,6 +525,17 @@ def _audit_adjudication_note(text: str) -> str:
     for ln in common.md_section(text, _AUDIT_EXCLUDE_HEAD):
         s = ln.strip()
         if not s or s == "---" or s.startswith("<!--"):
+            continue
+        body.append(ln)
+    return "\n".join(body).strip()
+
+
+def _audit_semantic_note(text: str) -> str:
+    """提取 Auditor 手写的「语义逻辑与出戏审查」正文（模板自带的 HTML 注释不算内容）。"""
+    body = []
+    for ln in common.md_section(text, _AUDIT_SEMANTIC_HEAD):
+        st = ln.strip()
+        if not st or st == "---" or st.startswith("<!--"):
             continue
         body.append(ln)
     return "\n".join(body).strip()
@@ -540,6 +565,21 @@ def _merge_audit_report(old_text: str | None, new_text: str) -> tuple[str, list[
     if keep:
         new_text = new_text.rstrip() + "\n\n### 既有排除理由（自上一版报告保留）\n" + keep + "\n"
         notes.append("已保留上一版报告的「交叉核实排除」正文")
+    # 轨 3 是纯人工产物（引擎无对应探针），重跑必须原样搬回，连同 Auditor 手填的 logic 计数——
+    # 否则「手术刀修复后重跑 audit」会把语义裁决抹掉、并把闸门悄悄放回放行侧。
+    sem = _audit_semantic_note(old_text)
+    if sem:
+        new_text = new_text.replace(
+            "## ✅ 交叉核实排除（误报归档）",
+            "### 既有语义审查（自上一版报告保留）\n" + sem + "\n\n---\n\n"
+            "## ✅ 交叉核实排除（误报归档）", 1)
+        try:
+            logic_n = int(old_fm.get("logic", 0) or 0)
+        except (TypeError, ValueError):
+            logic_n = 0
+        if logic_n > 0:
+            new_text = new_text.replace("logic: 0", f"logic: {logic_n}", 1)
+        notes.append(f"已保留上一版报告的「语义逻辑与出戏审查」正文（logic={logic_n}）")
     return new_text, notes
 
 
@@ -689,8 +729,9 @@ def _consistency_section(book, n: int, cur: dict, ents: list[dict], lines_st: di
     except Exception as exc:  # 账本读不回来 ≠ 没有资源池，必须显式说出来
         res_st, ledger_err = {}, str(exc)
     pools = (res_st.get("pools", {}) if isinstance(res_st.get("pools", {}), dict) else {})
+    # 键形状小节恒注入（见下）：Reader 的网关禁读 state/，它唯一的提案契约来源就是 beats。
     if not roster and not kno_list and not locked_entries and not pools:
-        return ""
+        return _proposal_shapes_section()
     out = ["## 本章一致性速查（引擎自动注入 · 主控可增删）", ""]
     # 资源池合法键名 + LOCK 已用 ID 水位线：Reader 提案若引用未声明的池键或复用已用 ID，
     # Stage 5 会硬拒（ledger_pool_undeclared / locked_entry_id_reuse）——先给清单再让人写。
@@ -754,7 +795,43 @@ def _consistency_section(book, n: int, cur: dict, ents: list[dict], lines_st: di
             note = _clip(str(k.get("note", "") or "保密中"), 60)
             out.append(f"- [{k.get('id', 'KNO')}] 秘密：{secret} ｜ 知情边界：{note}")
         out.append("")
+    out.append(_proposal_shapes_section())
     return "\n".join(out)
+
+
+def _proposal_shapes_section() -> str:
+    """beats「📐 提案通道与键形状」：把 v2/v3 契约搬进 Reader 的准读范围。
+
+    动因：`state/inbox/README.md` 是提案契约的完整文本，但 Reader 的角色网关禁读
+    `state/`（ROLE_DENY），`proposal new --v3` 又只给 `"ops": []` 空骨架——子代理被要求
+    写一种它拿不到形状表的格式，只能凭记忆猜键名。本小节以 `state.models.ProposalModel`
+    与 `proposal_v3.V3_OP_SHAPES` 为单一真源生成，与 v2/v3 管线同源，不再复制字面量。
+    """
+    from .. import proposal_v3 as v3_mod
+    from ..models import ProposalModel
+
+    meta_only = {"schema_version", "chapter", "operation_id", "draft"}
+    v2_secs = [k for k in ProposalModel.model_fields if k not in meta_only]
+    lines = ["### 📐 提案通道与键形状（Stage 4 Reader 照此写；**不要**打开 state/inbox/README.md"
+             "——那是主控/人类的完整契约，且在你的禁读范围内）", ""]
+    lines.append("- 二选一、同一文件禁止混写：**默认 v2 分区**；"
+                 "**本章要改 ≥2 个「已登记」实体（update/retire）→ 改 v3 寻址式**"
+                 "（v3 的价值：名/ID 写错当场点名，不再静默新建碎片实体）。")
+    lines.append("- v2 顶层：`{\"schema\":\"novel-studio.state-mutation/v2\",\"chapter\":\"ch_XXX\","
+                 "\"operation_id\":\"ch_XXX.reader.HHMM\", …分区}` ｜ 分区："
+                 + " / ".join(f"`{k}`" for k in v2_secs))
+    lines.append("- v3 顶层：`{\"schema\":\"…/v3\",\"chapter\",\"operation_id\",\"ops\":[{table,action,…}]}`；"
+                 f"仅 v2 可用、无 v3 op 的分区：{'、'.join('`%s`' % x for x in v3_mod.V3_UNAVAILABLE_V2_ONLY)}")
+    for table, action, shape in v3_mod.V3_OP_SHAPES:
+        lines.append(f"  - `{table}` · {action} → `{shape}`")
+    lines.append("- 只写增量；每条尽量带 `\"quote\":\"本章 final 原句\"`（柔性接地，不逐字抠）。"
+                 "`current` 缺省/空值＝不改；`locked[].note`、`lines[].target_ch`(plant) 必填。")
+    lines.append("- 幂等：`operation_id` 全书唯一，同 id 换内容会被拒收——修正重提必须换新 id。")
+    lines.append("- Reader 落盘即交卷、**不要**自己跑命令：结构预检由主控接收提案后执行"
+                 "（0 Token 的 `python studio.py proposal check ch_XXX`），"
+                 "报错会点名到 `entities[i] 含未知字段: xxx`，按名改再重提。")
+    lines.append("")
+    return "\n".join(lines)
 
 
 def _clip(s: str, n: int) -> str:

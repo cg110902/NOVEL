@@ -81,7 +81,10 @@ description: Universal webnovel readability optimizer and de-AI de-bloater for N
 ## 🛑 四、 极简交付与回执契约 (Delivery & Receipts)
 
 1. **落盘即交卷**：全篇脱水完成后，直接写入 `manuscript/vol_XX/final/ch_XXX.md`，输出标准回执立即退出；
-2. **定向手术刀修复流程**：承接 Auditor 检出的 🔴 确凿硬矛盾，使用文件精准修改能力，仅替换指定冲突行，不扰动全文，落盘即交卷；
+2. **定向手术刀修复流程**：承接 Auditor 检出的 🔴 确凿硬矛盾，**以及 🧠 轨 3 的出戏/世界观矛盾条目**
+   （`logic > 0` 与 `hard > 0` 一样会卡住 Stage 5，两者处置方式相同），使用文件精准修改能力，
+   仅替换指定冲突行，不扰动全文，落盘即交卷；
+   ⚠️ 报告标注为「转办 Evolver」的条目（需改 `bible/` 或历史正文）**你无权处理**，回执里退回主控；
 3. **标准完工回执单**：
    ```text
    【章节工序完工回执】

@@ -53,7 +53,10 @@ REGISTRY: dict[str, ErrCode] = {c.code: c for c in (
          "运行 python studio.py ledger recompute——重算会先按章号重排流水再重算余额与 "
          "balance_after；重排后仍有倒序说明存在非法跨章流水，请核对是哪一章的提案写错了 chapter。"),
     _reg("ledger_arith_broken", "error", "账本算术不闭合（balance_after 与 initial+累计流水矛盾，"
-                                        "或 pools.current 与全部流水重算结果不符）",
+                                        "或 pools.current 与全部流水重算结果不符）"
+                                        "——同源四道闸：提案期 _merge_ledger → 写闸 verify_data → "
+                                        "本档复扫 → ledger recompute 修复，规则同为 initial+Σdelta，"
+                                        "已在提案期被拒的笔不会在此重复计账",
          "运行 python studio.py ledger recompute 按流水重算余额与 balance_after；"
          "若重算后仍不闭合，说明某笔 delta 本身写错，请核对该章提案的金额。"),
     _reg("amount_arith_unverified", "warning", "正文声称的余额变动与账本本章净变动不闭合",
@@ -127,7 +130,8 @@ REGISTRY: dict[str, ErrCode] = {c.code: c for c in (
          "「skip GUN-XXX」（也接受 hold / defer / 不涉及 / 不推进 / 顺延）。"),
     _reg("lines_state_unreadable", "warning", "lines 账本不可读，因果依赖守卫降级",
          "检查 state/lines.json 的 JSON 语法并修复，修复后重跑 python studio.py check。"),
-    _reg("alias_conflict", "warning", "同一别名被多个实体共享（在场推断/提及统计将产生歧义）",
+    _reg("alias_conflict", "warning", "同一别名被多个实体共享（台账侧歧义；正文侧写法漂移见 audit 探针 alias_drift，"
+                                    "两者一表一文、不重复计账）",
          "在 state/四 kind 表（persons/items/factions/places） 中把冲突别名改为唯一，或改用 aliases 归并到同一实体名下。"),
     _reg("relation_target_unknown", "warning", "实体关系指向未登记的实体（关系图悬空边）",
          "在 state/四 kind 表（persons/items/factions/places） 补登目标实体，或修正 relations.target 的名称拼写。"),
@@ -150,7 +154,9 @@ REGISTRY: dict[str, ErrCode] = {c.code: c for c in (
          "当前活跃线索过多，建议在后续章节逐步收网已成熟的伏笔，保持主线清爽。"),
     _reg("line_overdue", "warning", "线索已逾期（target_ch 小于已定稿章数，仍未收束）",
          "在当章或下一章 beats 线动作栏安排回收/回响（resolve/remind），或正式顺延 target_ch 并写明理由。"),
-    _reg("stage0_onboarding", "info", "新书 Stage 0 待办：模板槽位未填（暂不阻断，开写后恢复硬闸门）",
+    _reg("stage0_onboarding", "info", "新书 Stage 0 待办：模板槽位未填（暂不阻断，开写后恢复硬闸门）"
+                                      "——本码是 unfilled_slot 的 Stage 0 豁免档：同一事实、"
+                                      "两个码，beats/raw/final 任一出现后即降级为 error",
          "按 Stage 0 流程填实 bible/characters/outlines 中的 {{slot:}} 后，check 自动转绿。"),
     _reg("longline_quota_exceeded", "warning", "跨卷长线伏笔超出上限",
          "跨卷长线伏笔超出上限，建议精简或收束部分跨卷暗线。"),
@@ -215,7 +221,10 @@ REGISTRY: dict[str, ErrCode] = {c.code: c for c in (
     _reg("state_offline_edit", "warning", "state 十一表在上次封存后被离线改动（绕过提案写入口）",
          "state/*.json 的法定写入口是提案（sync 合并）：请核对该表改动来源，"
          "属手改请改走提案通道重跑 sync；属有意修订则重跑 sync 重新盖章消除提示，"
-         "或 snapshot rollback 回到封存时点。"),
+         "或 snapshot rollback 回到封存时点。"
+         "⚠️ 两个合法例外通道（Stage 0 播种 / Evolver 跨层手术刀）直写本表同样会亮本码——"
+         "这不是错误而是「未经提案」的留痕：处理口径是改完后重跑最近封存章的 sync 重新盖章，"
+         "或在 log/review 里记一句改动来源，不得为此伪造提案。"),
     # ---- proposal verify / sync 前置建议电池（advisory battery）----
     _reg("quote_missing", "warning", "提案条目缺 quote 原文引证（无法回证到定稿）",
          "提案的事实条目请补 quote 字段，逐字摘录 final 定稿原句（引擎按引证回校，缺证视为不可核验）。"),
@@ -242,7 +251,8 @@ REGISTRY: dict[str, ErrCode] = {c.code: c for c in (
          "属知情提示：核对引擎从原句读出的数额与提案 delta 是否一致（中文数字易被读成多笔）。"),
     _reg("mention_not_present", "info", "正文提及的实体未列入 present_characters",
          "若该实体确实在场请补进 present_characters；仅被提及/回忆则忽略本提示。"),
-    _reg("present_unmentioned", "warning", "present_characters 声明在场的角色在正文中一次都没出现",
+    _reg("present_unmentioned", "warning", "present_characters 声明在场的角色在正文中一次都没出现"
+                                         "（在场一致性的聚合视图见 state/derived.json 的 scene_violations）",
          "在场名单必须与正文一致：删掉未出场的角色，或在正文补上其在场动作。"),
     _reg("present_undeclared", "info", "正文有台词/动作的角色未声明在场",
          "把该角色补进 present_characters（在场是称谓对校与 POV 判定的输入）。"),

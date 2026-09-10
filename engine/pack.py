@@ -21,7 +21,10 @@ except ImportError:
 PREV_TAIL_CHARS = 1000
 SPINE_CAP = 10
 POINTER_WINDOW = 10
-PACK_TOKEN_CAP = 18000
+# 装配预算：2W token（口径见 AGENTS.md 第一节与 README「pack 装配契约」）。
+# 超限不再只裁 P2——见文末压缩阶梯（P2 → P1 间接/脊柱 → P0 余温），
+# 但 beats 全文、current、硬提醒、不可逆事实与钉住的世界锚点永不裁。
+PACK_TOKEN_CAP = 20000
 MAX_P1_ENTITIES = 12
 MAX_P1_INDIRECT = 5
 
@@ -126,30 +129,69 @@ def _deviation_lines(book: Path) -> list[str]:
     return out
 
 
-# 世界锚点（world_anchors）预算帽。
+# world_refs 可钉节数上限：钉太多就等于回到恒给（收窄失去意义），也避免主控一次性把五档视图全列进来。
+MAX_WORLD_ANCHOR_REFS = 8
 
+# 世界锚点（world_anchors）预算帽：project.json.world_anchor_tokens 可调，缺省与上限同为 10000。
+# ⚠️ 设计口径（V3.2 议题）：世界锚点不应「恒给全书」，而应按章取用——现阶段已支持
+# 用 beats front-matter 的 `world_refs` 钉住本章需要的节（见 _bible_core_anchors），
+# 未声明时回退为按关键词全量恒给（保持既有行为）。
 MAX_WORLD_ANCHOR_TOKENS = 10000
+# 「基础世界节组」：按章取用模式下若整组缺席，多半是 world_refs 写漏而不是本章真用不上。
+# 引擎**不擅自扩大注入**（按章取用是契约），但必须在包里点名缺了哪组，让主控一条命令补上。
+# 关键词同时用于「池内是否本就存在该组」判定——书里没写这一组时不报，避免噪音。
+_ANCHOR_CORE_GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("世界公理", ("公理", "世界与规则", "运转规则", "底层规则", "世界底色")),
+    ("战力标尺", ("战力", "境界", "标尺", "power scale", "梯阶", "阶位", "实力")),
+    ("势力地理", ("势力", "地缘", "地理", "版图", "区划")),
+    ("经济品阶", ("经济", "通货", "品阶", "物价", "购买力", "道具")),
+    ("特殊机制", ("机制", "体质", "血脉", "职业", "代偿")),
+)
+
 _WORLD_ANCHOR_HINT = (
     "…（世界锚点已按预算截断，完整世界公理/战力标尺/势力分布请按需取："
     "`python studio.py lore rules` ｜ `python studio.py lore entity <实体>`）")
 
 
 def _world_anchor_budget(book: Path) -> int:
-    """世界锚点预算：project.json.world_anchor_tokens（非负整数），缺省 2000。"""
+    """世界锚点预算：project.json.world_anchor_tokens（非负整数），缺省 10000（即上限）。"""
     try:
         proj = common.load_json(book / "project.json", default={}) or {}
     except (ValueError, OSError):
         return MAX_WORLD_ANCHOR_TOKENS
     v = proj.get("world_anchor_tokens")
     if isinstance(v, int) and not isinstance(v, bool) and v >= 0:
-        return v
+        return min(v, MAX_WORLD_ANCHOR_TOKENS)
     return MAX_WORLD_ANCHOR_TOKENS
 
 
-def _bible_core_anchors(book: Path) -> str:
-    """提取 bible/ 中的世界规则、战力标尺、势力分布与特殊机制（恒常注入 P0）。
+def _world_refs(beats_text: str) -> list[str]:
+    """从当章 beats 的 front-matter `world_refs` 取「本章需要的世界节」关键词。
+
+    零 LLM 参与：主控在 Stage 1 写细纲时本就通读设定，让它顺手钉住锚点比让引擎
+    猜相关性更准；未声明（键缺失/为空）则返回 []，由调用方回退恒给口径。
+    """
+    try:
+        fm = common.parse_front_matter(beats_text or "")
+        raw = str(fm.get("world_refs", "") or "")
+    except ValueError:
+        return []
+    parts = re.split(r"[,，、;；|/\s]+", raw)
+    kept = [x.strip() for x in parts if x.strip() and not x.strip().startswith("{{")]
+    if len(kept) > MAX_WORLD_ANCHOR_REFS:
+        # 超出上限：按字面保序截断，并把被丢弃的词在包里说明——让主控知道引擎替他做了取舍
+        kept, dropped = kept[:MAX_WORLD_ANCHOR_REFS], kept[MAX_WORLD_ANCHOR_REFS:]
+        return kept + [f"__dropped__:{'、'.join(dropped)}"]
+    return kept
+
+
+def _bible_core_anchors(book: Path, refs: list[str] | None = None) -> str:
+    """提取 bible/ 中的世界规则、战力标尺、势力分布与特殊机制（注入 P0）。
 
     按预算逐节截断（确定性：始终保留靠前的节，bible 01/02 最基础）。
+    refs 非空时进入「按章取用」模式：只保留标题或正文命中任一关键词的节，
+    且命中节视为钉住（不受预算截断）；一条都没命中则回退恒给口径并说明原因——
+    宁可多给，不可让写手在没有世界公理的情况下裸写。
     """
     budget = _world_anchor_budget(book)
     if budget <= 0:
@@ -196,6 +238,45 @@ def _bible_core_anchors(book: Path) -> str:
 
     if not sections:
         return ""
+    # 「按章取用」模式：refs 命中即钉住（不被预算截断），未命中回退恒给。
+    dropped = [r.split(":", 1)[1] for r in (refs or []) if r.startswith("__dropped__:")]
+    refs = [r for r in (refs or []) if not r.startswith("__dropped__:")]
+    if refs:
+        low = [r.lower() for r in refs]
+        pinned = [s for s in sections if any(k in s.lower() for k in low)]
+        if pinned:
+            out = "\n\n".join(pinned)
+            note = f"（按章取用：命中 {len(pinned)}/{len(sections)} 节 world_refs）"
+            if dropped:
+                note += (f"｜⚠️ world_refs 超过 {MAX_WORLD_ANCHOR_REFS} 个上限，已忽略后面的：{dropped[0]}"
+                         "（钉太多＝恒给，收窄失去意义；确需多看几节请用 `lore` 系列零 Token 自取）")
+            # 基础组缺失诊断：只报「池子里本有、却被 refs 挡在门外」的组
+            low_pinned = [x.lower() for x in pinned]
+            low_pool = [x.lower() for x in sections]
+            missing = [g for g, kws in _ANCHOR_CORE_GROUPS
+                       if not any(any(k in x for k in kws) for x in low_pinned)
+                       and any(any(k in x for k in kws) for x in low_pool)]
+            if missing:
+                out += ("\n\n⚠️ 本章 world_refs 未覆盖基础世界节组："
+                        + "、".join(f"「{g}」" for g in missing)
+                        + f"（池中另有 {len(sections) - len(pinned)} 节未注入）。"
+                        "凡正文涉及升级/交易/组织冲突或力量表现，请把对应关键词补进 beats 的 "
+                        "`world_refs:` 后重跑 pack；临时核对可用 `python studio.py lore scale` / "
+                        "`lore rules`（零 Token）。")
+            elif len(pinned) < len(sections):
+                out += ("\n\n未注入的世界节（基础组已覆盖）：可用 "
+                        "`python studio.py lore rules` / `lore scale` / `lore entity <名>` 按需取。")
+            return out + "\n" + note
+        # 一条都没命中：不静默降级为"没有世界观"，回退恒给 + 点名 world_refs 可能写错。
+        # 匹配是「refs 词 ⊆ 节标题或正文」的字面包含，所以必须用 bible 自己的措辞；
+        # 把可选节标题列出来（最多 6 条），主控照抄一次即可命中，不必回头翻文件。
+        cands = "、".join(sec.split("\n", 1)[0].lstrip("#").strip()[:22] for sec in sections[:6])
+        hint = f"可钉的节：{cands}" if cands else "（当前 bible 无可钉节）"
+        fallback_note = (f"⚠️ beats 的 world_refs（{'、'.join(refs[:6])}）未命中任何 bible 节标题/正文，"
+                         f"已回退为恒给全量锚点——refs 需与设定原文用词一致，{hint}；"
+                         "或删掉本键沿用恒给。\n\n")
+    else:
+        fallback_note = ""
     # 逐节累加，超出预算即停（保留靠前节：bible 01/02 的世界公理与战力标尺最基础）
     kept: list[str] = []
     used = 0
@@ -208,7 +289,7 @@ def _bible_core_anchors(book: Path) -> str:
     out = "\n\n".join(kept)
     if len(kept) < len(sections):
         out += "\n\n" + _WORLD_ANCHOR_HINT
-    return out
+    return fallback_note + out
 
 
 
@@ -496,7 +577,8 @@ def _entity_block(book: Path, name: str, cur: dict, lines: dict, full: bool) -> 
 # ---------------------------------------------------------------------------
 # 主装配
 # ---------------------------------------------------------------------------
-def build_pack(book: Path, ch: str, lean: bool = False, full: bool = False) -> dict:
+def build_pack(book: Path, ch: str, lean: bool = False, full: bool = False,
+                 role: str | None = None) -> dict:
     ch_num = common.chapter_token_to_num(ch)
     if not ch_num:
         raise ValueError(f"非法章号: {ch!r}")
@@ -533,7 +615,9 @@ def build_pack(book: Path, ch: str, lean: bool = False, full: bool = False) -> d
     p0 = {
         "current": {k: v for k, v in cur["current"].items() if v not in ("", [], None)},
         "volume_phase": _volume_phase_milestone(book, ch_num),
-        "world_anchors": _bible_core_anchors(book),
+        # 世界锚点按章取用：beats front-matter 声明 world_refs 时只注入命中的节，
+        # 未声明则回退恒给（保持既有行为，见 _bible_core_anchors）。
+        "world_anchors": _bible_core_anchors(book, _world_refs(beats)),
         "beats": beats,
         "prev_tail": _prev_final_tail(book, ch_num, cur_vol),
         "hard_reminders": _hard_reminders(book, ch, ch_num),
@@ -714,6 +798,23 @@ def build_pack(book: Path, ch: str, lean: bool = False, full: bool = False) -> d
                                              "desc": desc})
                 except OSError:
                     continue
+        # 按角色准读网关过滤冷索引（V3.1 修复）：此前把 bible/、characters/ 连同
+        # 「可用 --open 取原文」一起列给被禁读该目录的角色（drafter/reader/…），
+        # 等于承诺一个必然被拒的动作——既白烧索引 token，又诱导子代理自行提权。
+        # 现在被禁条目不列路径，只报数量，并把 open_hint 改成与该角色一致的口径。
+        if role and role in ROLE_DENY and ROLE_DENY[role]:
+            allowed, blocked = [], 0
+            for ent in p2["file_index"]:
+                if deny_reason(book, ent["path"], role) is None:
+                    allowed.append(ent)
+                else:
+                    blocked += 1
+            p2["file_index"] = allowed
+            if blocked:
+                p2["open_hint"] = (f"另有 {blocked} 份文件不在角色「{role}」的准读范围内，"
+                                   "请勿尝试 --open（会被禁读网关拒绝）；本包未装的一律视为"
+                                   "『你不需要知道』，确需原文请交主控判断后转述。")
+
         finals = evidence.final_chapters(book)
         window = [c for c in finals if c[1] < ch_num][-POINTER_WINDOW:]
         # 首章（或前面还没有任何定稿）时窗口为空，此前一律渲染成「近10章未出现」——
@@ -742,7 +843,7 @@ def build_pack(book: Path, ch: str, lean: bool = False, full: bool = False) -> d
     budget["world_anchor_tokens"] = common.est_tokens(
         payload.get("p0", {}).get("world_anchors") or "")
 
-    # 超预算硬裁：优先裁 P2 冷索引，修复计数失真
+    # 超预算硬裁：第一步只裁 P2 冷索引（最不影响创作现场），并修正计数失真
     if budget["over_budget"] and payload.get("p2"):
         original_len = len(payload["p2"].get("file_index", []))
         fi = payload["p2"].get("file_index", [])
@@ -773,10 +874,43 @@ def build_pack(book: Path, ch: str, lean: bool = False, full: bool = False) -> d
             budget["trim_note"] = "；".join(parts) + "（P0/P1 保留）"
             if original_len > 25:
                 budget["original_file_index_count"] = original_len
-        if budget["over_budget"]:
-            budget["hard_cap_breached"] = True
-            note = f"冷索引已裁空仍超预算（P0/P1 保留，超出 {budget['total'] - budget['cap']} tok）"
-            budget["trim_note"] = f"{budget['trim_note']}；{note}" if budget.get("trim_note") else note
+
+    # 压缩阶梯（V3.2）：冷索引裁空仍超 2W 预算时，按「离创作现场由远及近」继续裁。
+    # 永不裁：beats 全文 / current / 硬提醒 / 不可逆事实 / 钉住的世界锚点——那是本章合同与事实底座。
+    def _recount(layer: str) -> None:
+        rendered[layer] = render_layer(layer, payload.get(layer), full=full)
+        budget[layer] = common.est_tokens(rendered[layer])
+        budget["total"] = budget["p0"] + budget.get("p1", 0) + budget.get("p2", 0)
+        budget["over_budget"] = budget["total"] > budget["cap"]
+
+    ladder: list[str] = []
+    if budget["over_budget"]:
+        if payload.get("p2") and payload["p2"].get("old_chapter_pointers"):
+            payload["p2"]["old_chapter_pointers"] = []
+            ladder.append("裁 P2 旧章指针")
+            _recount("p2")
+        if budget["over_budget"] and payload.get("p1") and payload["p1"].get("indirect"):
+            payload["p1"]["indirect"] = []
+            ladder.append("裁 P1 间接关联")
+            _recount("p1")
+        if budget["over_budget"] and payload.get("p1") and len(payload["p1"].get("spine") or []) > 5:
+            payload["p1"]["spine"] = payload["p1"]["spine"][-5:]
+            ladder.append("梗概脊柱收缩至最近 5 章")
+            _recount("p1")
+        if budget["over_budget"] and len(str(payload["p0"].get("prev_tail") or "")) > 400:
+            payload["p0"]["prev_tail"] = str(payload["p0"]["prev_tail"])[:400] + "…"
+            ladder.append("上章余温裁至 400 字")
+            _recount("p0")
+        if ladder:
+            budget["compressed"] = ladder
+            budget["trim_note"] = ((budget["trim_note"] + "；") if budget.get("trim_note") else "") \
+                + "压缩阶梯：" + "、".join(ladder)
+    # 阶梯用尽仍超预算：此前该报警被嵌在「有 P2」分支内，--lean 或 P2 已空的包会静默超限。
+    if budget["over_budget"]:
+        budget["hard_cap_breached"] = True
+        note = (f"压缩阶梯已尽仍超预算（超出 {budget['total'] - budget['cap']} tok）："
+                "本章合同类内容不自动裁，请主控精简 beats 或调低 project.json.world_anchor_tokens")
+        budget["trim_note"] = f"{budget['trim_note']}；{note}" if budget.get("trim_note") else note
 
     payload["budget_report"] = budget
     payload["hits"] = sorted(hits)

@@ -10,7 +10,7 @@ Novel Studio 是专为网络小说多智能体协同深度定制的创作流水�
 > ⚖️ **【事实与创作分离规范】**：
 > 创作可以脑补，事实必须对账——事实唯一源头 = `final` 定稿正文；
 > 状态唯一真值 = `state/` 十一表（含不可逆事实表与认知差表）；
-> 一致性由引擎机械闸门与 Auditor 双轨核验兜底。
+> 一致性由引擎机械闸门与 Auditor 三轨核验兜底（机械探针 + 细纲语义清单 + 语义逻辑与出戏审查）。
 
 > 🧰 **【开工前置：运行环境】**：引擎依赖 5 个第三方库，缺失时 `studio.py` 会在启动瞬间
 > 打印缺失模块与安装命令并以退出码 `3` 退出（不是业务问题，不要去改书）。
@@ -38,6 +38,16 @@ check --trend 分数曲线 / --bisect 快照二分等；
 （PARAM_SPEC 单一真源）；
 - **规模经济**：changelog 事件溯源（state at 重放任意章切面 / blame 字段级溯源 / external_edit 自愈补录）、
 卷级 rollup（前情态势 ≤500 token 注入 pack，装配成本 O(当前卷)）、卷末 reconcile 对账大修（投影误差的周期性维护）；
+- **装配预算契约**：`pack` 各层自报 token（`budget:` 行；`--json` 走 `budget_report`，含 `compressed` / `hard_cap_breached`），总量上限 **2W**；超预算按压缩阶梯由远及近裁
+  （P2 冷索引 → P2 旧章指针 → P1 间接关联 → P1 脊柱 → P0 上章余温），**beats 全文 / current / 硬提醒 /
+  不可逆事实 / 钉住的世界锚点永不自动裁**；世界锚点支持按章取用（beats front-matter `world_refs`：
+  未声明＝恒给、命中＝只装命中节并对漏掉的基础组打 ⚠️、零命中＝回退恒给并列「可钉的节」）；**refs 最多取前 8 个**（`MAX_WORLD_ANCHOR_REFS`，超出忽略并点名——
+  钉太多＝恒给，收窄就失去意义）；P2 冷索引按角色准读网关过滤，被禁文件只报数量不报路径（杜绝"提示去 open 必被拒"）；
+- **装配包面（Drafter 的全部输入）**：P0＝`current` 块（含 loadout 中文名）＋卷段里程碑＋`world_anchors`＋
+  **beats 逐字全文**＋`prev_tail`＋`hard_reminders`＋`aftershock`（上章 `locked` 代价回灌）；
+  P1＝`entities`（脊柱＋`trace` 近 3 章）＋`indirect`（图 2-hop）＋`spine`（脊柱尾 3 条）；P2＝`old_chapter_pointers`＋`file_index`；
+  `--lean` 只给 P0、`--full` 全三层。**不装**：raw 草稿、`state/` 其余 6 表（ledger/timeline/cognition 等）、`log/` 下所有 .md（bible 只装锚点节）；
+  需要"人物当前态"走 5 档只读视图：`state get` / `state at <章>` / `ledger balance` / `pov <人>` / `recall <人>`；
 - **强援库**：jieba（专名与词频）、networkx（实体拓扑寻路）、rapidfuzz（引文模糊接地）、rich（终端渲染）、sqlite3（FTS5 检索加速）。
 
 ---
@@ -55,9 +65,8 @@ check --trend 分数曲线 / --bisect 快照二分等；
 | **脱水师 (Stylist)** | 原生子代理 | Stage 3B | **通俗脱水、去冷脸与扫读优化**：以极度易读、方便扫读、通俗直白为导向；首行规范输出章题；以 `06_style_guidelines.md` 为基线，**负责做足减法与表情动作去僵化**（切除动作后反刍总结、消除主角冷脸与神色淡然套路、比喻脱水白描化、确保遣词造句自然准确），直接落盘全书法定定稿 `final/ch_XXX.md`。 |
 | **审计员 (Reader)** | 原生子代理 | Stage 4 (并行轨 A) | **精益事实审计与动态演进提取**：以 final 为唯一事实源，客观提取核心事实（现场在场、动态关系与称谓演进、关键新实体、线索动作、大额收支、不可逆事实），装配严格符合 Pydantic V2/V3 Schema 的标准增量提案 JSON（v2 分区 / v3 寻址 ops 二选一） (`state/inbox/ch_XXX.json`)。 |
 | **催更员 (Critic)** | 原生子代理 | Stage 4 (并行轨 B) | **追更老白催更便签（专供下章参考）**：扮演十年老白追更读者盲审 final 正文，评估疲劳度与活人感，输出 200~500 字催更便签 `log/critic/ch_XXX.md`，直供下章细纲构思。落盘即交卷。 |
-| **仲裁员 (Auditor)** | 原生子代理 | Stage 4 (并行轨 C) | **双轨一致性仲裁（机械探针+细纲语义清单）**：先运行 `python studio.py audit ch_XXX --write` 由引擎生成**带 YAML front-matter（`hard`/`soft`/`adjudicated`）的仲裁报告骨架**，再基于 8 大确定性机械探针与细纲预提炼清单逐行对校称谓、修饰词漂移，补写裁决至 `log/audit/ch_XXX.md`（缺 front-matter 将被 Stage 5 闸门拒绝封存）。检出 🔴 确凿硬矛盾立即下达定向手术刀修复指令。 |
-| **图书管理员 (Librarian)** | 原生子代理 | Stage 4D (每10章低频巡查) | **十年长程事实巡检与账目平账**：每 10 章执行一次深度巡检，通读近 10 章定稿，清查遗漏次要实体、法宝道具充能漏扣与生死状态，把修补直接并入当章在途提案 `state/inbox/ch_XXX.json`；卷末跑 `python studio.py reconcile vol_XX --write`
-生成对账工作单并按清单裁决（投影 diff：未登记专名 / 零出现实体）。 |
+| **仲裁员 (Auditor)** | 原生子代理 | Stage 4 (并行轨 C) | **三轨一致性仲裁（机械探针 + 细纲语义清单 + 语义逻辑与出戏审查）**：先运行 `python studio.py audit ch_XXX --write` 由引擎生成**带 YAML front-matter（`hard`/`soft`/`logic`/`adjudicated`）的仲裁报告骨架**，再基于 8 大确定性机械探针与细纲预提炼清单逐行对校称谓与修饰词漂移；**并独立执行轨 3**——用 LLM 的语义理解查读者会当场出戏的破绽（世界观类目污染、违背世界公理、人物性格突变、因果与代价断链、现场常识与时空矛盾），这类问题 `check`/`audit` 探针**结构上不可能发现**，只有你能抓。裁决补写至 `log/audit/ch_XXX.md`（缺 front-matter 将被 Stage 5 闸门拒绝封存）。🔴 硬矛盾与 🧠 确凿出戏（`logic>0`）**同闸阻断**：正文层下定向手术刀令给 Stylist，设定层/历史正文层转办 Evolver，严禁自行改 bible；🟡 软性存疑不阻断，但须逐条标 S1/S2/S3 出口后随回执上报。 |
+| **图书管理员 (Librarian)** | 原生子代理 | Stage 4D (每10章低频巡查) | **十年长程事实巡检与账目平账**：每 10 章执行一次深度巡检，通读近 10 章定稿，清查遗漏次要实体、法宝道具充能漏扣与生死状态，把修补直接并入当章在途提案 `state/inbox/ch_XXX.json`；卷末跑 `python studio.py reconcile vol_XX --write` 生成对账工作单并按清单裁决（投影 diff：未登记专名 / 零出现实体）。 |
 | **重构师 (Evolver)** | 原生子代理 | Stage Evolution (中途随时触发) | **剧情外科主任与演进重构总监**：专职承接人类作者全生命周期中途提出的**任何变更诉求**（改设定、改历史正文段落、改人物设定、改事件因果、开辟新卷地图等）。负责波及面测算、快照先行、跨层手术刀修改与十一表平账（`ledger recompute`, `check`）。独立沙盒运行，落盘即交卷。 |
 
 ---
@@ -73,8 +82,8 @@ graph TD
     S3A --> S3B["Stage 3B: 通俗脱水与扫读优化<br/>(Stylist: 减法去油 + 去冷脸/去反刍/精准白描 -> final)"]
     S3B --> S4A["Stage 4A: 事实审计<br/>(Reader: 增量状态与动态演进提案)"]
     S3B --> S4B["Stage 4B: 催更便签<br/>(Critic: 读者体感+期待)"]
-    S3B --> S4C["Stage 4C: 双轨一致性仲裁<br/>(Auditor: 机械探针+细纲语义清单拦截)"]
-    S4C -. "🔴 确凿硬矛盾/称谓漂移" .-> S4Patch["定向手术刀修复<br/>(Stylist: 仅精准替换冲突单行)"]
+    S3B --> S4C["Stage 4C: 三轨一致性仲裁<br/>(Auditor: 机械探针 + 细纲语义清单 + 🧠 语义逻辑与出戏审查)"]
+    S4C -. "🔴 硬矛盾 / 🧠 logic>0 确凿出戏与世界观矛盾" .-> S4Patch["定向手术刀修复<br/>(Stylist: 精准替换冲突单行；设定层冲突转办 Evolver)"]
     S4Patch -. "修复后必须复审：重跑 audit --write<br/>(硬矛盾段落未变则沿用既有 adjudicated)" .-> S4C
     S4Patch --> S4A
     S4A --> S5["Stage 5: 状态同步与动态基准更新<br/>(主控: 原子合并/封存快照/新状态生效)"]
@@ -87,6 +96,14 @@ graph TD
     UserChange["人类变更诉求<br/>(改设定/改历史正文/改人设/改情感)"] -.-> SEvolution["Stage Evolution: 演进重构总监<br/>(Evolver: 波及面测算 + 手术刀修改 + 十一表平账)"]
     SEvolution -. "平账后无缝对接" .-> S1
 ```
+
+> 📜 **beats = 当章唯一合同**：由主控写（`beats new` 预填机器事实），Editor / Stylist / Reader / Auditor
+> 四路子代理**直读**，Drafter 经 `pack` P0 拿到**逐字全文**，Critic 与 Librarian 明令**禁读**
+> （前者要纯读者盲审、后者只对账不读意图）。动机：`state/` 只知"已发生什么"、不知"本章要写什么"，
+> beats 把 bible + 台账 + 本意压成 O(1) 的当章快照，让五个下游共享同一基准而不必各翻账本；
+> 代价是它同时是最大注入物与最脆单点——**细纲写虚，整条流水线一起歪**，故引擎对其有 5 档 `beats_*`
+> 闸门与 `sync` 的"beats 齐"硬合同（`goal`/`hook` 无机械校验，虚写只能靠下游上报）。引擎注入的 `## 本章一致性速查`、`### 💰 资源池与 ID 水位线`、`### 📐 提案通道与键形状` 三节
+> 是 Reader 的**唯一**契约来源（其网关禁读 `state/`，故不得要求其阅读 `state/inbox/README.md`）。
 
 ---
 
@@ -175,7 +192,7 @@ workspace/<书名>/
 │   └── final/ch_XXX.md       # 定稿（Stage 3B Stylist 产出，事实唯一源头）
 ├── state/                    # 十一表真值（含 locked/cognition） + inbox/ 提案收件箱 + snapshots/ 快照
 ├── log/critic/ch_XXX.md      # 老白催更便签（Stage 4B 产出，供下章细纲参考）
-├── log/audit/ch_XXX.md       # 一致性仲裁报告（Stage 4C 产出；双轨仲裁）
+├── log/audit/ch_XXX.md       # 一致性仲裁报告（Stage 4C 产出；三轨仲裁，front-matter: hard/soft/logic）
 ├── log/branches/ch_XXX.md    # 分支参谋单（可选）
 ├── log/review/               # 校对注记 + Librarian 长程巡检报告 sweep_ch_XXX.md
 └── export/                   # 全书编译产物（--txt / --views 状态视图）
@@ -185,8 +202,12 @@ workspace/<书名>/
 
 ## 七、 跨角色核心红线（任何 Stage 不可逾越）
 
-1. **引擎黑盒规范**：严禁任何角色（agent）读取或修改 `engine/*.py` 源码；命令用法以 `python studio.py help --json` 为唯一自查入口；
+1. **引擎黑盒规范**：严禁任何角色（agent）读取或修改 `engine/*.py` 源码，也不必读 `engine/schemas/*.json`
+   （给引擎读的构建产物；人读等价信息在 `templates/README.md` 第四节，写错字段时 `check`/`sync` 报错会点名）；
+   命令用法以 `python studio.py help --json` 为唯一自查入口；
 2. **零脚本规范**：子代理严禁编写/运行任何统计、验证或测试脚本；状态同步与体检全权归主控 Stage 5；
+   ⚠️ 准读清单的**机械拦截只覆盖 `pack --open`**（越权即拒），子代理自带的文件读写工具不受该网关约束——
+   主控派单时不要把"引擎会拦住"当成安全兜底，纪律仍是第一道防线；
 3. **防污染原则**：稿件严禁工程痕迹（未填槽位 `{{slot:...}}`、候选字段 `candidate_*`）；
 4. **反套路与章型差异化规范**：主控 80%（或更多） 算力锁定在 Stage 1 创意脑洞，执行《金牌总编剧四步破局心法》（扫雷排除平庸套路、三维反差推演、招牌记忆物象、人际情感微澜与互动潜台词），坚决打破流水线套路复读；
 5. **Critic 直通规范**：催更便签仅供下章细纲参考（主控参考），当章流水线直通 Stage 5；
@@ -203,11 +224,11 @@ workspace/<书名>/
 所有业务心法、工艺规范与权限清单已 100% 熔炼进各角色的自完备技能卡：
 - 主控调度技能：`.agents/skills/director/SKILL.md`（全局统筹、Stage 0A/0B 调度、中途演进派发、细纲破局与状态同步）
 - 架构筑基技能：`.agents/skills/architect/SKILL.md`（Stage 0A 世界公理筑基、Stage 0B 人物大纲编织与状态通电）
-- 演进重构技能：`.agents/skills/evolution/SKILL.md`（Stage Evolution 剧情外科手术、历史正文Retcon、设定演进与十一表平账）
+- 演进重构技能：`.agents/skills/evolution/SKILL.md`（Stage Evolution 剧情外科手术、历史正文 Retcon、设定演进与十一表平账；技能目录名为 `evolution`，角色称谓统一为 **演进重构师 / Evolver**——按目录取技能、按称谓派单）
 - 起草先锋技能：`.agents/skills/drafter/SKILL.md`（场景推进、严格继承细纲事实，产出 `raw_v1`）
 - 骨肉重塑技能：`.agents/skills/editor/SKILL.md`（剧情做加法、人物交互、气口缝合、事实对账，产出 `raw_v2`）
 - 风格雕琢技能：`.agents/skills/stylist/SKILL.md`（通俗脱水、去冷脸活力注入、去反刍说教、比喻脱水、遣词准确、扫读优化，产出 `final`）
 - 事实审计技能：`.agents/skills/reader/SKILL.md`（核心事实抓取、动态演变提炼、JSON Schema 提案）
 - 读者催更技能：`.agents/skills/critic/SKILL.md`（十年老白纯盲审催更便签）
-- 一致性仲裁技能：`.agents/skills/auditor/SKILL.md`（双轨核验、机械探针+语义对账、定向手术刀指令）
+- 一致性仲裁技能：`.agents/skills/auditor/SKILL.md`（三轨核验：机械探针 + 细纲语义清单 + 🧠 语义逻辑与出戏审查；定向手术刀指令与转办 Evolver）
 - 长程巡检技能：`.agents/skills/librarian/SKILL.md`（十年长程事实巡检、词频与实体平账）

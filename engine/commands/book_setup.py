@@ -170,6 +170,9 @@ def cmd_init(args) -> int:
         proj = {}
 
     if not proj:
+        # 兜底路径（模板缺失/损坏才会走到）刻意只给最小集：不复制词表，避免与 templates/project.json
+        # 形成第二真源。后果是六张词表与 state_watch 缺席＝对应启发式停用，`check` 会以
+        # wordlist_unconfigured（info）逐键提醒主控补配——属设计内行为，勿在此硬编码词表。
         proj = {
             "schema": "novel-studio.project/v1",
             "title": args.title or "",
@@ -183,7 +186,6 @@ def cmd_init(args) -> int:
                 "active_knowledge": 5,
                 "active_misunderstandings": 4
             },
-            "state_watch": {},
             "created_at": today_str,
         }
     common.dump_json(book / "project.json", proj)
@@ -273,6 +275,10 @@ def _book_brief(book: Path) -> dict:
         "workspace": str(book),
         "title": proj.get("title", ""),
         "genre": proj.get("genre", ""),
+        # audit_mode 是真实生效的 Stage 5 闸门口径（strict/advisory/off）；
+        # mode 为历史字段（模板已不再播种），仅在书里确实存在时才展示，缺省不出现在输出里。
+        "audit_mode": str(proj.get("audit_mode", "strict")),
+        **({"mode": str(proj.get("mode"))} if proj.get("mode") else {}),
         "finalized_chapters": len(final_files),
         "latest_finalized": latest,
         "total_words": words,
@@ -290,7 +296,10 @@ def _next_actions(brief: dict | None) -> list[str]:
     if brief["pending_proposals"]:
         acts.append(f"state/inbox 有 {len(brief['pending_proposals'])} 份待合并提案：python studio.py sync ch_XXX")
     nxt = brief["latest_finalized"] + 1
-    acts.append(f"下一章 ch_{nxt:03d}：Stage 1 主控写 beats → Stage 2 drafter → Stage 3 editor → Stage 4 reader/critic 双轨并发质检 → Stage 5 极速同步+快照")
+    acts.append(f"下一章 ch_{nxt:03d}：Stage 1 主控写 beats → Stage 2 Drafter 毛坯 raw_v1 → "
+                f"Stage 3A Editor 骨肉稿 raw_v2 → Stage 3B Stylist 通俗脱水定稿 final → "
+                f"Stage 4 三轨并发（Reader 提案 ‖ Critic 便签 ‖ Auditor 仲裁 audit --write）→ "
+                f"Stage 5 sync 封存+快照")
     return acts
 
 
@@ -355,7 +364,9 @@ def cmd_status(args) -> int:
     mark = lambda b: "✅" if b else "· "
     latest_str = (f"ch_{brief['latest_finalized']:03d}" if brief["latest_finalized"]
                   else "(未定稿)")
-    print(f" 📖 {brief['title'] or '(未命名)'} ｜ {brief['genre'] or '?'} ｜ 模式 {brief['mode']}")
+    print(f" 📖 {brief['title'] or '(未命名)'} ｜ {brief['genre'] or '?'}"
+          f" ｜ 审计闸门 {brief['audit_mode']}"
+          + (f" ｜ 模式 {brief['mode']}" if brief.get("mode") else ""))
     print(f"    已定稿 {brief['finalized_chapters']} 章（最新 {latest_str}）"
           f" ｜ 共 {brief['total_words']} 字 ｜ 待合并提案 {len(brief['pending_proposals'])}"
           f" ｜ 快照 {brief['snapshot_count']}")
@@ -646,7 +657,37 @@ def cmd_config(args) -> int:
 # ---------------------------------------------------------------------------
 def cmd_errcodes(args) -> int:
     """错误码注册表速查：引擎全部体检码的 level/人话解释/修复建议（Agent 供 --json）。"""
+    code = str(getattr(args, "code", "") or "").strip()
+    if code:
+        hit = errcodes.get(code)
+        if hit is None:
+            near = [k for k in errcodes.REGISTRY if code in k or k in code][:6]
+            msg = (f"未知错误码「{code}」（全表 {len(errcodes.REGISTRY)} 码，"
+                   f"用 `errcodes --json` 取机器可读版）")
+            if near:
+                msg += f"；相近码：{'、'.join(near)}"
+            if getattr(args, "json", False):
+                print(json.dumps({"ok": False, "code": "unknown_errcode", "error": msg,
+                                  "queried": code, "near": near}, ensure_ascii=False))
+            else:
+                print(f"❌ {msg}")
+            return 2
+        item = {"code": hit.code, "level": hit.level,
+                "description": hit.description, "remedy": hit.remedy}
+        if getattr(args, "json", False):
+            print(json.dumps({"schema": "novel-studio.errcode/v1", **item},
+                             ensure_ascii=False, indent=2))
+        else:
+            icon = {"error": "❌", "warning": "⚠️", "info": "ℹ️"}[hit.level]
+            print(f"{icon} [{item['code']}] ({item['level']})")
+            print(f"  说明：{item['description']}")
+            if item["remedy"]:
+                print(f"  💡 修复：{item['remedy']}")
+        return 0
     items = errcodes.as_list()
+    level = str(getattr(args, "level", "") or "").strip()
+    if level:
+        items = [x for x in items if x["level"] == level]
     if getattr(args, "json", False):
         print(json.dumps({"schema": "novel-studio.errcodes/v1", "total": len(items),
                           "codes": items}, ensure_ascii=False, indent=2))

@@ -13,7 +13,7 @@ import argparse
 import json
 import sys
 
-from . import __version__, common, pack
+from . import __version__, common, errcodes, pack
 from .commands._shared import _add_common_opts
 from .commands.book_setup import (cmd_config, cmd_cockpit, cmd_errcodes, cmd_init, cmd_status,
                                   cmd_lore)
@@ -576,6 +576,10 @@ def _build_subparsers(sub: argparse._SubParsersAction) -> None:
     q.set_defaults(func=cmd_help)
 
     q = sub.add_parser("errcodes", help="错误码注册表速查（level/解释/修复建议）")
+    # README/AGENTS 三处都写「errcodes <码>」（按码取说明书），此前 parser 无该位置参数，
+    # 照文档跑必吃 argparse 退出码 2。补上：单码详情 + 未知码点名相近码。
+    q.add_argument("code", nargs="?", help="单个错误码（如 state_offline_edit）；省略则列全表")
+    q.add_argument("--level", choices=list(errcodes.LEVELS), help="只列某一级别的码")
     q.add_argument("-w", "--workspace", default=argparse.SUPPRESS, help=argparse.SUPPRESS)
     q.add_argument("--json", action="store_true", help="结构化 JSON 输出（Agent 首选）")
     q.set_defaults(func=cmd_errcodes)
