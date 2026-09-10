@@ -184,31 +184,44 @@ def mentions(book: Path, target: str | None = None) -> dict:
 
 def gaps(book: Path) -> dict:
     lines = state.load_state(book, "lines")
-    cur = common.latest_chapter_number(book, "final")
-    out = {"kind": "gaps", "max_final_chapter": cur, "foreshadows": [], "misunderstandings": [], "knowledge": []}
+    cur_raw = common.latest_chapter_number(book, "final")
+    cur = cur_raw if isinstance(cur_raw, int) else 0
+    out = {"kind": "gaps", "max_final_chapter": cur_raw, "foreshadows": [], "misunderstandings": [], "knowledge": []}
     for g in lines.get("foreshadows", []):
         t = g.get("target_ch")
-        overdue = isinstance(t, int) and g.get("status") != "Resolved" and t < cur
+        overdue = isinstance(t, int) and g.get("status") != "Resolved" and t < cur if cur else False
+        try:
+            idle = (cur - int(g.get("plant_ch") or 0)) if g.get("status") != "Resolved" and cur else 0
+        except Exception:
+            idle = 0
         out["foreshadows"].append({
             "id": g["id"], "name": g.get("name", ""), "status": g.get("status"),
             "plant_ch": g.get("plant_ch"), "target_ch": t, "weight": g.get("weight", 1),
             "overdue": overdue,
-            "idle_chapters": (cur - int(g.get("plant_ch") or 0)) if g.get("status") != "Resolved" else 0})
+            "idle_chapters": idle})
     for m in lines.get("misunderstandings", []):
         t = m.get("target_ch")
-        overdue = isinstance(t, int) and m.get("status") != "Resolved" and t < cur
+        overdue = isinstance(t, int) and m.get("status") != "Resolved" and t < cur if cur else False
+        try:
+            idle = (cur - int(m.get("plant_ch") or 0)) if m.get("status") != "Resolved" and m.get("plant_ch") and cur else 0
+        except Exception:
+            idle = 0
         out["misunderstandings"].append({
             "id": m["id"], "parties": m.get("parties", ""), "status": m.get("status"),
             "level": m.get("level"), "target_ch": t, "overdue": overdue,
-            "idle_chapters": (cur - int(m.get("plant_ch") or 0)) if m.get("status") != "Resolved" and m.get("plant_ch") else 0})
+            "idle_chapters": idle})
     for k in lines.get("knowledge", []):
         t = k.get("target_ch")
-        overdue = isinstance(t, int) and k.get("status") != "Revealed" and t < cur
+        overdue = isinstance(t, int) and k.get("status") != "Revealed" and t < cur if cur else False
+        try:
+            idle = (cur - int(k.get("plant_ch") or 0)) if k.get("status") != "Revealed" and cur else 0
+        except Exception:
+            idle = 0
         out["knowledge"].append({
             "id": k["id"], "secret": k.get("secret", ""), "status": k.get("status"),
             "plant_ch": k.get("plant_ch"), "target_ch": t, "weight": k.get("weight", 1),
             "overdue": overdue,
-            "idle_chapters": (cur - int(k.get("plant_ch") or 0)) if k.get("status") != "Revealed" else 0})
+            "idle_chapters": idle})
     out["foreshadows"].sort(key=lambda x: line_sort_key(x, "foreshadow"))
     out["misunderstandings"].sort(key=lambda x: line_sort_key(x, "misunderstanding"))
     out["knowledge"].sort(key=lambda x: line_sort_key(x, "knowledge"))
@@ -302,11 +315,19 @@ def is_candidate_noise(g: str, ledger_pools: dict | None = None,
         return True
     if is_generic_locutive_noise(g):
         return True
-    # ① 已知实体名片段 + 尾随单字（多为动词/介词）：沉舟说 / 沉舟把
-    if known_names and len(g) >= 3:
+    # ① 已知实体名片段 + 尾随单字（多为动词/介词）：沉舟说 / 沉舟把 / 舟说（2字贪婪）
+    # 2字候选也需过滤：如已知“陆沉舟”，候选“舟说” stem=“舟” 仍是实体片段+动词
+    if known_names and len(g) >= 2:
         stem = g[:-1]
-        if any(len(nm) >= 2 and stem in nm for nm in known_names):
-            return True
+        # stem 长度 1 时，要求至少 2 字已知名包含该字且尾字为常见动词/助词，才算噪声，避免单字误杀
+        if len(stem) == 1:
+            if stem and any(len(nm) >= 2 and stem in nm for nm in known_names):
+                # 尾字常见动词/介词/语气词
+                if g[-1] in "说把被在的了着过呢吧吗呀啦么给跟对和与或":
+                    return True
+        else:
+            if any(len(nm) >= 2 and stem in nm for nm in known_names):
+                return True
     # ② 数字 + 量词：笞二十 / 半个饼 / 那十个 / 拘三日
     if any(c in _NUM_CHARS for c in g) and any(c in _MEASURE_CHARS for c in g):
         return True

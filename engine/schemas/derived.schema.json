@@ -48,10 +48,16 @@
             "type": "string"
           },
           "last_seen_ch": {
-            "type": "integer"
+            "type": [
+              "integer",
+              "null"
+            ]
           },
           "gap": {
-            "type": "integer"
+            "type": [
+              "integer",
+              "null"
+            ]
           },
           "status": {
             "type": "string"

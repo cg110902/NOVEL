@@ -85,15 +85,25 @@ def extract_dialogues(book: Path) -> list[tuple[int, str, str]]:
 
 
 def _attribute(prefix: str, flat: list[tuple[str, str]]) -> str | None:
-    """引号前缀文本 → 说话人（实体名 + 说话动词紧邻，取最靠后者）。"""
+    """引号前缀文本 → 说话人（实体名 + 说话动词紧邻，取最靠后者，长别名优先）。
+
+    2字贪婪修复：别名按长度降序排序，同一位置出现时更长的别名优先（如“陆沉舟”优先于“陆沉”/“沉舟”），
+    避免短别名抢占导致误归属。
+    """
+    # 长别名优先：同位置匹配时更精确
+    sorted_flat = sorted(flat, key=lambda x: len(x[1]), reverse=True)
     best_idx, best = -1, None
-    for canon, alias in flat:
+    best_len = -1
+    for canon, alias in sorted_flat:
+        if not alias:
+            continue
         idx = prefix.rfind(alias)
         while idx >= 0:
             after = prefix[idx + len(alias):]
             if len(after) <= 4 and _SAY_VERB_RE.search(after):
-                if idx > best_idx:
-                    best_idx, best = idx, canon
+                # 位置更靠后者赢；同位置长度更长者赢（因已按长度降序，首次命中即最长）
+                if idx > best_idx or (idx == best_idx and len(alias) > best_len):
+                    best_idx, best, best_len = idx, canon, len(alias)
                 break
             idx = prefix.rfind(alias, 0, idx)
     return best

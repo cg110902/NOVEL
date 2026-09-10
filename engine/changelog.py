@@ -447,24 +447,73 @@ def fold(base: dict, events: list[dict]) -> dict:
 # 写入咽喉挂钩（save_state / load_state / init_state / 回滚 / 封存）
 # ---------------------------------------------------------------------------
 
+_IN_TRANSACTION: bool = False
+_TRANSACTION_BUF: list[dict] = []
+_TRANSACTION_HEAD: dict[str, str] = {}
+
+def _begin_transaction():
+    global _IN_TRANSACTION, _TRANSACTION_BUF, _TRANSACTION_HEAD
+    _IN_TRANSACTION = True
+    _TRANSACTION_BUF = []
+    _TRANSACTION_HEAD = {}
+
+def _commit_transaction(book: Path):
+    global _IN_TRANSACTION, _TRANSACTION_BUF, _TRANSACTION_HEAD
+    if not _IN_TRANSACTION:
+        return
+    buf = list(_TRANSACTION_BUF)
+    head = dict(_TRANSACTION_HEAD)
+    _IN_TRANSACTION = False
+    _TRANSACTION_BUF = []
+    _TRANSACTION_HEAD = {}
+    if buf or head:
+        _emit(book, buf, head)
+
+def _abort_transaction():
+    global _IN_TRANSACTION, _TRANSACTION_BUF, _TRANSACTION_HEAD
+    _IN_TRANSACTION = False
+    _TRANSACTION_BUF = []
+    _TRANSACTION_HEAD = {}
+
 def record_save(book: Path, table: str, old_data: Any, new_data: Any, *,
                 source: str = "engine", ch: str | None = None,
                 op_id: str | None = None) -> None:
     """save_state 落盘后调用：diff 旧新 → 追加数据事件 + 更新 head 哈希。
 
     无变化零事件零写入（幂等写不产生噪声）。
+    派生表 derived 为引擎计算缓存，不入事件流（重算即合法变更，缓存语义）。
+    支持 _IN_TRANSACTION 批量事务：事务内事件先入 buf，事务提交时一次性落盘。
     """
+    if table == "derived":
+        # 派生表不入事件流，但仍需更新 head 哈希，避免每次 load 误判 external_edit
+        if active(book):
+            try:
+                h = common.canonical_json_hash(new_data)
+                if _IN_TRANSACTION:
+                    _TRANSACTION_HEAD[table] = h
+                else:
+                    _emit(book, [], {table: h})
+            except Exception:
+                pass
+        return
     if not active(book):
         return
     ops = diff_states(old_data, new_data)
     h = common.canonical_json_hash(new_data)
     if not ops:
+        if _IN_TRANSACTION:
+            _TRANSACTION_HEAD[table] = h
+            return
         meta = _read_meta(book)
         if meta.get("head", {}).get(table) == h:
             return
         _emit(book, [], {table: h})  # 纯格式差异/崩溃自愈：只修 head，不发事件
         return
     events = _data_events(table, ops, source=source, ch=ch, op_id=op_id, ts=_now())
+    if _IN_TRANSACTION:
+        _TRANSACTION_BUF.extend(events)
+        _TRANSACTION_HEAD[table] = h
+        return
     _emit(book, events, {table: h})
 
 
@@ -473,7 +522,10 @@ def check_external_edit(book: Path, table: str, data: dict) -> None:
 
     与 state_offline_edit 检查项分工：那是 sync 盖章篡改检测（check 消费、指名报出），
     这是事件流的自动补录（把绕过 save_state 的改动纳入历史，供 fold 追平磁盘）。
+    派生表 derived 不入事件流，跳过外部编辑检测。
     """
+    if table == "derived":
+        return
     if not active(book):
         return
     meta = _read_meta(book)
@@ -551,6 +603,9 @@ def verify(book: Path) -> tuple[bool, str]:
         return False, f"事件流含 {len(stale)} 条无法寻址的事件（首条 seq={stale[0].get('seq')}）"
     sd = _sd(book)
     for k in state_mod.STATE_KEYS:
+        if k == "derived":
+            # 派生表为缓存，不入事件流，verify 跳过其折叠一致性检查（由 state recompute 保证）
+            continue
         p = sd / f"{k}.json"
         if not p.is_file():
             if k in folded:
@@ -606,13 +661,27 @@ def state_at(book: Path, ch_num: int) -> tuple[dict | None, str | None]:
     - ch_num 超出最新封存 → 折叠到最新封存（世界「截至最后一次封存」）；
     - ch_num 早于首次封存且晚于 genesis 基线（老书）→ 拒绝（历史不可重放）；
     - ch_num 早于 genesis 基线（新书默认表）→ 返回基线。
+    - 事件流未激活时，回退到磁盘最新十一表（兼容老书/未激活场景，避免 state at 直接报错）。
     """
     if not active(book):
-        return None, "事件流未激活（本书在 changelog 之前创建，跑任意 sync 后开始积累）"
+        try:
+            from . import state as state_mod
+            folded = {k: state_mod.load_state(book, k) for k in state_mod.STATE_KEYS}
+            return folded, None
+        except Exception:
+            return None, "事件流未激活（本书在 changelog 之前创建，跑任意 sync 后开始积累）"
     seq = seal_seq_for(book, ch_num)
     if seq is not None:
         folded = fold_to_seq(book, seq)
         folded.pop(STALE_KEY, None)
+        # derived 为缓存，时点切面返回磁盘最新 derived（若存在），避免返回陈旧基线
+        try:
+            from . import state as state_mod
+            dp = _sd(book) / "derived.json"
+            if dp.is_file():
+                folded["derived"] = common.load_json(dp)
+        except Exception:
+            pass
         return folded, None
     # 无 ≤ ch_num 的封存点：判基线是否早于请求章
     at_final = genesis_at_final_ch(book)
@@ -621,6 +690,13 @@ def state_at(book: Path, ch_num: int) -> tuple[dict | None, str | None]:
                       f"ch_{at_final:03d}，此前历史不可重放）")
     folded = fold_to_seq(book, 0)
     folded.pop(STALE_KEY, None)
+    try:
+        from . import state as state_mod
+        dp = _sd(book) / "derived.json"
+        if dp.is_file():
+            folded["derived"] = common.load_json(dp)
+    except Exception:
+        pass
     return folded, None
 
 

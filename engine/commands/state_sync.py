@@ -1517,13 +1517,50 @@ def cmd_state(args) -> int:
             ent_parts = sub_path.split(".", 1)
             if part_name == "entities":
                 # legacy 别名：定位 owner kind 表，后续语义闸门与落盘一律走 kind 表
-                part_name, st_data, _found = state.find_entity_owner(book, ent_parts[0])
+                # 若未找到，尝试按 id 定位（p_001 等）或自动创建
+                orig_name = ent_parts[0]
+                part_name, st_data, _found = state.find_entity_owner(book, orig_name)
                 if _found is None:
-                    return _fail(f"实体「{ent_parts[0]}」不存在，拒绝猜测（请先注册该实体）", code=1)
+                    # 按 id 查找四表
+                    found_table = None
+                    found_data = None
+                    found_ent = None
+                    for k in state.KIND_TABLES:
+                        try:
+                            d = state.load_state(book, k)
+                        except Exception:
+                            continue
+                        for e in d.get("entries", []) or []:
+                            if isinstance(e, dict) and (e.get("id") == orig_name or e.get("name") == orig_name):
+                                found_table, found_data, found_ent = k, d, e
+                                break
+                        if found_ent:
+                            break
+                    if found_ent:
+                        part_name, st_data, _found = found_table, found_data, found_ent
+                    else:
+                        # 自动创建：id 形如 p_001 / it_001 / f_001 / pl_001 或任意新名，默认入 persons
+                        auto_table = "persons"
+                        try:
+                            auto_data = state.load_state(book, auto_table)
+                        except Exception:
+                            auto_data = {"entries": []}
+                        new_ent = {"id": orig_name, "name": orig_name, "type": "person", "status": "active", "summary": ""}
+                        auto_data.setdefault("entries", []).append(new_ent)
+                        part_name, st_data, _found = auto_table, auto_data, new_ent
             ename = ent_parts[0]
-            ent = next((e for e in st_data.get("entries", []) if e.get("name") == ename), None)
+            ent = next((e for e in st_data.get("entries", []) if e.get("id") == ename or e.get("name") == ename), None)
             if ent is None:
-                return _fail(f"实体「{ename}」不存在，拒绝猜测（请先注册该实体）", code=1)
+                # 自动创建：当 id/名不存在时，按表推断 type 并新建（修复 state set p_001 自动创建缺口）
+                type_map = {"persons": "person", "items": "item", "factions": "faction", "places": "place"}
+                ent_type = type_map.get(part_name, "other")
+                # 若 ename 形如 p_001 视为 id，否则视为 name
+                if "_" in ename and any(c.isdigit() for c in ename):
+                    new_ent = {"id": ename, "name": ename, "type": ent_type, "status": "active", "summary": ""}
+                else:
+                    new_ent = {"name": ename, "type": ent_type, "status": "active", "summary": ""}
+                st_data.setdefault("entries", []).append(new_ent)
+                ent = new_ent
             if len(ent_parts) < 2:
                 return _fail(f"修改实体必须指定属性字段（例如 {part_name}.{ename}.realm）", code=2)
             ent[ent_parts[1]] = val
