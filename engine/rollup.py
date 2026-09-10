@@ -135,8 +135,22 @@ def prior_volumes_digest(book: Path, cur_vol: str) -> list[str]:
     """给 pack p0 的「前情卷末态势」摘要行（按优先级排序，token 超限从尾部裁剪）。
 
     优先级（先保留的更重要）：世界速写 > 关键实体 > 未兑线索 > 资金池 > 时钟/里程碑。
+    回退：若 cur_vol 非法，尝试推断最新卷号作为当前卷，避免 pack 因卷名笔误丢失全部前情。
     """
     cur_n = _vol_num(cur_vol)
+    if cur_n <= 0:
+        # 回退：从 outlines 推断最新卷
+        try:
+            vols = []
+            for p in (book / "outlines").glob("vol_*"):
+                if p.is_dir():
+                    n = _vol_num(p.name)
+                    if n:
+                        vols.append(n)
+            if vols:
+                cur_n = max(vols) + 1
+        except Exception:
+            pass
     priors = {n: r for n, r in available_rollups(book).items() if n < cur_n}
     if not priors:
         return []

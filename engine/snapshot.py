@@ -132,7 +132,13 @@ def list_snapshots(book: Path) -> list[str]:
     root = snapshots_root(book)
     if not root.is_dir():
         return []
-    return sorted(d.name for d in root.iterdir() if d.is_dir())
+    dirs = [d for d in root.iterdir() if d.is_dir()]
+    # 按 mtime 排序：bisect 依赖时间序而非字典序（微秒时间戳字典序≈时间序，但 pre_rollback 等前缀会打乱）
+    try:
+        dirs.sort(key=lambda d: d.stat().st_mtime)
+    except OSError:
+        dirs.sort(key=lambda d: d.name)
+    return [d.name for d in dirs]
 
 
 def _verify_manifest(folder: Path) -> tuple[bool, str]:

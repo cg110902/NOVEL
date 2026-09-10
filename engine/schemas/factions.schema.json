@@ -50,8 +50,6 @@
             "type": "string"
           },
           "tier_rank": {
-            "maximum": 12,
-            "minimum": 1,
             "type": "integer"
           },
           "tier_name": {

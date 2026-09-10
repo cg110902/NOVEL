@@ -796,12 +796,33 @@ def cmd_beats(args) -> int:
     n = common.chapter_token_to_num(tok)
 
     vol_str = "vol_01"
+    matched = False
+    max_seen = 0
+    max_vol_num = 1
     for vdir in sorted((book / "outlines").glob("vol_*")):
+        vm = common.VOL_RE.fullmatch(vdir.name)
+        if vm:
+            try:
+                max_vol_num = max(max_vol_num, int(vm.group(1)))
+            except ValueError:
+                pass
         otext = (vdir / "outline.md").read_text(encoding="utf-8", errors="ignore") if (vdir / "outline.md").is_file() else ""
         m = re.findall(r"ch[_\-](\d{1,4})", otext)
-        if m and int(m[0]) <= n <= int(m[-1]):
-            vol_str = vdir.name
-            break
+        if m:
+            try:
+                lo, hi = int(m[0]), int(m[-1])
+                max_seen = max(max_seen, hi)
+                if lo <= n <= hi:
+                    vol_str = vdir.name
+                    matched = True
+                    break
+            except ValueError:
+                pass
+    if not matched and n > max_seen and max_seen > 0:
+        # 跨卷自动晋升：当章号超出所有已有卷纲范围时，自动进入下一卷
+        vol_str = f"vol_{max_vol_num + 1:02d}"
+        # 若新卷目录不存在，beats 写入时会自动创建；卷纲占位由上层按需创建
+        common.debug(f"beats vol routing: ch_{n:03d} 超出已有卷范围(最大 {max_seen})，自动晋升至 {vol_str}")
 
     beats_path = book / "outlines" / vol_str / "beats" / f"{tok}.md"
     drift_warning = ""
