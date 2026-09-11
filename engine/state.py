@@ -1597,7 +1597,12 @@ def _merge_lines(state: dict, items: list[dict], ch_num: int, rep: dict) -> None
                 if ent.get("target_ch") != tgt:
                     rep["updated"].append(f"🗓️ {gid} 回收计划改期 → {tgt}")
                 ent["target_ch"] = tgt
-            rep["updated"].append(f"🔔 {gid} 已回唤")
+            if ch_num:
+                # 回唤即推进：回填章号供 subplot_stall 消费（此前只有 status 变化、
+                # 章号无处可查，停滞旗对做过 remind 的线永久误报——2026-09 压测坐实）
+                ent["remind_ch"] = ch_num
+            rep["updated"].append(f"🔔 {gid} 已回唤（ch_{ch_num:03d}）" if ch_num
+                                   else f"🔔 {gid} 已回唤")
         elif action == "escalate":
             # 与 update 路径同口径：已澄清误会又被 escalate 静默重开，必须出警示（advisory）
             if str(ent.get("status", "")) == spec["resolved"]:

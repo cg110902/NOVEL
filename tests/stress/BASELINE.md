@@ -35,10 +35,15 @@ soak 全程 2285.6s / 295 章 ≈ **7.75s/章**（end-to-end，含每 cp 的 che
 1. `milestone achieve` 等 CLI 正道写 state 后，**幂等重复 sync（duplicates 路径）不会重盖章**
    ——「重跑 sync 即可消除 state_offline_edit」的提示语只对带新提案的 sync 成立。
    harness 对策：卷末里程碑在**本章 sync 之前**核销，让本章封存覆盖（stress 已按此实现）。
+   **已修（2026-09，FIX-2）**：checks.py 消警指引改为真话；不改 duplicates 行为——
+   给它开重盖章口子等于给篡改留自助洗白通道。
 2. 位阶「无事件偏移」旗（tier_shift_without_event）只在 replay 见到**先有 rank 再变**时触发：
    单条负向写入（首次即跌）不可见。埋雷必须「有事件升阶 + 无事件掉落」成对。
-3. remind op 不回填 remind_ch，而 subplot_stall 依赖 remind_ch → 永久良性告警（模型缺字段，见
-   BENIGN 注）；misunderstanding 无 plant_ch 字段 → plan↔actual 只能到 target/status 粒度。
+3. remind op 曾不回填 remind_ch，而 subplot_stall 依赖它 → 对回唤过的线永久误报。
+   **已修（2026-09，FIX-1）**：`Foreshadow.remind_ch` 字段入模型、remind 应用时回填章号，
+   门禁用例 `remind_ch_written/model_roundtrip/idempotent` 三件套锁行为；stress 的 BENIGN
+   注因随之从「误报豁免」改为「剧本间隔合法告警」。
+   misunderstanding 无 plant_ch 字段（可选增强，未动）→ plan↔actual 只能到 target/status 粒度。
 4. 死者持有物会阻断 sync（需死亡章同批移交 op）——剧本已内建，属引擎正确纪律。
 
 ## 4. 首轮 FAIL → 修复清单（保留作反例）

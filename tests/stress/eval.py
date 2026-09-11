@@ -27,7 +27,8 @@ BENIGN = {
     "line_never_surfaced":     "尾段 clamp 成 longline 的线可能当章未提及——生成器允许的一次性豁免",
     "plotline_starvation":     "饥饿窗对合成剧本的节奏告警（advisory）",
     "voiceprint_drift":        "模板句在声纹窗内自然波动——探测器灵敏度在书里始终在线（非缺陷）",
-    "subplot_stall":           "remind 不回填 remind_ch（Foreshadow 模型无该字段，check 读 f.get('remind_ch') 恒 None）"
+    "subplot_stall":           "剧本 warm/cold 线回唤-回收间隔本就 >15 章，告警语义成立"
+                               "（2026-09 引擎已修 remind_ch 回填——此项不再是误报豁免，是合法提醒）"
                                "——长浸泡下停滞告警是机械读数；已记入 FINDINGS 候选（引擎口径待裁决）",
 }
 
@@ -144,7 +145,6 @@ def run_eval(book: Path, plan: dict, *, deep: bool = True, bootstrap: bool = Fal
     out["watch"]["warnings_slope_per_10ch"] = round(slope(warns) * 10, 3)
     shares = [r["pack"].get("p0_share", 0) for r in cps if r.get("pack")]
     out["watch"]["candidate_engine_notes"] = [
-        "subplot_stall：remind op 不记录章号，而 check 依赖 remind_ch——字段在模型上不存在（见 BENIGN 注）",
         "misunderstanding 无 plant_ch 字段：plan↔actual 对照只能到 target/status 粒度",
     ]
     out["watch"]["p0_share"] = {"first": shares[0] if shares else None, "last": shares[-1] if shares else None}

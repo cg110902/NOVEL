@@ -2701,7 +2701,8 @@ def run_checks(book: Path, *, full: bool = False) -> dict:
                             "state_offline_edit",
                             f"state/{key}.json 在 {last_ch or '上次'} 封存后被改动"
                             f"（封存 {want[:12]}… / 当前 {cur[:12]}…）——若为绕过提案的离线手改，"
-                            "请改走提案通道；若为有意修订，重跑 sync 重新盖章即可消除本提示"))
+                            "请改走提案通道；若为有意修订（如手术刀命令），本提示会在下一章正常 sync "
+                            "重新盖章后自然消除——幂等重复 sync（整案跳过）不会重盖章，重跑它无用"))
     except (ValueError, OSError):
         pass
 

@@ -34,6 +34,9 @@ class Foreshadow(BaseModel):
     weight: int = Field(default=1, ge=1, description="权重分级")
     plan: Optional[str] = Field(None, description="预定回收方案")
     requires: list[str] = Field(default_factory=list, description="前置依赖线索ID列表，如 ['GUN-001']")
+    remind_ch: Optional[int] = Field(
+        None, description="最近一次回唤章号（引擎在 remind 操作应用时自动回填，提案不必手填）；"
+                          "支线停滞旗 subplot_stall 以 max(plant_ch, remind_ch) 为「最后推进」参照")
 
 
 class Misunderstanding(BaseModel):

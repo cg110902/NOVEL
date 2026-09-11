@@ -72,6 +72,32 @@ def test_pure_helpers() -> None:
     check("cold_prereq_missing_quiet", cold_prereq_findings(["GUN-404"], ledger, mem) == [])
 
 
+def test_remind_ch_stamp() -> None:
+    """remind 应用须回填 remind_ch（2026-09 压测 FIX-1）：subplot_stall 以
+    max(plant_ch, remind_ch) 为最后推进参照，缺回填则对回唤过的线永久误报。"""
+    from engine.state import _merge_lines
+    st = {"foreshadows": [{"id": "GUN-001", "name": "匣底灯", "plant_ch": 2,
+                           "status": "Reminded", "weight": 1}],
+          "misunderstandings": [], "knowledge": []}
+    rep = {"errors": [], "warnings": [], "updated": [], "applied": 0}
+    _merge_lines(st, [{"kind": "foreshadow", "action": "remind", "id": "GUN-001"}], 21, rep)
+    ent = st["foreshadows"][0]
+    check("remind_ch_written", ent.get("remind_ch") == 21 and not rep["errors"], str(ent))
+    # 模型回读兼容（extra=forbid 下未声明字段会在严格校验处炸）
+    try:
+        from engine.models.lines import LinesState
+        LinesState.model_validate({"foreshadows": st["foreshadows"],
+                                   "misunderstandings": [], "knowledge": []})
+        ok = True
+    except Exception as exc:  # noqa: BLE001
+        ok = False
+        print("   model round-trip:", exc)
+    check("remind_ch_model_roundtrip", ok)
+    # 幂等：同章重放 remind 不叠加报错、值保持
+    _merge_lines(st, [{"kind": "foreshadow", "action": "remind", "id": "GUN-001"}], 21, rep)
+    check("remind_ch_idempotent", st["foreshadows"][0].get("remind_ch") == 21 and not rep["errors"])
+
+
 def test_violation_e2e() -> None:
     with tempfile.TemporaryDirectory(prefix="novel_gates_") as td:
         book, env = build_smoke_book(Path(td))
@@ -861,6 +887,7 @@ def main() -> int:
     test_pack_budget()
     test_anchor_knob()
     test_baseline_flow()
+    test_remind_ch_stamp()
     test_violation_e2e()
     print(f"GATES PASS ({len(PASS)}): " + ", ".join(PASS))
     return 0
