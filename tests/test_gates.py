@@ -72,6 +72,98 @@ def test_pure_helpers() -> None:
     check("cold_prereq_missing_quiet", cold_prereq_findings(["GUN-404"], ledger, mem) == [])
 
 
+def test_deadlock_reclaim() -> None:
+    """孤儿锁回收（2026-09 崩溃压测 FIX-3）：持锁进程被 SIGKILL 后，
+    下一个取锁者必须靠 pid 活性检测即时抢占，而不是干等 120s 陈锁阈值。"""
+    import subprocess
+    import time as _t
+    from engine.common import file_lock
+    with tempfile.TemporaryDirectory() as td:
+        d = Path(td)
+        code = (f"import sys, time; sys.path.insert(0, {str(ROOT)!r}); "
+                f"from engine.common import file_lock; "
+                f"ctx = file_lock(sys.argv[1]); ctx.__enter__(); time.sleep(60)")
+        kid = subprocess.Popen([sys.executable, "-c", code, str(d)],
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        lockf = d / ".engine.lock"
+        for _ in range(200):
+            if lockf.exists():
+                break
+            _t.sleep(0.02)
+        check("lockfile_created", lockf.exists(), "子进程未建锁")
+        kid.kill(); kid.wait()
+        t0 = _t.monotonic()
+        try:
+            with file_lock(d, timeout=5.0):
+                got = _t.monotonic() - t0
+            check("deadlock_reclaimed_fast", got < 2.0, f"等了 {got:.2f}s 才拿到死锁主的锁")
+        except TimeoutError as exc:
+            check("deadlock_reclaimed_fast", False, str(exc)[:120])
+
+
+def test_remind_ch_stamp() -> None:
+    """remind 应用须回填 remind_ch（2026-09 压测 FIX-1）：subplot_stall 以
+    max(plant_ch, remind_ch) 为最后推进参照，缺回填则对回唤过的线永久误报。"""
+    from engine.state import _merge_lines
+    st = {"foreshadows": [{"id": "GUN-001", "name": "匣底灯", "plant_ch": 2,
+                           "status": "Reminded", "weight": 1}],
+          "misunderstandings": [], "knowledge": []}
+    rep = {"errors": [], "warnings": [], "updated": [], "applied": 0}
+    _merge_lines(st, [{"kind": "foreshadow", "action": "remind", "id": "GUN-001"}], 21, rep)
+    ent = st["foreshadows"][0]
+    check("remind_ch_written", ent.get("remind_ch") == 21 and not rep["errors"], str(ent))
+    # 模型回读兼容（extra=forbid 下未声明字段会在严格校验处炸）
+    try:
+        from engine.models.lines import LinesState
+        LinesState.model_validate({"foreshadows": st["foreshadows"],
+                                   "misunderstandings": [], "knowledge": []})
+        ok = True
+    except Exception as exc:  # noqa: BLE001
+        ok = False
+        print("   model round-trip:", exc)
+    check("remind_ch_model_roundtrip", ok)
+    # 幂等：同章重放 remind 不叠加报错、值保持
+    _merge_lines(st, [{"kind": "foreshadow", "action": "remind", "id": "GUN-001"}], 21, rep)
+    check("remind_ch_idempotent", st["foreshadows"][0].get("remind_ch") == 21 and not rep["errors"])
+
+
+def test_v3_update_keeps_table() -> None:
+    """FIX-4（崩溃恢复演练抓出）：v3 实体表 update 不得静默搬表。
+
+    旧 bug：update 编译成 v2 条目时缺省 type，merge 层「缺省→other→persons」
+    把道具静默搬进 persons 且改写 type，零警告。显式 set.type 的搬迁行为保留。
+    """
+    with tempfile.TemporaryDirectory(prefix="novel_fix4_") as td:
+        book, _env = build_smoke_book(Path(td))
+        base = {"schema": "novel-studio.state-mutation/v3", "chapter": "ch_002",
+                "operation_id": "ch_002.test.fix4"}
+        rep = state_mod.apply_proposal(book, {**base, "ops": [
+            {"table": "items", "action": "create",
+             "entry": {"id": "it_fix4", "name": "压测镇纸", "type": "item"}}]},
+            expected_chapter="ch_002")
+        check("fix4_create_ok", not rep.get("errors"), str(rep.get("errors"))[:250])
+        rep = state_mod.apply_proposal(book, {**base, "operation_id": "ch_002.test.fix4a",
+                                              "ops": [
+            {"table": "items", "action": "update", "id": "it_fix4",
+             "set": {"holder": "陈默"}}]}, expected_chapter="ch_002")
+        check("fix4_ops_apply", not rep.get("errors"), str(rep.get("errors"))[:250])
+        items1 = json.loads((book / "state" / "items.json").read_text(encoding="utf-8"))
+        still = next((e for e in items1["entries"] if e.get("id") == "it_fix4"), None)
+        check("fix4_stays_in_items",
+              still is not None and still.get("type") == "item"
+              and still.get("holder") == "陈默", str(still)[:200])
+        persons1 = json.loads((book / "state" / "persons.json").read_text(encoding="utf-8"))
+        check("fix4_not_in_persons",
+              all(e.get("id") != "it_fix4" for e in persons1["entries"]))
+        # 显式 set.type 变更 → 仍搬迁且警告留痕（保留旧契约）
+        repb = state_mod.apply_proposal(book, {**base, "operation_id": "ch_002.test.fix4b",
+                                               "ops": [{"table": "items", "action": "update",
+                                                        "id": "it_fix4", "set": {"type": "person"}}]},
+                                        expected_chapter="ch_002")
+        check("fix4_explicit_relocate_warns",
+              any("搬迁" in w for w in repb.get("warnings", [])), str(repb)[:250])
+
+
 def test_violation_e2e() -> None:
     with tempfile.TemporaryDirectory(prefix="novel_gates_") as td:
         book, env = build_smoke_book(Path(td))
@@ -846,6 +938,7 @@ def main() -> int:
     test_dangling_e2e()
     test_quote_slots()
     test_silent_create_warns()
+    test_v3_update_keeps_table()
     test_time_and_track_e2e()
     test_plan_actual_e2e()
     test_audit_alias()
@@ -861,6 +954,8 @@ def main() -> int:
     test_pack_budget()
     test_anchor_knob()
     test_baseline_flow()
+    test_deadlock_reclaim()
+    test_remind_ch_stamp()
     test_violation_e2e()
     print(f"GATES PASS ({len(PASS)}): " + ", ".join(PASS))
     return 0

@@ -13,6 +13,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 ENV_EXIT_CODE = 3
 
+# 压力/浸泡测试 harness（tests/stress/，零 token 剧本驱动）：薄壳只做拦截转发，
+# 不进 engine.cli 的命令表（COMMAND_HELP 计数被文档 parity 锁死，动不得）。
+if len(sys.argv) > 1 and sys.argv[1] == "stress":
+    from tests.stress.cli import main as _stress_main  # noqa: E402
+
+    raise SystemExit(_stress_main(sys.argv[2:]))
+
 try:
     from engine.cli import main  # noqa: E402
 except ImportError as _exc:  # 依赖没装 / 装错解释器

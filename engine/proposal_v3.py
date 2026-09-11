@@ -204,8 +204,12 @@ def compile_ops(book: Path | None, proposal: dict
                     if dest != owner:
                         warnings.append(f"{tag} 将搬迁 {owner}→{dest}（type 变更为 {etype}）")
                     patch = {**patch, "type": etype}
+                # update 编译必须透传现值 type：缺省会被 v2 merge 层当「type 缺省→other」
+                # 把条目静默搬迁到 persons 表（崩溃恢复演练抓出的 FIX-4 根因）。
                 v_entities.append({"action": "upsert", "id": eid,
-                                   "name": live.get("name", ""), **patch})
+                                   "name": live.get("name", ""),
+                                   "type": live.get("type") or _TABLE_IMPLIED_TYPE[owner],
+                                   **patch})
             else:  # retire
                 eid = op.get("id")
                 if not eid or not isinstance(eid, str):

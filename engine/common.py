@@ -607,6 +607,24 @@ def file_lock(dir_path: Path | str, name: str = ".engine.lock", timeout: float =
             acquired = True
             break
         except FileExistsError:
+            # 活性检测：锁文件里的持有 pid 若已死亡，立即抢占孤儿锁——
+            # kill -9/断电后不该干等 120s 陈锁阈值（「中断是常态、重跑即愈」是引擎契约；
+            # 2026-09 崩溃压测实测：sync 中途被杀后所有后续 sync 卡锁 30s 超时）
+            try:
+                _holder = int((lock.read_text(encoding="utf-8") or "0").strip())
+            except (ValueError, OSError):
+                _holder = 0
+            if _holder and _holder != os.getpid():
+                try:
+                    os.kill(_holder, 0)          # 探活：活着就按正常等待走
+                except ProcessLookupError:
+                    try:
+                        lock.unlink()            # 持有者已死 → 抢占（下方 O_EXCL 重试兜底竞态）
+                    except OSError:
+                        pass
+                    continue
+                except PermissionError:
+                    pass                         # 他用户进程活着：保守等待
             try:
                 # 第一次检查
                 st1 = lock.stat()
