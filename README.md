@@ -1,4 +1,4 @@
-# Novel Studio 3.1
+# Novel Studio 3.2
 
 Antigravity 原生多智能体中文网络小说创作流水线：**确定性 Python 引擎**（`engine/`，黑盒）
 + **角色协议文档**（`AGENTS.md` 与 `.agents/skills/*/SKILL.md`）+ **模板资产**（`templates/`）。
@@ -108,7 +108,7 @@ Evolution    Evolver     人类变更诉求的波及面测算与手术刀改版
   性格突变 / 因果与代价断链 / 现场常识与时空矛盾，这类"读者当场出戏"的问题 `check` **结构上查不出来**
   （引擎没有散文语义能力），所以做成第三轨而不是第四张探针清单；处置三选一：改正文（Stylist 手术刀）/
   转办 Evolver（设定层）/ 降级为 🟡 存疑（不计入 `logic`）。
-- **装配预算契约**（`pack`）：总量上限 **2W TOKEN**；超预算按**压缩阶梯**由远及近裁
+- **装配预算契约**（`pack`）：总量上限 **3W TOKEN**；超预算按**压缩阶梯**由远及近裁
   （P2 冷索引 → P2 旧章指针 → P1 间接关联 → P1 脊柱 → P0 上章余温），而**细纲全文 / current 块 / 硬提醒 /
   不可逆事实 / 钉住的世界锚点永不自动裁**，裁尽仍超则如实报 `hard_cap_breached` 交主控取舍。
   `world_anchors` 按细纲 front-matter 的 `world_refs:`（逗号/顿号分隔、**须用设定原文用词**）取用——
@@ -139,7 +139,7 @@ Evolution    Evolver     人类变更诉求的波及面测算与手术刀改版
 |---|---|
 | 命令目录与阶段配方 | `python studio.py help --json` |
 | 工作区/工序总览 | `python studio.py status` · `cockpit [ch]` |
-| 单章上下文装配 | `python studio.py pack ch_XXX [--lean／--full] [--open 路径 --as 角色]`（2W token 预算，超量自动压缩） |
+| 单章上下文装配 | `python studio.py pack ch_XXX [--lean／--full] [--open 路径 --as 角色]`（3W token 预算，超量自动压缩） |
 | 只读取证 | `python studio.py ask <关键词>`（2.0 引用链：每条命中带 cite 出处） · `evidence <kind>` · `pov` · `calendar` |
 | 细纲与稿件流转 | `beats new ch_XXX --write`（注入一致性速查 / 资源池 / ID 水位线 / 提案键形状，并支持 `world_refs` 按章取设定） · `critic` · `audit ch_XXX --write`（三轨仲裁） · `reconcile vol_XX`（卷末对账） |
 | 提案 | `proposal new [--v3] ch_XXX`（骨架；--v3 为寻址式防错版） · `proposal check ch_XXX` · `proposal auto ch_XXX --write` · `sync ch_XXX [--dry-run]` |

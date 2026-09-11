@@ -26,7 +26,8 @@ description: Universal director, chief playwright, and pipeline orchestrator for
   - ✍️ **文件写入 (File Write)**：生成细纲任务书（配合 `studio beats new`）、微调大纲；
   - ✂️ **文件修改 (File Edit)**：更新卷大纲局部航标；
   - 💻 **命令行执行 (Command Execution)**：执行系统确定性命令（`init`, `cockpit`, `beats`, `sync`, `check`, `doctor`, `lore`, `pov`, `ask`, `calendar`, `milestone` 等）；
-  - 🤖 **子代理派发 (Agent Dispatch)**：向 Architect, Drafter, Editor, Stylist, Reader, Critic, Auditor, Librarian, Evolver 派发标准工序令。
+  - 🤖 **子代理派发 (Agent Dispatch)**：向 Architect, Drafter, Editor, Stylist, Reader, Critic, Auditor, Librarian, Evolver 派发标准工序令；
+    - ⚡ **【派发算力契约（三核驱动版）】**：主控调用 `invoke_subagent` 时，除了 `director`（主控自己）、`architect`（架构师）与 `drafter`（起草员）使用顶级算力（`Model: "inherit"`）外，其余所有执行工序（子代理）必须显式传入参数 `Model: "flash"`，杜绝默认继承导致 Token 预算浪费。
 - 🟢 **准读清单**：全项目结构性资产（大纲、细纲、状态表、配置、分析日志），严禁大段通读历史正文全文。
 - 🟢 **准写清单**：`outlines/` 下的大纲与细纲任务书、`project.json` 配置调整。
 
@@ -54,18 +55,11 @@ description: Universal director, chief playwright, and pipeline orchestrator for
    - 执行阶段：Stage 0B (Architect-Story: 人物大纲编织与通电)
    - 执行任务：以已冻结 bible/ 为硬基准，生成 characters/、entities/ 与 outlines/，完成状态十一表通电，check 0 报错即止。
    ```
-3. **Stage 0B 完工回执唤醒 ➔ 零容忍验收门禁**：
-   运行确定性体检对账：
-   - ① `python studio.py check -w "workspace/<书名>" --json`（确保 **0 errors**、0 未填槽位；
-     `wordlist_unconfigured` 的 info 必须清零——说明 Architect 已按题材补齐 project.json 词表；
-     建书期直写 state 产生的 `state_offline_edit` 属合法留痕，首次 sync 盖章后归零）；
-   - ①b `python studio.py config list -w "workspace/<书名>"`（逐键核对**六张题材词表 + `state_watch`**：
-     ① 没有被误删成「未配置」（缺席＝该档停用，`check` 会报 `wordlist_unconfigured`）；
-     ② 已经 Architect 按本书题材**重写过**、不是脚手架种子原样（种子含跨题材词，会造成误报/漏报）；
-     ③ 确需关闭的键必须显式为 `[]`，且能在 `bible/06` 找到书面理由）；
-   - ② `python studio.py cockpit -w "workspace/<书名>" --json`（核验 `active_pressures`、`dramatic_irony`、`milestones` 必须全部通电且非空）；
-   - ③ `python studio.py pov <核心配角> -w "workspace/<书名>"`（核验核心角色关系张力非空）。
-   - ⚠️ 若未达标坚决打回；达标后接入驾驶舱向作者展示纲要，随时待命 Stage 1！
+3. **Stage 0B 完工回执唤醒 ➔ 极简验收双门禁**：
+   运行两条命令秒级验收：
+   - ① `python studio.py check -w "workspace/<书名>"`（确保 **0 errors**，无未填占位符 `{{slot:}}`）；
+   - ② `python studio.py cockpit -w "workspace/<书名>"`（核验大纲、主角、核心角色与开局压力全部点亮）。
+   - 只要双门禁绿灯通过，接入驾驶舱向人类作者展示世界观纲要与第一卷大纲供终审，随时待命 Stage 1！
 
 ### 🚀 意图 B：【继续写 / 创作下一章 / 推进工程】
 1. **工作区检测**：
@@ -105,7 +99,47 @@ description: Universal director, chief playwright, and pipeline orchestrator for
 > 💡 **至高叙事法则**：
 > 1. **大纲服务于好故事，故事绝不被死板大纲绑架**：剧情自然流淌导致原卷纲滞后时，主控直接微调 `outlines/vol_XX/outline.md` 后续 2~3 章简述，保持大纲与现实同频；
 > 2. **主控拥有最终细纲拍板权**：算法雷达、催更便签等均为参谋情报（Advisory），主控享有 100% 裁决权；
-> 3. **二八实体分级心法**：仅为决定剧情命脉的核心人物建立 `.md` 专属全息卡；客栈老板、路人小厮等背景板小角色在细纲中交代，由 Reader 经提案 `entities[]` 登记（引擎按 `type` 自动路由入四表，`card: ""`），杜绝碎片文件膨胀。
+> 3. **二八实体分级心法**：仅为决定剧情命脉的核心人物建立 `.md` 专属全息卡；客栈老板、路人小厮等背景板小角色在细纲中交代，由 Reader 经提案 `entities[]` 登记（引擎按 `type` 自动路由入四表，`card: ""`），杜绝碎片文件膨胀；
+> 4. **细纲合理精简与高密度法则（严禁冗长，高信噪比传递）**：
+>    - **篇幅控制**：整篇 beats 建议控制在一个合理的 字数范围，坚决不写成动辄几千字的伪小说或洋洋洒洒的论文；
+>    - **槽位精炼**：每个槽位只写 **1 ~ 3 句干练有力的大白话**，精准交待核心意图，落笔即止；
+>    - **提供弹药而非代笔**：讲透“戏剧冲突、3D反转爆点、场景起伏物象、在场人互称矩阵、随身资产与收支变动、破坏力标尺、章末物理刀口”即可。绝不替 Drafter 提前写大段正文描写、心理独白或多余的世界观科普！
+
+### 🎛️ Beats 核心旋钮与多选菜单速查（全部灵活自定 · 绝非写死）
+
+在填写 `beats/ch_XXX.md` 的 YAML Front-Matter 与正文时，所有选项均为**自适应动态调节**，主控应按当章剧情灵活配置：
+
+1. **章型 (`form`) — 推荐 10 大商业章型（任选其一，亦可结合剧情自定义）**：
+   - `暗流汇聚`：多方线索交织、情报刺探、暗中博弈（常规铺垫首选）；
+   - `生死博弈`：决战爆发、正面硬撼、底牌齐出（高潮决战）；
+   - `战后清点`：击溃强敌后的清点收获、战利品消化、爽感集中兑现；
+   - `危机逼近`：大军压境、倒计时迫近、压迫感与危机悬念拉满；
+   - `信息错位`：敌我由于认知差引发的误判、脑补与戏剧性反差；
+   - `幕后布局`：主角随手落子、借力打力、暗中操盘；
+   - `扬威立足`：当众显圣、震慑全场、确立地位与威信；
+   - `烟火微澜`：日常相处中的暗涌流动、情感升温与生活趣味；
+   - `探秘开箱`：遗迹探索、揭开古老机密、开宝解密；
+   - `心理对弈`：不见血的利益谈判、言语机锋、心计拉扯。
+   - ⚠️ **连章规则**：若连续两章采用相同 form（如连续两章都是生死博弈），必须在下方补充 `form_reason: "决战第二阶段，持续对抗"`，否则引擎 check 闸门会拦截。若前后章 form 不同，留空或删除该行即可。
+
+2. **视点模式 (`pov`)**：
+   - `主角名·视角`（默认主角单视角，最常见）；
+   - `双线交替(如:主角/对手)`（适合跨越两地的大场面同步推进）；
+   - `配角见证视角`（通过旁观者视角观察主角显圣，极具侧面反差震撼）；
+   - `群像切片`（多方势力棋局对撞）。
+
+3. **张力曲线 (`tension_curve`) 与张力分值 (`tension_score`)**：
+   - **分值**：`1 ~ 10` 整数（1-3 平静舒缓，4-6 试探暗涌，7-8 激烈对抗，9-10 决战爆发）；
+   - **曲线模式**：`动态起伏`（默认） / `前平后陡`（末尾突变） / `前抑后扬`（压抑爆发） / `持续高压`（全程窒息） / `陡降舒缓`（战后平复）。
+
+4. **剧情潮汐阶段 (`stage_mode`)**：
+   - `Suppression(蓄水压迫)` ➔ `Simmering(试探暗涌)` ➔ `Eruption(高潮爆发)` ➔ `Harvest(战后清点/收获)` ➔ `DailyFun(趣味日常)`。
+
+5. **场景数量灵活性**：
+   - 默认规划 2 个核心场景。若当章叙事需要 3 个场景，**直接追加「### 场景三」即可**（严格控制在 2~3 个，拒绝碎片化散点叙事）。
+
+6. **空项潇洒留“无”原则（心智大减负）**：
+   - 细纲中的伏笔线索、称谓基准、前情锚点、状态演变、新实体速写等栏目，**若本章无特殊变动，直接潇洒填“无”或“保持默认”**！切勿为了填空而无病呻吟硬编！
 
 ### 准备：事实与称谓对账
 运行 `python studio.py beats new ch_XXX --write -w "workspace/<书名>"` 生成脚手架。
@@ -140,6 +174,9 @@ description: Universal director, chief playwright, and pipeline orchestrator for
    自问：“在当章强冲突中，主角与核心关系人（搭档/伴侣/师长/宿敌等）产生了怎样的心理温差变化与防御瓦解？”（写入 `## ❤️ 本章人际情感微澜与互动潜台词`）：
    - 情感寄生于事件、突围、战后清点或危机关头，绝不脱离剧情写干瘪抒情；
    - 善用白描微动作（眼神交汇避开、下意识护在身后、紧绷的嘴角松弛）与带刺或带暖意（感情）的对白潜台词展现心理动态。
+5. **步骤五：【盘点·主角随身资产与家底预告 (Protagonist Inventory)】**
+   - 查看最新 `current.assets` 与 `current.equipment`，在 `## 🎒 主角随身财产/物资/家底` 填入主角当章初始家底（全题材通用：货币资产/随身穿戴装备/关键底牌与机缘物资）；
+   - 简要预告本章收支变动（如：花费 500 买情报、损耗 1 张保命符、爆装缴获新信物），为起草员提供清晰物象锚点，彻底废除繁琐数学流水。
 
 ---
 
@@ -149,27 +186,27 @@ description: Universal director, chief playwright, and pipeline orchestrator for
 
 ```mermaid
 graph LR
-    S1[Stage 1: 细纲落盘] --> S2[Stage 2: Drafter 起草 raw_v1]
-    S2 --> S3A[Stage 3A: Editor 骨肉重塑 raw_v2]
-    S3A --> S3B[Stage 3B: Stylist 通俗脱水 final]
-    S3B --> S4[Stage 4: 并发质检 Reader/Critic/Auditor]
-    S4 --> S5[Stage 5: Director 状态封存与交付]
+    S1[Stage 1: 细纲 beats] --> S2[Stage 2: Drafter 起草 raw_v1]
+    S2 --> S3A[Stage 3A: Editor 骨肉加法 raw_v2]
+    S3A --> S3B[Stage 3B: Stylist 通俗脱水 raw_v3]
+    S3B --> S4AB[Stage 4A: Auditor 安检 + 4B: Critic 便签]
+    S4AB --> S4C[Stage 4C: Fixer 终局定稿 final]
+    S4C --> S4D[Stage 4D: Reader 事实提取 v2提案]
+    S4D --> S5[Stage 5: Director 状态封存 sync]
 ```
 
-1. **beats 落盘 ➔ 派发 Drafter (Stage 2)**：产出初稿 `raw/ch_XXX_v1.md`；
-2. **Drafter 回执 ➔ 派发 Editor (Stage 3A)**：做足剧情加法、潜台词与转场，产出 `raw/ch_XXX_v2.md`；
-3. **Editor 回执 ➔ 派发 Stylist (Stage 3B)**：通俗脱水、去冷脸、斩断反刍总结，产出定稿 `final/ch_XXX.md`；
-4. **Stylist 回执 ➔ 单次并发派发 Reader、Critic 与 Auditor (Stage 4 三轨)**：
-   - Reader 提取事实并提交 `state/inbox/ch_XXX.json`（键形状用 beats 的 📐 小节，**不必**给它 inbox README）；
-   - Critic 盲审定稿产出催更便签 `log/critic/ch_XXX.md`（供下章构思参考）；
-   - Auditor 进行**三轨**一致性仲裁并产出 `log/audit/ch_XXX.md`
-     （🔴 机械硬矛盾 / 🧠 语义逻辑与出戏 / 🟡 软性存疑）；
-   - ⚠️ **两类条目都会卡住 Stage 5**：`hard > 0` 与 `logic > 0`（未 `adjudicated` 时）。
-     处置分流：正文层 → 单行手术刀派 Stylist；设定层/历史正文层 → 转办 Evolver（**你自己也不许改 bible**）；
-   - ⚠️ 🟡 软性存疑不阻断，但 Auditor 回执会带 `soft=N`：逐条按 S1/S2/S3 出口处置
-     （S3 类直接并入下一章 beats 的对账清单，别让慢性漂移过夜）；
-5. **Stage 5 状态同步与交付**：
-   - 执行 `python studio.py sync ch_XXX -w "workspace/<书名>"` 完成原子合并、重算与快照归档；
+1. **beats 落盘 ➔ 派发 Drafter (Stage 2 | Model: inherit)**：以顶级算力充分消化细纲与专名事实，展开核心场景爆发展开，产出高质量初稿 `raw/ch_XXX_v1.md`；
+2. **Drafter 回执 ➔ 派发 Editor (Stage 3A | Model: flash)**：做足剧情加法与潜台词（不读 beats），产出 `raw/ch_XXX_v2.md`；
+3. **Editor 回执 ➔ 派发 Stylist (Stage 3B | Model: flash)**：通俗脱水、去冷脸、斩断反刍总结（不读 beats），产出预定稿 `raw/ch_XXX_v3.md`；
+4. **Stylist 回执 ➔ 并发派发 Stage 4A (Auditor) 与 Stage 4B (Critic) (Model: flash)**：
+   - **Stage 4A (Auditor)**：纯安检机（不读 beats），跑探针+语义常识扫描，产出问题清单 `log/audit/issues_ch_XXX.md`；
+   - **Stage 4B (Critic)**：十年老白盲审 `raw_v3.md`，产出催更便签 `log/critic/ch_XXX.md`（供下章构思参考）；
+5. **4A/4B 回执 ➔ 派发 Fixer (Stage 4C | Model: flash)**：
+   - 读 beats + `raw_v3.md` + `issues_ch_XXX.md`，无问题秒过，有问题对照 beats 靶向微调，**正式落盘法定定稿 `manuscript/vol_XX/final/ch_XXX.md`** 并生成通过凭证；
+6. **Fixer 回执 ➔ 派发 Reader (Stage 4D | Model: flash)**：
+   - 纯读刚刚出炉的 `final/ch_XXX.md`，按纯净 v2 格式提取增量事实，落盘提案 `state/inbox/ch_XXX.json`；
+7. **Reader 回执 ➔ Stage 5 状态同步与交付**：
+   - 主控执行 `python studio.py sync ch_XXX -w "workspace/<书名>"` 完成原子合并、重算与快照归档；
    - **失败恢复三步**：① 闸门类报错（缺 beats/raw/final/提案/仲裁）➔ 按提示补工序，禁改状态绕过；
      ② `recovery` 提示（状态已合并但体检未过、快照未封存）➔ 修数据后 `snapshot create <name>` 手动补拍，
      或 `snapshot rollback <上一封存点>` 回退后改提案重提；③ 提案被判 `no_op`/留置 ➔ 换 `operation_id`
@@ -206,6 +243,8 @@ graph LR
 ---
 
 ## 📋 七、 极简工序令协议标准 (Order Protocols)
+
+> ⚡ **【派发算力契约（三核驱动版）】**：主控调用 `invoke_subagent` 时，除了 `director`（主控自己）、`architect`（架构师）与 `drafter`（起草员）使用顶级算力（`Model: "inherit"`）全力保障世界观与正文初稿质感外，其余所有执行工序（子代理）必须显式传入参数 `Model: "flash"`，杜绝默认继承导致 Token 预算浪费。
 
 - **4 行标准派发令（主控下发）**：
   ```text

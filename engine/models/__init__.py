@@ -1,4 +1,4 @@
-"""Novel Studio 3.1 Pydantic V2 强类型领域模型包。
+"""Novel Studio 3.2 Pydantic V2 强类型领域模型包。
 
 包含世界观实体、复式记账台账、时空因果轴、伏笔暗线生命周期与提案原子变更模型。
 """

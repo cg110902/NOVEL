@@ -560,7 +560,7 @@ def build_cockpit_briefing(book: Path, ch: str | None = None) -> dict[str, Any]:
     # 1. 确定工作流与工序状态
     beats_files = common.find_chapter_files(book, "beats", ch_tok)
     raw_files = common.find_chapter_files(book, "raw", ch_tok)
-    # Stage 3A/3B 分轨（V3.1 流水线）：raw_v1 = Drafter 毛坯，raw_v2 = Editor 骨肉稿。
+    # Stage 3A/3B 分轨（V3.2 流水线）：raw_v1 = Drafter 毛坯，raw_v2 = Editor 骨肉稿。
     # 此前只认「有 raw 就进 Stage 3」，Editor 的 raw_v2 在驾驶舱里完全不存在。
     raw_v1_files = [f for f in raw_files if common.chapter_version_from_name(f.name) < 2]
     raw_v2_files = [f for f in raw_files if common.chapter_version_from_name(f.name) >= 2]

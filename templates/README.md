@@ -1,7 +1,7 @@
 # templates/ — 全题材底层词典与设定规范库（Canonical Lore & Correction Templates）
 
 本目录是 Novel Studio 的**全题材底层世界观、实体知识库与对账规范模板库**。
-不仅是一次性脚手架，更是全书在 Stage 0 筑基后沉淀为 10,000~20,000+ 字字全景物理定律的**底层词典与机械矫正器**。后续全流水线的增删改查对账均以此为基准锚点。
+不仅是一次性脚手架，更是全书在 Stage 0 筑基后沉淀为 10,000+ 字全景物理定律的**底层词典与机械矫正器**。后续全流水线的增删改查对账均以此为基准锚点。
 
 
 **【Architect 填写注意事项】**：
@@ -15,7 +15,7 @@
 ```text
 templates/
 ├── project.json                   # 全题材通用词表种子配置（含停用词、防AI套话、伤残监测等高灵敏度探针）
-├── beats.md                       # 单章细纲任务书模板（含反套路推演、场景脉络、法定事实清单、交付契约）
+├── beats.md                       # 单章细纲任务书模板（含反套路推演、场景脉络、法定事实清单、主角随身家底盘点、交付契约）
 ├── bible/                         # 全书世界观与运转公理词典模块（Stage 0 深度筑基）
 │   ├── 01_world_axioms.md         # 世界底色、底层公理与运转机制（含金手指运转逻辑）
 │   ├── 02_power_system.md         # 阶层/实力梯阶与物理/社会实物标尺（防表现力通胀）
@@ -65,7 +65,7 @@ templates/
 
 1. **Stage 0 深度筑基规范**：
    - 执行 `python studio.py init -w workspace/<书名> -t "书名" -g "题材" -p "主角名"` 后，模板自动全量实例化；
-   - 由 `Architect`（架构师）在独立纯净沙盒中完成全部 `{{slot:...}}` 的深度填充，字数规模应达到 **10,000~20,000+ 字**；
+   - 由 `Architect`（架构师）在独立纯净沙盒中完成全部 `{{slot:...}}` 的深度填充，字数规模应达到 **10,000+ 字**；
    - 填实后运行 `python studio.py check`，未填槽位将由 `unfilled_slot` 闸门机械拦截。
 
 2. **全局统一物理 ID 编码前缀矩阵 (Canonical Entity ID Matrix)**：
@@ -82,7 +82,7 @@ templates/
      - **台账**：在 `实体四表（persons/items/factions/places）` 中配置对应 `card: "characters/<名字>.md"` 路径。
    - 🍃 **次要/临时实体（占 80%，服务即时情节）**：客栈掌柜、巡逻守卫、传话执事、临时消耗符箓、路过村庄。
      - **标准**：**坚决不建 `.md` 冗余卡片**，避免文件污染与磁盘膨胀；
-     - **台账**：直接由 Reader 在 Stage 4 提案中登记入 `实体四表（persons/items/factions/places）`（设置 `card: ""`），记录其姓名、ID、境界、阵营与正文引文即可。
+     - **台账**：直接由 Reader 在 Stage 4D 提案中登记入 `实体四表（persons/items/factions/places）`（设置 `card: ""`），记录其姓名、ID、境界、阵营与正文引文即可。
 
 4. **强类型物理通用字段（Entities Schema 核心白名单）**：
    底层状态表 `实体四表（persons/items/factions/places）` 开启了 `"additionalProperties": false` 强类型闸门。各角色向状态表登记实体时，**必须严格使用以下法定字段**：
@@ -133,10 +133,10 @@ templates/
    > - **数据库状态表（`实体四表（persons/items/factions/places）`）**：是面向确定性引擎的**强类型检索台账**。提案中向 实体四表 写入的字段**必须且仅能来自上述白名单**，严禁私自添加未经 Schema 许可的字段（如 `leader`, `headquarters`, `bound_to` 等），否则会被引擎机械闸门直接拒绝！
 
 5. **长篇增删改查（CRUD）对账机制**：
-   - **增（新实体出场）**：在 beats 中声明，核心角色建卡，次要角色免建卡；由 Reader 在提案 实体四表 中分配递增 ID 注册；
-   - **删（战死/毁损/退场）**：由 Reader 在提案中附原句引文，登记为 `deceased` 或 `destroyed`，并生成 `state/locked.json` 锁定；
-   - **改（境界突破/道具流转/称谓变更）**：通过 beats 声明演进，Reader 提取更新（引擎以 `id` 为第一主键优先索引，即使改名改换品阶也绝不丢失生命周期）；
-   - **查（对校核验）**：Auditor 结合细纲预提炼清单、人物卡称谓矩阵与机械探针，逐行对账正文，杜绝任何擅自越级或漂移。
+   - **增（新实体出场）**：在 beats 中声明，核心角色建卡，次要角色免建卡；由 Reader 在 Stage 4D 提案中分配递增 ID 注册；
+   - **删（战死/毁损/退场）**：由 Reader 在 Stage 4D 提案中附原句引文，登记为 `deceased` 或 `destroyed`，并生成 `state/locked.json` 锁定；
+   - **改（境界突破/道具流转/称谓变更）**：通过 beats 声明演进，Reader 提取更新；主角随身物资与装备由 Reader 在提案以通俗大白话快照维护（`current.assets` / `current.equipment`）；
+   - **查（对校核验）**：Auditor (Stage 4A) 运行探针与语义常识扫描问题清单，Fixer (Stage 4C) 对校 beats 与问题清单完成法定终局定稿。
 
 6. **与引擎的三条对账关系（改模板前必读）**：
    - **模板 ↔ JSON Schema 同源**：本目录是字段契约的**人读侧**，机读侧是 `engine/schemas/*.json`
@@ -148,7 +148,7 @@ templates/
      `pack` 只装 6 张表（current / entities / lines / synopsis / timeline / locked）而不是十二表——
      其余表是**账本**，写手不需要看；`--lean` 只给 P0 热层。实体四表（persons/items/factions/places）
      按 kind 物理拆分，`entities/` 目录只是人读投影（pack 走合并读视图）。
-   - **装配预算**：`pack` 总量上限 **2W token**，超预算按压缩阶梯由远及近裁（P2 冷索引 → P2 旧章指针 →
+   - **装配预算**：`pack` 总量上限 **3W token**，超预算按压缩阶梯由远及近裁（P2 冷索引 → P2 旧章指针 →
      P1 间接关联 → P1 脊柱 → P0 上章余温）；细纲全文 / current / 硬提醒 / 不可逆事实 / 钉住的锚点**永不自动裁**。
    - **`world_refs` 三态语义**（写细纲时按这三态理解，它不是开关）：
      ① 未声明 → **恒给**全部核心锚点节（旧书零改动）；② 声明且命中 → 只装命中节（**refs 最多取前 8 个**，`MAX_WORLD_ANCHOR_REFS`，超出忽略并点名），且当「世界公理 /

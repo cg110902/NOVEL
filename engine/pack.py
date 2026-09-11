@@ -21,10 +21,9 @@ except ImportError:
 PREV_TAIL_CHARS = 1000
 SPINE_CAP = 10
 POINTER_WINDOW = 10
-# 装配预算：2W token（口径见 AGENTS.md 第一节与 README「pack 装配契约」）。
-# 超限不再只裁 P2——见文末压缩阶梯（P2 → P1 间接/脊柱 → P0 余温），
+# 装配预算：3W token。
 # 但 beats 全文、current、硬提醒、不可逆事实与钉住的世界锚点永不裁。
-PACK_TOKEN_CAP = 20000
+PACK_TOKEN_CAP = 30000
 MAX_P1_ENTITIES = 12
 MAX_P1_INDIRECT = 5
 
@@ -133,7 +132,7 @@ def _deviation_lines(book: Path) -> list[str]:
 MAX_WORLD_ANCHOR_REFS = 8
 
 # 世界锚点（world_anchors）预算帽：project.json.world_anchor_tokens 可调，缺省与上限同为 10000。
-# ⚠️ 设计口径（V3.1议题）：世界锚点不应「恒给全书」，而应按章取用——现阶段已支持
+# ⚠️ 设计口径（V3.2议题）：世界锚点不应「恒给全书」，而应按章取用——现阶段已支持
 # 用 beats front-matter 的 `world_refs` 钉住本章需要的节（见 _bible_core_anchors），
 # 未声明时回退为按关键词全量恒给（保持既有行为）。
 MAX_WORLD_ANCHOR_TOKENS = 10000
@@ -804,7 +803,7 @@ def build_pack(book: Path, ch: str, lean: bool = False, full: bool = False,
                                              "desc": desc})
                 except OSError:
                     continue
-        # 按角色准读网关过滤冷索引（V3.1 修复）：此前把 bible/、characters/ 连同
+        # 按角色准读网关过滤冷索引（V3.2 修复）：此前把 bible/、characters/ 连同
         # 「可用 --open 取原文」一起列给被禁读该目录的角色（drafter/reader/…），
         # 等于承诺一个必然被拒的动作——既白烧索引 token，又诱导子代理自行提权。
         # 现在被禁条目不列路径，只报数量，并把 open_hint 改成与该角色一致的口径。
@@ -881,7 +880,7 @@ def build_pack(book: Path, ch: str, lean: bool = False, full: bool = False,
             if original_len > 25:
                 budget["original_file_index_count"] = original_len
 
-    # 压缩阶梯（V3.1）：冷索引裁空仍超 2W 预算时，按「离创作现场由远及近」继续裁。
+    # 压缩阶梯（V3.2）：冷索引裁空仍超 3W 预算时，按「离创作现场由远及近」继续裁。
     # 永不裁：beats 全文 / current / 硬提醒 / 不可逆事实 / 钉住的世界锚点——那是本章合同与事实底座。
     def _recount(layer: str) -> None:
         rendered[layer] = render_layer(layer, payload.get(layer), full=full)
@@ -1041,7 +1040,7 @@ ROLE_DENY: dict[str, tuple[str, ...]] = {
     "reader": ("state/", "bible/", "characters/"),
     # 催更员：禁 outlines/*、raw/*、bible/*、characters/*、log/*；state 仅 current.json
     "critic": ("outlines/", "bible/", "characters/", "state/", "log/"),
-    # ---- 以下为 V3.1 新增角色（此前不在表内 → pack --as 合法选项被网关一律拒绝）----
+    # ---- 以下为 V3.2 新增角色（此前不在表内 → pack --as 合法选项被网关一律拒绝）----
     # 架构师（Stage 0/演进）：全局设定层，禁读成稿与日志（其职责是设定真值，不是正文）
     "architect": ("manuscript/", "log/", "snapshots/"),
     # 脱水师（Stage 3B）：只看 beats + raw_v2 + 文风宪法；禁 state/卡片/日志。

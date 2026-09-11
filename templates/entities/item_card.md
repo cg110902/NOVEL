@@ -6,8 +6,8 @@ tier_rank: {{slot:item_tier_rank|3}}
 tier_name: "{{slot:item_tier_name|品阶/代际/估值}}"
 holder: "{{slot:item_holder|当前持有者角色名}}"
 location: "{{slot:item_location|随身携带/储物戒/某宝库}}"
-charges: {{slot:item_charges|-1}}
-max_charges: {{slot:item_max_charges|-1}}
+charges: {{slot:item_charges|10}} # 若为非计数型道具，填实后可删除本行或设为 null，切勿填负数
+max_charges: {{slot:item_max_charges|10}} # 若为非计数型道具，填实后可删除本行或设为 null
 cost_per_use: "{{slot:item_cost_per_use|单次催动代价/消耗}}"
 durability: "{{slot:item_durability|完好/微损/耐久度}}"
 sensory_anchor: "{{slot:item_sensory_anchor|材质、光泽、触感与重量}}"
@@ -54,7 +54,7 @@ schema_version: novel-studio.item/v2
 - **催动条件与能耗门槛（Cost Per Use）**：
   {{slot:item_cost_per_use|每次催动消耗纯净灵石十万枚 / 需指纹与声纹双重生物识别 / 消耗自身三成精血}}
 - **充能与损耗规则（Charges & Durability）**：
-  - 剩余可用充能：{{slot:item_charges|-1}} / 最大上限：{{slot:item_max_charges|-1}}（-1 表示非计数充能型）
+  - 剩余可用充能：{{slot:item_charges|10}} / 最大上限：{{slot:item_max_charges|10}}（若非计数型道具可填“常驻/不限次”）
   - 耐久与磨损状态：{{slot:item_durability|完好无损 / 剑锋有三道细微豁口，需特定灵液修复}}
 
 ---
