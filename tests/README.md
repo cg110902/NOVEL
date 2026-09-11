@@ -6,8 +6,8 @@
 # 前置：依赖装在某解释器环境里（仓库惯例用 .venv）
 .venv/bin/python -m pip install -r requirements.txt
 
-# 一条命令跑全三件套（带逐项耗时与总 verdict）
-.venv/bin/python -m tests.run_all            # 全量 ≈ 3 分钟
+# 一条命令跑全门禁（带逐项耗时与总 verdict）
+.venv/bin/python -m tests.run_all            # 全量 ≈ 8 分钟（含 stress 自测）
 .venv/bin/python -m tests.run_all --only parity smoke   # 快档 ≈ 15 秒
 .venv/bin/python -m tests.run_all --list
 
@@ -27,6 +27,7 @@
 | `test_docs_parity` | `COMMAND_HELP` / `STATE_KEYS` / `REGISTRY` / Pydantic 模型 | README·AGENTS 里全部数字声明（31 命令 / 30 处理函数 / 11+1 表 / 106 码 / 36 字段 / 20 配置键）、错误码正反注册表、`schemas/*.json` 新鲜度、v3 op 形状代码真源 |
 | `test_smoke` | 临时书全链 | `build_smoke_book`：init→beats→raw/final→proposal→audit→sync→check→pack 闭环 rc=0；pack 注入 present_moods/伤势/声望；beats 心境基线；calendar 长线 |
 | `test_gates` | `build_smoke_book` + 违规注入 | 24 组场景 132 项断言：读者记忆档位边界、悬空引用三档分工、双轨对账、别名确定性、derived 封存/失鲜、账本透支与豁免、历史折叠、locked 提名、pack 压缩阶梯与预算小票、锚点旋钮、确认消音基线、修订闭环重报、v3 心境回环等 |
+| `test_stress_smoke` | `tests/stress/` 生成器 | 压力 harness 自测（30 章 smoke 书全链）：plan 确定性指纹、build→soak 逐章真 sync、manifest plan↔actual diff 空、L3 live 雷现场注入全抓且还原清账、eval 红线全绿。规模档（full/chap-hell/word-hell）不进 CI，按 §6.3 铁律人工分批跑：`python studio.py stress all --scale full` |
 
 复用点：`test_smoke.build_smoke_book(wsroot) -> (book, env)` 是全部临时书的单一脚手架，新增 e2e 一律从它出发，不要另建书。
 

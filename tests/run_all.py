@@ -28,6 +28,7 @@ SUITES = [
     ("parity", "tests.test_docs_parity", "文档↔代码口径对账（命令数/码数/表数/字段数/schema 新鲜度）", 600),
     ("smoke", "tests.test_smoke", "冒烟：临时书整章 init→beats→成稿→提案→audit→sync→check→pack", 900),
     ("gates", "tests.test_gates", "门禁触发：判定边界 + 违规注入 e2e（临时书 × 多套）", 1800),
+    ("stress", "tests.test_stress_smoke", "压力 harness 自测：30 章 smoke 书全链（plan 确定性/浸泡/雷库/判定）", 1200),
 ]
 ORDER = [a for a, *_ in SUITES]
 

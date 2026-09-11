@@ -1,0 +1,9 @@
+{
+ "full": {
+  "_built_at_chapters": 300,
+  "check_p95": 22.7,
+  "state_bytes_last": 193916752,
+  "sync_sec_mean": 4.1212,
+  "wall_cp": 602.0
+ }
+}
