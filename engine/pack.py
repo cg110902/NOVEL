@@ -205,9 +205,6 @@ def _bible_core_anchors(book: Path, refs: list[str] | None = None) -> str:
     if not files:
         return ""
     sections = []
-    target_keywords = ("世界与规则", "运转公理", "境界", "标尺", "power scale", "势力与地理",
-                       "势力网络", "世界底层", "战力", "特异机制", "特殊机制", "经济通货")
-
     for p in files:
         if "07_deviations" in p.name or "06_style_guidelines" in p.name or "style.md" in p.name:
             continue
@@ -215,21 +212,23 @@ def _bible_core_anchors(book: Path, refs: list[str] | None = None) -> str:
             text = p.read_text(encoding="utf-8", errors="replace")
         except OSError:
             continue
+        has_h2 = bool(re.search(r"^##\s+", text, re.MULTILINE))
+        split_pattern = r"^##\s+(.*)$" if has_h2 else r"^(?:#{1,3})\s+(.*)$"
         current_title = None
         current_lines = []
         for line in text.splitlines():
-            m = re.match(r"^(#{1,3})\s+(.*)$", line)
+            m = re.match(split_pattern, line)
             if m:
                 if current_title and current_lines:
                     content = "\n".join(current_lines).strip()
                     if content:
                         sections.append(f"### {current_title}\n{content}")
-                title = m.group(2).strip()
-                if any(kw in title.lower() for kw in target_keywords) and "偏离" not in title:
-                    current_title = title
+                t = m.group(1).strip()
+                if t.startswith("《") or "偏离" in t or "文风" in t:
+                    current_title = None
                     current_lines = []
                 else:
-                    current_title = None
+                    current_title = t
                     current_lines = []
             elif current_title is not None:
                 current_lines.append(line)

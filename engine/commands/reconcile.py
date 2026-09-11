@@ -53,7 +53,7 @@ def _gather(book: Path, vol: str) -> dict:
             continue
         for c in rep.get("candidates", []) or []:
             audit_hits.append({"ch": f"ch_{n:03d}", **{k: c.get(k) for k in
-                                                        ("id", "probe", "summary", "detail")
+                                                        ("id", "probe", "title", "description", "summary", "detail")
                                                         if c.get(k) is not None}})
 
     # ③ 本卷高危字段变更史（changelog）
@@ -146,7 +146,8 @@ def render_reconcile_md(payload: dict, book_name: str) -> str:
     L.append(f"- 命中 **{payload['audit_hit_count']}** 条"
              + ("" if payload['audit_hit_count'] == 0 else "（前 24 条如下，按章复核）"))
     for h in payload["audit_hits"]:
-        L.append(f"  - {h.get('ch')} [{h.get('probe')}] {_clip(h.get('summary') or h.get('detail') or '', 60)}")
+        desc = h.get("title") or h.get("description") or h.get("summary") or h.get("detail") or ""
+        L.append(f"  - {h.get('ch')} [{h.get('probe')}] {_clip(desc, 60)}")
     for e in payload["audit_errors"]:
         L.append(f"  - ⚠️ {e}")
     L.append("")

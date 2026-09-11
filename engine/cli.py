@@ -271,6 +271,8 @@ def _build_subparsers(sub: argparse._SubParsersAction) -> None:
     _add_common_opts(q)
     q.add_argument("chapter", nargs="?", default="", help="章节标识（如 ch_005，缺省默认最新章）")
     q.add_argument("--write", action="store_true", help="生成并落盘 log/audit/ch_XXX.md 仲裁初稿")
+    q.add_argument("--clear-logic", action="store_true", help="清空既有语义审查 logic 阻断计数（重置 logic: 0）")
+    q.add_argument("--adjudicate", action="store_true", help="强制标记为已人工裁决（adjudicated: true）")
     q.set_defaults(func=cmd_audit)
 
     q = sub.add_parser("reconcile", help="卷末对账大修：机械复扫+探针重跑+投影diff候选清单 → 工作单（Stage 4D）")

@@ -1081,7 +1081,7 @@ def validate_proposal(proposal, expected_chapter: str | None = None,
     locked = proposal.get("locked")
     if isinstance(locked, list):
         _plan("locked", len(locked))
-        allowed_locked_keys = {"action", "id", "fact", "since_ch", "kind", "quote", "note", "reason", "refs"}
+        allowed_locked_keys = {"action", "id", "fact", "since_ch", "kind", "quote", "note", "reason", "refs", "overwrite"}
         for i, l in enumerate(locked):
             if not isinstance(l, dict):
                 errors.append(f"locked[{i}] 必须为对象")
@@ -1089,6 +1089,8 @@ def validate_proposal(proposal, expected_chapter: str | None = None,
             for k in l:
                 if k not in allowed_locked_keys:
                     errors.append(f"locked[{i}] 含未知字段: {k}")
+            if "overwrite" in l and not isinstance(l["overwrite"], bool):
+                errors.append(f"locked[{i}].overwrite 必须为布尔值")
             lid = l.get("id")
             if not lid or not LOCK_ID_RE.match(str(lid)):
                 errors.append(f"locked[{i}].id 非法: {lid!r}（必须符合 ^LOCK-\\d{{3,}}$）")
@@ -1124,7 +1126,7 @@ def validate_proposal(proposal, expected_chapter: str | None = None,
     cog_full = proposal.get("cognition")
     if isinstance(cog_full, list):
         _plan("cognition", len(cog_full))
-        allowed_cog_full = {"action", "id", "character", "kind", "content", "since_ch", "quote", "note", "truth_ref"}
+        allowed_cog_full = {"action", "id", "character", "kind", "content", "since_ch", "quote", "note", "truth_ref", "overwrite"}
         for i, item in enumerate(cog_full):
             if not isinstance(item, dict):
                 errors.append(f"cognition[{i}] 必须为对象")
@@ -1132,6 +1134,8 @@ def validate_proposal(proposal, expected_chapter: str | None = None,
             for k in item:
                 if k not in allowed_cog_full:
                     errors.append(f"cognition[{i}] 含未知字段: {k}")
+            if "overwrite" in item and not isinstance(item["overwrite"], bool):
+                errors.append(f"cognition[{i}].overwrite 必须为布尔值")
             if not item.get("character") or not str(item.get("character")).strip():
                 errors.append(f"cognition[{i}].character 必填")
             cid = item.get("id")

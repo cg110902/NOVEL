@@ -565,7 +565,10 @@ def build_cockpit_briefing(book: Path, ch: str | None = None) -> dict[str, Any]:
     raw_v1_files = [f for f in raw_files if common.chapter_version_from_name(f.name) < 2]
     raw_v2_files = [f for f in raw_files if common.chapter_version_from_name(f.name) >= 2]
     final_files = common.find_chapter_files(book, "final", ch_tok)
-    inbox_file = (book / "state" / "inbox" / f"{ch_tok}.json").is_file() or (book / "state" / "inbox" / "processed" / f"{ch_tok}.json").is_file()
+    inbox_normal = (book / "state" / "inbox" / f"{ch_tok}.json").is_file()
+    inbox_processed = (book / "state" / "inbox" / "processed" / f"{ch_tok}.json").is_file()
+    inbox_failed = (book / "state" / "inbox" / "failed" / f"{ch_tok}.json").is_file()
+    inbox_file = inbox_normal or inbox_processed
     critic_file = False
     _cf = book / "log" / "critic" / f"{ch_tok}.md"
     if _cf.is_file():
@@ -612,6 +615,7 @@ def build_cockpit_briefing(book: Path, ch: str | None = None) -> dict[str, Any]:
         "raw_v2": bool(raw_v2_files),
         "final": bool(final_files),
         "proposal": inbox_file,
+        "proposal_failed": inbox_failed,
         "critic": critic_file,
         "audit": audit_ready,
         "audit_state": audit_state,
@@ -672,18 +676,28 @@ def build_cockpit_briefing(book: Path, ch: str | None = None) -> dict[str, Any]:
         curr_stage = "Stage 4 (三轨并发质检)"
         missing = []
         if not status["proposal"]:
-            missing.append("Reader (轨A-事实提案)")
+            if status.get("proposal_failed"):
+                missing.append("Proposal (轨A-提案在 failed/ 需就地修复)")
+            else:
+                missing.append("Reader (轨A-事实提案)")
         if not status["critic"]:
             missing.append("Critic (轨B-老白催更便签)")
         if not status["audit"]:
             missing.append("Auditor (轨C-一致性仲裁报告)")
 
         if not status["proposal"] and not status["critic"] and not status["audit"]:
-            actor = "Reader & Critic & Auditor (三轨并发)"
-            target_f = (f"state/inbox/{ch_tok}.json | log/critic/{ch_tok}.md | "
-                        f"log/audit/{ch_tok}.md")
-            instruct = ("在单次 invoke_subagent 调用中并发唤起 Reader (事实提案)、Critic (催更便签) "
-                        "与 Auditor (三轨仲裁报告)")
+            if status.get("proposal_failed"):
+                actor = "Director & Critic & Auditor"
+                target_f = (f"state/inbox/failed/{ch_tok}.json | log/critic/{ch_tok}.md | "
+                            f"log/audit/{ch_tok}.md")
+                instruct = (f"本章提案在 state/inbox/failed/{ch_tok}.json 待修复；就地修复后重跑 sync 会自动捡回，"
+                            "同时并发唤起 Critic (催更便签) 与 Auditor (三轨仲裁报告)")
+            else:
+                actor = "Reader & Critic & Auditor (三轨并发)"
+                target_f = (f"state/inbox/{ch_tok}.json | log/critic/{ch_tok}.md | "
+                            f"log/audit/{ch_tok}.md")
+                instruct = ("在单次 invoke_subagent 调用中并发唤起 Reader (事实提案)、Critic (催更便签) "
+                            "与 Auditor (三轨仲裁报告)")
         elif not status["audit"]:
             actor = "Auditor"
             target_f = f"log/audit/{ch_tok}.md"
@@ -691,9 +705,15 @@ def build_cockpit_briefing(book: Path, ch: str | None = None) -> dict[str, Any]:
                         "`studio audit --write` 生成带 front-matter 的仲裁报告并补写裁决"
                         "（Stage 5 闸门必需）")
         elif not status["proposal"]:
-            actor = "Reader"
-            target_f = f"state/inbox/{ch_tok}.json"
-            instruct = "向审计员 Reader 下达 Stage 4A 标准工序派发令，交付事实提案 JSON"
+            if status.get("proposal_failed"):
+                actor = "Director / Reader (修复 failed/ 提案)"
+                target_f = f"state/inbox/failed/{ch_tok}.json"
+                instruct = (f"本章提案位于 state/inbox/failed/{ch_tok}.json（上次 sync 校验未过）；"
+                            "请就地修改修复该 JSON 错误后重跑 sync，引擎会自动捡回，无需重头起草提案")
+            else:
+                actor = "Reader"
+                target_f = f"state/inbox/{ch_tok}.json"
+                instruct = "向审计员 Reader 下达 Stage 4A 标准工序派发令，交付事实提案 JSON"
         else:
             actor = "Critic"
             target_f = f"log/critic/{ch_tok}.md"
@@ -705,7 +725,9 @@ def build_cockpit_briefing(book: Path, ch: str | None = None) -> dict[str, Any]:
             "instruction": instruct,
             "command": (f"python studio.py audit {ch_tok} --write"
                         if not status["audit"]
-                        else f"view_file manuscript/{vol}/final/{ch_tok}.md"),
+                        else (f"python studio.py sync {ch_tok} --dry-run"
+                              if status.get("proposal_failed")
+                              else f"view_file manuscript/{vol}/final/{ch_tok}.md")),
             "target_file": target_f,
             **({"missing": missing} if missing else {})
         }

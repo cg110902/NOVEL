@@ -589,21 +589,32 @@ def _audit_semantic_note(text: str) -> str:
     return "\n".join(body).strip()
 
 
-def _merge_audit_report(old_text: str | None, new_text: str) -> tuple[str, list[str]]:
+def _merge_audit_report(old_text: str | None, new_text: str,
+                        clear_logic: bool = False,
+                        adjudicate: bool = False) -> tuple[str, list[str]]:
     """重跑 `audit --write` 时保住既有裁决痕迹。
 
     此前 cmd_audit 是无条件 `write_text` 覆盖，而 `_render_audit_md` 恒定写
     `adjudicated: false`：Auditor 完成轨 2 语义裁决 → Stylist 动刀 → 重新 audit，
     这一步会把人工裁决整份抹掉并把闸门打回未裁定。现按机械可判定规则合并：
-    - 「🔴 确凿硬矛盾」段落逐字未变 → 沿用旧 front-matter 的 adjudicated；
+    - 若显式指定 adjudicate=True → 强制置 adjudicated: true；
+    - 否则若「🔴 确凿硬矛盾」段落逐字未变 → 沿用旧 front-matter 的 adjudicated；
       变了（探针结论更新）→ 回落 false，需重新裁决；
-    - Auditor 写在「✅ 交叉核实排除」里的排除理由原样搬回新报告。
+    - Auditor 写在「✅ 交叉核实排除」里的排除理由原样搬回新报告；
+    - 轨 3（语义审查）：若指定 clear_logic=True → 重置 logic: 0，解除阻断；
+      否则原样搬回 Auditor 手填的 logic 计数。
     """
     notes: list[str] = []
     if not old_text:
+        if adjudicate:
+            new_text = new_text.replace("adjudicated: false", "adjudicated: true", 1)
+            notes.append("已显式标记为已人工裁决（adjudicated: true）")
         return new_text, notes
     old_fm = parse_audit_frontmatter(old_text) or {}
-    if _audit_hard_block(old_text) != _audit_hard_block(new_text):
+    if adjudicate:
+        new_text = new_text.replace("adjudicated: false", "adjudicated: true", 1)
+        notes.append("已显式标记为已人工裁决（adjudicated: true）")
+    elif _audit_hard_block(old_text) != _audit_hard_block(new_text):
         if old_fm.get("adjudicated"):
             notes.append("硬矛盾候选已变化 → adjudicated 回落 false（请重新裁决）")
     elif old_fm.get("adjudicated"):
@@ -615,6 +626,7 @@ def _merge_audit_report(old_text: str | None, new_text: str) -> tuple[str, list[
         notes.append("已保留上一版报告的「交叉核实排除」正文")
     # 轨 3 是纯人工产物（引擎无对应探针），重跑必须原样搬回，连同 Auditor 手填的 logic 计数——
     # 否则「手术刀修复后重跑 audit」会把语义裁决抹掉、并把闸门悄悄放回放行侧。
+    # 若带 --clear-logic 参数则显式解除阻断（保持正文备忘，logic 回归 0）。
     sem = _audit_semantic_note(old_text)
     if sem:
         new_text = new_text.replace(
@@ -625,9 +637,15 @@ def _merge_audit_report(old_text: str | None, new_text: str) -> tuple[str, list[
             logic_n = int(old_fm.get("logic", 0) or 0)
         except (TypeError, ValueError):
             logic_n = 0
-        if logic_n > 0:
+        if clear_logic:
+            notes.append(f"已清空既有语义审查 logic 阻断计数（原 logic={logic_n} → 现 logic=0）")
+        elif logic_n > 0:
             new_text = new_text.replace("logic: 0", f"logic: {logic_n}", 1)
-        notes.append(f"已保留上一版报告的「语义逻辑与出戏审查」正文（logic={logic_n}）")
+            notes.append(f"已保留上一版报告的「语义逻辑与出戏审查」正文（logic={logic_n}）")
+        else:
+            notes.append("已保留上一版报告的「语义逻辑与出戏审查」正文（logic=0）")
+    elif clear_logic:
+        notes.append("已清空语义审查 logic 计数（logic=0）")
     return new_text, notes
 
 
@@ -645,7 +663,9 @@ def cmd_audit(args) -> int:
     tok = f"ch_{n:03d}"
 
     payload = audit.run_audit(book, tok)
-    do_write = getattr(args, "write", False)
+    clear_logic = getattr(args, "clear_logic", False)
+    adjudicate = getattr(args, "adjudicate", False)
+    do_write = getattr(args, "write", False) or clear_logic or adjudicate
     if do_write and not payload.get("error"):
         audit_dir = book / "log" / "audit"
         audit_dir.mkdir(parents=True, exist_ok=True)
@@ -656,7 +676,9 @@ def cmd_audit(args) -> int:
                 prev_text = out_file.read_text(encoding="utf-8", errors="replace")
             except OSError:
                 prev_text = None
-        md_content, merge_notes = _merge_audit_report(prev_text, _render_audit_md(payload))
+        md_content, merge_notes = _merge_audit_report(
+            prev_text, _render_audit_md(payload),
+            clear_logic=clear_logic, adjudicate=adjudicate)
         out_file.write_text(md_content, encoding="utf-8")
         payload["written_file"] = str(out_file.relative_to(book))
         if merge_notes:

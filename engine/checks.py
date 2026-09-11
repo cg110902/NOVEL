@@ -64,7 +64,8 @@ RUNTIME_DEPENDENCIES: list[tuple[str, str]] = [
     ("sqlite3", "SQLite3 FTS5 全文索引（Python 标准库，无需安装）"),
 ]
 
-ABRUPT_PUNCTUATION: tuple[str, ...] = ("，", ",", "、", "：", ":", "“", "‘", "（", "(", "——", "……")
+ABRUPT_PUNCTUATION: tuple[str, ...] = ("，", ",", "、", "：", ":", "“", "‘", "（", "(")
+CLIFFHANGER_PUNCTUATION: tuple[str, ...] = ("——", "……")
 TRUNCATED_CONNECTORS: tuple[str, ...] = ("但", "因", "因为", "由于", "然后", "接着", "若是", "倘若", "如果", "只见", "却见")
 
 SYSTEM_CHECK_CODES: set[str] = {
@@ -1594,6 +1595,12 @@ def run_checks(book: Path, *, full: bool = False) -> dict:
                         "manuscript_truncation",
                         f"{rel} 正文末尾以连接词「{last_line[-4:]}」结尾，疑似生成中断！末句: \"{last_line[-30:]}\"",
                         remedy=f"检查 {rel} 正文末尾，补全后续句子。"
+                    ))
+                elif any(last_line.endswith(punct) for punct in CLIFFHANGER_PUNCTUATION):
+                    warnings.append(_err(
+                        "manuscript_truncation",
+                        f"{rel} 正文末尾以留白标点「{last_line[-2:]}」结尾（网文悬念/意犹未尽收尾）。末句: \"{last_line[-30:]}\"",
+                        remedy=f"如属有意留白悬念无需处理；如为生成中断请在末尾补全情节段落。"
                     ))
                 double_quote_open = txt.count("“")
                 double_quote_close = txt.count("”")

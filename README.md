@@ -51,21 +51,6 @@ Evolution    Evolver     人类变更诉求的波及面测算与手术刀改版
 完整流程图、派发令/回执单格式、各角色准读准写清单见 **`AGENTS.md`**；
 每个角色的工艺纪律见 **`.agents/skills/<角色>/SKILL.md`**。
 
-> 📜 **beats 是当章唯一合同**：
-> `outlines/vol_XX/beats/ch_XXX.md` 由主控写，
-> Editor / Stylist / Reader / Auditor
-> 四路子代理**直读**，
-> Drafter 经 `pack` P0 拿到**逐字全文**，
-> Critic 与 Librarian 明令**禁读**（前者要纯读者
-> 盲审、后者只对账不读意图）。
-> 动机：`state/` 只知"已发生什么"、不知"本章要写什么"，
-> beats 把 bible + 台账 + 本意压成 O(1) 当章快照，让五个下游共享同一基准而不必各翻账本；
-> 代价是它同时是最大注入物与最脆单点——细纲写虚整条流水线一起歪，故引擎对其有 5 档
-> `beats_*` 闸门（`beats_missing_form`／`beats_fm_extra_keys`／`beats_scene_abstract`／`beats_overlap`／`beats_form_repeat_without_reason`）
-> 与 `sync` 的"beats 齐"硬合同；
-> 注意 `goal`/`hook` **没有**机械校验，
-> 细纲写虚只能靠下游角色上报——这是 Editor/Auditor 负有"基准缺失即上报"义务的原因。
-
 ---
 
 ## 三、目录导航
