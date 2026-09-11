@@ -182,14 +182,6 @@ Evolution    Evolver     人类变更诉求的波及面测算与手术刀改版
 - 枚举与类型集合一律从 Pydantic 模型派生（如 `LOCATION_TYPES`、`state._ATTITUDE`），
   禁止在校验分支里再手写字面量集合。
 - 新增 `check` 错误码必须在 `engine/errcodes.py` 注册。
-- 门禁三件套（改引擎必跑，全绿才算完）：
-  `python -m tests.test_docs_parity`（文档数字对账）＋
-  `python -m tests.test_smoke`（临时书整章冒烟）＋
-  `python -m tests.test_gates`（温度判定边界＋违规注入触发）。
-- 压力/浸泡测试（规模档判引擎在千章量级下是否仍守约定；零 token 剧本驱动）：
-  `python studio.py stress all --scale smoke`（harness 自测档）；`--scale full|chap-hell|word-hell`
-  为规模档，闸门按 Phase 推进（上一 Phase 不绿不开下一 Phase），首跑只建基线不判性能。
-  设计真源见 `tests/stress/`（common/generator/soak/faults/eval/report/cli）。
 - 用户可见文案里的数量口径（命令数、状态表数、字段数）改动时，同步更新
   `AGENTS.md` / `engine/README.md` / `templates/README.md`——这些口径由 `python -m tests.test_docs_parity`
   自动比对（命令数 = `len(COMMAND_HELP)`、状态表数 = `len(STATE_KEYS)`、错误码数 = `len(REGISTRY)`），
