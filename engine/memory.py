@@ -19,7 +19,7 @@ R3 起正文来源优先走 SQLite 增量缓存（db.finals_from_index，指纹�
 已知盲区（诚实清单，详见 PLAN_CONSISTENCY_50W §8）：
 - locked.fact 若不含任何已登记实体名/别名，提词为空 → 该条**静默脱离监控**
  （是漏报不是误报：本模块所有闸门只报「曾出现后久未重现」）；
-- line_terms_for 依赖字面复现，正文换一种说法指同一条线会漏检——接受漏报。
+- line_terms_for 经 match_norm 虚词归一（P2：“无主的空灯”可命中“无主空灯”），但结构性改写（换主语/隐喻指代）仍漏检——接受漏报。
 """
 from __future__ import annotations
 
@@ -86,7 +86,8 @@ def _scan_last_seen(finals, terms: list[str]) -> tuple[int | None, int]:
         return None, 0
     last, hits = None, 0
     for _tok, num, text in finals:
-        if any(t in text for t in terms):
+        # 文本侧归一（与 line_terms_for 配对；每 final 每线一次 re.sub，约增 10~20% 扫描成本）
+        if any(t in evidence.match_norm(text) for t in terms):
             last = num if last is None else max(last, num)
             hits += 1
     return last, hits

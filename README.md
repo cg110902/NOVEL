@@ -151,7 +151,7 @@ Evolution    Evolver     人类变更诉求的波及面测算与手术刀改版
 | 只读取证 | `python studio.py ask <关键词>`（2.0 引用链：每条命中带 cite 出处） · `evidence <kind>` · `pov` · `calendar` |
 | 细纲与稿件流转 | `beats new ch_XXX --write`（注入一致性速查 / 资源池 / ID 水位线 / 提案键形状，并支持 `world_refs` 按章取设定） · `critic` · `audit ch_XXX --write`（三轨仲裁） · `reconcile vol_XX`（卷末对账） |
 | 提案 | `proposal new [--v3] ch_XXX`（骨架；--v3 为寻址式防错版） · `proposal check ch_XXX` · `proposal auto ch_XXX --write` · `sync ch_XXX [--dry-run]` |
-| 体检与自愈 | `check`（`doctor` 为其别名；`--trend` 分数曲线 / `--bisect` 快照二分） · `errcodes <码>` |
+| 体检与自愈 | `check`（`doctor` 为其别名；`--trend` 分数曲线 / `--bisect` 快照二分 / `--full` 全量 / `--accept` 确认消音） · `errcodes <码>` |
 | 图谱与索引 | `graph <action>` · `index [--rebuild]` · `recall` · `simulate` |
 | 台账手术刀 | `state get/set` · `state at <章>`（时点切面）· `state diff <章A> <章B>` · `state blame <表.路径>`（字段级溯源） · `state rollup vol_XX`（卷末态势摘要，pack 前情注入源） · `ledger recompute` · `milestone add/achieve` |
 | 快照 | `snapshot create/list/rollback` · `checkpoint` |
@@ -162,7 +162,7 @@ Evolution    Evolver     人类变更诉求的波及面测算与手术刀改版
 退出码契约：`0` = 正常 / `1` = 阻断（含 `check` 有 errors、`sync` 失败）/ `2` = 用法错 /
 `3` = 运行环境缺依赖（会打印缺失模块与安装命令，不抛裸 traceback）。
 错误码的机器可读说明书：`python studio.py errcodes <码>` 查单码（含义 / 触发条件 / 处置处方，`--json` 机读），
-`python studio.py errcodes` 看全表（当前 92 条闸门码，`--level error` 过滤）；注册表在 `engine/errcodes.py`，
+`python studio.py errcodes` 看全表（当前 106 条闸门码，`--level error` 过滤）；注册表在 `engine/errcodes.py`，
 新增体检码必须在此注册（文档里的码数由 `tests/test_docs_parity.py` 与本表实时对账）。
 
 ---
@@ -175,9 +175,13 @@ Evolution    Evolver     人类变更诉求的波及面测算与手术刀改版
 - 枚举与类型集合一律从 Pydantic 模型派生（如 `LOCATION_TYPES`、`state._ATTITUDE`），
   禁止在校验分支里再手写字面量集合。
 - 新增 `check` 错误码必须在 `engine/errcodes.py` 注册。
+- 门禁三件套（改引擎必跑，全绿才算完）：
+  `python -m tests.test_docs_parity`（文档数字对账）＋
+  `python -m tests.test_smoke`（临时书整章冒烟）＋
+  `python -m tests.test_gates`（温度判定边界＋违规注入触发）。
 - 用户可见文案里的数量口径（命令数、状态表数、字段数）改动时，同步更新
   `AGENTS.md` / `engine/README.md` / `templates/README.md`——这些口径由 `python -m tests.test_docs_parity`
-  自动比对（命令数 = `len(COMMAND_HELP)`、状态表数 = `len(STATE_KEYS)`、错误码数 = `len(CATALOG)`），
+  自动比对（命令数 = `len(COMMAND_HELP)`、状态表数 = `len(STATE_KEYS)`、错误码数 = `len(REGISTRY)`），
   跑不过就回去改文档，不要反过来把数字改小。
 - 状态表口径的唯一说法：**十一表** = 11 张断言表（`ASSERTED_KEYS`，Agent 可写）；
   **第十二张表** = `derived.json` 派生缓存（`STATE_KEYS` = 十一表 + derived）；

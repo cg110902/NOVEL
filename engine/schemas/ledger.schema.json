@@ -2,7 +2,9 @@
   "additionalProperties": false,
   "properties": {
     "note": {
-      "type": "string"
+      "type": "string",
+      "description": "货币与资产换算说明",
+      "title": "Note"
     },
     "pools": {
       "additionalProperties": {
@@ -14,7 +16,9 @@
             "type": "string"
           },
           "unit": {
-            "type": "string"
+            "type": "string",
+            "description": "计量单位",
+            "title": "Unit"
           },
           "initial": {
             "description": "期初结余",
@@ -68,7 +72,8 @@
               "manual"
             ],
             "title": "TransactionType",
-            "type": "string"
+            "type": "string",
+            "description": "流水性质分类"
           },
           "subject": {
             "description": "收支明细事由",
@@ -76,10 +81,14 @@
             "type": "string"
           },
           "counterparty": {
-            "type": "string"
+            "type": "string",
+            "description": "交易对手方/收益方/支出方",
+            "title": "Counterparty"
           },
           "note": {
-            "type": "string"
+            "type": "string",
+            "description": "备忘备注",
+            "title": "Note"
           },
           "balance_after": {
             "description": "发生后账户结余",

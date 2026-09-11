@@ -56,10 +56,14 @@
             "type": "string"
           },
           "note": {
-            "type": "string"
+            "type": "string",
+            "description": "知情限制或机锋约束 (如 '仅怀疑，未掌握确凿铁证')",
+            "title": "Note"
           },
           "truth_ref": {
-            "type": "string"
+            "type": "string",
+            "description": "真相锚点（GUN-/KNO-/MIS-/EVT-/LOCK-编号；供机械判定认知与真相是否冲突）",
+            "title": "Truth Ref"
           }
         },
         "required": [

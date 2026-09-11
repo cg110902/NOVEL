@@ -46,8 +46,9 @@ REGISTRY: dict[str, ErrCode] = {c.code: c for c in (
     _reg("param_shape_invalid", "error", "词表参数的形状不符合型号单要求",
          "检查 project.json 配置项格式，确保符合规范规范要求。"),
     # ---- 状态机 ----
-    _reg("state_inconsistent", "error", "状态数据不一致（如账本余额与流水对不上）",
-         "运行 python studio.py ledger recompute 重新核对账本，或手动平账。"),
+    _reg("state_inconsistent", "error", "跨表一致性核验（verify）发现状态数据自相矛盾",
+         "按 msg 定位矛盾：引用未登记→补登实体或修正拼写；编号重复/非法→重编号；"
+         "余额与流水对不上→运行 python studio.py ledger recompute 重算账本。修完重跑 check。"),
     _reg("ledger_tx_order", "error", "账本流水的章节顺序错乱（他章流水插在本章之后），"
                                     "balance_after 已与编年史矛盾",
          "运行 python studio.py ledger recompute——重算会先按章号重排流水再重算余额与 "
@@ -135,6 +136,9 @@ REGISTRY: dict[str, ErrCode] = {c.code: c for c in (
          "在 state/四 kind 表（persons/items/factions/places） 中把冲突别名改为唯一，或改用 aliases 归并到同一实体名下。"),
     _reg("relation_target_unknown", "warning", "实体关系指向未登记的实体（关系图悬空边）",
          "在 state/四 kind 表（persons/items/factions/places） 补登目标实体，或修正 relations.target 的名称拼写。"),
+    _reg("dangling_ref", "warning", "编号类引用悬空（truth_ref/causes/consequences 指向不存在的编号）",
+         "cognition.truth_ref 只收 GUN-/KNO-/MIS-/EVT-/LOCK-编号，timeline causes/consequences 只收 EVT-编号："
+         "请核对编号是否打错、前置事件是否已登记；确认无引用请删除该字段（选填不罚，填错才报）。"),
     _reg("entity_ref_unknown", "warning", "实体的 faction/holder/location 指向未登记实体（悬空引用）",
          "补登被指向的实体（势力用 type=faction、地点用 type=place/location），或修正字段里的名称拼写；"
          "location 若只是临时场景描述而非固定地点，可忽略本提示。"),
@@ -165,6 +169,9 @@ REGISTRY: dict[str, ErrCode] = {c.code: c for c in (
          "移除 beats 文件 front-matter 中的非标准字段。"),
     _reg("beats_missing_form", "error", "beats front-matter 缺少 form 章型字段",
          "在 beats 细纲的 front-matter 中补充 form 字段（如 form: 危机建构 / 生死博弈等）。"),
+    _reg("beats_pov_missing", "warning", "beats front-matter 缺少 pov 视角字段（审计知情差扫描将降级）",
+         "在 beats 细纲的 front-matter 中补充 pov 字段（如 pov: 林牧·视角）。"
+         "缺视角时 audit 的旁白/心理泄密探针无法指名判定，只能降级为人工核对。"),
     _reg("beats_form_repeat_without_reason", "error", "连续同章型且未说明理由（读者疲劳风险）",
          "更改当章 form 章型，避免连续同章型疲劳；若确需连续，需在 front-matter 补充 form_reason 说明原因。"),
     _reg("beats_scene_abstract", "warning", "细纲场景描述假大空（缺具体动作/对白/冲突）",
@@ -176,7 +183,9 @@ REGISTRY: dict[str, ErrCode] = {c.code: c for c in (
     _reg("form_share_over_limit", "warning", "单一章型全书占比超限（>40%；统计自该卷第 5 章起，小样本不计数）",
          "该章型在全书中占比超过 40%（≥5 章样本才参与统计），建议在后续章节丰富其他类型的叙事章型。"),
     _reg("final_drift", "warning", "已封存章节的 final 定稿在 sync 后被改动（内容哈希漂移）",
-         "final 是事实唯一源头但状态台账已按旧版封存：有意修订请走提案修订通道（synopsis/timeline）后重跑 sync 重封，"
+         "final 是事实唯一源头但状态台账已按旧版封存：有意修订请先核对台账是否需同步修订"
+         "（synopsis/timeline 修订通道随下章提案，或 state set 手术刀 + state recompute），确认无误后用 "
+         "check --accept <fp> 留痕消音（原封存哈希保留为修订证据，每次新改动换哈希重报）；"
          "无意改动请用 snapshot rollback 恢复到封存时点。"),
     _reg("high_tension_fatigue", "warning", "连续高压章型导致读者情绪疲劳",
          "连续高压章型导致情绪疲劳，下一章建议安排松弛缓冲型章型。"),
@@ -211,6 +220,9 @@ REGISTRY: dict[str, ErrCode] = {c.code: c for c in (
          "核查主线里程碑进展；若已完成请在提案更新 status=achieved，若已调整大纲请更新 target_ch。"),
     _reg("subplot_stall", "info", "支线伏笔超过 15 章未有任何推进/提醒",
          "该伏笔/误解已连续 15 章未触碰，建议在后续章节安排提醒（remind_ch）或回收（resolve_ch），防主线跑焦。"),
+    _reg("longline_stale", "warning", "跨卷长线（target_ch 非整数）久未在正文重现，读者记忆已入印象区深处",
+         "长线没有到期压力，最容易被遗忘：请在本章或下章 beats 线动作栏安排一次回响（remind），"
+         "或正式回收（resolve）；确认废弃请 retire。判定口径＝正文落笔章距 > 记忆阈值×2（权重越高越宽松）。"),
     # ---- 定稿字数出带（config guide 承诺的字数闸门）----
     _reg("word_band_deviation", "warning", "定稿中文字数落在 project.json.words_target 目标带之外（20% 容差内）",
          "定稿字数出带属可接受偏移：需要严格达标请让 Stylist 在 Stage 3B 增删内容，"
@@ -254,8 +266,36 @@ REGISTRY: dict[str, ErrCode] = {c.code: c for c in (
     _reg("present_unmentioned", "warning", "present_characters 声明在场的角色在正文中一次都没出现"
                                          "（在场一致性的聚合视图见 state/derived.json 的 scene_violations）",
          "在场名单必须与正文一致：删掉未出场的角色，或在正文补上其在场动作。"),
+    _reg("present_refs_mismatch", "warning", "current.present 双轨不一致（字符串轨 vs 引用轨）",
+         "present_characters 与 present_refs 解析出的在场集合不一致：以 refs 引用轨为准，"
+         "请对齐另一边（改名/退场/别名调整后易遗漏一边）。refs 为空时不查（选填不罚）。"),
+    _reg("time_day_mismatch", "warning", "current.time 字符串里的第N日与 time_day 数字不一致",
+         "time 自由文本中解析出的日序数 ≠ time_day：以 time_day 为唯一真源，请对齐 time 字符串；"
+         "闪回/倒叙章若故意倒置请忽略。time 无日序数或 time_day 缺席时不查。"),
     _reg("present_undeclared", "info", "正文有台词/动作的角色未声明在场",
          "把该角色补进 present_characters（在场是称谓对校与 POV 判定的输入）。"),
+    _reg("mood_character_unknown", "warning", "current.present_moods 的情绪主体未在实体四表登记",
+         "情绪快照的键必须是已登记实体名/别名：请在提案 entities 段先注册该角色，"
+         "或修正 present_moods 的键名拼写。未登记的情绪注记不会被 pack 注入。"),
+    _reg("mood_plan_actual_drift", "info", "已封存章的 beats 出厂情绪表与台账快照不一致",
+         "计划（beats 表）与实际（present_moods）的人/词/烈度有出入：计划赶不上变化是常态，"
+         "本提示仅供主控复核——若为有意改写请忽略；若为 Reader 漏登/主控笔误请补齐。"),
+    _reg("alias_shadows_name", "warning", "别名与他实体法定名重名（寻址被遮蔽）",
+         "该别名寻址永远命中法定名方：用 state set 改其中一方的别名/法定名；若只作文本计数用可忽略。"),
+    _reg("cognition_truth_conflict", "warning", "角色认知与真相锚点冲突（穿帮/滞后）",
+         "核查：穿帮（记错章/预知）请修正 since_ch 或真相登记；故意滞后（角色尚未知晓已揭示真相）属正常戏剧差，可用 check --accept 确认消音。"),
+    _reg("derived_stale", "info", "派生表早于最新状态（知识挂旗等可能过期）",
+         "运行 state recompute 重算派生；sync 封存时会自动重算。"),
+    _reg("locked_candidate_pending", "info", "locked 提名待审定入账",
+         "审定属实请走 locked plant 入账（fact 原文复用可自动核销）；放弃提名请删除 log/locked_candidates.jsonl 对应行。"),
+    _reg("pool_overdrawn", "warning", "资源池余额为负（透支）",
+         "核查是否漏记收入/期初写错，用 ledger recompute 或 state set 修复；确为负债池请改名 debt_ 前缀以显式声明。"),
+    _reg("mood_snapshot_stale", "info", "current.present_moods 已连续多章未刷新",
+         "情绪快照停留在旧章节，pack/beats 仍在注入它：若角色情绪确无变化请忽略；"
+         "否则请在下章提案刷新 present_moods（整拍覆盖，缺席≠清档但会过期）。"),
+    _reg("mood_dialogue_flat", "info", "角色申报高烈度情绪，但近窗对白声纹与自身基线一致",
+         "申报 level≥4 的强烈情绪波动，但该角色近窗对白的句长/语气词/口头禅均未偏离基线。"
+         "若情绪由动作与心理描写承载可忽略；否则建议核对本章是否写出了情绪的外显落点。"),
     _reg("power_level_shift", "info", "提案改动了实体位阶/战力标尺",
          "位阶变更请对齐 bible 战力标尺与 locked 台账，防止战力通胀。"),
     _reg("aftermath_opening_miss", "info", "上一章章末刀口在本章开头未被承接",

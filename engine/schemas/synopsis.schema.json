@@ -2,7 +2,9 @@
   "additionalProperties": false,
   "properties": {
     "book_logline": {
-      "type": "string"
+      "type": "string",
+      "description": "全书一句话梗概",
+      "title": "Book Logline"
     },
     "chapters": {
       "additionalProperties": {
@@ -15,14 +17,20 @@
             "type": "integer"
           },
           "title": {
-            "type": "string"
+            "type": "string",
+            "description": "章节标题",
+            "title": "Title"
           },
           "synopsis": {
-            "type": "string"
+            "type": "string",
+            "description": "章节梗概",
+            "title": "Synopsis"
           },
           "source": {
             "const": "manual",
-            "type": "string"
+            "type": "string",
+            "description": "来源标记",
+            "title": "Source"
           }
         },
         "required": [

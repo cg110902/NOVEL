@@ -355,7 +355,7 @@ V3_OP_SHAPES: tuple[tuple[str, str, str], ...] = (
     ("persons/items/factions/places", "create", '{"entry":{"id":"p_010","name":"…","type?":"…","…":"实体字段"}}'),
     ("persons/items/factions/places", "update", '{"id":"it_003","set":{"只写要改的键（禁 id/name）"}}'),
     ("persons/items/factions/places", "retire", '{"id":"loc_002"}'),
-    ("current", "update", '{"set":{"location":"…","time?":"…","present_refs?":[…],"…"}}'),
+    ("current", "update", '{"set":{"location":"…","time?":"…","time_day?":N,"present_refs?":[…],"present_moods?":{名:{label,level?,quote?}}}}'),
     ("lines", "plant/update/remind/resolve/escalate",
      '{"kind":"foreshadow|misunderstanding|knowledge"（必填）,"action":…,"id":"GUN-004"（plant 可省）,'
      '"target_ch":30（plant 必填：int / ch_NNN / "第N章" / "longline"）,"…":"同 v2 条目字段"}'),

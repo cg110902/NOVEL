@@ -60,7 +60,9 @@
             ]
           },
           "status": {
-            "type": "string"
+            "type": "string",
+            "description": "封存时刻的线状态快照",
+            "title": "Status"
           }
         },
         "required": [

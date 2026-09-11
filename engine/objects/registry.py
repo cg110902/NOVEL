@@ -50,6 +50,12 @@ def build_registry(entities_data: dict | None = None, book: Path | None = None) 
         if len(set(owners)) > 1:
             problems.append({"code": "alias_multi_owner",
                              "msg": f"别名「{a}」被多实体占用：{' / '.join(sorted(set(owners)))}"})
+        # 别名与他实体法定名重名：寻址按 id→法定名→别名优先级，永远命中法定名方，
+        # 该别名对属主实体永久不可达（文本扫描计数不受影响，仅寻址被遮蔽）。
+        if a in by_name and a not in set(owners):
+            problems.append({"code": "alias_shadows_name",
+                             "msg": f"别名「{a}」（属{' / '.join(sorted(set(owners)))}）"
+                                    f"与实体「{a}」法定名重名：寻址永远命中后者"})
     return {"by_id": by_id, "by_name": by_name,
             "alias_to_name": alias_to_name, "problems": problems}
 

@@ -2,40 +2,64 @@
   "additionalProperties": false,
   "properties": {
     "time": {
-      "type": "string"
+      "type": "string",
+      "description": "此刻时间",
+      "title": "Time"
     },
     "region": {
-      "type": "string"
+      "type": "string",
+      "description": "宏观疆域/大地图区域",
+      "title": "Region"
     },
     "location": {
-      "type": "string"
+      "type": "string",
+      "description": "此刻具体地点/场景",
+      "title": "Location"
     },
     "power_level": {
-      "type": "string"
+      "type": "string",
+      "description": "能力/修为阶位",
+      "title": "Power Level"
     },
     "abilities": {
-      "type": "string"
+      "type": "string",
+      "description": "可用技能清单",
+      "title": "Abilities"
     },
     "injury": {
-      "type": "string"
+      "type": "string",
+      "description": "当前伤势",
+      "title": "Injury"
     },
     "equipment": {
-      "type": "string"
+      "type": "string",
+      "description": "随身装备",
+      "title": "Equipment"
     },
     "assets": {
-      "type": "string"
+      "type": "string",
+      "description": "非资金类资源",
+      "title": "Assets"
     },
     "situation": {
-      "type": "string"
+      "type": "string",
+      "description": "一句话处境速写",
+      "title": "Situation"
     },
     "mood": {
-      "type": "string"
+      "type": "string",
+      "description": "POV 情绪基调",
+      "title": "Mood"
     },
     "goal": {
-      "type": "string"
+      "type": "string",
+      "description": "POV 当下目标",
+      "title": "Goal"
     },
     "key_relationships": {
-      "type": "string"
+      "type": "string",
+      "description": "当前核心关系速写",
+      "title": "Key Relationships"
     },
     "present_characters": {
       "description": "章末在场角色名单",
@@ -49,16 +73,24 @@
       "additionalProperties": false,
       "properties": {
         "cultivation": {
-          "type": "string"
+          "type": "string",
+          "description": "主修功法/核心能量体系",
+          "title": "Cultivation"
         },
         "movement": {
-          "type": "string"
+          "type": "string",
+          "description": "身法/步法/机动手段",
+          "title": "Movement"
         },
         "attack": {
-          "type": "string"
+          "type": "string",
+          "description": "招牌杀招/主战攻击手段",
+          "title": "Attack"
         },
         "trump_card": {
-          "type": "string"
+          "type": "string",
+          "description": "绝境保命底牌",
+          "title": "Trump Card"
         },
         "equipped_items": {
           "description": "常驻佩戴/激活法宝道具",
@@ -70,10 +102,13 @@
         }
       },
       "title": "Loadout",
-      "type": "object"
+      "type": "object",
+      "description": "主角常驻作战体系"
     },
     "aftershock": {
-      "type": "string"
+      "type": "string",
+      "description": "上章戏剧余震与未平残局（下章开篇必接动作）",
+      "title": "Aftershock"
     },
     "active_pressures": {
       "description": "当前悬在主角头上的核心危机与倒计时",
@@ -85,13 +120,19 @@
     },
     "time_day": {
       "minimum": 1,
-      "type": "integer"
+      "type": "integer",
+      "description": "故事日计数（第N日；time 自由文本的数值孪生）",
+      "title": "Time Day"
     },
     "pov_ref": {
-      "type": "string"
+      "type": "string",
+      "description": "视角角色对象引用（实体 id 如 p_001，或法定名）",
+      "title": "Pov Ref"
     },
     "place_ref": {
-      "type": "string"
+      "type": "string",
+      "description": "当前地点对象引用（实体 id 如 loc_012，或法定名）",
+      "title": "Place Ref"
     },
     "present_refs": {
       "description": "在场角色对象引用清单（实体 id 或法定名，与 present_characters 并存）",
@@ -100,6 +141,40 @@
       },
       "title": "Present Refs",
       "type": "array"
+    },
+    "present_moods": {
+      "additionalProperties": {
+        "additionalProperties": false,
+        "description": "单角色章末情绪快照（隐含情绪：角色真实内在状态，可与表面言行不一致）。",
+        "properties": {
+          "label": {
+            "description": "情绪词（如 暴怒/隐忍/惊惧；advisory 非穷举，不做语义立法）",
+            "minLength": 1,
+            "title": "Label",
+            "type": "string"
+          },
+          "level": {
+            "maximum": 5,
+            "minimum": 1,
+            "type": "integer",
+            "description": "烈度 1~5（1=微澜，5=失控边缘；缺省=未评级）",
+            "title": "Level"
+          },
+          "quote": {
+            "type": "string",
+            "description": "final 原文佐证（情绪落笔句，经柔性接地）",
+            "title": "Quote"
+          }
+        },
+        "required": [
+          "label"
+        ],
+        "title": "MoodEntry",
+        "type": "object"
+      },
+      "description": "在场角色隐含情绪快照 {角色名: {label, level?, quote?}}",
+      "title": "Present Moods",
+      "type": "object"
     }
   },
   "title": "CurrentState",
