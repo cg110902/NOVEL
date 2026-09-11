@@ -272,10 +272,10 @@ def run_chaos(book: Path, plan: dict, only: list[str] | None = None,
     """live 雷现场注入→断言→还原。返回 {fid: {"ok":..,"detail":..}}。"""
     book = Path(book)
     results: dict[str, dict] = {}
-    want = only or sorted(LIVE_FAULTS)
+    want = only or sorted(set(LIVE_FAULTS) | {"F03"})
     for fid in want:
-        if fid not in LIVE_FAULTS:
-            continue
+        if fid not in LIVE_FAULTS and fid != "F03":
+            continue  # F03 不在 LIVE 表：走 proposal check stdout needle 的专用分支
         gate = FAULT_GATE.get(fid, {})
         if plan["chapters"] < gate.get("min_chapters", 0):
             results[fid] = {"ok": None, "detail": "scale N/A"}

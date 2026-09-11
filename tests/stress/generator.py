@@ -189,11 +189,15 @@ def plan_book(scale: str, seed: int | None = None) -> dict:
     lines: dict[str, dict] = {}
     gid = mid_ = kid = 0
     dead_n = max(1, int(lfa * 0.05))
+    # 死线占最前 5% 槽位：正文自 plant+2 起封口，gap 随 N 线性拉大，
+    # 「正文章距 > 冷阈×2」在任意 N≥114 下确定成立（F02 判据可移植）
+    dead_slots = line_slots[:dead_n]                # 死线铺在早期槽位：gap 随 N 线性拉大
     for i, pc in enumerate(line_slots):
         gid += 1
         lid = f"GUN-{gid:03d}"
-        kind_tier = rng.choices(["hot", "warm", "cold", "dead"], weights=[20, 50, 25, 5])[0]
+        kind_tier = rng.choices(["hot", "warm", "cold"], weights=[20, 50, 25])[0]
         if i < dead_n:
+            pc = dead_slots[i]
             kind_tier = "dead"
         delay = {"hot": rng.randint(4, 10), "warm": rng.randint(12, 50), "cold": rng.randint(55, 150)}
         if kind_tier in ("dead",):
@@ -253,6 +257,7 @@ def plan_book(scale: str, seed: int | None = None) -> dict:
                       "tier": "dead", "weight": 1, "last_mention": b_plant, "requires": [a["id"]],
                       "f03_child": True}
         f03 = {"child": bid, "prereq": a["id"], "plant_ch": b_plant, "resolve_ch": n_total}
+    _f03_pre = f03["prereq"] if f03 else None   # F03 前置线：正文只留 plant/回收两处锚
 
     # ---- 埋进 script 的全局轨迹 ----
     tier_up_steps = [c for c in range(40, n_total - 12, 40)]
@@ -350,11 +355,14 @@ def plan_book(scale: str, seed: int | None = None) -> dict:
                 mentions.append(_label(l))
                 l["last_mention"] = n
                 continue
+            if lid == _f03_pre:
+                l["last_mention"] = n
+                continue          # F03 前置线：mentions 全程封口（含 plant 章），防 terms 污染
             if l["plant_ch"] < n <= (l.get("recall_ch") or n_total + 9):
                 gap_ok = (n - l.get("last_mention", l["plant_ch"])) >= 4
                 if gap_ok or rng.random() < 0.18:
                     if l["tier"] == "dead" and n > l["plant_ch"] + 2:
-                        continue
+                        continue  # 死线正文封口（plant+2 后），gap 拉满 → longline_stale
                     mentions.append(_label(l))
                     l["last_mention"] = n
         moods: dict[str, dict] = {}
@@ -576,7 +584,9 @@ def _final_text(plan: dict, n: int) -> str:
 
     body.append(fmt(rng.choice(_OPENERS)))
     para = []
-    for i in range(200):
+    # 1200 段迭代上限 = 字数地狱档（words_mu 5000+）要真注到带内；
+    # 普通书靠 target 提前 break，输出与旧版逐字一致（canon 不含正文，互不污染）
+    for i in range(1200):
         if sum(_chinese_len(x) for x in body + para) >= target:
             break
         if ch["mentions"] and i < len(ch["mentions"]) * 2 and i % 2 == 0:
@@ -598,8 +608,13 @@ def _final_text(plan: dict, n: int) -> str:
     # 情绪 quote 必须以对白形式在正文出现（引文柔性接地要求逐字命中）
     for who, mv in ch["moods"].items():
         body.append(f'{who}道：“{mv["quote"]}”')
-    # 回收句/埋点句：线标签全串入正文（memory 扫描按 name|content|secret 整串命中）
+    # 回收句/埋点句：线标签全串入正文（memory 扫描按 name|content|secret 整串命中）。
+    # F03 前置线例外：正文永不落笔（保证读者画像停 in never/impression 档，
+    # 「回收的前置依赖已冷却」信号在任意 N 下确定命中；其提案 op 照常注册不受影响）。
+    _f03_pre = (plan.get("f03") or {}).get("prereq")
     for lid in ch["resolves"] + ch["plants"]:
+        if lid == _f03_pre and n != plan["lines"][lid]["plant_ch"]:
+            continue  # 前置线只留 plant 章一次锚（gap=N-plant 必冷），后续章零回响
         body.append(fmt("当夜清点，{label}物归原主，这一节算是翻了过去。", label=line_label(plan, lid)))
     # locked 引用句（fact 原文入正文，quote 字段即此句）
     for lk in ch["locked_ops"]:
@@ -734,12 +749,16 @@ def _proposal_ops(plan: dict, n: int) -> dict:
     for pid, patch in person_sets.items():
         ops.append({"table": "persons", "action": "update", "id": pid, "set": patch})
     # 4) 线
+    _pre = (plan.get("f03") or {}).get("prereq")
     for lid in ch["plants"]:
         l = plan["lines"][lid]
         if l["kind"] == "foreshadow":
             op = {"table": "lines", "action": "plant", "kind": "foreshadow", "id": lid,
                   "name": l["name"], "target_ch": l["target"], "weight": l["weight"],
-                  "plan": f"第{ch['n']}回埋，凭{ch['place']}封条兑现"}
+                  # F03 前置线 plan 文案去专名：line_terms_for 会把 blob 里的登记名并进
+                  # 提词，place 若入 plan，正文所有该场地章都成假回响 → 冷旗永不触发
+                  "plan": (f"第{ch['n']}回埋，凭旧库封条兑现" if lid == _pre
+                           else f"第{ch['n']}回埋，凭{ch['place']}封条兑现")}
             if l.get("requires"):
                 op["requires"] = list(l["requires"])
             ops.append(op)
