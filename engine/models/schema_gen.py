@@ -59,7 +59,12 @@ def _drop_null_branch(sub: dict) -> dict:
     if isinstance(sub, dict) and "anyOf" in sub:
         kept = [b for b in sub["anyOf"] if b != {"type": "null"}]
         if len(kept) == 1:
-            return kept[0]
+            merged = dict(kept[0]) if isinstance(kept[0], dict) else kept[0]
+            if isinstance(merged, dict):
+                for k in ("description", "title"):
+                    if k in sub and k not in merged:
+                        merged[k] = sub[k]
+            return merged
         return {**sub, "anyOf": kept}
     return sub
 
@@ -154,7 +159,12 @@ def _strip_null_branches(node):
             kept = [b for b in node["anyOf"] if not (isinstance(b, dict) and b.get("type") == "null")]
             if len(kept) < len(node["anyOf"]):
                 if len(kept) == 1:
-                    return _strip_null_branches(kept[0])
+                    merged = dict(kept[0]) if isinstance(kept[0], dict) else kept[0]
+                    if isinstance(merged, dict):
+                        for k in ("description", "title"):
+                            if k in node and k not in merged:
+                                merged[k] = node[k]
+                    return _strip_null_branches(merged)
                 return _strip_null_branches({**node, "anyOf": kept})
         return {k: _strip_null_branches(v) for k, v in node.items()}
     if isinstance(node, list):

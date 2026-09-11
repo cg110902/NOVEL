@@ -27,6 +27,11 @@ _LINE_ARRS = (("foreshadow", "foreshadows"),
               ("knowledge", "knowledge"))
 
 
+# sealed line_temps 的定位：memory.line_memory_map 的封存快照（档案）＋ derived_stale 的
+# 比对输入。所有判定一律用现算 fresh（check/verify/proposal 均直调 memory），sealed 只读不判。
+# 全派生分工：knowledge_flags→check 上账；holders/scene→verify/双轨已覆盖故不上；temps→档案。
+
+
 def _derive_line_temps(book: Path, data: dict[str, dict]) -> list[dict]:
     from .. import memory as memory_mod
     from .. import state as state_mod

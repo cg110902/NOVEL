@@ -415,6 +415,21 @@ def _amount_scan(text: str, pools: dict) -> list[dict]:
     return out
 
 
+_MATCH_STRIP_RE = re.compile(r"[\s的地得着了过吗呢吧啊]+")
+# ↑虚词表保守版：只收助词/语气词（的/地/得/了/着/过/吗/呢/吧/啊），不收之乎者也——
+# 之/其/乃在书面语人名/线名中出现频率不低，剥掉会误伤，宁漏勿错。
+
+
+def match_norm(s: str) -> str:
+    """提词匹配归一化：去空白＋虚词（记忆层子串匹配用）。
+
+    只增不减：norm 是删字同态，t⊆text ⟹ norm(t)⊆norm(text)，老匹配永不丢失，
+    只新增"无主的空灯"命中"无主空灯"这类换说法命中。调用方须同时归一化
+    提词与被扫文本（提词侧见 line_terms_for，文本侧见各扫描点）。
+    """
+    return _MATCH_STRIP_RE.sub("", str(s or ""))
+
+
 def line_terms_for(g: dict, kind: str, reg_terms: list[str]) -> list[str]:
     """一条台账线在正文中的可检索表面形式（提词）。
 
@@ -448,7 +463,9 @@ def line_terms_for(g: dict, kind: str, reg_terms: list[str]) -> list[str]:
         for tok in re.split(r"[、，,·×/\s]+", str(g.get("parties", ""))):
             if len(tok) >= 2 and tok not in terms:
                 terms.append(tok)
-    return terms
+    # 提词归一化（P2）：与扫描侧 match_norm 配对，换说法可命中；归一化掏空的提词丢弃
+    # （空串匹配一切，必须过滤），单字提词保留（原有行为，不收紧）。
+    return [t for t in (match_norm(t) for t in terms) if t]
 
 
 def line_sort_key(g: dict, kind: str) -> tuple:
@@ -556,7 +573,8 @@ def candidates(book: Path, ch: str) -> dict:
                     due.append((t, sk[1], sk[3], item))
                 elif t <= n + 2:
                     upcoming.append((t, sk[1], sk[3], item))
-            hits = {tm: text.count(tm) for tm in line_terms_for(g, kind, reg_terms) if tm in text}
+            _ntext = match_norm(text)
+            hits = {tm: _ntext.count(tm) for tm in line_terms_for(g, kind, reg_terms) if tm in _ntext}
             if hits:
                 line_hits.append({"id": g["id"], "kind": kind,
                                   "label": str(g.get("name", g.get("parties", g.get("secret", "")))),

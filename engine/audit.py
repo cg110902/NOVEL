@@ -432,6 +432,22 @@ def probe_secret_leakage(text: str, lines: list[str], lines_st: dict,
             if len(nm) >= 2 and nm not in speaker_roster:
                 speaker_roster.append(nm)
     speaker_roster.sort(key=len, reverse=True)
+    # 别名归一：holders 写别名而说话人检出法定名（或反之）时不得误标泄密。
+    # 两边都归一到法定名后比对（registry 失败则回退裸字符串比对，原行为）。
+    def _canon(v) -> str:
+        try:
+            from .objects.registry import build_registry, resolve_ref as _rr
+            ent = _rr(_kn_reg, v)
+            if isinstance(ent, dict) and ent.get("name"):
+                return str(ent["name"])
+        except Exception:
+            pass
+        return str(v or "").strip()
+    try:
+        from .objects.registry import build_registry as _breg
+        _kn_reg = _breg({"entries": [e for e in (ents_st or []) if isinstance(e, dict)]})
+    except Exception:
+        _kn_reg = {}
     for kno in knowledge:
         status = str(kno.get("status", "")).lower()
         if status in ("revealed", "公开"):
@@ -439,7 +455,7 @@ def probe_secret_leakage(text: str, lines: list[str], lines_st: dict,
         kid = kno.get("id", "KNO")
         secret = str(kno.get("secret", "")).strip()
         holders = kno.get("holders") or kno.get("knower") or []
-        knower = set(str(k).strip() for k in holders)
+        knower = {_canon(k) for k in holders if str(k).strip()}
         if not secret or len(secret) < 4:
             continue
 
@@ -477,7 +493,7 @@ def probe_secret_leakage(text: str, lines: list[str], lines_st: dict,
                         if m_spk:
                             speaker = m_spk.group(1).strip()
                             speaker = re.sub(rf"(?:{_SPEAKER_MODS})+$", "", speaker).strip()
-                    if speaker and knower and speaker not in knower:
+                    if speaker and knower and _canon(speaker) not in knower:
                         candidates.append({
                             "probe": "secret_leakage",
                             "severity": "candidate_soft",

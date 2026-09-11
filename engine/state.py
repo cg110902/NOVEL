@@ -199,10 +199,15 @@ timeline.clocks 危机时钟口径（ P3-2：此前字段契约完全未文档�
     · desc（选填，字符串）：危机内容与超时后果；
     · status（选填，默认 "Active"）：Active | Triggered | Defused | Expired（首字母大写）。
   ❌ 没有 id 字段，也没有 deadline_ch——时钟按 name 去重，改名等于新建。
-引文柔性接地（建议携带，绝不阻断）：各条目（entities/lines/ledger.transactions/timeline.events/timeline.clocks/synopsis）
+引文柔性接地（建议携带，绝不阻断）：各条目（entities/lines/locked/cognition/ledger.transactions/timeline.events/timeline.clocks/synopsis/current.present_moods）
   可携带 "quote": "凭印象摘录的本章 final 支撑句"——引擎模糊接地：相似度 ≥85% 视为命中；
   60~85% 提示「近似命中」；更低仅提示「存疑」。全程只出提示、绝不阻断 sync，
   摘录严禁逐字抠字眼浪费算力；但战死/退役等高危变更强烈建议附引文，便于日后回溯审计。
+current 出厂情绪快照（选填；在场角色章末隐含情绪，pack 自动注入 P1 实体块与下章 beats 速查）：
+  {"current": {"present_moods": {"林牧": {"label": "暴怒", "level": 4, "quote": "final 支撑句"}}}}
+  · 键必须是已登记实体名/别名（否则 check 报 mood_character_unknown 警告）；
+  · label 必填（情绪词，不限词表）；level 选填 1~5（1=微澜，5=失控边缘）；
+  · quote 建议携带（走同一套柔性接地）；缺席/空对象 = 本章无特殊情绪交代。
 对象化引用字段（v2，均选填；填了即享精确装配与机械校验）：
   current.time_day（正整数故事日计数）/ pov_ref / place_ref / present_refs（实体 id 或法定名）；
   entities[].injury_level（0~5）/ injury_desc / renown（整数声望）；
@@ -210,7 +215,11 @@ timeline.clocks 危机时钟口径（ P3-2：此前字段契约完全未文档�
   locked[].refs（关联实体引用，免记忆盲区）；cognition[].truth_ref（GUN-/KNO-/EVT-/LOCK-编号）；
   timeline.events[] 可带 id（EVT-编号，缺省自动分配）/ participants / place / causes / consequences。
   按 id 修订事件：{"id": "EVT-003", "replace": "新描述"}；补元数据：{"id": "EVT-003", "participants": [...]}。
-v3 寻址式提案（schema novel-studio.state-mutation/v3；与 v2 二选一，同一文件禁止混写）：\n  取 `proposal new --v3` 骨架；ops 数组每元素 = {table, action, …载荷}，寻址全十一表：\n  · persons/items/factions/places（严格寻址——v3 核心价值：名写错不再静默新建碎片）：\n    create {\"table\":\"persons\",\"action\":\"create\",\"entry\":{\"id\":\"…\",\"name\":\"…\",…}}——\n      id/名必须双不存在；type 缺省按寻址表推断（persons→person…），与地址表矛盾则拒收；\n    update {\"table\":\"items\",\"action\":\"update\",\"id\":\"…\",\"set\":{…}}——id 须存在且归属表一致，\n      set 非空、禁 name/id（改名走手术刀），set.type 变 kind 触发搬迁（警告留痕）；\n    retire {\"table\":\"places\",\"action\":\"retire\",\"id\":\"…\"}——id 须存在且归属表一致。\n    寻址失败（id 不存在/表错位/重名）整案拒收，错误带 [op#N table/action] 定位。\n  · current：{\"table\":\"current\",\"action\":\"update\",\"set\":{要刷新的字段}}（同案重复 set 同键拒收）。\n  · lines：{\"table\":\"lines\",\"action\":\"plant/remind/resolve/…\",\"kind\":\"foreshadow|misunderstanding|knowledge\",…余同 v2 条目字段}（kind 必填，只认这三个值，漏填整案拒收）。\n  · timeline：append_event {\"event\":{…}} / revise_event {\"id\":\"EVT-…\",\"replace\":\"…\"} /\n    append_clock {\"clock\":{…五字段…}} / append_arc {\"arc\":{…}} / append_milestone {\"milestone\":{…}}。\n  · locked/cognition：{\"table\":\"locked\",\"action\":\"plant/upsert/retire\",…余同 v2 条目字段}。\n  · ledger：append_transaction {\"entry\":{…流水…}} / declare_pool {\"pool\":\"池键名\",\"spec\":{\"name\",\"unit\",\"initial\"}}。\n  · synopsis：{\"table\":\"synopsis\",\"action\":\"set\",…余同 v2 synopsis 字段}。\n  分层门：信封错→先修信封；寻址错→[op#N]点名；字段错→沿用 v2 措辞。\n  locked_candidates 无 v3 op（要用请写 v2 提案）。
+  引用完整性（分两档，选填不罚、填错点名）：pov_ref/place_ref/present_refs 悬空是 error（state_inconsistent，
+  阻断）；其余 participants/refs/holders/character/address 键须命中（否则 entity_ref_unknown warning）；
+  truth_ref 只收 GUN-/KNO-/MIS-/EVT-/LOCK-编号，causes/consequences 只收 EVT-编号且须存在（否则 dangling_ref）。
+  EVT place 为场景描述自由文本，不查。
+v3 寻址式提案（schema novel-studio.state-mutation/v3；与 v2 二选一，同一文件禁止混写）：\n  取 `proposal new --v3` 骨架；ops 数组每元素 = {table, action, …载荷}，寻址全十一表：\n  · persons/items/factions/places（严格寻址——v3 核心价值：名写错不再静默新建碎片）：\n    create {\"table\":\"persons\",\"action\":\"create\",\"entry\":{\"id\":\"…\",\"name\":\"…\",…}}——\n      id/名必须双不存在；type 缺省按寻址表推断（persons→person…），与地址表矛盾则拒收；\n    update {\"table\":\"items\",\"action\":\"update\",\"id\":\"…\",\"set\":{…}}——id 须存在且归属表一致，\n      set 非空、禁 name/id（改名走手术刀），set.type 变 kind 触发搬迁（警告留痕）；\n    retire {\"table\":\"places\",\"action\":\"retire\",\"id\":\"…\"}——id 须存在且归属表一致。\n    寻址失败（id 不存在/表错位/重名）整案拒收，错误带 [op#N table/action] 定位。\n  · current：{\"table\":\"current\",\"action\":\"update\",\"set\":{要刷新的字段}}（同案重复 set 同键拒收）。\n  · lines：{\"table\":\"lines\",\"action\":\"plant/remind/resolve/…\",\"kind\":\"foreshadow|misunderstanding|knowledge\",…余同 v2 条目字段}（kind 必填，只认这三个值，漏填整案拒收）。\n  · timeline：append_event {\"event\":{…}} / revise_event {\"id\":\"EVT-…\",\"replace\":\"…\"} /\n    append_clock {\"clock\":{…五字段…}} / append_arc {\"arc\":{…}} / append_milestone {\"milestone\":{…}}。\n  · locked/cognition：{\"table\":\"locked\",\"action\":\"plant/upsert/retire\",…余同 v2 条目字段}。\n  · ledger：append_transaction {\"entry\":{…流水…}} / declare_pool {\"pool\":\"池键名\",\"spec\":{\"name\",\"unit\",\"initial\"}}。\n  · synopsis：{\"table\":\"synopsis\",\"action\":\"set\",…余同 v2 synopsis 字段}。\n  分层门：信封错→先修信封；寻址错→[op#N]点名；字段错→沿用 v2 措辞。\n  locked_candidates 无 v3 op（要用请写 v2 提案）。\n  locked 提名经 sync 记入 log/locked_candidates.jsonl 待审；审定后走 locked plant 入账（fact 原文复用自动核销），check 会提醒未审定项。
   ⚠️ consequences 是历史遗留分区：引擎只出提示、**不落盘**（合并时显式降级警告）——
      因果后果请写进 `cognition_delta`（角色认知变化）或 `timeline.events[].causes/consequences`；
      细纲声明"本章应发生而正文没写"的事，写进回执备注交主控，**不要**用 consequences 记账。\n注：提案写入后由 Stage 5 主控统一运行 `python studio.py sync ch_XXX` 校验并合并（支持 --dry-run 预演）。
@@ -1220,6 +1229,50 @@ def _merge_current(state: dict, patch: dict, rep: dict) -> None:
                 rep["warnings"].append("current.present_refs 为空数组，按未提供处理")
                 continue
             state["present_refs"] = [str(x) for x in v if str(x).strip()]
+        elif k == "present_moods":
+            # 出厂情绪快照：整拍覆盖（与 present_characters 同语义），逐条目校验后落盘。
+            if not isinstance(v, dict):
+                rep["errors"].append("current.present_moods 必须为对象 {角色名: {label, level?, quote?}}")
+                continue
+            if not v:
+                rep["warnings"].append("current.present_moods 为空对象，按未提供处理")
+                continue
+            bad = False
+            cleaned: dict[str, dict] = {}
+            for _mname, _m in v.items():
+                if not str(_mname).strip() or not isinstance(_m, dict):
+                    rep["errors"].append(f"current.present_moods「{_mname}」必须为情绪对象")
+                    bad = True
+                    continue
+                _unknown = set(_m) - {"label", "level", "quote"}
+                if _unknown:
+                    rep["errors"].append(
+                        f"current.present_moods「{_mname}」含未知键: {sorted(_unknown)}（只收 label/level/quote）")
+                    bad = True
+                    continue
+                _label = _m.get("label")
+                if not isinstance(_label, str) or not _label.strip():
+                    rep["errors"].append(f"current.present_moods「{_mname}」label 必填非空字符串")
+                    bad = True
+                    continue
+                _entry: dict = {"label": _label.strip()}
+                if "level" in _m and _m["level"] is not None:
+                    if (not isinstance(_m["level"], int) or isinstance(_m["level"], bool)
+                            or not 1 <= _m["level"] <= 5):
+                        rep["errors"].append(f"current.present_moods「{_mname}」level 必须为 1~5 整数")
+                        bad = True
+                        continue
+                    _entry["level"] = _m["level"]
+                if "quote" in _m and _m["quote"] is not None:
+                    if not isinstance(_m["quote"], str):
+                        rep["errors"].append(f"current.present_moods「{_mname}」quote 必须为字符串")
+                        bad = True
+                        continue
+                    _entry["quote"] = _m["quote"]
+                cleaned[str(_mname)] = _entry
+            if bad:
+                continue
+            state["present_moods"] = cleaned
         elif isinstance(v, str):
             if not v:
                 rep["warnings"].append(f"current.{k} 为空字符串，按未提供处理")
@@ -1231,6 +1284,14 @@ def _merge_current(state: dict, patch: dict, rep: dict) -> None:
             rep["errors"].append(f"current.{k} 必须为字符串")
             continue
         rep["updated"].append(f"📍 current.{k} 已更新")
+    # time/time_day 双轨对账（merge 侧，与 check 侧 time_day_mismatch 同口径）：
+    # time 字符串含第N日且与 time_day 不一致 → 警告（以 time_day 为准）。
+    _day_from_time = _extract_day_num(str(state.get("time", "")))
+    _td = state.get("time_day")
+    if _day_from_time is not None and type(_td) is int and _day_from_time != _td:
+        rep["warnings"].append(
+            f"⏳ time/time_day 双轨不一致：time「{state.get('time', '')}」（第 {_day_from_time} 日）"
+            f"≠ time_day={_td}——以 time_day 为准，请对齐 time 字符串（闪回/倒叙章请忽略）")
 
 
 def _merge_entities(data: dict, items: list[dict], rep: dict) -> None:
@@ -1260,7 +1321,47 @@ def _merge_entities(data: dict, items: list[dict], rep: dict) -> None:
             if ent.get("name"):
                 name_idx[str(ent["name"])] = (k, ent)
     valid_types = _ENTITY_TYPES
-    for e in items:
+    # 别名防盗：提案不得把已属他实体的别名挂到自己名下（跨章累积会静默改写寻址——
+    # validate 只查同提案内重复，此处是跨提案/跨表/含 v3 的唯一咽喉）。
+    # 同名复述（更新同一实体并重带其自有别名）放行；偷名挂靠整项拒收。
+    _cur_alias_owner: dict[str, str] = {}
+    for k in KIND_TABLES:
+        for ent in tables[k]["entries"]:
+            if not isinstance(ent, dict):
+                continue
+            for a in (ent.get("aliases") or []):
+                if isinstance(a, str) and a.strip():
+                    _cur_alias_owner.setdefault(a.strip(), str(ent.get("name", "")))
+    _cur_names = set(name_idx)
+    _steal_idx: set[int] = set()
+    _prop_alias: dict[str, str] = {}
+    for _idx, _e in enumerate(items):
+        if not isinstance(_e, dict):
+            continue
+        _ename = str(_e.get("name", "")).strip()
+        for a in (_e.get("aliases") or []):
+            if not (isinstance(a, str) and a.strip()):
+                continue
+            a = a.strip()
+            _owner = _cur_alias_owner.get(a, "")
+            if _owner and _owner != _ename:
+                rep["errors"].append(
+                    f"实体「{_ename}」别名「{a}」已被「{_owner}」占用，拒绝挂靠"
+                    f"（先用 state set 从「{_owner}」移除该别名）")
+                _steal_idx.add(_idx)
+                break
+            _first = _prop_alias.setdefault(a, _ename)
+            if _first != _ename:
+                rep["errors"].append(
+                    f"entities 同提案别名「{a}」被多实体占用: {_first} / {_ename}")
+                _steal_idx.add(_idx)
+                break
+            if a in _cur_names and a != _ename:
+                rep["warnings"].append(
+                    f"实体「{_ename}」别名「{a}」与既有实体法定名重名：寻址将永远命中后者")
+    for _loop_idx, e in enumerate(items):
+        if _loop_idx in _steal_idx:
+            continue
         action, name = e.get("action", "upsert"), e["name"]
         eid = e.get("id")
         hit = None
@@ -1363,6 +1464,10 @@ def _merge_entities(data: dict, items: list[dict], rep: dict) -> None:
                     found.update(new_r)
                 else:
                     existing_rels.append(new_r)
+        if hit is None:
+            rep["warnings"].append(
+                f"🆕 实体新登记：「{name}」（四表此前无此名/ID）——"
+                "若为既有实体请核对名字是否打错（打错会留下碎片，事后用改名手术刀合并）；确认新角色请忽略")
         rep["updated"].append(f"🗂️ 实体登记/更新：{name}")
 def _same_line_content(kind: str, existing: dict, g: dict, ch_num: int) -> bool:
     """判断重复 plant 的传入内容与既有条目是否逐字段一致（幂等重放判定）。"""
@@ -2103,6 +2208,27 @@ def _merge_proposal_into(data: dict, proposal: dict, ch, ch_num, rep: dict) -> N
         _merge_cognition(data["cognition"], cog_patch, ch, rep)
     if proposal.get("locked_candidates"):
         rep["updated"].append(f"🔒 记录 {len(proposal['locked_candidates'])} 条不可逆事实提名（待主控审定入账）")
+        rep["locked_candidates"] = [
+            {"fact": str(it.get("fact", "")), "kind": str(it.get("kind", "") or ""),
+             "quote": str(it.get("quote", "") or ""), "note": str(it.get("note", "") or "")}
+            for it in (proposal.get("locked_candidates") or []) if isinstance(it, dict)]
+
+
+def _append_locked_candidates(book: Path, ch: str, op: str, items: list) -> None:
+    """提名持久化：append-only 日志（log/locked_candidates.jsonl），供 check 核销提醒。
+    日志非 SSOT：入账核销靠 fact 归一包含判定（见 checks）；放弃提名删行即可。"""
+    import datetime
+    import json
+    p = Path(book) / "log" / "locked_candidates.jsonl"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    ts = datetime.datetime.now().isoformat(timespec="seconds")
+    with open(p, "a", encoding="utf-8") as fh:
+        for it in items:
+            it = it if isinstance(it, dict) else {}
+            fh.write(json.dumps({"chapter": ch, "op_id": op, "fact": str(it.get("fact", "")),
+                                 "kind": str(it.get("kind", "")), "quote": str(it.get("quote", "")),
+                                 "note": str(it.get("note", "")), "ts": ts},
+                                ensure_ascii=False) + "\n")
 
 
 def apply_proposal(book: Path, proposal: dict, expected_chapter: str | None = None,
@@ -2274,6 +2400,12 @@ def apply_proposal(book: Path, proposal: dict, expected_chapter: str | None = No
             raise ValueError("; ".join(rep["errors"])) from exc
         rep["errors"].append("已整体回滚")
         rep["rollback"] = True
+    if not rep.get("errors") and rep.get("locked_candidates"):
+        # 提名落盘在 commit 之后：日志失败不得回滚已成功合并（降级为 warning 留痕）。
+        try:
+            _append_locked_candidates(book, ch, op, rep["locked_candidates"])
+        except OSError as exc:
+            rep["warnings"].append(f"locked 提名落盘失败（提案已合并，提名见 processed 原文）：{exc}")
     return rep
 
 
@@ -2593,6 +2725,13 @@ def verify_data(data: dict[str, dict]) -> list[str]:
     from .objects.registry import build_registry
     from .objects.registry import resolve_ref as _reg_resolve
     _reg = build_registry({"entries": ent_entries})
+    # 注册表确定性：id 碰撞/别名多主会让寻址静默错位（下游 audit/包络/recall 全错），
+    # 属结构损坏，硬错（state set 只拦新错，老书可在污染现场直接修复）。
+    for _prob in (_reg.get("problems") or []):
+        if _prob.get("code") == "id_collision":
+            errors.append(f"实体注册表 {_prob.get('msg')}（id 必须全局唯一，请改其中一个）")
+        elif _prob.get("code") == "alias_multi_owner":
+            errors.append(f"实体注册表 {_prob.get('msg')}（请用 state set 从其中一方移除该别名）")
 
     def _resolve_ref(ref: str):
         return _reg_resolve(_reg, ref)

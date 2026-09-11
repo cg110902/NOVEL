@@ -14,6 +14,15 @@ class Loadout(BaseModel):
     equipped_items: list[str] = Field(default_factory=list, description="常驻佩戴/激活法宝道具")
 
 
+class MoodEntry(BaseModel):
+    """单角色章末情绪快照（隐含情绪：角色真实内在状态，可与表面言行不一致）。"""
+    model_config = ConfigDict(extra="forbid", populate_by_name=True, str_strip_whitespace=True)
+
+    label: str = Field(..., min_length=1, description="情绪词（如 暴怒/隐忍/惊惧；advisory 非穷举，不做语义立法）")
+    level: Optional[int] = Field(None, ge=1, le=5, description="烈度 1~5（1=微澜，5=失控边缘；缺省=未评级）")
+    quote: Optional[str] = Field(None, description="final 原文佐证（情绪落笔句，经柔性接地）")
+
+
 class CurrentState(BaseModel):
     model_config = ConfigDict(extra="forbid", populate_by_name=True, str_strip_whitespace=True)
 
@@ -38,3 +47,5 @@ class CurrentState(BaseModel):
     pov_ref: Optional[str] = Field(None, description="视角角色对象引用（实体 id 如 p_001，或法定名）")
     place_ref: Optional[str] = Field(None, description="当前地点对象引用（实体 id 如 loc_012，或法定名）")
     present_refs: list[str] = Field(default_factory=list, description="在场角色对象引用清单（实体 id 或法定名，与 present_characters 并存）")
+    # 出厂情绪快照（章效状态：只记章末一拍，历史演进走 changelog 回放；缺席=本章无特殊情绪交代）
+    present_moods: dict[str, MoodEntry] = Field(default_factory=dict, description="在场角色隐含情绪快照 {角色名: {label, level?, quote?}}")

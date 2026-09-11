@@ -17,11 +17,15 @@
             "type": "string"
           },
           "chapter": {
-            "type": "string"
+            "type": "string",
+            "description": "事件发生章节",
+            "title": "Chapter"
           },
           "id": {
             "pattern": "^EVT-\\d{3,}$",
-            "type": "string"
+            "type": "string",
+            "description": "事件唯一编号（如 EVT-001；缺省由引擎自动分配）",
+            "title": "Id"
           },
           "participants": {
             "description": "参与实体引用（实体 id 或法定名）",
@@ -32,7 +36,9 @@
             "type": "array"
           },
           "place": {
-            "type": "string"
+            "type": "string",
+            "description": "发生地点引用（实体 id 或法定名）",
+            "title": "Place"
           },
           "causes": {
             "description": "前因事件引用（EVT-编号）",
@@ -72,19 +78,24 @@
             "type": "string"
           },
           "baseline": {
-            "type": "string"
+            "type": "string",
+            "title": "Baseline"
           },
           "stage": {
-            "type": "string"
+            "type": "string",
+            "title": "Stage"
           },
           "inciting_event": {
-            "type": "string"
+            "type": "string",
+            "title": "Inciting Event"
           },
           "strategy": {
-            "type": "string"
+            "type": "string",
+            "title": "Strategy"
           },
           "ultimate": {
-            "type": "string"
+            "type": "string",
+            "title": "Ultimate"
           },
           "strategy_history": {
             "items": {
@@ -143,10 +154,13 @@
               "critical"
             ],
             "title": "ClockUrgency",
-            "type": "string"
+            "type": "string",
+            "description": "紧迫等级"
           },
           "desc": {
-            "type": "string"
+            "type": "string",
+            "description": "危机内容与超时后果简述",
+            "title": "Desc"
           },
           "status": {
             "enum": [
@@ -205,10 +219,14 @@
             "type": "string"
           },
           "desc": {
-            "type": "string"
+            "type": "string",
+            "description": "里程碑意义与达成标准",
+            "title": "Desc"
           },
           "achieved_ch": {
-            "type": "string"
+            "type": "string",
+            "description": "实际达成章节 (如 ch_012)",
+            "title": "Achieved Ch"
           }
         },
         "required": [

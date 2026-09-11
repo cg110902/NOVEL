@@ -452,6 +452,11 @@ def _cmd_proposal_check(book: Path, ch: str, args) -> int:
             tm = "、".join(f"{x['id']}(计划 ch_{x['planned_ch']:03d}，本章 ch_{x['chapter']:03d}，"
                            f"{'提前' if x['early'] else '逾期'})" for x in facts["kno_reveal_timing"])
             print(f"   知识线揭示时机与计划不符: {tm}（改不改归主控）")
+        if facts.get("resolve_cold_prereqs"):
+            cp = "；".join(f"{x['id']}←前置{x['req']}《{x['req_label']}》"
+                           + (f"已{x['gap']}章未见" if x.get("gap") is not None else "正文从未落笔")
+                           for x in facts["resolve_cold_prereqs"])
+            print(f"   回收的前置依赖已冷却: {cp}（兑现前建议先回响锚定，改不改归主控）")
         if facts.get("present_mentions") is not None:
             pm = facts["present_mentions"]
             pm_str = "、".join(f"{k}×{v}" for k, v in sorted(pm.items(), key=lambda x: -x[1])[:8]) or "无"
@@ -1136,6 +1141,14 @@ def _object_payload(book, ref: str) -> dict:
         kind = kind_of_id(ent.get("id"))
         if kind == "unknown":
             kind = _OBJECT_ENTITY_KIND.get(str(ent.get("type", "")), "entity")
+
+        def _same(v) -> bool:
+            """跨表人名比对：法定名 / 别名 / id 三者等价（resolve_ref 归一）。"""
+            s = str(v or "")
+            if s == name or s == ref:
+                return True
+            hit = resolve_ref(reg, s)
+            return isinstance(hit, dict) and hit.get("name") == name
         rels = []
         for r in ent.get("relations", []) or []:
             if not isinstance(r, dict):
@@ -1151,14 +1164,14 @@ def _object_payload(book, ref: str) -> dict:
                     "truth_ref": str(b.get("truth_ref", "") or ""),
                     "since_ch": str(b.get("since_ch", ""))}
                    for b in _load("cognition").get("entries", []) or []
-                   if isinstance(b, dict) and str(b.get("character", "")) == name]
+                   if isinstance(b, dict) and _same(b.get("character"))]
         try:
             flags = [f for f in _load("derived").get("knowledge_flags", []) or []
-                     if isinstance(f, dict) and f.get("character") == name]
+                     if isinstance(f, dict) and _same(f.get("character"))]
         except (ValueError, FileNotFoundError):
             flags = []
         holds = [str(e.get("name", "")) for e in ents
-                 if isinstance(e, dict) and str(e.get("holder", "") or "") == name]
+                 if isinstance(e, dict) and _same(e.get("holder"))]
         cur = _load("current")
         present = (name in (cur.get("present_characters") or [])
                    or any((resolve_ref(reg, r) or {}).get("name") == name
@@ -1166,11 +1179,24 @@ def _object_payload(book, ref: str) -> dict:
         locks = [str(le.get("id", "")) for le in _load("locked").get("entries", []) or []
                  if isinstance(le, dict)
                  and (name in str(le.get("fact", ""))
-                      or ref in (le.get("refs") or []) or name in (le.get("refs") or []))]
+                      or any(_same(r) for r in (le.get("refs") or [])))]
+        moods = cur.get("present_moods") or {}
+        _mood = moods.get(name)
+        if _mood is None:
+            for _a in aliases:
+                if _a in moods:
+                    _mood = moods[_a]
+                    break
+        mood = None
+        if isinstance(_mood, dict) and str(_mood.get("label", "") or ""):
+            mood = {"label": str(_mood["label"])}
+            if type(_mood.get("level")) is int:
+                mood["level"] = _mood["level"]
         env = to_envelope(kind, ent,
                           derived={"relations": rels, "beliefs": beliefs,
                                    "knowledge_flags": flags, "holds": holds,
-                                   "present": present, "locks": locks},
+                                   "present": present, "locks": locks,
+                                   "mood": mood},
                           prov={"table": "entities"})
         return {"ref": ref, "found": True, **env}
 
@@ -1246,6 +1272,10 @@ def _render_object_text(payload: dict) -> None:
         print("  在场: 是（当前现场）")
     if d.get("locks"):
         print(f"  相关锁: {'、'.join(d['locks'])}")
+    if d.get("mood"):
+        _m = d["mood"]
+        print(f"  情绪: {_m.get('label', '')}"
+              + (f"（烈度{_m['level']}）" if _m.get("level") is not None else ""))
 
 
 def cmd_state(args) -> int:

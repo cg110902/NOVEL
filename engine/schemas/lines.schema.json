@@ -55,7 +55,9 @@
             "type": "integer"
           },
           "plan": {
-            "type": "string"
+            "type": "string",
+            "description": "预定回收方案",
+            "title": "Plan"
           },
           "requires": {
             "description": "前置依赖线索ID列表，如 ['GUN-001']",
@@ -100,7 +102,9 @@
             "type": "string"
           },
           "truth": {
-            "type": "string"
+            "type": "string",
+            "description": "事实真相，如'实为刚刚觉醒金手指'",
+            "title": "Truth"
           },
           "level": {
             "default": 1,
@@ -207,7 +211,9 @@
             "type": "integer"
           },
           "note": {
-            "type": "string"
+            "type": "string",
+            "description": "谁不得知晓或揭示约束",
+            "title": "Note"
           },
           "requires": {
             "description": "前置依赖线索ID列表",

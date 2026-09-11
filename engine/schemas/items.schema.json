@@ -8,7 +8,9 @@
         "properties": {
           "id": {
             "pattern": "^[a-zA-Z0-9_#-]+$",
-            "type": "string"
+            "type": "string",
+            "description": "实体全局稳定唯一业务主键编号，如 p_001, it_001, fac_001, loc_001",
+            "title": "Id"
           },
           "name": {
             "description": "实体唯一名称",
@@ -25,7 +27,8 @@
               "other"
             ],
             "title": "EntityType",
-            "type": "string"
+            "type": "string",
+            "description": "实体类别"
           },
           "aliases": {
             "description": "别名列表",
@@ -36,10 +39,14 @@
             "type": "array"
           },
           "card": {
-            "type": "string"
+            "type": "string",
+            "description": "对应卡片路径，如 characters/protagonist.md",
+            "title": "Card"
           },
           "summary": {
-            "type": "string"
+            "type": "string",
+            "description": "一句话实体简介",
+            "title": "Summary"
           },
           "status": {
             "enum": [
@@ -47,22 +54,33 @@
               "retired"
             ],
             "title": "EntityStatus",
-            "type": "string"
+            "type": "string",
+            "description": "活跃/退场状态"
           },
           "tier_rank": {
-            "type": "integer"
+            "type": "integer",
+            "description": "标准化实力/阶层档位(1-12数字标尺，便于跨题材比大小)",
+            "title": "Tier Rank"
           },
           "tier_name": {
-            "type": "string"
+            "type": "string",
+            "description": "阶层全称（如：辟海境后期 / S级战略异能者 / 集团执行总裁）",
+            "title": "Tier Name"
           },
           "power_benchmark": {
-            "type": "string"
+            "type": "string",
+            "description": "破坏力/表现力物理实物标尺（如：单手掷出万斤巨石，剑气裂百米悬崖）",
+            "title": "Power Benchmark"
           },
           "realm": {
-            "type": "string"
+            "type": "string",
+            "description": "人物境界/阶位/社会职务（兼容旧版字段）",
+            "title": "Realm"
           },
           "sensory_anchor": {
-            "type": "string"
+            "type": "string",
+            "description": "感官外貌/标志性穿戴/物象记忆点",
+            "title": "Sensory Anchor"
           },
           "micro_actions": {
             "description": "习惯微动作与神态库",
@@ -81,7 +99,9 @@
             "type": "object"
           },
           "faction": {
-            "type": "string"
+            "type": "string",
+            "description": "人物所属势力组织名",
+            "title": "Faction"
           },
           "life_status": {
             "enum": [
@@ -90,7 +110,8 @@
               "missing"
             ],
             "title": "LifeStatus",
-            "type": "string"
+            "type": "string",
+            "description": "生命状态"
           },
           "attitude": {
             "enum": [
@@ -100,35 +121,52 @@
               "allied"
             ],
             "title": "FactionAttitude",
-            "type": "string"
+            "type": "string",
+            "description": "势力政治阵营立场"
           },
           "holder": {
-            "type": "string"
+            "type": "string",
+            "description": "道具当前持有者名",
+            "title": "Holder"
           },
           "location": {
-            "type": "string"
+            "type": "string",
+            "description": "道具当前所在地点",
+            "title": "Location"
           },
           "condition": {
-            "type": "string"
+            "type": "string",
+            "description": "道具当前完损状态",
+            "title": "Condition"
           },
           "charges": {
             "minimum": 0,
-            "type": "integer"
+            "type": "integer",
+            "description": "道具剩余使用次数/充能",
+            "title": "Charges"
           },
           "max_charges": {
             "minimum": 1,
-            "type": "integer"
+            "type": "integer",
+            "description": "道具最大使用次数/上限",
+            "title": "Max Charges"
           },
           "cost_per_use": {
-            "type": "string"
+            "type": "string",
+            "description": "道具单次催动代价/消耗",
+            "title": "Cost Per Use"
           },
           "durability": {
-            "type": "string"
+            "type": "string",
+            "description": "道具耐久/材质物象",
+            "title": "Durability"
           },
           "scale_tier": {
             "maximum": 10,
             "minimum": 1,
-            "type": "integer"
+            "type": "integer",
+            "description": "势力规模等级(1-10)",
+            "title": "Scale Tier"
           },
           "core_assets": {
             "description": "势力核心垄断资产与王牌",
@@ -149,7 +187,9 @@
           "danger_tier": {
             "maximum": 10,
             "minimum": 1,
-            "type": "integer"
+            "type": "integer",
+            "description": "地点危险度(1-10)",
+            "title": "Danger Tier"
           },
           "environment_rules": {
             "description": "地点特殊环境律则",
@@ -160,13 +200,19 @@
             "type": "array"
           },
           "dossier": {
-            "type": "string"
+            "type": "string",
+            "description": "恩怨羁绊、历史过节与交互备忘",
+            "title": "Dossier"
           },
           "scope": {
-            "type": "string"
+            "type": "string",
+            "description": "所属分卷生命周期（如 vol_01；省略表示全书通用）",
+            "title": "Scope"
           },
           "golden_quote": {
-            "type": "string"
+            "type": "string",
+            "description": "首次高光定稿切片（100~200字物象细节）",
+            "title": "Golden Quote"
           },
           "relations": {
             "description": "与特定角色的动态张力关系",
@@ -184,20 +230,28 @@
                   "type": "string"
                 },
                 "desc": {
-                  "type": "string"
+                  "type": "string",
+                  "description": "张力细节说明",
+                  "title": "Desc"
                 },
                 "strength": {
                   "maximum": 5,
                   "minimum": 1,
-                  "type": "integer"
+                  "type": "integer",
+                  "description": "关系强度 1~5（1=泛泛之交/小过节，5=生死与共/不共戴天）",
+                  "title": "Strength"
                 },
                 "status": {
                   "pattern": "^(active|resolved)$",
-                  "type": "string"
+                  "type": "string",
+                  "description": "关系状态：active 存续 | resolved 已了结",
+                  "title": "Status"
                 },
                 "since_ch": {
                   "pattern": "^ch_\\d{3,}$",
-                  "type": "string"
+                  "type": "string",
+                  "description": "关系确立章节（如 ch_007）",
+                  "title": "Since Ch"
                 }
               },
               "required": [
@@ -213,13 +267,19 @@
           "injury_level": {
             "maximum": 5,
             "minimum": 0,
-            "type": "integer"
+            "type": "integer",
+            "description": "伤势等级 0~5（0=无伤，5=濒死；人物专用）",
+            "title": "Injury Level"
           },
           "injury_desc": {
-            "type": "string"
+            "type": "string",
+            "description": "伤势文字说明（如\"左臂骨折\"，与 injury_level 同写）",
+            "title": "Injury Desc"
           },
           "renown": {
-            "type": "integer"
+            "type": "integer",
+            "description": "声望/悬赏值（人物/势力；正负皆可，正=美名，负=恶名/悬赏）",
+            "title": "Renown"
           }
         },
         "required": [

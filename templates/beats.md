@@ -13,8 +13,6 @@ tension_curve: {{slot:tension_curve|动态起伏}}
 # 情绪流体力学（蓄水泵）：1-10 张力值；Suppression(蓄水) | Simmering(试探) | Eruption(爆发) | Harvest(清点) | ‌DailyFun(趣味日常)
 tension_score: {{slot:tension_score|6}}
 stage_mode: {{slot:stage_mode|Simmering}}
-# suppression_factors: <!-- 若为 Suppression 建议填写：压迫阻力或隐忍限制，蓄满戏剧弹簧（引擎不强制） -->
-# release_trigger: <!-- 若为 Eruption 建议填写：掀开底牌反击的高能爽感瞬间（引擎不强制） -->
 style_notes: 通俗直白大白话 | 极度好扫读 | 拒绝冷脸与神色淡然 | 动作即终点斩断反刍 | 物理刀口截断
 editor_extra: 
 # world_refs: <!-- 选填（建议长篇中后期每章都填，省上下文）：本章必需的世界节关键词，逗号/顿号分隔。
@@ -61,6 +59,14 @@ editor_extra:
      - 动作潜台词：眼神避开视线、紧绷的嘴角松弛、指尖微颤（调用 characters/*.md 专属微动作，严禁抽象抒情）。 -->
 - **心理温差推进**：{{slot:beat_emotional_pivot|核心角色之间在当章冲突中产生的具体信任度或心理温差挪动}}
 - **微动作与潜台词外化**：{{slot:beat_emotional_actions|具体的眼神、肢体伴随动作与带刺/带暖意（感情）的对白机锋}}
+
+#### 出厂情绪表（本章在场角色的隐含情绪 · 主控填 · Drafter/Reader 共同继承）
+<!-- 隐含情绪 = 角色真实内在状态（可与表面言行不一致——不一致才有机锋）。
+     格式（Reader 按此核对 final 落笔并登记 current.present_moods 上账；无特殊情绪交代则本节写"无"）：
+     - 林牧：暴怒（4/5）
+     - 苏九娘：隐忍（3/5）
+     烈度 1~5（1=微澜，5=失控边缘）。人名须用登记名/别名，否则 check 报 mood_character_unknown。 -->
+- 出厂情绪：（无特殊交代写"无"，否则按注释格式逐行填写）
 
 ---
 

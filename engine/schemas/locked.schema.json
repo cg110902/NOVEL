@@ -51,7 +51,9 @@
             "type": "string"
           },
           "note": {
-            "type": "string"
+            "type": "string",
+            "description": "写作红线执行提示 (如 '严禁再次出场，回忆除外')",
+            "title": "Note"
           },
           "refs": {
             "description": "关联对象引用（实体 id/法定名；供记忆层精确追踪，免于盲区）",

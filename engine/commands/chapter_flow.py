@@ -254,7 +254,48 @@ def cmd_check(args) -> int:
         else:
             print(scorecard.render_trend(book))
         return 0
-    report = checks.run_checks(book)
+    if getattr(args, "accepted", False):
+        # 只列基线：纯读，不跑体检、不记分
+        acc = checks.load_accepted(book)
+        recs = [{"fp": fp, "code": r.get("code", ""), "msg": r.get("msg", ""),
+                 "ts": r.get("ts", "")} for fp, r in sorted(acc.items())]
+        if args.json:
+            print(json.dumps({"accepted": recs}, ensure_ascii=False, indent=2))
+        elif not recs:
+            print("（确认基线为空：用 check --accept <fp> 把已裁决的 warnings/infos 消音）")
+        else:
+            print(f"📌 确认基线（{len(recs)} 条；check --unaccept <fp> 撤销）：")
+            for r in recs:
+                print(f"   {r['fp']} [{r['code']}] {r['msg'][:90]}")
+        return 0
+    if getattr(args, "accept", None):
+        # 确认消音：对 full 全量解析（已确认的也可命中→幂等提示），只记分一次？不——
+        # 基线操作不是体检，不记 scorecard。
+        queries = [q.strip() for q in str(args.accept).split(",") if q.strip()]
+        report = checks.run_checks(book, full=True)
+        done, notes = checks.accept_findings(book, report, queries)
+        if args.json:
+            print(json.dumps({"ok": True, "accepted": done, "notes": notes}, ensure_ascii=False))
+        else:
+            if done:
+                print(f"✅ 已确认 {len(done)} 条：{', '.join(done)}（下次 check 自动折叠；--full 可重见）")
+            for n in notes:
+                print(f"   ℹ️ {n}")
+            if not done and not notes:
+                print("（无有效 fp，请从 check --json 的 fp 字段复制，前缀≥6 位）")
+        return 0
+    if getattr(args, "unaccept", None):
+        queries = [q.strip() for q in str(args.unaccept).split(",") if q.strip()]
+        done, notes = checks.unaccept_findings(book, queries)
+        if args.json:
+            print(json.dumps({"ok": True, "unaccepted": done, "notes": notes}, ensure_ascii=False))
+        else:
+            if done:
+                print(f"↩️ 已撤销确认 {len(done)} 条：{', '.join(done)}（下次 check 恢复提醒）")
+            for n in notes:
+                print(f"   ℹ️ {n}")
+        return 0
+    report = checks.run_checks(book, full=bool(getattr(args, "full", False)))
     scorecard.append_score(book, report)  # 分数曲线积累（log/scorecard.jsonl）
     if args.json:
         print(json.dumps(report, ensure_ascii=False, indent=2))
@@ -311,6 +352,13 @@ def cmd_check(args) -> int:
         print(f" 📊 汇总：System errors {len(sys_errs)}, warnings {len(sys_warns)}"
               f" ｜ Narrative errors {len(nar_errs)}, warnings {len(nar_warns)}"
               f" ｜ 定稿章数 {report['stats'].get('final_chapters', 0)}")
+        if report.get("stats", {}).get("accepted_hidden"):
+            print(f" 📌 另有 {report['stats']['accepted_hidden']} 条已确认 findings 已折叠"
+                  f"（check --accepted 查看，--full 重见全量）")
+        _hc_note = checks.history_collapse_note(
+            report.get("stats", {}).get("history_collapsed_by_code") or {})
+        if _hc_note:
+            print(f" {_hc_note}")
     return 0 if report["ok"] else 1
 
 
@@ -785,8 +833,14 @@ def _consistency_section(book, n: int, cur: dict, ents: list[dict], lines_st: di
             anchor_info = ""
             if ent.get("sensory_anchor"):
                 anchor_info = f" ｜ 物象: {ent['sensory_anchor']}"
+            mood_info = ""
+            _mm = (cur.get("present_moods") or {}).get(ent["name"])
+            if isinstance(_mm, dict) and _mm.get("label"):
+                _lvl = f"·{_mm['level']}/5" if type(_mm.get("level")) is int else ""
+                mood_info = f" ｜ 心境：{_mm['label']}{_lvl}"
             summary = _clip(str(ent.get("summary", "") or ""), 60)
-            out.append(f"- {eid_part}{name_part}{tier_info} ｜ {ent.get('type', 'other')}{anchor_info} ｜ {summary}")
+            out.append(f"- {eid_part}{name_part}{tier_info} ｜ {ent.get('type', 'other')}"
+                       f"{anchor_info}{mood_info} ｜ {summary}")
         out.append("")
     if kno_list:
         out += ["### 知情差边界（KNO 未揭示——对手戏严防「不该知道却说漏」穿帮）", ""]
@@ -938,6 +992,9 @@ def cmd_beats(args) -> int:
     except (ValueError, OSError):
         cur = {}  # 现场快照不可用：脚手架相关注入留空
     sit = cur.get("situation", "")
+    _sit_day = cur.get("time_day")
+    if type(_sit_day) is int and str(sit).strip():
+        sit = f"第{_sit_day}日·{sit}"
 
     try:
         lines_st = state.load_state(book, "lines")
@@ -976,15 +1033,23 @@ def cmd_beats(args) -> int:
     cold_hint_str = ""
     try:
         from .. import memory as memory_mod
-        cold_due = [r for r in memory_mod.line_memory_map(book)
+        _mem_all = memory_mod.line_memory_map(book)
+        cold_due = [r for r in _mem_all
                     if r["is_cold"] and isinstance(r.get("target_ch"), int)
                     and r["target_ch"] <= n + 5]
         cold_due.sort(key=lambda r: (r["target_ch"], -(r["gap"] or 0)))
-        if cold_due:
-            cold_hint_str = "\n".join(
-                f"- {r['id']}《{r['label']}》已 {r['gap']} 章未重现"
-                f"（目标 ch_{r['target_ch']:03d}）——读者或已忘记，回收前先半句锚定旧事"
-                for r in cold_due[:3])
+        _hints = [
+            f"- {r['id']}《{r['label']}》已 {r['gap']} 章未重现"
+            f"（目标 ch_{r['target_ch']:03d}）——读者或已忘记，回收前先半句锚定旧事"
+            for r in cold_due[:3]]
+        # 长线心跳：无到期压力的跨卷长线久未重现——与 check 侧共用判定口径。
+        _heart = checks.longline_stale_findings(_mem_all)
+        _heart.sort(key=lambda r: -(r["gap"] or 0))
+        _hints += [
+            f"- {r['id']}《{r['label']}》已 {r['gap']} 章未重现（跨卷长线，无到期）"
+            "——本章若无安排，顺手半句回响防读者遗忘"
+            for r in _heart[:2]]
+        cold_hint_str = "\n".join(_hints)
     except (ValueError, OSError):
         pass  # 读者记忆层不可用：冷线提醒留空，不阻断细纲装配
 
@@ -1026,7 +1091,7 @@ def cmd_beats(args) -> int:
     text = re.sub(r"- GUN-XXX[^\n]*\n- KNO-XXX[^\n]*\n- MIS-XXX[^\n]*", due_lines_str, text)
     # 冷线提醒（A5）：追加到到期区之后（读者记忆轴信号，与到期台账互补）
     if cold_hint_str:
-        text = text.replace(due_lines_str, due_lines_str + "\n\n**⚠️ 冷线提醒（已冷却且临近到期）**\n" + cold_hint_str, 1)
+        text = text.replace(due_lines_str, due_lines_str + "\n\n**⚠️ 冷线提醒（已冷却且临近到期 / 长线心跳）**\n" + cold_hint_str, 1)
 
     # 一致性速查注入：实体名册（含别名，含卷纲规划行点名实体）+ KNO 知情差边界
     plan_line = ""
@@ -1335,6 +1400,18 @@ def _calendar_payload(book, span: int) -> dict:
                       and isinstance(c.get("target_ch"), int) and c["target_ch"] < start]
     if clocks_overdue:
         out["overdue_clocks"] = clocks_overdue
+    # 跨卷长线节：无到期章号的线此前在日历上完全不可见（排产盲区）——单列一节，
+    # 让主控在排产时看到「这些线没有 deadline，最容易被遗忘」。
+    longlines = []
+    for arr, kind in (("foreshadows", "伏笔"), ("misunderstandings", "误会"), ("knowledge", "知识线")):
+        for g in lines.get(arr, []):
+            t = g.get("target_ch")
+            if (not isinstance(t, int) and common.chapter_token_to_num(t) is None
+                    and str(g.get("status", "")).strip().lower() != resolved_status[arr]):
+                longlines.append({"id": g.get("id"), "kind": kind, "desc": _desc(g),
+                                  "target_ch": t, "plant_ch": g.get("plant_ch")})
+    if longlines:
+        out["longlines"] = longlines
 
     for n in range(start, start + span):
         tok = f"ch_{n:03d}"
@@ -1357,7 +1434,8 @@ def _calendar_payload(book, span: int) -> dict:
         if clocks:
             row["clocks"] = clocks
         out["chapters"].append(row)
-    out["notes"] = ["排产参考（advisory）：due_lines=预定本章结算的线；phase=卷阶段航标；兑付节奏归主控裁决。"]
+    out["notes"] = ["排产参考（advisory）：due_lines=预定本章结算的线；phase=卷阶段航标；"
+                  "longlines=跨卷长线（无到期，排产时顺手安排回响防遗忘）；兑付节奏归主控裁决。"]
     return out
 
 

@@ -9,10 +9,15 @@
 - infos：事实性提示与流程留痕（final 无 raw/beats、候选新专名、境界首次登记等）。
 
 两处与旧措辞的差别，按实现如实记录，勿再写回：
-1) 「引用未登记实体」并非一律 errors。只有 current.present_characters 指向未登记实体是
-   error（unregistered_character）；实体卡的 faction/holder/location 与 relations.target
-   悬空是 warning（entity_ref_unknown / relation_target_unknown）——后者可能只是临时场景
-   描述或未建卡的合法写法，机械判定不足以定性为错误。
+1) 「引用悬空」分三档（按消费硬度，不按字段出身）：
+   error（verify_data/state_inconsistent）：current.present_characters（另有专码
+   unregistered_character 双报）、present_refs、pov_ref、place_ref、holder——现场/装配/
+   持有链的硬消费，断了就是断了；
+   warning（本模块 entity_ref_unknown）：faction/location、relations.target、
+   locked.refs、events.participants、cognition.character、address_matrix 键——
+   可能只是临时写法或未建卡，机械不足以定罪；
+   warning（本模块 dangling_ref）：truth_ref、causes/consequences 编号格式错/指向不存在。
+   例外：holder 同时被 verify 判 error、又被 P2-17 判 warning（历史双报，已知，error 优先）。
 2) 旧措辞称「两个桶都不许出现建议/疑似/不宜等判断词」，与实现不符：实测 24 处 msg 含这些词
    （error 级 1 处 manuscript_truncation，warning 级 14 码，info 级 3 码）。这是有意的——
    启发式判定（截断、重叠、失焦）本就该带不确定性措辞，warnings/infos 给出可执行方向也确实
@@ -92,6 +97,7 @@ SYSTEM_CHECK_CODES: set[str] = {
 
 _QUOTE_SLOTS: list[tuple[str, object]] = [
     ("locked", lambda p: p.get("locked") or []),
+    ("cognition", lambda p: p.get("cognition") or []),
     ("entities", lambda p: p.get("entities") or []),
     ("lines", lambda p: p.get("lines") or []),
     ("ledger.transactions", lambda p: ((p.get("ledger") or {}).get("transactions")) or []),
@@ -125,6 +131,11 @@ def _iter_quote_items(proposal: dict):
     syn = proposal.get("synopsis")
     if isinstance(syn, dict):
         yield "synopsis", syn
+    cur = proposal.get("current")
+    if isinstance(cur, dict) and isinstance(cur.get("present_moods"), dict):
+        for _mname, _m in cur["present_moods"].items():
+            if isinstance(_m, dict):
+                yield f"present_moods.{_mname}", _m
 
 
 def _norm_quote_ws(s: str) -> str:
@@ -514,7 +525,7 @@ def verify_candidates(book: Path, ch: str, proposal: dict) -> dict:
                 t = g.get("target_ch")
                 if isinstance(t, int) and t <= n:
                     terms = evidence.line_terms_for(g, kind, reg_terms)
-                    if any(term in text for term in terms):
+                    if any(term in evidence.match_norm(text) for term in terms):
                         add("warn", "due_line_unhandled",
                             f"{g['id']}（target ch_{t:03d}）正文有触及、提案未操作——确认本章是否该还线")
 
@@ -591,6 +602,116 @@ def _err(code: str, msg: str, remedy: str = "", can_auto_heal: bool = True) -> d
         item["remedy"] = resolved_remedy
     item["can_auto_heal"] = can_auto_heal
     return item
+
+
+def finding_fp(code: str, msg: str) -> str:
+    """finding 稳定指纹：sha1(code + msg)[:12]。msg 逐字敏感——同一问题措辞
+    变化（如 staleness 章数增长）会换 fp 重新提醒（免费升级语义）。"""
+    import hashlib
+    return hashlib.sha1(f"{code}\0{msg}".encode("utf-8")).hexdigest()[:12]
+
+
+ACCEPTED_FILENAME = "check_accepted.json"  # book/log/ 下：确认基线（工作流元数据，非状态）
+
+
+def accepted_path(book: Path) -> Path:
+    return Path(book) / "log" / ACCEPTED_FILENAME
+
+
+def load_accepted(book: Path) -> dict[str, dict]:
+    """读确认基线 {fp: {code, msg, ts}}；文件缺失/损坏一律视为空（宁可多提醒，不静默消音）。"""
+    import json
+    p = accepted_path(book)
+    if not p.is_file():
+        return {}
+    try:
+        data = json.loads(p.read_text(encoding="utf-8"))
+    except (ValueError, OSError):
+        return {}
+    items = (data.get("accepted") or []) if isinstance(data, dict) else []
+    return {str(r["fp"]): r for r in items if isinstance(r, dict) and r.get("fp")}
+
+
+def save_accepted(book: Path, acc: dict[str, dict]) -> None:
+    import json
+    p = accepted_path(book)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    recs = [{"fp": fp, "code": str(r.get("code", "")), "msg": str(r.get("msg", ""))[:160],
+             "ts": str(r.get("ts", ""))} for fp, r in sorted(acc.items())]
+    p.write_text(json.dumps({"accepted": recs}, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def match_fps(known: list[str], query: str) -> list[str]:
+    """fp 前缀匹配（≥6 位才认，避免误接受）；返回全部命中（调用方判歧义）。"""
+    q = str(query or "").strip().lower()
+    if len(q) < 6:
+        return []
+    return sorted(f for f in known if f.lower().startswith(q))
+
+
+def history_collapse_note(by_code: dict) -> str:
+    """历史折叠注记行（纯函数）：有折叠返回一行注记，否则 ""。注记非 finding，
+    不计分、不接受 --accept（计数天然逐章变，accept 语义不成立）。"""
+    parts = [(k, int(v or 0)) for k, v in (by_code or {}).items() if int(v or 0) > 0]
+    total = sum(v for _, v in parts)
+    if total <= 0:
+        return ""
+    detail = "、".join(f"{k}×{v}" for k, v in sorted(parts))
+    return f"🗂️ 另有 {total} 条历史 findings 已折叠（回看窗外：{detail}；check --full 看全量）"
+
+
+def accept_findings(book: Path, report: dict, queries: list[str]) -> tuple[list[str], list[str]]:
+    """确认消音：queries 为 fp/前缀；在 report（须 full 跑出）中解析。
+    返回 (accepted_fps, notes)。errors 拒绝消音；未知/歧义 fp 进 notes。"""
+    import datetime
+    acc = load_accepted(book)
+    pool: dict[str, tuple[str, dict]] = {}
+    for bucket in ("errors", "warnings", "infos"):
+        for it in (report.get(bucket) or []):
+            if isinstance(it, dict) and it.get("fp"):
+                pool[str(it["fp"])] = (bucket, it)
+    done, notes = [], []
+    for q in queries:
+        hits = match_fps(sorted(pool), q)
+        if not hits:
+            notes.append(f"「{q}」无匹配（fp 取自 check --json 的 fp 字段，前缀≥6 位）")
+            continue
+        if len(hits) > 1:
+            notes.append(f"「{q}」歧义，命中 {len(hits)} 个：{hits[:5]}（请加长前缀）")
+            continue
+        fp = hits[0]
+        bucket, it = pool[fp]
+        if bucket == "errors":
+            notes.append(f"{fp}…[{it.get('code')}] 属 errors，不可确认消音（请修复）")
+            continue
+        if fp in acc:
+            notes.append(f"{fp}… 已在确认基线中")
+            continue
+        acc[fp] = {"code": str(it.get("code", "")), "msg": str(it.get("msg", "")),
+                   "ts": datetime.datetime.now().isoformat(timespec="seconds")}
+        done.append(fp)
+    if done:
+        save_accepted(book, acc)
+    return done, notes
+
+
+def unaccept_findings(book: Path, queries: list[str]) -> tuple[list[str], list[str]]:
+    """撤销确认：从基线删除。返回 (removed_fps, notes)。"""
+    acc = load_accepted(book)
+    done, notes = [], []
+    for q in queries:
+        hits = match_fps(sorted(acc), q)
+        if not hits:
+            notes.append(f"「{q}」在确认基线中无匹配")
+            continue
+        if len(hits) > 1:
+            notes.append(f"「{q}」歧义，命中 {len(hits)} 个：{hits[:5]}（请加长前缀）")
+            continue
+        del acc[hits[0]]
+        done.append(hits[0])
+    if done:
+        save_accepted(book, acc)
+    return done, notes
 
 
 _BEATS_FM_KEYS = {"chapter", "vol", "form", "pov", "words", "style_notes", "form_reason",
@@ -1018,6 +1139,18 @@ def proposal_cross_facts(book: Path, ch: str, proposal: dict) -> dict:
             timing.append({"id": str(g.get("id")), "planned_ch": t, "chapter": n, "early": n < t})
     if timing:
         facts["kno_reveal_timing"] = timing
+    # 回收冷前置（事实位，不判分）：提案 resolve 的线若 requires 前置已冷/深冷，
+    # 回收＝兑现读者已忘的承诺——主控看到事实自行决定是否先回响锚定。
+    _resolve_ids = [str(g.get("id")) for g in (proposal.get("lines") or [])
+                    if isinstance(g, dict) and g.get("action") == "resolve" and g.get("id")]
+    if _resolve_ids:
+        try:
+            _mem_rows = memory.line_memory_map(book)
+        except (ValueError, OSError):
+            _mem_rows = []
+        _cold_pre = cold_prereq_findings(_resolve_ids, lines, _mem_rows)
+        if _cold_pre:
+            facts["resolve_cold_prereqs"] = _cold_pre
     facts["present_in_proposal"] = list(((proposal.get("current") or {}).get("present_characters") or []))
     return facts
 
@@ -1155,7 +1288,251 @@ def _tier_probe(book: Path, warnings: list) -> None:
                 + (f"（另有 {len(shifts) - 20} 处未列出）" if len(shifts) > 20 else "")))
 
 
-def run_checks(book: Path) -> dict:
+def longline_stale_findings(mem_rows: list[dict]) -> list[dict]:
+    """长线心跳纯判定：跨卷长线（target 非整数）正文章距 > 记忆阈值×2。
+
+    输入为 memory.line_memory_map 行（已只含未闭环）。tier==never 档不命中
+    （归 line_never_surfaced，防双报）。check 与 beats 心跳共用本口径。
+    """
+    out = []
+    for r in mem_rows or []:
+        tgt, gap = r.get("target_ch"), r.get("gap")
+        if isinstance(tgt, int) or gap is None or r.get("tier") == "never":
+            continue
+        if gap > (r.get("cold_threshold") or 0) * 2:
+            out.append(r)
+    return out
+
+
+def cold_prereq_findings(resolve_ids: list[str], ledger_lines: dict,
+                         mem_rows: list[dict]) -> list[dict]:
+    """回收冷前置纯判定：resolve 目标的 requires 前置中已冷/深冷者。
+
+    命中条件＝前置在读者记忆画像中 is_cold 或 tier∈{impression, never}。
+    台账无该线 / 画像无该前置＝查无此人，不命中（不误报）。
+    """
+    mem = {r["id"]: r for r in (mem_rows or []) if r.get("id")}
+    ledger_all = {str(g.get("id")): g
+                  for arr in ("foreshadows", "misunderstandings", "knowledge")
+                  for g in (ledger_lines or {}).get(arr, [])
+                  if isinstance(g, dict) and g.get("id")}
+    out = []
+    for rid in resolve_ids or []:
+        for req in (ledger_all.get(str(rid)) or {}).get("requires") or []:
+            rr = mem.get(str(req))
+            if rr and (rr.get("is_cold") or rr.get("tier") in ("impression", "never")):
+                out.append({"id": str(rid), "req": str(req),
+                            "req_label": rr.get("label", ""),
+                            "gap": rr.get("gap"),
+                            "last_seen_ch": rr.get("last_seen_ch"),
+                            "tier": rr.get("tier")})
+    return out
+
+
+_REF_ID_RE = re.compile(r"^(GUN|KNO|MIS|EVT|LOCK)-\d+$")
+_EVT_ID_RE = re.compile(r"^EVT-\d+$")
+
+
+def dangling_ref_findings(ents: list, current: dict, locked_st: dict,
+                          timeline_st: dict, cognition_st: dict,
+                          lines_st: dict) -> list[tuple[str, str]]:
+    """对象化引用完整性纯判定（v2）：引用字段选填不罚，填了就验悬空，全 warning。
+
+    覆盖 7 类（每类都有机械消费者，警告必有 payoff）：
+    实体名类→entity_ref_unknown：locked.refs（记忆层精确追踪）、knowledge.holders（audit 知情差探针）、
+    events.participants（位阶探针/事件匹配）、
+    cognition.character（recall/视角包按名匹配）、address_matrix 键（beats 互称矩阵）；
+    编号类→dangling_ref：truth_ref（derived 认知-真相挂载旗，GUN-/KNO-/MIS-/EVT-/LOCK-）、
+    causes/consequences（simulate 因果链，仅 EVT-）。
+    故意不查：EVT place（场景描述自由文本，暂无机械消费者，查了就是噪音）；
+    current.pov_ref/place_ref/present_refs（verify_data 已硬查为 state_inconsistent error，
+    本 helper 不重复报——分工见本模块 docstring）。
+    解析器＝objects.registry 三键寻址（与 verify_data 同一真源）。
+    """
+    from .objects.registry import build_registry, resolve_ref
+    findings: list[tuple[str, str]] = []
+    _reg = build_registry({"entries": [e for e in (ents or []) if isinstance(e, dict)]})
+
+    def _miss(v) -> bool:
+        return bool(v and str(v).strip() and resolve_ref(_reg, v) is None)
+
+    for le in (locked_st or {}).get("entries", []) or []:
+        if not isinstance(le, dict):
+            continue
+        for r in le.get("refs") or []:
+            if _miss(r):
+                findings.append(("entity_ref_unknown",
+                                 f"locked[{le.get('id', '?')}] refs「{r}」未命中任何实体——"
+                                 "记忆层无法按该引用精确追踪；请补登实体或修正拼写"))
+    evts = [e for e in (timeline_st or {}).get("events", []) or [] if isinstance(e, dict)]
+    evt_ids = {str(e.get("id")) for e in evts if e.get("id")}
+    for e in evts:
+        tag = e.get("id") or str(e.get("event", ""))[:12] or "?"
+        for p in e.get("participants") or []:
+            if _miss(p):
+                findings.append(("entity_ref_unknown",
+                                 f"timeline[{tag}] participants「{p}」未命中任何实体——"
+                                 "位阶探针/事件匹配将跳过该参与者；请补登实体或修正拼写"))
+        for f in ("causes", "consequences"):
+            for c in e.get(f) or []:
+                c = str(c)
+                if not _EVT_ID_RE.match(c):
+                    findings.append(("dangling_ref",
+                                     f"timeline[{tag}] {f}「{c}」非 EVT-编号格式（只收 EVT-NNN）——"
+                                     "simulate 因果链无法解析；请修正或删除"))
+                elif c not in evt_ids:
+                    findings.append(("dangling_ref",
+                                     f"timeline[{tag}] {f}「{c}」指向不存在的事件——"
+                                     "simulate 因果链将在此断裂；请先登记前置事件或修正编号"))
+    line_ids = {str(g.get("id")) for arr in ("foreshadows", "misunderstandings", "knowledge")
+                for g in (lines_st or {}).get(arr, []) or []
+                if isinstance(g, dict) and g.get("id")}
+    for g in (lines_st or {}).get("knowledge", []) or []:
+        if not isinstance(g, dict):
+            continue
+        for h in g.get("holders") or []:
+            if _miss(h):
+                findings.append(("entity_ref_unknown",
+                                 f"knowledge[{g.get('id', '?')}] holders「{h}」未登记——"
+                                 "audit 知情差探针将无法识别该知情者；请补登实体或修正拼写"))
+    lock_ids = {str(e.get("id")) for e in (locked_st or {}).get("entries", []) or []
+                if isinstance(e, dict) and e.get("id")}
+    num_ids = line_ids | evt_ids | lock_ids
+    for c in (cognition_st or {}).get("entries", []) or []:
+        if not isinstance(c, dict):
+            continue
+        tag = c.get("id") or "?"
+        ch = str(c.get("character") or "").strip()
+        if _miss(ch):
+            findings.append(("entity_ref_unknown",
+                             f"cognition[{tag}] character「{ch}」未在实体四表登记——"
+                             "recall/视角包按名匹配将漏掉这条认知；请先注册该角色或修正拼写"))
+        t = str(c.get("truth_ref") or "").strip()
+        if t:
+            if not _REF_ID_RE.match(t):
+                findings.append(("dangling_ref",
+                                 f"cognition[{tag}] truth_ref「{t}」非编号格式"
+                                 "（只收 GUN-/KNO-/MIS-/EVT-/LOCK-NNN）——挂载旗无法判定；请修正或删除"))
+            elif t not in num_ids:
+                findings.append(("dangling_ref",
+                                 f"cognition[{tag}] truth_ref「{t}」指向不存在的编号——"
+                                 "认知-真相挂载旗无法判定过期；请核对编号或先登记真相"))
+    for e in ents or []:
+        if not isinstance(e, dict):
+            continue
+        am = e.get("address_matrix")
+        if isinstance(am, dict):
+            for k in am:
+                if _miss(k):
+                    findings.append(("entity_ref_unknown",
+                                     f"实体「{e.get('name', '?')}」address_matrix 键「{k}」未登记——"
+                                     "beats 互称矩阵将跳过该对；请补登实体或修正键名"))
+    return findings
+
+
+def present_track_finding(current: dict, ents: list) -> tuple[str, str] | None:
+    """present 双轨比对纯判定：present_characters（字符串轨）vs present_refs（引用轨）。
+
+    口径（用户拍板）：ref 优先——两边解析出的在场集合不一致时 warning，请对齐另一边。
+    refs 为空不查（选填不罚）；两边都经 registry 归一到法定名后比对，别名/id 写法不误报。
+    """
+    refs = (current or {}).get("present_refs") or []
+    if not refs:
+        return None
+    from .objects.registry import build_registry, resolve_ref
+    _reg = build_registry({"entries": [e for e in (ents or []) if isinstance(e, dict)]})
+
+    def _canon(v) -> str:
+        ent = resolve_ref(_reg, v)
+        return str(ent.get("name")) if isinstance(ent, dict) and ent.get("name") else str(v).strip()
+
+    chars_side = {_canon(c) for c in (current or {}).get("present_characters") or [] if str(c).strip()}
+    refs_side = {_canon(r) for r in refs if str(r).strip()}
+    if chars_side == refs_side:
+        return None
+    only_refs = sorted(refs_side - chars_side)
+    only_chars = sorted(chars_side - refs_side)
+    parts = []
+    if only_refs:
+        parts.append(f"仅引用轨有：{'、'.join(only_refs)}")
+    if only_chars:
+        parts.append(f"仅字符串轨有：{'、'.join(only_chars)}")
+    return ("present_refs_mismatch",
+            f"current.present 双轨不一致（以 refs 引用轨为准）：{'；'.join(parts)}"
+            "——请对齐另一边（改名/退场/别名调整后易遗漏一边）")
+
+
+_BEAT_MOOD_LINE_RE = re.compile(
+    r"^-\s*([^：:\n]+?)[:：]\s*([^（(\n]+?)\s*[（(]\s*(\d)\s*/\s*5\s*[）)]\s*$", re.MULTILINE)
+
+
+def parse_beats_cast_moods(beats_text: str) -> dict[str, tuple[str, int]]:
+    """解析 beats 出厂情绪表行 `- 林牧：暴怒（4/5）` → {名: (词, 烈度)}。
+
+    全角/半角冒号与括号都收；"无"行与注释自然不匹配。非行内小节定位——
+    该行式全书唯一，逐行正则足够（模板改行式时本函数同步改，单测锁定）。
+    """
+    out: dict[str, tuple[str, int]] = {}
+    for m in _BEAT_MOOD_LINE_RE.finditer(beats_text or ""):
+        out[m.group(1).strip()] = (m.group(2).strip(), int(m.group(3)))
+    return out
+
+
+def mood_plan_actual_findings(beats_text: str, present_moods: dict,
+                              ents: list) -> list[tuple[str, str]]:
+    """情绪 plan-vs-actual 纯判定（info）：已封存章 beats 出厂表 vs 台账快照。
+
+    三类出入：label 不等 / 烈度差≥2（±1 属主观容忍）/ 单边缺席。人名经 registry
+    归一后比对；任一边为空直接跳过（无计划或无实际都不算出入）。
+    """
+    plan = parse_beats_cast_moods(beats_text)
+    actual = present_moods or {}
+    if not plan or not actual:
+        return []
+    from .objects.registry import build_registry, resolve_ref
+    _reg = build_registry({"entries": [e for e in (ents or []) if isinstance(e, dict)]})
+
+    def _canon(v) -> str:
+        ent = resolve_ref(_reg, v)
+        return str(ent.get("name")) if isinstance(ent, dict) and ent.get("name") else str(v).strip()
+
+    plan_c = {_canon(k): v for k, v in plan.items()}
+    act_c: dict[str, tuple] = {}
+    for k, v in actual.items():
+        if isinstance(v, dict) and v.get("label"):
+            lvl = v.get("level") if type(v.get("level")) is int else None
+            act_c[_canon(k)] = (str(v["label"]).strip(), lvl)
+    out: list[tuple[str, str]] = []
+    for name in sorted(set(plan_c) | set(act_c)):
+        if name in plan_c and name in act_c:
+            _pl, _pv = plan_c[name]
+            _al, _av = act_c[name]
+            if _pl != _al:
+                out.append(("mood_plan_actual_drift",
+                            f"{name} 情绪词计划「{_pl}」vs 实际「{_al}」——有意改写请忽略"))
+            if _av is not None and abs(_pv - _av) >= 2:
+                out.append(("mood_plan_actual_drift",
+                            f"{name} 烈度计划 {_pv}/5 vs 实际 {_av}/5（差≥2）——有意改写请忽略"))
+        elif name in plan_c:
+            out.append(("mood_plan_actual_drift",
+                        f"{name} 计划有情绪「{plan_c[name][0]}」但台账未登记——Reader 漏登或章中消解"))
+        else:
+            out.append(("mood_plan_actual_drift",
+                        f"{name} 台账有情绪「{act_c[name][0]}」但计划未申报——即兴发挥或计划漏写"))
+    return out
+
+
+def mood_stale_gap(last_mood_ch: int | None, sealed_num: int | None) -> int | None:
+    """情绪快照过期纯判定：返回停滞章数（>2 即过期），任一端未知返回 None。"""
+    if last_mood_ch is None or sealed_num is None:
+        return None
+    return sealed_num - last_mood_ch
+
+
+HISTORY_WINDOW = 30  # 逐章 findings 回看窗（份数，按卷章排序取末 N；窗外只记数不建 finding）
+
+
+def run_checks(book: Path, *, full: bool = False) -> dict:
     errors: list[dict] = []
     warnings: list[dict] = []
     infos: list[dict] = []
@@ -1373,6 +1750,12 @@ def run_checks(book: Path) -> dict:
                 warnings.append(_err("retired_entity_on_stage",
                                      f"current.present_characters 含已退休实体「{name}」"
                                      "（retired=退场/死亡——闪回/补叙章可忽略，否则移出 present 或改回 active）"))
+        # 出厂情绪主体核对（warning）：present_moods 的键必须是已登记实体名/别名。
+        for _mname in (cur.get("present_moods") or {}):
+            if str(_mname).strip() and str(_mname) not in known:
+                warnings.append(_err("mood_character_unknown",
+                                     f"current.present_moods 的情绪主体「{_mname}」未在实体四表登记"
+                                     "（先注册该角色或修正键名；未登记的情绪注记不会被 pack 注入）"))
         # 别名冲突与悬空关系边（advisory， P2-9）
         owner_by_alias: dict[str, list[str]] = {}
         ent_names = {str(e.get("name", "")) for e in ents}
@@ -1423,6 +1806,62 @@ def run_checks(book: Path) -> dict:
                         f"实体「{ename}」的 location「{loc_val}」未匹配任何已登记地点实体"
                         "——若为固定场景请建 type=place/location 的地点卡（否则 graph 无 located_in 边）；"
                         "若只是临时场景描述可忽略本提示"))
+        # 对象化引用完整性（v2）：引用字段选填不罚，填了就验悬空（纯判定见 dangling_ref_findings）。
+        try:
+            _lk_ref = state.load_state(book, "locked")
+            _tl_ref = state.load_state(book, "timeline")
+            _cg_ref = state.load_state(book, "cognition")
+            _ln_ref = state.load_state(book, "lines")
+        except (ValueError, OSError):
+            _lk_ref = _tl_ref = _cg_ref = _ln_ref = {}
+        for _code, _msg in dangling_ref_findings(ents, cur, _lk_ref, _tl_ref, _cg_ref, _ln_ref):
+            warnings.append(_err(_code, _msg))
+        # present 双轨比对（warning，ref 优先；refs 为空不查）
+        _pt = present_track_finding(cur, ents)
+        if _pt:
+            warnings.append(_err(_pt[0], _pt[1]))
+        # time/time_day 双轨对账（warning，time_day 为唯一真源；任一端缺席不查）
+        _day_from_time = state._extract_day_num(str(cur.get("time", "")))
+        _td = cur.get("time_day")
+        if _day_from_time is not None and type(_td) is int and _day_from_time != _td:
+            warnings.append(_err(
+                "time_day_mismatch",
+                f"current.time「{cur.get('time', '')}」（第 {_day_from_time} 日）≠ time_day={_td}"
+                "——以 time_day 为准，请对齐 time 字符串（闪回/倒叙章请忽略）"))
+        # 情绪 plan-vs-actual + 快照过期（info）：以已封存章为基准。
+        _sealed, _sealed_num, _beats_text = "", None, ""
+        try:
+            _sealed = (state.load_state(book, "derived") or {}).get("sealed_ch", "") or ""
+            if not _sealed:
+                _chapters = (state.load_state(book, "synopsis") or {}).get("chapters", {})
+                _sealed = sorted(_chapters)[-1] if _chapters else ""
+            _sealed_num = common.chapter_token_to_num(_sealed) if _sealed else None
+            _bf = common.find_chapter_files(book, "beats", _sealed) if _sealed else []
+            if _bf:
+                _beats_text = _bf[-1].read_text(encoding="utf-8", errors="replace")
+        except (ValueError, OSError):
+            pass
+        for _code, _msg in mood_plan_actual_findings(_beats_text, cur.get("present_moods"), ents):
+            infos.append(_err(_code, _msg))
+        _moods_now = cur.get("present_moods") or {}
+        if _moods_now and _sealed_num:
+            try:
+                from . import changelog as _cl_mod
+                _last_mood = None
+                for _ev in _cl_mod.load_events(book):
+                    if (isinstance(_ev, dict) and _ev.get("table") == "current"
+                            and str(_ev.get("path", "")).startswith("present_moods")):
+                        _n = common.chapter_token_to_num(_ev.get("ch") or "")
+                        if _n:
+                            _last_mood = _n if _last_mood is None else max(_last_mood, _n)
+                _gap = mood_stale_gap(_last_mood, _sealed_num)
+                if _gap is not None and _gap > 2:
+                    infos.append(_err(
+                        "mood_snapshot_stale",
+                        f"current.present_moods 已 {_gap} 章未刷新（上次 ch_{_last_mood:03d}，"
+                        f"已封存 {_sealed}）——pack/beats 仍在注入旧快照；情绪确无变化请忽略"))
+            except (ValueError, OSError):
+                pass
 
         # 实体卡片与底层属性机械对账
         for e in ents:
@@ -1466,6 +1905,19 @@ def run_checks(book: Path) -> dict:
                                f"{vol} 第{n}章同版本号有多份定稿: {', '.join(f.name for f in dup)}"))
         top = max(vers)
         per_ch[(vol, n)] = vers[top][0]
+    # 历史折叠窗：回看窗（默认 30 份定稿，按卷章排序取末 30）之外的逐章 findings
+    # 不再逐条，改为每码一条摘要（--full 看全量）。长篇 500 章时逐章警告会淹没
+    # 当前可行动项——输出有界性是警告不被无视的前提。
+    _HISTORY_WINDOW = HISTORY_WINDOW
+    _recent_ch: set = set(sorted(per_ch)[-_HISTORY_WINDOW:] if not full else sorted(per_ch))
+    _history_overflow: dict[str, list[str]] = {}
+
+    def _emit_history(code: str, key: tuple, msg: str) -> None:
+        if key in _recent_ch:
+            warnings.append(_err(code, msg))
+        else:
+            _history_overflow.setdefault(code, []).append(f"{key[0]}:ch_{key[1]:03d}")
+
     vol_nums: dict[str, list[int]] = {}
     for (vol, n) in per_ch:
         vol_nums.setdefault(vol, []).append(n)
@@ -1599,6 +2051,14 @@ def run_checks(book: Path) -> dict:
             "line_never_surfaced",
             f"{_r['id']}《{_r['label']}》已登记入账（plant ch_{(_r['plant_ch'] or 0):03d}），"
             f"但正文从未出现过——读者压根没见过这条线，日后回收等于凭空兑现"))
+    # 长线心跳（warning）：跨卷长线（target 非整数）没有到期压力，最易被遗忘——
+    # 正文章距超过记忆阈值×2 仍未闭环时提醒（复用本轮 _mem_rows，零新扫描）。
+    for _r in longline_stale_findings(_mem_rows):
+        warnings.append(_err(
+            "longline_stale",
+            f"长线 {_r['id']}《{_r['label']}》已 {_r['gap']} 章未在正文重现"
+            f"（上次 ch_{_r['last_seen_ch']:03d}，阈值 {_r.get('cold_threshold', 0)}×2）——"
+            "长线无到期压力，读者记忆已入印象区深处，建议回响或回收"))
     # 声纹漂移（C2，info）：只测「怎么说话」（句长/语气词/口头禅），不测人设对错。
     # 样本不足的角色不判定——宁漏报不误报（启发式归属，详见 voiceprint.py 局限清单）。
     try:
@@ -1611,6 +2071,27 @@ def run_checks(book: Path) -> dict:
                     f"{_c['name']} 的对白声纹近 {_vp['window']} 章偏离基线："
                     f"{'；'.join(_c['drift_reasons'])}——腔调漂移易让读者觉得「换了个人在说话」，"
                     f"建议重读该角色早期对白找回落点（info 级提示，机械只测形式不测人设）"))
+        # 出厂情绪交叉（mood_dialogue_flat，info）：申报高烈度情绪（level≥4）但近窗
+        # 声纹无漂移——相对判定（变化对变化），不做绝对阈值；动作/心理承载可忽略。
+        # 别名申报的情绪解析不到规范名时漏报（不误报），以 mood_character_unknown 为准。
+        try:
+            _moods = (state.load_state(book, "current") or {}).get("present_moods") or {}
+            _lk = evidence.entity_lookup(book)
+        except (ValueError, OSError):
+            _moods, _lk = {}, {}
+        _a2c = {_canon: _canon for _canon in _lk}
+        for _canon, _als in _lk.items():
+            for _a in _als or []:
+                _a2c.setdefault(str(_a), _canon)
+        _stable = {_c["name"] for _c in _vp["characters"] if not _c["drift_reasons"]}
+        for _mname, _m in _moods.items():
+            if (isinstance(_m, dict) and type(_m.get("level")) is int
+                    and _m["level"] >= 4 and _a2c.get(str(_mname)) in _stable):
+                infos.append(_err(
+                    "mood_dialogue_flat",
+                    f"{_mname} 章末申报「{_m.get('label', '')}」烈度 {_m['level']}/5，"
+                    f"但近 {_vp['window']} 章对白声纹与基线一致——"
+                    "若情绪由动作/心理承载可忽略，否则核对情绪的外显落点"))
     except (ValueError, OSError):
         pass
 
@@ -1715,6 +2196,9 @@ def run_checks(book: Path) -> dict:
         form = fm.get("form", "")
         if not form:
             errors.append(_err("beats_missing_form", f"{f.name}: front-matter 缺 form 字段（Stage 1 未选章型）"))
+        if not str(fm.get("pov", "")).strip():
+            warnings.append(_err("beats_pov_missing",
+                                 f"{f.name}: front-matter 缺 pov 字段（审计知情差扫描将降级为人工核对）"))
         cur_notes = _style_knobs(fm.get("style_notes"))
         last = prev_by_vol.get(vol)
         if last and last["num"] == num - 1:
@@ -1831,6 +2315,98 @@ def run_checks(book: Path) -> dict:
     except (ValueError, OSError):
         pass
 
+    # 派生上账：derived 是引擎算好的"第二双眼"——封存了就必须有人看，否则
+    # 算了白算（holder_orphans/scene_violations 已有 verify/双轨覆盖，此处只上认知挂旗）。
+    try:
+        _der = state.load_state(book, "derived")
+    except (ValueError, OSError):
+        _der = None
+    if _der is None:
+        infos.append(_err("derived_stale", "派生表缺失（derived.json 不可读）：知识挂旗等派生视角全盲"))
+    else:
+        for _fl in (_der.get("knowledge_flags") or []):
+            if isinstance(_fl, dict) and _fl.get("verdict") == "contradicted":
+                warnings.append(_err("cognition_truth_conflict",
+                    f"{_fl.get('cog_id', '?')}（{_fl.get('character', '?')}）："
+                    f"{_fl.get('detail', '认知与真相冲突')}"))
+        # 派生新鲜度：现算 fresh 与封存 sealed 逐节比对（sealed_at 时间戳除外）。
+        # 任何输入变化（state 手术刀 / 新定稿 / seal 失败）都会被精确捕获；info 级。
+        try:
+            from .objects.derive import compute_derived as _compute_derived
+            _fresh = _compute_derived(book, sealed_ch=str(_der.get("sealed_ch") or ""))
+            _fresh_err = any(str(k).startswith("section_error") for k in (_fresh.get("stats") or {}))
+            _sealed_err = any(str(k).startswith("section_error") for k in (_der.get("stats") or {}))
+            if _fresh_err or _sealed_err:
+                infos.append(_err("derived_stale", "派生含计算失败节（封存或现算任一）：建议 state recompute"))
+            else:
+                _diff = [k for k in ("line_temps", "scene_violations", "holder_orphans",
+                                     "knowledge_flags")
+                         if (_fresh.get(k) or []) != (_der.get(k) or [])]
+                if _diff:
+                    infos.append(_err("derived_stale",
+                        f"派生表早于最新状态（已变化：{'、'.join(_diff)}）：建议 state recompute"))
+        except Exception:  # noqa: BLE001 — 试算失败则跳过新鲜度（不可读类错误自有专码）
+            pass
+
+    # 别名遮蔽：registry problems 中 alias_shadows_name 属寻址遮蔽（文本扫描仍可用），warning。
+    try:
+        from .objects.registry import build_registry as _build_reg
+        for _prob in ((_build_reg(state.load_state(book, "entities")) or {}).get("problems") or []):
+            if _prob.get("code") == "alias_shadows_name":
+                warnings.append(_err("alias_shadows_name", str(_prob.get("msg", ""))))
+    except (ValueError, OSError):
+        pass
+
+    # 池透支：余额为负的资源池（debt_ 前缀=显式负债声明，豁免——约定优于死板）。
+    try:
+        _led = state.load_state(book, "ledger")
+        for _pid, _pool in ((_led.get("pools") or {}).items()):
+            if not isinstance(_pool, dict):
+                continue
+            _cur = _pool.get("current")
+            if isinstance(_cur, int) and not isinstance(_cur, bool) and _cur < 0 \
+                    and not str(_pid).startswith("debt_"):
+                warnings.append(_err("pool_overdrawn",
+                    f"资源池「{_pid}」余额 {_cur}（透支）：核查漏记收入/期初；确为负债请改名 debt_ 前缀"))
+    except (ValueError, OSError):
+        pass
+
+    # 提名核销：log/locked_candidates.jsonl 中尚未入账（fact 归一包含未命中 locked）即提醒。
+    # info 级：提名≠问题，未审定只是待办；入账后自动核销，放弃则删行。
+    try:
+        import json as _json
+        _cand_p = book / "log" / "locked_candidates.jsonl"
+        _cands = []
+        if _cand_p.is_file():
+            for _ln in _cand_p.read_text(encoding="utf-8", errors="replace").splitlines():
+                try:
+                    _r = _json.loads(_ln)
+                except ValueError:
+                    continue
+                if isinstance(_r, dict) and str(_r.get("fact", "") or "").strip():
+                    _cands.append(_r)
+        if _cands:
+            _lock_facts = [evidence.match_norm(str(e.get("fact", "")))
+                           for e in (state.load_state(book, "locked").get("entries", []) or [])]
+            _lock_facts = [f for f in _lock_facts if len(f) >= 2]
+            _seen, _pending = set(), []
+            for _c in _cands:
+                _nf = evidence.match_norm(str(_c.get("fact", "")))
+                if len(_nf) < 2 or _nf in _seen:
+                    continue
+                _seen.add(_nf)
+                if not any(_nf in _lf or _lf in _nf for _lf in _lock_facts):
+                    _pending.append(_c)
+            if _pending:
+                _show = "、".join(f"「{str(c.get('fact', ''))[:18]}」({c.get('chapter', '?')})"
+                                 for c in _pending[:5])
+                if len(_pending) > 5:
+                    _show += f"等共 {len(_pending)} 条"
+                infos.append(_err("locked_candidate_pending",
+                    f"待审定 locked 提名 {len(_pending)} 条：{_show}"))
+    except (ValueError, OSError):
+        pass
+
     # 检查主线里程碑逾期
     try:
         cur_timeline = state.load_state(book, "timeline")
@@ -1879,9 +2455,11 @@ def run_checks(book: Path) -> dict:
     for (vol, n) in sorted(per_ch):
         tok = f"ch_{n:03d}"
         if (vol, n) not in raw_nums:
-            warnings.append(_err("final_without_raw", f"{tok}: 有定稿但无 raw 草稿（流程事实，供核对）"))
+            _emit_history("final_without_raw", (vol, n),
+                          f"{tok}: 有定稿但无 raw 草稿（流程事实，供核对）")
         if (vol, n) not in beats_nums:
-            warnings.append(_err("final_without_beats", f"{tok}: 有定稿但无 beats 细纲（流程事实，供核对）"))
+            _emit_history("final_without_beats", (vol, n),
+                          f"{tok}: 有定稿但无 beats 细纲（流程事实，供核对）")
 
     for f in common.find_chapter_files(book, "final"):
         try:
@@ -1910,17 +2488,19 @@ def run_checks(book: Path) -> dict:
             if _cjk < _lo:
                 _gap = _lo - _cjk
                 _over = _gap > _lo * 0.2
-                warnings.append(_err(
-                    "word_band_breach" if _over else "word_band_deviation",
+                _emit_history(
+                    "word_band_breach" if _over else "word_band_deviation", (vol, n),
                     f"{_tok}: 定稿 {vol}/{f.name} 中文字数 {_cjk} 低于目标带下限 {_lo}"
-                    f"（缺 {_gap} 字{f'，超出 20% 容差' if _over else ''}）"))
+                    f"（缺 {_gap} 字{f'，超出 20% 容差' if _over else ''}）")
             elif _cjk > _hi:
                 _gap = _cjk - _hi
                 _over = _gap > _hi * 0.2
-                warnings.append(_err(
-                    "word_band_breach" if _over else "word_band_deviation",
+                _emit_history(
+                    "word_band_breach" if _over else "word_band_deviation", (vol, n),
                     f"{_tok}: 定稿 {vol}/{f.name} 中文字数 {_cjk} 超出目标带上限 {_hi}"
-                    f"（超 {_gap} 字{f'，超出 20% 容差' if _over else ''}）"))
+                    f"（超 {_gap} 字{f'，超出 20% 容差' if _over else ''}）")
+    # 历史折叠只记数（stats.history_collapsed* + 文本注记），不建 finding——
+    # 摘要若含"共 N 份"会随书长逐章变化，建 finding 将导致每章都要重新 --accept。
 
     try:
         g = evidence.gaps(book)
@@ -2073,7 +2653,8 @@ def run_checks(book: Path) -> dict:
                 continue
 
     # final 定稿漂移检查（ P2）：sync 封存时盖章的 final 哈希 vs 当前内容——
-    # 封后再改 final 不再静默漂移，check 必报（有意修订走提案修订通道重封）
+    # 封后再改 final 不再静默漂移，check 必报（有意修订：核对台账后 check --accept 留痕；
+    # 原哈希保留为证据，msg 含当前哈希故每次新改动换 fp 重报）
     try:
         fhp = book / "state" / "inbox" / "processed" / "final_hashes.json"
         if fhp.is_file():
@@ -2170,9 +2751,35 @@ def run_checks(book: Path) -> dict:
         infos.extend(errors)
         errors = []
 
+    # finding 指纹：code + 全文 msg。组装处是唯一盖戳点（onboarding 等改写发生在前）。
+    for _item in errors + warnings + infos:
+        if isinstance(_item, dict) and _item.get("code"):
+            _item["fp"] = finding_fp(str(_item["code"]), str(_item.get("msg", "")))
+    # 确认基线：warnings/infos 可被确认消音（errors 永不）；--full 绕过全部折叠。
+    _accepted = {} if full else load_accepted(book)
+    _hidden: list[str] = []
+    if _accepted:
+        _w2 = []
+        for _item in warnings:
+            if isinstance(_item, dict) and _item.get("fp") in _accepted:
+                _hidden.append(str(_item["fp"]))
+            else:
+                _w2.append(_item)
+        warnings = _w2
+        _i2 = []
+        for _item in infos:
+            if isinstance(_item, dict) and _item.get("fp") in _accepted:
+                _hidden.append(str(_item["fp"]))
+            else:
+                _i2.append(_item)
+        infos = _i2
     stats["errors"] = len(errors)
     stats["warnings"] = len(warnings)
     stats["infos"] = len(infos)
+    stats["accepted_hidden"] = len(_hidden)
+    stats["accepted_hidden_fps"] = sorted(set(_hidden))
+    stats["history_collapsed"] = sum(len(v) for v in _history_overflow.values())
+    stats["history_collapsed_by_code"] = {k: len(v) for k, v in sorted(_history_overflow.items())}
 
     sys_errs = [e for e in errors if e.get("code") in SYSTEM_CHECK_CODES]
     sys_warns = [w for w in warnings if w.get("code") in SYSTEM_CHECK_CODES]

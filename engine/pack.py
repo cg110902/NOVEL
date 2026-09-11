@@ -194,7 +194,9 @@ def _bible_core_anchors(book: Path, refs: list[str] | None = None) -> str:
     宁可多给，不可让写手在没有世界公理的情况下裸写。
     """
     budget = _world_anchor_budget(book)
-    if budget <= 0:
+    # 预算 0＝恒给全关（余量最大化），但 refs 钉住是当章契约，不能连契约一起吞：
+    # 有 refs 时继续走——命中即钉住照给，写错则回退给一节保底＋点名写错（宁可多给）。
+    if budget <= 0 and not refs:
         return ""
     bible_dir = book / "bible"
     if not bible_dir.is_dir():
@@ -515,6 +517,11 @@ def _entity_block(book: Path, name: str, cur: dict, lines: dict, full: bool) -> 
     _ren = e.get("renown")
     if type(_ren) is int and _ren != 0:
         block["renown"] = _ren
+    # 出厂情绪注入（与 injury/renown 同级：Drafter 必须知道上章章末人物心境，才能接住情绪连续性）
+    _mood = (cur["current"].get("present_moods") or {}).get(name)
+    if isinstance(_mood, dict) and _mood.get("label"):
+        _mlvl = f"·{_mood['level']}/5" if type(_mood.get("level")) is int else ""
+        block["mood"] = f"{_mood['label']}{_mlvl}"
     touched = []
     alias = [name] + list(e.get("aliases", []))
     for g in (lines.get("foreshadows", []) + lines.get("misunderstandings", [])
@@ -975,6 +982,12 @@ def render_layer(name: str, obj, full: bool = False) -> str:
                 extra_tags.append(f"余{b['charges']}次")
             tag_str = f" | {', '.join(extra_tags)}" if extra_tags else ""
             lines.append(f"[{b['name']}|{b['type']}|{'章末在场' if b['on_stage'] else '章末不在'}{tag_str}] {b['summary']}")
+            if b.get("injury"):
+                lines.append(f"  伤势: {b['injury']}")
+            if b.get("mood"):
+                lines.append(f"  心境: {b['mood']}")
+            if b.get("renown") is not None:
+                lines.append(f"  声望: {b['renown']}")
             if b.get("carries"):
                 lines.append(f"  随身: {', '.join(b['carries'])}")
             if b.get("lines"):

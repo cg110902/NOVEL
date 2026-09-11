@@ -73,7 +73,8 @@ description: Universal factual auditor and state proposal generator for Novel St
     "injury": "完好 或 具体伤势描述",
     "situation": "章末局势一句话速写",
     "aftershock": "留给下一章开篇首段承接的强烈余波事件",
-    "active_pressures": ["悬在头顶的即时压迫或危机倒计时"]
+    "active_pressures": ["悬在头顶的即时压迫或危机倒计时"],
+    "present_moods": {"在场角色名": {"label": "隐忍", "level": 3, "quote": "final 情绪落笔句"}}
   },
   "locked": [
     {
@@ -184,6 +185,20 @@ description: Universal factual auditor and state proposal generator for Novel St
    - `timeline.events[]`：可带 `participants`（参与实体）、`place`、`causes`/`consequences`
      （EVT-编号）；修订旧事件优先用 `{"id": "EVT-00X", "replace": "..."}` 按 id 修订。
    - 查某对象全貌用 `state object <id/名/别名>`（包络＋关系/认知/挂旗/持有速览，只读）。
+   - 引用完整性（分两档）：`pov_ref`/`place_ref`/`present_refs` 悬空是 error（`state_inconsistent`，
+     sync/check 阻断）；其余 participants/refs/holders/character/address 键填了就须命中
+     （否则 `entity_ref_unknown` warning）；`truth_ref` 只收 GUN-/KNO-/MIS-/EVT-/LOCK-编号，
+     `causes/consequences` 只收 EVT-编号且须存在（否则 `dangling_ref` warning）；
+     EVT `place` 为自由文本不查。选填不罚、填错点名。
+   - 双轨口径（ref/数字优先）：`present_characters` 与 `present_refs` 不一致→`present_refs_mismatch`
+    （以 refs 为准，对齐另一边）；`time` 含第N日且与 `time_day` 不一致→`time_day_mismatch`
+     （以 time_day 为准）。`present_moods` 按 beats 出厂表逐项核对（出入→`mood_plan_actual_drift`
+     info，有意改写请忽略）；连续多章不刷新→`mood_snapshot_stale` info。
+9. **`current.present_moods` 出厂情绪快照（选填；章末在场角色的隐含情绪）**：
+   形状 `{"角色名": {"label": "情绪词", "level": 1~5, "quote": "final 支撑句"}}`；
+   键必须是已登记实体名/别名（否则 `mood_character_unknown` 警告）；`label` 必填、`level`/`quote`
+   选填——`quote` 建议携带（走柔性接地）；在场角色无明确情绪状态时整键缺席，不要硬编；
+   上账后引擎自动注入下章 pack 实体块与 beats 速查名册（Drafter 开章即见，无需复述）。
 
 ---
 

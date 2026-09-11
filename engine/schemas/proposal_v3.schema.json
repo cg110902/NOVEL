@@ -14,7 +14,8 @@
     },
     "operation_id": {
       "pattern": "^[A-Za-z0-9_.-]{1,128}$",
-      "type": "string"
+      "type": "string",
+      "title": "Operation Id"
     },
     "_draft": {
       "type": "boolean"
