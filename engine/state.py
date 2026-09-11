@@ -1377,13 +1377,19 @@ def _merge_entities(data: dict, items: list[dict], rep: dict) -> None:
             hit[1]["status"] = "retired"
             rep["updated"].append(f"🗂️ 实体退役：{name}")
             continue
-        raw_type = e.get("type", "other")
+        ent = hit[1] if hit else None
+        owner = hit[0] if hit else None
+        # 更新不静默改 kind：type 未显式给出且条目已存在 → 沿用现值。
+        # 旧行为「缺省→other→persons」会把 items/factions/places 的 upsert 静默搬表
+        # 并改写 type（无任何警告；FIX-4，由崩溃恢复演练抓出）。显式 set.type 仍可搬迁。
+        if e.get("type") is None and ent is not None:
+            raw_type = ent.get("type") or "other"
+        else:
+            raw_type = e.get("type", "other")
         etype = canonical_entity_type(raw_type)
         if etype is None or etype not in valid_types:
             rep["errors"].append(f"实体「{name}」type 非法: {raw_type}")
             continue
-        ent = hit[1] if hit else None
-        owner = hit[0] if hit else None
         if "charges" in e and "max_charges" in e:
             try:
                 if int(e["charges"]) > int(e["max_charges"]):

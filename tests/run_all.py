@@ -29,6 +29,7 @@ SUITES = [
     ("smoke", "tests.test_smoke", "冒烟：临时书整章 init→beats→成稿→提案→audit→sync→check→pack", 900),
     ("gates", "tests.test_gates", "门禁触发：判定边界 + 违规注入 e2e（临时书 × 多套）", 1800),
     ("stress", "tests.test_stress_smoke", "压力 harness 自测：30 章 smoke 书全链（plan 确定性/浸泡/雷库/判定）", 1200),
+    ("crash", "tests.test_crash_recovery", "崩溃恢复：sync 写入窗 SIGKILL×10 章（含死亡章），重跑必须收敛且账闭合", 600),
 ]
 ORDER = [a for a, *_ in SUITES]
 

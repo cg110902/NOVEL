@@ -45,6 +45,21 @@ soak 全程 2285.6s / 295 章 ≈ **7.75s/章**（end-to-end，含每 cp 的 che
    注因随之从「误报豁免」改为「剧本间隔合法告警」。
    misunderstanding 无 plant_ch 字段（可选增强，未动）→ plan↔actual 只能到 target/status 粒度。
 4. 死者持有物会阻断 sync（需死亡章同批移交 op）——剧本已内建，属引擎正确纪律。
+5. **v3 实体表 update 曾静默搬表（FIX-4，2026-09 崩溃恢复演练抓出，已修）**：v3 `update` 编译成
+   v2 upsert 时不透传 type，merge 层按「缺省→other→persons」把条目**静默搬进 persons 并改写
+   type**，零警告、rc0——非 persons 表（items/factions/places）的每一次 update 都在啃。修复在两层：
+   编译层透传现值 type（proposal_v3.py）+ merge 层「更新未显式 type 一律沿用现值不搬表」
+   （state.py），显式 set.type 搬迁+警告的契约保留；门禁 `fix4_*` 五例锁行为。
+   **存量书自救**：修复前的书里凡「persons 表中 type=other 但有 holder/charges 的条目」皆受害者，
+   症状是此后对该条目的 `items/update` 永远报「地址表错」整案拒收。修复正道：写 **v2 提案**
+   （v3 会被自身寻址挡住）`entities: [{"name": "…", "type": "item"（或 faction/place）, …补全字段}]`
+   upsert 显式带 type → merge 层搬回原表并留痕。
+6. **孤儿 .state.lock（崩溃演练抓出，已修）**：SIGKILL 后 FileExistsError 锁无人认领，后续 sync
+   白等 30s 超时。修复：锁文件记 pid，抢锁方 `os.kill(pid, 0)` 探活，死锁即刻抢占（120s stale
+   兜底保留）；门禁 `deadlock_reclaimed_fast`。
+7. **写入中段 kill 无事务风险（结论）**：state 各表 tmp+rename 原子写、提案 operation_id 幂等、
+   inbox 归档驱动重放——15 章击杀矩阵（含死亡章）全部 ≤4 次重跑自然收敛，无需回滚机制。
+   该套件已入门禁 `run_all --only crash`（≈30s）。
 
 ## 4. 首轮 FAIL → 修复清单（保留作反例）
 
