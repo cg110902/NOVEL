@@ -6,8 +6,8 @@ tier_rank: {{slot:item_tier_rank|3}}
 tier_name: "{{slot:item_tier_name|品阶/代际/估值}}"
 holder: "{{slot:item_holder|当前持有者角色名}}"
 location: "{{slot:item_location|随身携带/储物戒/某宝库}}"
-charges: {{slot:item_charges|10}} # 若为非计数型道具，填实后可删除本行或设为 null，切勿填负数
-max_charges: {{slot:item_max_charges|10}} # 若为非计数型道具，填实后可删除本行或设为 null
+charges: {{slot:item_charges|10}} # 若为非计数型道具，填实后直接删除本行（切勿填负数或设为 null）
+max_charges: {{slot:item_max_charges|10}} # 若为非计数型道具，填实后直接删除本行（切勿填负数或设为 null）
 cost_per_use: "{{slot:item_cost_per_use|单次催动代价/消耗}}"
 durability: "{{slot:item_durability|完好/微损/耐久度}}"
 sensory_anchor: "{{slot:item_sensory_anchor|材质、光泽、触感与重量}}"
@@ -19,6 +19,7 @@ schema_version: novel-studio.item/v2
      长篇中重要道具（神舟、兵刃、本命信物、核心机密账册、高维奇物）是剧情爆发的核心物象！
      没有独立道具卡，模型经常会吃书：忘记道具在谁手里、长什么样、剩多少次使用机会。
      将本模板复制至 entities/items/<道具名>.md 并填实。
+     ★ 语感规范：通俗直白大白话、感官物象记忆清晰、严禁堆砌生涩晦涩词汇！
      ★ 全题材适配：
        - 玄幻/仙侠：九劫神棺/破虚飞舟/本命剑胚，填品阶灵石消耗、神识绑定；
        - 都市/商战：离岸信托加密私钥/定制防弹豪车/特质机械表，填估值、使用权限与物理抗性；

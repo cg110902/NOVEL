@@ -486,6 +486,130 @@ def parse_yaml_front_matter(text: str) -> dict:
 
 
 
+# ---------------------------------------------------------------------------
+# 章题（final 首行）单一真源
+# ---------------------------------------------------------------------------
+# 契约（`.agents/skills/reader/SKILL.md`）：`synopsis.title` 必须与 final 正文
+# 第一行完全一致；即「第一章 活死人」这样的**纯文本首行**是法定形态，Markdown
+# `#` 前缀只是历史写法，需一并兼容。
+#
+# 此前 checks / state_sync / evidence 三处各自手搓正则、且都硬性要求 `#` 前缀，
+# 于是纯文本章题被当成「无章题行」，连锁引发三类事故：
+#   ① checks 误报 `title_absent`，章题机械对照被静默跳过（闸门形同虚设）；
+#   ② `proposal auto` 回退去扫 beats 的 `^#+`，抓到了细纲 YAML front-matter 里的
+#      注释行「# 推荐 10 大商业叙事章型…」当成章题写进 synopsis；
+#   ③ evidence 未剥离章题行，章题被算进字数、风格扫描与 beats_overlap 重叠检测。
+# 统一收敛到本文件，禁止各处再手搓。
+_CHAPTER_NUM = r"[0-9零一二三四五六七八九十百千]+"
+_CHAPTER_PREFIX_RE = re.compile(rf"^(?:第\s*{_CHAPTER_NUM}\s*章|ch[_-]?\d+)\s*", re.I)
+_TITLE_LINE_RE = re.compile(
+    rf"^(?P<hashes>#{{1,6}}\s*)?(?P<label>第\s*{_CHAPTER_NUM}\s*章|ch[_-]?\d+)\s*(?P<name>.*?)\s*$",
+    re.I,
+)
+
+
+def chapter_title_of(text: str, *, window: int = 5) -> str:
+    """返回 final 正文的章题整行（逐字，如「第一章 活死人」）；无章题行返回 ""。
+
+    收窄口径以防误判：
+      · 纯文本形态**只认首个非空行**（契约即「正文第一行」），故正文中段的
+        「第一章」提及绝不可能被误命中；
+      · `#` 形态允许在前 window 个非空行内出现（兼容「# 第一卷」卷首行之类旧书）。
+    """
+    if not text:
+        return ""
+    seen = 0
+    for ln in text.lstrip("\ufeff").splitlines():
+        s = ln.strip()
+        if not s:
+            continue
+        m = _TITLE_LINE_RE.match(s)
+        if m and (seen == 0 or m.group("hashes")):
+            return s
+        seen += 1
+        if seen >= window:
+            break
+    return ""
+
+
+def chapter_title_bare(title: str) -> str:
+    """剥掉 Markdown `#` 前缀与「第N章 / ch_XXX」章号，只留章名（『# 第一章 活死人』→『活死人』）。"""
+    s = re.sub(r"^#{1,6}\s*", "", (title or "").strip())
+    return _CHAPTER_PREFIX_RE.sub("", s).strip()
+
+
+def strip_chapter_title(text: str) -> str:
+    """去掉首行章题行本体并返回正文；无章题行时原样返回。
+
+    仅供字数/风格/重叠等「读正文」口径使用：正文中其它以 `#` 开头的行
+    （如「#号房」对话）一律保留。
+    """
+    if not text:
+        return text
+    body = text.lstrip("\ufeff")
+    title = chapter_title_of(body)
+    if not title:
+        return text
+    lines = body.splitlines()
+    for i, ln in enumerate(lines):
+        if ln.strip():
+            if ln.strip() == title:
+                return "\n".join(lines[i + 1:])
+            break
+    return text
+
+
+# ── 对白抽取 · 单一真源 ───────────────────────────────────────────────
+# 动因：流水线实际产出用的是 **ASCII 双引号 U+0022**（实测 ch_001 定稿 70 处、
+# ch_002 v2 164 处，而中文「」/“” 各为 0 处），但引擎里同一个引号字符类此前被
+# 复制了 6 份、覆盖范围还不一致：audit._QUOTE_SPAN_RE、audit:475、voiceprint._QUOTE_RE
+# 已补过 ASCII 引号，而 audit 的死者发言判据、audit 的法定称谓禁忌扫描、
+# book_setup 的卡片称谓对校只认「」/“”——这几处于是**静默失明**
+# （不报错、也不报问题），比报错更危险。收敛到此处后，修一处即全修。
+OPEN_QUOTES = "「『“‘\""
+CLOSE_QUOTES = "」』”’\""
+
+# 跨行版：用于整段/全文抽取（book_setup 卡片解析等）
+DIALOGUE_RE = re.compile(r"「[^」]+」|『[^』]+』|“[^”]+”|‘[^’]+’|\"[^\"]+\"")
+# 行内版：用于逐行抽取（探针按行扫描，避免一条对白跨行把归属判据带偏）
+DIALOGUE_LINE_RE = re.compile(
+    r"「[^」\n]+」|『[^』\n]+』|“[^”\n]+”|‘[^’\n]+’|\"[^\"\n]+\"")
+
+
+def iter_dialogue_spans(text: str) -> list[tuple[str, tuple[int, int]]]:
+    """抽取对白 -> [(对白正文（已剥引号）, (起, 止))]，兼容全部引号样式（含跨行）。"""
+    out: list[tuple[str, tuple[int, int]]] = []
+    for m in DIALOGUE_RE.finditer(text or ""):
+        seg = m.group(0)
+        if len(seg) > 2:
+            out.append((seg[1:-1], m.span()))
+    return out
+
+
+def iter_dialogues(text: str) -> list[str]:
+    """抽取对白正文列表（已剥引号），兼容全部引号样式（含跨行）。"""
+    return [d for d, _sp in iter_dialogue_spans(text)]
+
+
+def iter_line_dialogues(text: str) -> list[str]:
+    """逐行抽取对白正文（不跨行），供按行扫描的探针使用。"""
+    if not text:
+        return []
+    return [m.group(0)[1:-1] for m in DIALOGUE_LINE_RE.finditer(text)]
+
+
+def is_quote_adjacent(content: str, name: str) -> bool:
+    """`name` 是否紧贴引号边界（`「name` / `name」` / `"name` / `name"` …）。
+
+    用于「是否以活人身份发言」之类的判定：只认紧贴边界的直呼/归属，
+    避免行内任何位置提及死者都被误判成硬矛盾候选。
+    """
+    if not content or not name:
+        return False
+    return (any(op + name in content for op in OPEN_QUOTES)
+            or any(name + cl in content for cl in CLOSE_QUOTES))
+
+
 def md_section(text: str, title_pat: str) -> list[str]:
     """从 Markdown 提取某级标题下的全部正文行（直到同级或更高级别标题；兼容 UTF-8 BOM）。"""
     lines: list[str] = []

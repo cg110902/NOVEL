@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from . import checks, common, evidence, graph, state
-from .commands._shared import parse_audit_frontmatter  # 仲裁报告 front-matter 解析（Stage 4C 看板）
+from .commands._shared import parse_audit_frontmatter  # 仲裁报告 front-matter 解析（Stage 5 仲裁看板）
 
 
 def _infer_active_chapter(book: Path) -> str:
@@ -560,10 +560,15 @@ def build_cockpit_briefing(book: Path, ch: str | None = None) -> dict[str, Any]:
     # 1. 确定工作流与工序状态
     beats_files = common.find_chapter_files(book, "beats", ch_tok)
     raw_files = common.find_chapter_files(book, "raw", ch_tok)
-    # Stage 3A/3B 分轨（V3.2 流水线）：raw_v1 = Drafter 毛坯，raw_v2 = Editor 骨肉稿。
-    # 此前只认「有 raw 就进 Stage 3」，Editor 的 raw_v2 在驾驶舱里完全不存在。
+    # Stage 3A/3B 分轨（V3.2 流水线）：raw_v1 = Drafter 毛坯，raw_v2 = Editor 骨肉稿，
+    # raw_v3 = Stylist 脱水预定稿。
+    # 此前把 `version >= 2` 一把抓成 raw_v2，导致 raw_v3 在驾驶舱里不存在：状态机
+    # 从「有 raw_v2」直接跳到「有 final」，把 Stage 3B 脱水与 Stage 4C 定稿塌缩成
+    # 一步，并把 Stage 4C 错标成「Stage 3B（脱水）／actor=Stylist」、交付目标错指
+    # final/——与 AGENTS.md 角色矩阵（只有 Fixer 写 final）直接冲突。
     raw_v1_files = [f for f in raw_files if common.chapter_version_from_name(f.name) < 2]
-    raw_v2_files = [f for f in raw_files if common.chapter_version_from_name(f.name) >= 2]
+    raw_v2_files = [f for f in raw_files if common.chapter_version_from_name(f.name) == 2]
+    raw_v3_files = [f for f in raw_files if common.chapter_version_from_name(f.name) >= 3]
     final_files = common.find_chapter_files(book, "final", ch_tok)
     inbox_normal = (book / "state" / "inbox" / f"{ch_tok}.json").is_file()
     inbox_processed = (book / "state" / "inbox" / "processed" / f"{ch_tok}.json").is_file()
@@ -577,7 +582,7 @@ def build_cockpit_briefing(book: Path, ch: str | None = None) -> dict[str, Any]:
             critic_file = "SKELETON" not in _cf.read_text(encoding="utf-8", errors="replace")[:400]
         except OSError:
             critic_file = True
-    # Stage 4C 仲裁闸门：sync 在 audit_mode=strict 下强制要求带 front-matter 的仲裁报告，
+    # Stage 5 仲裁闸门：sync 在 audit_mode=strict 下强制要求带 front-matter 的仲裁报告，
     # 驾驶舱此前不追踪它，顺着「下一步」走必然在 Stage 5 撞墙。
     audit_mode = str(proj.get("audit_mode", "strict")).strip().lower()
     audit_ready = audit_mode == "off"
@@ -613,6 +618,12 @@ def build_cockpit_briefing(book: Path, ch: str | None = None) -> dict[str, Any]:
         "beats": bool(beats_files),
         "raw": bool(raw_v1_files),
         "raw_v2": bool(raw_v2_files),
+        "raw_v3": bool(raw_v3_files),
+        # Stage 4A 的交付物（问题清单）与 Stage 5 闸门报告是**两份不同工件**：
+        # issues_*.md 由 Auditor 子代理产出、是 Stage 4C 定稿师的输入；ch_*.md 由引擎
+        # `audit --write` 机械生成、是 sync 的闸门。驾驶舱此前只追踪后者，
+        # 于是完全无从提示「先跑 Auditor 出问题清单」。
+        "issues": (book / "log" / "audit" / f"issues_{ch_tok}.md").is_file(),
         "final": bool(final_files),
         "proposal": inbox_file,
         "proposal_failed": inbox_failed,
@@ -663,73 +674,79 @@ def build_cockpit_briefing(book: Path, ch: str | None = None) -> dict[str, Any]:
             "command": f"view_file manuscript/{vol}/raw/{ch_tok}_v1.md",
             "target_file": f"manuscript/{vol}/raw/{ch_tok}_v2.md"
         }
-    elif not status["final"]:
+    elif not status["raw_v3"]:
         curr_stage = "Stage 3B (通俗脱水与扫读优化)"
         next_action = {
             "actor": "Stylist",
             "stage": "Stage 3B",
-            "instruction": "向脱水师 Stylist 下达 Stage 3B 标准工序派发令：减法去油、去冷脸、斩断反刍，落盘法定定稿",
+            "instruction": "向脱水师 Stylist 下达 Stage 3B 标准工序派发令：减法去油、去冷脸、斩断反刍，产出脱水预定稿 raw_v3",
             "command": f"view_file manuscript/{vol}/raw/{ch_tok}_v2.md",
+            "target_file": f"manuscript/{vol}/raw/{ch_tok}_v3.md"
+        }
+    elif not status["critic"] or not status["issues"]:
+        # Stage 4A/4B 并发：Auditor 出问题清单（Stage 4C 定稿师的**输入**）＋ Critic 出催更便签。
+        # 二者都以 raw_v3 为源，必须先于 Stage 4C 完成——否则 Fixer 拿不到问题清单。
+        curr_stage = "Stage 4A/4B (并发审查与催更便签)"
+        missing = []
+        if not status["issues"]:
+            missing.append("Auditor (Stage 4A-问题清单)")
+        if not status["critic"]:
+            missing.append("Critic (Stage 4B-老白催更便签)")
+        next_action = {
+            "actor": "Auditor & Critic (并发)",
+            "stage": "Stage 4A/4B",
+            "instruction": ("在单次 invoke_subagent 调用中并发唤起审查员 Auditor（交付 "
+                            f"log/audit/issues_{ch_tok}.md 问题清单）与催更员 Critic"
+                            f"（交付 log/critic/{ch_tok}.md 便签），二者均以 raw_v3 为源"),
+            "command": f"view_file manuscript/{vol}/raw/{ch_tok}_v3.md",
+            "target_file": f"log/audit/issues_{ch_tok}.md | log/critic/{ch_tok}.md",
+            **({"missing": missing} if missing else {})
+        }
+    elif not status["final"]:
+        curr_stage = "Stage 4C (终局定稿)"
+        next_action = {
+            "actor": "Fixer",
+            "stage": "Stage 4C",
+            "instruction": ("向定稿师 Fixer 下达 Stage 4C 标准工序派发令：读 beats + raw_v3 + "
+                            f"log/audit/issues_{ch_tok}.md 靶向微调正文硬矛盾，落盘全书唯一法定定稿 final"),
+            "command": f"view_file manuscript/{vol}/raw/{ch_tok}_v3.md",
             "target_file": f"manuscript/{vol}/final/{ch_tok}.md"
         }
-    elif not status["proposal"] or not status["critic"] or not status["audit"]:
-        curr_stage = "Stage 4 (三轨并发质检)"
-        missing = []
-        if not status["proposal"]:
-            if status.get("proposal_failed"):
-                missing.append("Proposal (轨A-提案在 failed/ 需就地修复)")
-            else:
-                missing.append("Reader (轨A-事实提案)")
-        if not status["critic"]:
-            missing.append("Critic (轨B-老白催更便签)")
-        if not status["audit"]:
-            missing.append("Auditor (轨C-一致性仲裁报告)")
-
-        if not status["proposal"] and not status["critic"] and not status["audit"]:
-            if status.get("proposal_failed"):
-                actor = "Director & Critic & Auditor"
-                target_f = (f"state/inbox/failed/{ch_tok}.json | log/critic/{ch_tok}.md | "
-                            f"log/audit/{ch_tok}.md")
-                instruct = (f"本章提案在 state/inbox/failed/{ch_tok}.json 待修复；就地修复后重跑 sync 会自动捡回，"
-                            "同时并发唤起 Critic (催更便签) 与 Auditor (三轨仲裁报告)")
-            else:
-                actor = "Reader & Critic & Auditor (三轨并发)"
-                target_f = (f"state/inbox/{ch_tok}.json | log/critic/{ch_tok}.md | "
-                            f"log/audit/{ch_tok}.md")
-                instruct = ("在单次 invoke_subagent 调用中并发唤起 Reader (事实提案)、Critic (催更便签) "
-                            "与 Auditor (三轨仲裁报告)")
-        elif not status["audit"]:
-            actor = "Auditor"
-            target_f = f"log/audit/{ch_tok}.md"
-            instruct = ("向仲裁员 Auditor 下达 Stage 4C 标准工序派发令：跑 "
-                        "`studio audit --write` 生成带 front-matter 的仲裁报告并补写裁决"
-                        "（Stage 5 闸门必需）")
-        elif not status["proposal"]:
-            if status.get("proposal_failed"):
-                actor = "Director / Reader (修复 failed/ 提案)"
-                target_f = f"state/inbox/failed/{ch_tok}.json"
-                instruct = (f"本章提案位于 state/inbox/failed/{ch_tok}.json（上次 sync 校验未过）；"
-                            "请就地修改修复该 JSON 错误后重跑 sync，引擎会自动捡回，无需重头起草提案")
-            else:
-                actor = "Reader"
-                target_f = f"state/inbox/{ch_tok}.json"
-                instruct = "向审计员 Reader 下达 Stage 4A 标准工序派发令，交付事实提案 JSON"
+    elif not status["proposal"]:
+        curr_stage = "Stage 4D (增量事实提案)"
+        if status.get("proposal_failed"):
+            next_action = {
+                "actor": "Director / Reader (修复 failed/ 提案)",
+                "stage": "Stage 4D",
+                "instruction": (f"本章提案位于 state/inbox/failed/{ch_tok}.json（上次 sync 校验未过）；"
+                                "请就地修复该 JSON 后重跑 sync，引擎会自动捡回，无需重头起草提案"),
+                "command": f"python studio.py sync {ch_tok} --dry-run",
+                "target_file": f"state/inbox/failed/{ch_tok}.json"
+            }
         else:
-            actor = "Critic"
-            target_f = f"log/critic/{ch_tok}.md"
-            instruct = "向催更员 Critic 下达 Stage 4B 标准工序派发令，交付老白催更便签"
-
+            next_action = {
+                "actor": "Reader",
+                "stage": "Stage 4D",
+                "instruction": ("向审计员 Reader 下达 Stage 4D 标准工序派发令："
+                                "以 final 为唯一法定事实源交付事实提案 JSON"),
+                "command": f"view_file manuscript/{vol}/final/{ch_tok}.md",
+                "target_file": f"state/inbox/{ch_tok}.json"
+            }
+    elif not status["audit"] or status.get("audit_state") == "blocked":
+        # 引擎仲裁报告（由 final 机械生成，Stage 5 闸门必需）——排在 Stage 4D 之后、sync 之前
+        curr_stage = "Stage 5 前置 (仲裁闸门报告)"
+        if status.get("audit_state") == "blocked":
+            instruct = ("仲裁报告存在硬矛盾且未裁定：请在报告中完成交叉核实并将 adjudicated 设为 true，"
+                        f"或修正 hard 计数后重跑 `python studio.py audit {ch_tok} --write`")
+        else:
+            instruct = (f"运行 `python studio.py audit {ch_tok} --write` 生成带 front-matter 的"
+                        "仲裁报告并补写裁决（Stage 5 闸门必需）")
         next_action = {
-            "actor": actor,
-            "stage": "Stage 4",
+            "actor": "Auditor",
+            "stage": "Stage 5 前置",
             "instruction": instruct,
-            "command": (f"python studio.py audit {ch_tok} --write"
-                        if not status["audit"]
-                        else (f"python studio.py sync {ch_tok} --dry-run"
-                              if status.get("proposal_failed")
-                              else f"view_file manuscript/{vol}/final/{ch_tok}.md")),
-            "target_file": target_f,
-            **({"missing": missing} if missing else {})
+            "command": f"python studio.py audit {ch_tok} --write",
+            "target_file": f"log/audit/{ch_tok}.md"
         }
     else:
         curr_stage = "Stage 5 (状态同步与快照)"
@@ -903,6 +920,8 @@ def render_cockpit_terminal(briefing: dict[str, Any]) -> None:
         st_beats = "✅" if st["beats"] else "⭕"
         st_raw = "✅" if st["raw"] else "⭕"
         st_raw2 = "✅" if st.get("raw_v2") else "⭕"
+        st_raw3 = "✅" if st.get("raw_v3") else "⭕"
+        st_issues = "✅" if st.get("issues") else "⭕"
         st_final = "✅" if st["final"] else "⭕"
         st_prop = "✅" if st["proposal"] else "⭕"
         st_crit = "✅" if st["critic"] else "⭕"
@@ -914,9 +933,12 @@ def render_cockpit_terminal(briefing: dict[str, Any]) -> None:
                         "off": "➖ 已关闭 (audit_mode=off)"}.get(_ast, "⭕ 缺报告")
         st_sync = "✅" if st["synced"] else "⭕"
 
+        # 工序状态按真实依赖链排列：1 → 2 → 3A → 3B → 4A/4B → 4C → 4D → 5
         status_line = (
             f"细纲 beats: {st_beats}  毛坯 raw_v1: {st_raw}  初修 raw_v2: {st_raw2}  "
-            f"定稿 final: {st_final}  事实提案: {st_prop}  催更便签: {st_crit}\n"
+            f"脱水 raw_v3: {st_raw3}\n"
+            f"问题清单(4A): {st_issues}  定稿 final(4C): {st_final}  "
+            f"事实提案(4D): {st_prop}  催更便签(4B): {st_crit}\n"
             f"事实仲裁: {_audit_label}  快照同步: {st_sync}"
         )
 

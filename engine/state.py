@@ -74,6 +74,83 @@ _LINE_KIND_SPEC = {
 }
 
 
+# ── v2 分区「条目字段」白名单 · 单一真源 ──────────────────────────────
+# 动因（ch_002 实战）：这些白名单原先只以局部字面量形式散落在 validate_proposal 内，
+# 于是**没有任何途径**能把它们呈现给 Reader——beats 的「提案通道与键形状」小节只能写到
+# 「cognition_delta 是裸数组」，写不出「条目要哪些键」。Reader 只好照 cognition 的形状
+# 去填 cognition_delta，一次性换来 3 条 × 3 键 = 9 条「含未知字段」整案拒收。
+# 现升为模块级常量：校验器与 beats 文档同源，修一处即两处同步（与 _LINE_KIND_SPEC
+# + line_kind_spec() 同一套路）。
+COGNITION_KEYS = frozenset({"action", "id", "character", "kind", "content",
+                            "since_ch", "quote", "note", "truth_ref", "overwrite"})
+COGNITION_DELTA_KEYS = frozenset({"character", "learned", "misread", "doubted", "quote"})
+CONSEQUENCES_KEYS = frozenset({"subject", "change", "irreversible", "quote"})
+LOCKED_KEYS = frozenset({"action", "id", "fact", "since_ch", "kind", "quote",
+                         "note", "reason", "refs", "overwrite"})
+LOCKED_CANDIDATE_KEYS = frozenset({"fact", "kind", "quote", "note"})
+LINES_BASE_KEYS = frozenset({"kind", "action", "id", "quote"})
+# lines 各动作可携带的额外键（非 plant；plant 走 _LINE_KIND_SPEC[...]["plant_fields"]）
+LINES_ACTION_KEYS = {
+    "escalate": frozenset({"requires", "level", "content", "truth", "parties", "target_ch"}),
+    "resolve": frozenset({"requires", "target_ch"}),
+    "remind": frozenset({"requires", "target_ch"}),
+}
+# 各 kind 允许的动作（校验器只放行这些；写错会被点名）
+LINE_KIND_ACTIONS = {
+    "foreshadow": ("plant", "update", "remind", "resolve"),
+    "misunderstanding": ("plant", "update", "escalate", "resolve"),
+    "knowledge": ("plant", "update", "resolve"),
+}
+
+
+def v2_entry_contracts() -> list[tuple[str, tuple[str, ...], str]]:
+    """v2 各分区的**条目字段**契约（供 beats 键形状小节渲染，与校验器同源）。
+
+    单一真源是上面那组模块级常量；本函数只是给外部模块（chapter_flow 的 beats 生成器）
+    的公开只读入口。返回 [(分区, 合法键（字典序）, 备注)]。
+    """
+    return [
+        ("locked",
+         tuple(sorted(LOCKED_KEYS)),
+         "id 必填（^LOCK-\\d{3,}$、从水位线之后起号）；**note 为必填红线提示**；"
+         "action ∈ plant/upsert/retire"), 
+        ("locked_candidates",
+         tuple(sorted(LOCKED_CANDIDATE_KEYS)),
+         "仅 v2 可用、无 v3 op；fact 至少 4 字"),
+        ("cognition",
+         tuple(sorted(COGNITION_KEYS)),
+         "角色认知条目；id 可省略＝引擎自动编号并按指纹去重"),
+        ("cognition_delta",
+         tuple(sorted(COGNITION_DELTA_KEYS)),
+         "⚠️ **认知位移，形状与 cognition 不同**：只填 learned / misread / doubted 之一，"
+         "**没有** content / kind / since_ch（照 cognition 填会整案被拒）"),
+        ("consequences",
+         tuple(sorted(CONSEQUENCES_KEYS)),
+         "已废弃：仅提示不落盘（因果后果请走 cognition_delta / timeline）"),
+    ]
+
+
+def v2_line_contracts() -> list[str]:
+    """lines 分区的「按 kind 限定动作 + 字段」契约文本（供 beats 键形状小节渲染）。"""
+    out = []
+    for kind in ("foreshadow", "misunderstanding", "knowledge"):
+        spec = _LINE_KIND_SPEC[kind]
+        acts = LINE_KIND_ACTIONS[kind]
+        out.append(f"- `{kind}` · 可用动作：{'/'.join(acts)}"
+                   f" ｜ 基础键：{'/'.join(sorted(LINES_BASE_KEYS))}"
+                   "（**`name` 不在基础键里**，只有 plant/update 才允许）")
+        out.append(f"  · plant 必填：{'、'.join(spec['plant_need'])}"
+                   f"；可选：{'/'.join(sorted(spec['plant_fields']))}（含 `name`）")
+        out.append(f"  · update 可选：{'/'.join(sorted(spec['update_fields']))}")
+        extras = [a for a in ("escalate", "resolve", "remind") if a in acts]
+        if extras:
+            out.append(f"  · {' / '.join(extras)} 额外可带："
+                       f"{'/'.join(sorted(LINES_ACTION_KEYS['remind']))}")
+    out.append("- ⚠️ `remind` **只适用于 foreshadow**；knowledge 只有 plant/update/resolve"
+               "（想让秘密线「被提及」请用 update，或改在 cognition 里记 `truth_ref`）")
+    return out
+
+
 def line_kind_spec(kind: str) -> dict | None:
     """三类线（foreshadow / misunderstanding / knowledge）字段规格的公开只读入口。
 
@@ -628,6 +705,48 @@ def _validate_v3(proposal: dict, expected_chapter: str | None,
     return errors, plan
 
 
+# v2 提案的分块形状契约（**不对称**，且写错只报「类型应为 array」这种不含修法的错）：
+# current / timeline / ledger / synopsis 是对象；entities / lines / locked / cognition /
+# cognition_delta / consequences / locked_candidates 是**裸数组**。
+# ch_001 实战中 Reader 把 cognition 包成 {"entries": [...]}，引擎连报两条互相矛盾的
+# 类型错误（`$.cognition: 类型应为 array，实际 dict` ＋ `cognition: Input should be a
+# valid list`）才勉强定位到问题。这里先给可执行修法，并抑制下层同路径的重复报错。
+_PARTITION_KIND: dict[str, type] = {
+    "current": dict,
+    "timeline": dict,
+    "ledger": dict,
+    "synopsis": dict,
+    "entities": list,
+    "lines": list,
+    "locked": list,
+    "locked_candidates": list,
+    "cognition": list,
+    "cognition_delta": list,
+    "consequences": list,
+}
+_PARTITION_SHAPE_HINT: dict[str, str] = {
+    "cognition": '直接写条目列表，不要包成 {"entries": [...]}',
+    "cognition_delta": "直接写条目列表",
+    "timeline": "应为对象，且只含 events/arcs/clocks/milestones 四键",
+    "ledger": "应为对象，且只含 pools/transactions 两键",
+    "current": '应为字段字典，如 {"present_characters": [...], "situation": "…"}',
+    "synopsis": '应为对象，如 {"title": "…", "text": "…"}（章节目录走 synopsis.chapters）',
+}
+
+
+def _err_path(msg: str) -> str:
+    """从校验错误消息中抽出归一化字段路径，用于**跨校验层按路径去重**。
+
+    迷你校验器写作 ``$.timeline.events[0].event: …``，Pydantic 写作
+    ``timeline.events.0.event: …``，且两者对同一处问题的措辞完全不同；
+    原先的字符串级去重（``if pe not in errors``）抓不住，于是同一处错误被报两遍。
+    """
+    head = re.split(r"[:：]", str(msg), maxsplit=1)[0].strip()
+    head = head.lstrip("$").lstrip(".")
+    head = re.sub(r"\[(\d+)\]", r".\1", head)
+    return head.strip(".")
+
+
 def validate_proposal(proposal, expected_chapter: str | None = None,
                       book: Path | None = None) -> tuple[list[str], dict]:
     errors: list[str] = []
@@ -640,9 +759,34 @@ def validate_proposal(proposal, expected_chapter: str | None = None,
     # 提案进入强类型校验前，先行做柔性别名归一化
     normalize_proposal_aliases(proposal)
 
-    errors.extend(validator.validate(proposal, _schema("proposal")))
+    # 分块形状看守：先把「类型不对」升级成「该怎么改」，并记下坏路径供下层去重
+    shape_bad: dict[str, str] = {}
+    for _sec, _kind in _PARTITION_KIND.items():
+        _val = proposal.get(_sec)
+        if _val is None or isinstance(_val, _kind):
+            continue
+        _want = "数组" if _kind is list else "对象"
+        _hint = _PARTITION_SHAPE_HINT.get(_sec, "")
+        shape_bad[_sec] = (f"{_sec} 必须是{_want}（实际 {type(_val).__name__}）"
+                           + (f"——{_hint}" if _hint else ""))
+    errors.extend(shape_bad.values())
+
+    def _covered_by_shape(path: str) -> bool:
+        return bool(path) and any(path == s or path.startswith(s + ".") for s in shape_bad)
+
+    mini_errors = [e for e in validator.validate(proposal, _schema("proposal"))
+                   if not _covered_by_shape(_err_path(e))]
+    errors.extend(mini_errors)
+    mini_paths = {p for p in (_err_path(e) for e in mini_errors) if p}
+
+    def _covered_by_mini(path: str) -> bool:
+        # 同一路径（或其祖先）已由迷你校验器报出更友好的中文消息 → 抑制 Pydantic 重复
+        return bool(path) and any(path == mp or path.startswith(mp + ".") for mp in mini_paths)
+
     pydantic_errors = models.validate_with_model("proposal", proposal)
     for pe in pydantic_errors:
+        if _covered_by_shape(_err_path(pe)) or _covered_by_mini(_err_path(pe)):
+            continue
         if pe not in errors:
             errors.append(pe)
     for k in proposal:
@@ -819,7 +963,7 @@ def validate_proposal(proposal, expected_chapter: str | None = None,
             if action == "escalate" and kind != "misunderstanding":
                 errors.append(f"lines[{i}]: escalate 只适用于 misunderstanding")
                 continue
-            base_keys = {"kind", "action", "id", "quote"}
+            base_keys = LINES_BASE_KEYS
             if action == "plant":
                 allowed = base_keys | spec["plant_fields"]
                 for k in g:
@@ -866,11 +1010,10 @@ def validate_proposal(proposal, expected_chapter: str | None = None,
                         errors.append(f"lines[{i}]: {terr}")
                 # 非 plant 动作同样拒绝未知字段（防拼错字段静默 no-op，审计链缺失）
                 if action == "escalate":
-                    allowed_nonplant = base_keys | {"requires", "level", "content", "truth",
-                                                    "parties", "target_ch"}
+                    allowed_nonplant = base_keys | LINES_ACTION_KEYS["escalate"]
                 elif action in ("resolve", "remind"):
                     # target_ch 可选携带：回响/回收时顺延或改期回收计划（ E2E 实测 Reader 需要此语义）
-                    allowed_nonplant = base_keys | {"requires", "target_ch"}
+                    allowed_nonplant = base_keys | LINES_ACTION_KEYS["remind"]
                 else:  # update：沿用 update_fields 白名单
                     allowed_nonplant = base_keys | set(spec["update_fields"])
                 for k in g:
@@ -1081,7 +1224,7 @@ def validate_proposal(proposal, expected_chapter: str | None = None,
     locked = proposal.get("locked")
     if isinstance(locked, list):
         _plan("locked", len(locked))
-        allowed_locked_keys = {"action", "id", "fact", "since_ch", "kind", "quote", "note", "reason", "refs", "overwrite"}
+        allowed_locked_keys = LOCKED_KEYS
         for i, l in enumerate(locked):
             if not isinstance(l, dict):
                 errors.append(f"locked[{i}] 必须为对象")
@@ -1126,7 +1269,7 @@ def validate_proposal(proposal, expected_chapter: str | None = None,
     cog_full = proposal.get("cognition")
     if isinstance(cog_full, list):
         _plan("cognition", len(cog_full))
-        allowed_cog_full = {"action", "id", "character", "kind", "content", "since_ch", "quote", "note", "truth_ref", "overwrite"}
+        allowed_cog_full = COGNITION_KEYS
         for i, item in enumerate(cog_full):
             if not isinstance(item, dict):
                 errors.append(f"cognition[{i}] 必须为对象")
@@ -1148,7 +1291,7 @@ def validate_proposal(proposal, expected_chapter: str | None = None,
     cog = proposal.get("cognition_delta")
     if isinstance(cog, list):
         _plan("cognition_delta", len(cog))
-        allowed_cog_keys = {"character", "learned", "misread", "doubted", "quote"}
+        allowed_cog_keys = COGNITION_DELTA_KEYS
         for i, item in enumerate(cog):
             if not isinstance(item, dict):
                 errors.append(f"cognition_delta[{i}] 必须为对象")
@@ -1163,7 +1306,7 @@ def validate_proposal(proposal, expected_chapter: str | None = None,
     if isinstance(cons, list):
         # 历史遗留分区：仅校验提示、不落盘（无对应状态表；合并时另有显式降级警告）
         plan["consequences"] = f"提示不落盘 × {len(cons)}（已废弃：因果后果请走 cognition_delta / timeline）"
-        allowed_cons_keys = {"subject", "change", "irreversible", "quote"}
+        allowed_cons_keys = CONSEQUENCES_KEYS
         for i, item in enumerate(cons):
             if not isinstance(item, dict):
                 errors.append(f"consequences[{i}] 必须为对象")
@@ -1180,7 +1323,7 @@ def validate_proposal(proposal, expected_chapter: str | None = None,
                 errors.append(f"locked_candidates[{i}] 必须为对象")
                 continue
             for k in item:
-                if k not in ("fact", "kind", "quote", "note"):
+                if k not in LOCKED_CANDIDATE_KEYS:
                     errors.append(f"locked_candidates[{i}] 含未知字段: {k}")
             if not item.get("fact") or len(str(item["fact"]).strip()) < 4:
                 errors.append(f"locked_candidates[{i}].fact 至少需要 4 字有效陈述")

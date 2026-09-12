@@ -1,6 +1,6 @@
 ---
 name: novel-evolution
-description: Universal story evolution, setting refactoring, retcon surgery, and state reconciler for Novel Studio (Stage Evolution). Handles all mid-story change requests from human authors (settings, historical manuscript retcons, character psychological pivots, relationship changes, database ledger recomputations, and composite paradigm shifts) with feasibility assessment, contradiction blocking, and safe reconciliation in an isolated sandbox.
+description: Universal story evolution, setting refactoring, retcon surgery, and state reconciler for Novel Studio (Stage Evolution). Handles mid-story change requests using simulate impact for causal topology risk assessment, automated snapshot defenses, surgical manuscript edits, and state reconciliation in an isolated sandbox.
 ---
 
 # SKILL — novel-evolution（剧情外科主任 · 演进重构师专属手册）
@@ -26,32 +26,42 @@ description: Universal story evolution, setting refactoring, retcon surgery, and
   - ✂️ **文件修改 (File Edit)**：精准微调受影响章节的正文段落或设定；
   - ✍️ **文件写入 (File Write)**：新建核心人物或宝物卡片；
   - 💻 **命令行执行 (Command Execution)**：
-    - `python studio.py ask "<关键词>"`（快速查全书哪些章节提到了这个设定）；
-    - `python studio.py snapshot create "pre_evolution_<主题>"`（动刀前拍备份快照）；
-    - `python studio.py check -w "workspace/<书名>"`（改完自查 0 报错）。
-  - ❌ **不干什么**：不打扰人类作者，不写临时脚本。
+    - 🔍 `python studio.py ask "<关键词>"`（快速查全书哪些章节提到了这个设定）；
+    - 💥 `python studio.py simulate impact --entity <实体名> --action <kill/retcon> -w "workspace/<书名>"`（因果拓扑测算：秒级算出修改或抹杀某实体将连锁波及哪些人物、宗门与暗线）；
+    - 📸 `python studio.py snapshot create "pre_evolution_<主题>"`（动刀前拍备份快照）；
+    - ⏪ `python studio.py snapshot rollback <NAME> --clean-drafts`（安全兜底：若修改遇阻或作者不满意，一键撤销回滚）；
+    - 🕰️ `python studio.py state at <章号>` / `state diff <章A> <章B>`（查看历史时点切面与改动前后差异对比）；
+    - 🩺 `python studio.py check -w "workspace/<书名>"`（改完自查 0 报错）。
+  - ❌ **不干什么**：不打扰人类作者，不写临时测试脚本。
 
 ---
 
 ## 🚦 三、 外科手术三步走 (SOP)
 
-### 第一步：因果研判（看看会不会崩）
-- 跑 `python studio.py ask "<诉求关键词>"`，查查全书哪几章提过；
-- 自问两件事：
+### 第一步：科学因果研判（看看会不会崩）
+- **数据拓扑测算**：
+  若涉及关键人物或势力的重大变更（如身亡、反水、抹除或境界重塑），直接运行：
+  ```bash
+  python studio.py simulate impact --entity <实体名> --action retcon -w "workspace/<书名>"
+  ```
+  查看引擎吐出的直接关联方、间接波及链以及受影响的伏笔线索；
+- **问书核验原句**：跑 `python studio.py ask "<诉求关键词>"`，查查全书哪几章正文写过死死绑定的细节；
+- **自问两件事**：
   - ① 会不会导致已发生的核心剧情因果链直接断裂？
   - ② 会不会违背之前已经写死的不可逆事实（比如死人突然没死）？
 - **如果硬冲突太大**：停下，出具《阻断与建议单》，给出推荐方案 A（软着陆）、方案 B（局部微调）供作者拍板。
 
-### 第二步：拍快照备份
-确认能改后，立刻在终端运行：
+### 第二步：拍快照备份（铁律）
+确认可行后，动刀前第一件事必须在终端运行：
 ```bash
 python studio.py snapshot create "pre_evolution_<修改主题>"
 ```
+（若中途出错，随时可用 `python studio.py snapshot rollback pre_evolution_<修改主题> --clean-drafts` 恢复原貌）
 
 ### 第三步：精准手术刀修改与对齐
 - **改设定**：修改 `bible/` 里对应的条款；
 - **改正文**：只修改受影响章节的核心几段，把前后气口接顺；
-- **改状态**：如果人物称谓、关系或主角家底变了，顺手在 `characters/` 或 `state/` 里对齐；
+- **改状态**：如果人物称谓、关系或主角家底变了，顺手在 `characters/` 或 `state/` 里对齐；必要时用 `state at <章号>` 校验时点切面；
 - **体检自查**：运行 `python studio.py check`，确保 **0 errors**。
 
 ---

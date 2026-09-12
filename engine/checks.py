@@ -291,23 +291,24 @@ def verify_candidates(book: Path, ch: str, proposal: dict) -> dict:
                     "读者记忆层将无法按专名追踪这条事实（闸门 3 盲区），"
                     "建议 fact 中写入相关实体名（如「张三」而非「那人」）")
 
-    m = re.search(r"^#\s*(.+?)\s*$", text, re.M)
-    if not m:
+    # 章题机械对照（口径单一真源见 common.chapter_title_of）：
+    # 此前只认 `#` 前缀的标题行，纯文本章题（「第一章 活死人」，即流水线实际产出
+    # 的法定形态）会被误判为「无章题行」，闸门被静默跳过。
+    title_line = common.chapter_title_of(text)
+    if not title_line:
         add("info", "title_absent", "final 无章题标题行，章题机械对照跳过（Editor 契约要求首行章题）")
     else:
-        raw = m.group(1)
-        final_title = re.sub(r"^(?:第\s*[0-9零一二三四五六七八九十百千]+\s*章|ch[_-]?\d+)\s*", "", raw).strip()
+        final_title = common.chapter_title_bare(title_line)
         submitted = (proposal.get("synopsis") or {}).get("title") if isinstance(proposal.get("synopsis"), dict) else None
         if not submitted:
             try:
                 submitted = state.load_state(book, "synopsis").get("chapters", {}).get(ch, {}).get("title", "")
             except (ValueError, FileNotFoundError):
                 submitted = ""
-        if submitted and submitted != final_title:
+        if submitted:
             # 双侧同规则归一化（ P2-4）：此前只剥 final 侧的「第N章」前缀，
             # 提案侧逐字拷贝的章题反而每次触发假阳性告警
-            sub_norm = re.sub(r"^(?:第\s*[0-9零一二三四五六七八九十百千]+\s*章|ch[_-]?\d+)\s*",
-                              "", str(submitted)).strip()
+            sub_norm = common.chapter_title_bare(str(submitted))
             if sub_norm != final_title:
                 add("warn", "title_mismatch",
                     f"章题与 final 不一致: 提交「{submitted}」≠ final「{final_title}」（契约：逐字拷贝）")
@@ -315,6 +316,10 @@ def verify_candidates(book: Path, ch: str, proposal: dict) -> dict:
     beats_files = common.find_chapter_files(book, "beats", n)
     if beats_files:
         beats_sh = _char_shingles(beats_files[-1].read_text(encoding="utf-8", errors="replace"), 8)
+        # 只有「在任务书里出现、成稿里根本不出现」的片段才算「照抄任务书」的信号。
+        # 细纲本就以成稿用词描述场景，忠实转述本章事实必然与 beats 共用措辞——
+        # 此前不做这层扣除，连手写（根本没读过 beats）的提案都会被误报。
+        beats_only_sh = beats_sh - _char_shingles(text, 8)
         free_fields = []
         syn = proposal.get("synopsis") if isinstance(proposal.get("synopsis"), dict) else {}
         if syn.get("text"):
@@ -333,12 +338,13 @@ def verify_candidates(book: Path, ch: str, proposal: dict) -> dict:
                     if g.get(f):
                         free_fields.append((f"lines[{i}].{f}", str(g[f])))
         for where, val in free_fields:
-            shared = _char_shingles(val, 8) & beats_sh
+            shared = _char_shingles(val, 8) & beats_only_sh
             if len(shared) >= 2:
                 ex = sorted(shared)[0]
                 add("warn", "beats_overlap",
                     f"{where} 与任务书 beats 存在 {len(shared)} 处 8 字连续重叠（如「{ex}」）——"
-                    "疑似照抄任务书，事实性文字须逐字以 final 为源")
+                    "这些字样在任务书里有、成稿里没有，疑似照抄任务书；"
+                    "事实性文字须逐字以 final 为源")
 
     try:
         led = state.load_state(book, "ledger")
@@ -762,7 +768,7 @@ PARAM_SPEC: dict[str, dict] = {
                     "active_knowledge": 5, "active_misunderstandings": 4}},
     "audit_mode": {"shape": "str_choice", "gap": False,
         "choices": ["strict", "advisory", "off"],
-        "desc": "Stage 4C 事实一致性审校闸门模式（strict: 必须有 log/audit 报告且 hard=0 或已裁定才能 sync；advisory: 存在硬矛盾仅出 warning；off: 关闭检查）",
+        "desc": "Stage 5 事实一致性审校闸门模式（strict: 必须有 log/audit 报告且 hard=0 或已裁定才能 sync；advisory: 存在硬矛盾仅出 warning；off: 关闭检查）",
         "example": "strict"},
     "tier_shift_grace": {"shape": "nonneg_int", "gap": False,
         "desc": "位阶单调性探针（tier_shift_without_event）的事件匹配窗口：位阶变更章"
@@ -1855,9 +1861,11 @@ def run_checks(book: Path, *, full: bool = False) -> dict:
             try:
                 from . import changelog as _cl_mod
                 _last_mood = None
-                for _ev in _cl_mod.load_events(book):
-                    if (isinstance(_ev, dict) and _ev.get("table") == "current"
-                            and str(_ev.get("path", "")).startswith("present_moods")):
+                for _ev in _cl_mod.iter_events(book, needle='"table":"current"'):   # 流式+预过滤（FIX-5）
+                    _raw = _ev.get("table")
+                    if _raw != "current":
+                        continue
+                    if str(_ev.get("path", "")).startswith("present_moods"):
                         _n = common.chapter_token_to_num(_ev.get("ch") or "")
                         if _n:
                             _last_mood = _n if _last_mood is None else max(_last_mood, _n)

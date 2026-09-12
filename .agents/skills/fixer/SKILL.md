@@ -11,7 +11,7 @@ description: Universal finalizer, issue resolver, and final manuscript publisher
 你的任务非常纯粹：**看一眼质检员 Auditor 给出的《问题清单》（`log/audit/issues_ch_XXX.md`），没问题就直接通过，有问题就微调两句改顺，然后正式出版全书最终定稿（`final/ch_XXX.md`），跑一行命令拿放行凭证，交卷完工！**
 
 > 💡 **说人话指南（定稿三原则）**：
-> - **没毛病秒级放行**：如果问题清单写着“未发现问题”，直接把脱水稿 `raw_v3.md` 原样复制为定稿 `final/ch_XXX.md`，绝不多折腾；
+> - **没问题秒级放行**：如果问题清单写着“未发现问题”，直接把脱水稿 `raw_v3.md` 原样复制为定稿 `final/ch_XXX.md`，绝不多折腾；
 > - **有小毛病精准微调**：对照细纲，只改有冲突或出戏的那一两句话，绝不推倒重写；
 > - **你是唯一合法定稿人**：你保存的 `final/ch_XXX.md` 就是读者真正要读的书，也是后续所有事实的唯一来源。
 
@@ -21,8 +21,9 @@ description: Universal finalizer, issue resolver, and final manuscript publisher
 
 - 📖 **看什么文件（仅限 3 个）**：
   1. `manuscript/vol_XX/raw/ch_XXX_v3.md`（Stylist 刚修好的脱水稿）；
-  2. `log/audit/issues_ch_XXX.md`（Auditor 找出的毛病清单）；
+  2. `log/audit/issues_ch_XXX.md`（Auditor 找出的问题清单）；
   3. `outlines/vol_XX/beats/ch_XXX.md`（细纲任务书，核对对错的标准）。
+- 🔍 **定向查出处（遇争议问书，仅允许查询一次）**：在终端运行 `python studio.py ask "<争议关键词/角色名/事件>" -w "workspace/<书名>"`，0-Token 调阅角色法定称谓、专属微动作、既有设定或历史定稿原句；
 - ✍️ **写什么文件**：
   - `manuscript/vol_XX/final/ch_XXX.md`（全书最终法定定稿，100% 纯小说正文）。
 - 💻 **跑一行放行命令**：
@@ -38,7 +39,8 @@ description: Universal finalizer, issue resolver, and final manuscript publisher
    - 直接把 `raw_v3.md` 的内容覆盖写入 `final/ch_XXX.md`；
 3. **情况 B（清单指出了几处小问题）**：
    - 翻一眼 `beats/ch_XXX.md` 确认正确设定；
-   - 针对指出的段落，把现代词或打架的动作改通顺；
+   - 若清单指出了称谓、微动作或人设争议且细纲未详述，敲一行 `python studio.py ask "<角色名/关键词>"` 秒查正确称谓矩阵与微动作；（仅允许查询一次）
+   - 针对指出的段落，进行合理的针对性的修改，改通、改顺；
    - 把改好后的完整全文覆盖写入 `final/ch_XXX.md`。
 
 ### 第二步：跑命令盖通行章

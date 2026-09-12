@@ -33,7 +33,7 @@ import datetime
 import json
 import re
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterable
 
 from . import common
 
@@ -79,6 +79,34 @@ def _line(ev: dict) -> str:
 # ---------------------------------------------------------------------------
 # 事件流读写（尾行残缺容忍 + 自愈截断）
 # ---------------------------------------------------------------------------
+
+def iter_events(book: Path, needle: str | tuple[str, ...] | None = None):
+    """流式逐行读事件（只读扫描方专用：O(1) 驻留，不构造全书事件列表）。
+
+    千章级书的 changelog 达数百 MB，`load_events()` 的「全部 json.loads 成
+    dict 列表」会让单次全检内存到 GB 量级（2026-09 chap-hell 1500 章实测 OOM）。
+    只做线性扫描的调用方（如 mood_snapshot_stale、证据检索）请走本函数；
+    需要随机访问/折叠的仍用 load_events。末行残缺静默跳过（截断自愈留给写方）。
+    """
+    p = changelog_path(book)
+    if not p.is_file():
+        return
+    with p.open("r", encoding="utf-8", errors="replace") as fh:
+        for ln in fh:
+            if needle:
+                _ns = (needle,) if isinstance(needle, str) else needle
+                if not any(n in ln for n in _ns):
+                    continue   # 子串预过滤：跳过无关行，免 JSON 解析
+            ln = ln.strip()
+            if not ln:
+                continue
+            try:
+                ev = json.loads(ln)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(ev, dict):
+                yield ev
+
 
 def load_events(book: Path) -> list[dict]:
     """读全部事件；末行残缺（崩溃窗口）时截断自愈，中间坏行跳过并计数。"""
@@ -401,7 +429,7 @@ def _apply_op(root: Any, path: str, op: str, after: Any) -> None:
         node[last_name] = copy.deepcopy(after)
 
 
-def fold(base: dict, events: list[dict]) -> dict:
+def fold(base: dict, events: Iterable[dict]) -> dict:
     """基线 + 事件流 → 折叠出的状态（重放的核心；verify 的对账底座）。
 
     无法寻址的事件不中断折叠，收入 ``__stale_events__``（verify 会显式暴露，
@@ -537,8 +565,8 @@ def check_external_edit(book: Path, table: str, data: dict) -> None:
         return
     if head[table] == h:
         return
-    # 不一致：折叠出引擎最后认知，diff 出外部改动
-    old = fold_book(book).get(table)
+    # 不一致：折叠出引擎最后认知（只折本表，勿整书——FIX-5d），diff 出外部改动
+    old = fold_table(book, table)
     ops = diff_states(old, data)
     events = _data_events(table, ops, source="external_edit", ch=None,
                           op_id=None, ts=_now())
@@ -581,10 +609,38 @@ def record_rollback(book: Path, snapshot_name: str,
 # 对账（verify）与折叠查询
 # ---------------------------------------------------------------------------
 
-def fold_book(book: Path) -> dict:
-    """整书折叠：base + 全部事件 → 当前应然状态。"""
+def fold_table(book: Path, table: str) -> dict:
+    """单表折叠：base[table] + 本表相关事件 → 该表现状。
+
+    check_external_edit 的失配自愈只需要「本表引擎最后认知的样子」——整书
+    fold（11 表全量重建）在千章书上是 ~500MB/次 × 每表一次的内存放大器
+    （chap-hell 1100 章 misc/reconcile 实测 OOM，FIX-5d）。实体四表须连带
+    legacy entities 事件（搬迁前世），needle 预过滤把 90%+ 行连解析都省掉。
+    """
     base = common.load_json(base_path(book), default={}) or {}
-    return fold(base, load_events(book))
+    needles = tuple(f'"table":"{t}"' for t in _related_tables(table))
+    seed = {t: (base.get(t) or {}) for t in _related_tables(table)}
+    folded = fold(seed, iter_events(book, needle=needles))
+    return folded.get(table, {})
+
+
+def _related_tables(table: str) -> tuple[str, ...]:
+    """折叠本表时的连带表集：实体四表须吸收 legacy entities 单表时代事件。"""
+    if table in ("persons", "items", "factions", "places"):
+        return (table, "entities")
+    return (table,)
+
+
+def fold_book(book: Path) -> dict:
+    """整书折叠：base + 全部事件 → 当前应然状态。
+
+    千章级书 changelog 数百 MB——**流式喂 fold**（iter_events，不物化事件列表）。
+    不做结果备忘：memo 化整个折叠态 = 常驻百 MB 级副本，比省下的重放更伤
+    （2026-09 chap-hell 实测：带 deepcopy 的 memo 反而把 verify 推到 3.9GB OOM）。
+    需要轻量路径的调用方（失配自愈）请走 fold_table。
+    """
+    base = common.load_json(base_path(book), default={}) or {}
+    return fold(base, iter_events(book))
 
 
 def verify(book: Path) -> tuple[bool, str]:
@@ -628,7 +684,7 @@ def verify(book: Path) -> tuple[bool, str]:
 def seal_seq_for(book: Path, ch_num: int) -> int | None:
     """≤ ch_num 的最后一次 chapter_sealed 的 seq（无则 None）。"""
     best: int | None = None
-    for ev in load_events(book):
+    for ev in iter_events(book, needle='"kind":"chapter_sealed"'):
         if ev.get("kind") != "chapter_sealed":
             continue
         n = common.chapter_token_to_num(ev.get("ch"))
@@ -641,7 +697,7 @@ def seal_seq_for(book: Path, ch_num: int) -> int | None:
 
 def genesis_at_final_ch(book: Path) -> int | None:
     """genesis 事件记录的激活时最新定稿章号（缺失=None，按保守处理）。"""
-    for ev in load_events(book):
+    for ev in iter_events(book, needle='"kind":"genesis"'):
         if ev.get("kind") == "genesis":
             v = ev.get("at_final_ch")
             return v if isinstance(v, int) and not isinstance(v, bool) else None
@@ -651,8 +707,8 @@ def genesis_at_final_ch(book: Path) -> int | None:
 def fold_to_seq(book: Path, seq: int) -> dict:
     """折叠到指定 seq（含）为止的状态。"""
     base = common.load_json(base_path(book), default={}) or {}
-    return fold(base, [e for e in load_events(book)
-                       if int(e.get("seq") or 0) <= seq])
+    return fold(base, (e for e in iter_events(book)
+                       if int(e.get("seq") or 0) <= seq))
 
 
 def state_at(book: Path, ch_num: int) -> tuple[dict | None, str | None]:
@@ -709,7 +765,7 @@ def blame(book: Path, table: str, path: str = "") -> list[dict]:
     """
     out = []
     prefix = f"{table}.{path}" if path else table
-    for ev in load_events(book):
+    for ev in iter_events(book, needle=f'"table":"{table}"'):
         if ev.get("kind") or ev.get("table") != table:
             continue
         ev_path = str(ev.get("path") or "")

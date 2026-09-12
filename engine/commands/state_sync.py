@@ -142,7 +142,8 @@ def cmd_sync(args) -> int:
 
     if not has_manuscript:
         return _fail(f"未找到 {ch} 的定稿（final），拒绝空同步（Stage 5 输入合同：beats/raw/final 齐）",
-                     hint=f"请由 Stage 3B Stylist 完成通俗脱水定稿并写入 manuscript/vol_XX/final/{ch}.md")
+                     hint=f"请先由 Stage 3B 脱水师 Stylist 产出脱水预定稿 raw/{ch}_v3.md，"
+                          f"再由 Stage 4C 定稿师 Fixer 落盘法定定稿 manuscript/vol_XX/final/{ch}.md")
     if not has_proposal:
         # 非规范命名扫描：不按文件名前缀猜，直接看同章提案（chapter 字段 = ch）的
         # 其他 *.json——技能/代理若按旧习惯产出 sweep_ch_XXX.json 等第二文件，门闸
@@ -195,15 +196,15 @@ def cmd_sync(args) -> int:
         return _fail(f"未找到 {ch} 的 raw 草稿，拒绝封存（Stage 5 输入合同：beats/raw/final 齐）",
                      hint=f"请由 Stage 2 Drafter 起草初稿并落盘于 manuscript/vol_XX/raw/{ch}_v1.md")
 
-    # Stage 4C 事实一致性仲裁闸门（audit_mode: strict | advisory | off）
+    # Stage 5 仲裁闸门（报告由 Stage 4A 审查员产出，引擎据此封存；audit_mode: strict | advisory | off）
     proj = common.load_json(book / "project.json", default={}) or {}
     audit_mode = proj.get("audit_mode", "strict")
     if audit_mode != "off":
         audit_file = book / "log" / "audit" / f"{ch}.md"
         if not audit_file.is_file():
             if audit_mode == "strict":
-                return _fail(f"未找到 {ch} 的事实一致性仲裁报告（log/audit/{ch}.md），拒绝封存（Stage 4C 闸门：audit_mode=strict）",
-                             hint=f"由 Stage 4C Auditor 运行 `python studio.py audit {ch} --write` 生成仲裁报告并完成裁决")
+                return _fail(f"未找到 {ch} 的事实一致性仲裁报告（log/audit/{ch}.md），拒绝封存（Stage 5 闸门：audit_mode=strict）",
+                             hint=f"由 Stage 4A 审查员 Auditor 运行 `python studio.py audit {ch} --write` 生成仲裁报告并完成裁决")
             else:
                 if not js:
                     print(f"⚠️ [audit_mode=advisory] 未找到 {ch} 的事实一致性仲裁报告（log/audit/{ch}.md）")
@@ -247,7 +248,7 @@ def cmd_sync(args) -> int:
                 if hard_count > 0 and not adjudicated:
                     if audit_mode == "strict":
                         return _fail(f"事实一致性仲裁未通过：{audit_file.name} 存在 {hard_count} 处确凿硬矛盾（hard > 0）且未裁定（adjudicated=false）",
-                                     hint=f"请由 Stage 3B Stylist 实施定向手术刀修复后重跑 `python studio.py audit {ch} --write`，或在报告中完成交叉核实并将 adjudicated 设为 true / hard 修正为 0")
+                                     hint=f"请由 Stage 4C 定稿师 Fixer 实施定向手术刀修复法定定稿后重跑 `python studio.py audit {ch} --write`，或在报告中完成交叉核实并将 adjudicated 设为 true / hard 修正为 0")
                     else:
                         if not js:
                             print(f"⚠️ [audit_mode=advisory] 仲裁报告提示存在 {hard_count} 处硬矛盾未裁定")
@@ -526,6 +527,51 @@ def _cmd_proposal_verify(book: Path, ch: str, args) -> int:
     return 0
 
 
+# 细纲场景行的模板标签（emoji 与 / 或 **粗体**）。
+# 判据刻意**不枚举标签名**：模板一旦新增标签（「核心戏剧支点」「感官物象锚点」
+# 「物理因果气口」…），硬编码白名单（内容|场景|收束|章末物理刀口|拍点|节奏|动作）
+# 就静默失效，整行连 `🎬 核心戏剧支点：` 一起写进 situation/synopsis（实测事故）。
+# 现按「模板标记」剥离，且要求 emoji 或粗体标记二者之一——正文对话
+# （「她低声说：我不去。」）既无 emoji 也无粗体，绝不被误剥。
+_AUTO_EMOJI = r"[\U0001F300-\U0001FAFF\u2600-\u27BF\u2B00-\u2BFF\uFE0F\u200d]"
+_AUTO_LABEL_BOLD_RE = re.compile(rf"^{_AUTO_EMOJI}*\s*\*\*[^*\n]{{1,24}}\*\*\s*[：:]\s*")
+_AUTO_LABEL_EMOJI_RE = re.compile(rf"^{_AUTO_EMOJI}+\s*[^：:\n]{{1,24}}[：:]\s*")
+_AUTO_LABEL_EMPTY_RE = re.compile(r"^[^：:\n]{1,24}[：:]\s*$")
+
+# beats 里显式声明章题的写法之一（另一路是 front-matter `title:`）。
+# 捕获部分显式排除 `*`：细纲实际写法是 `**章题建议：《第一章 活死人》**。`，
+# 若允许 `*` 进入捕获再要求行尾标点，会被结尾的 `**。` 顶掉而整体失配。
+_BEATS_TITLE_INLINE_RE = re.compile(
+    r"章题建议\s*[:：]\s*[《【]?\s*([^》】\n*]+?)\s*(?:[》】]|$)", re.M)
+
+
+def _strip_beats_label(s: str) -> str | None:
+    """剥掉细纲场景行的模板标签并返回正文；返回 ``None`` 表示空标签行，应整行跳过。"""
+    if _AUTO_LABEL_EMPTY_RE.match(s):
+        return None
+    if _AUTO_LABEL_BOLD_RE.match(s):
+        return re.sub(r"\*\*", "", _AUTO_LABEL_BOLD_RE.sub("", s, count=1)).strip()
+    if _AUTO_LABEL_EMOJI_RE.match(s):
+        return re.sub(r"\*\*", "", _AUTO_LABEL_EMOJI_RE.sub("", s, count=1)).strip()
+    return re.sub(r"\*\*", "", s).strip()
+
+
+def _auto_beats_title(beats_text: str, n: int) -> str:
+    """final 尚无章题行时的兜底：只认显式声明。
+
+    **绝不扫 `^#+`**——beats 首行是 YAML front-matter，其 `#` 注释行
+    （「# 推荐 10 大商业叙事章型（任选其一，灵活自定）：」）是模板说明而非章题，
+    此前被当成章题写进了 synopsis（实测事故）。
+    """
+    fm_title = str(common.parse_front_matter(beats_text).get("title") or "").strip()
+    if fm_title:
+        return fm_title
+    m = _BEATS_TITLE_INLINE_RE.search(beats_text or "")
+    if m and m.group(1).strip():
+        return m.group(1).strip()
+    return f"第{n}章"
+
+
 _AUTO_TARGET_PATTERNS = (
     re.compile(r"目标\s*ch_(\d+)", re.I),
     re.compile(r"目标[：:]\s*第\s*(\d+)\s*章"),
@@ -577,18 +623,12 @@ def _cmd_proposal_auto(book: Path, ch: str, args) -> int:
     final_files = common.find_chapter_files(book, "final", n)
     final_text = final_files[-1].read_text(encoding="utf-8", errors="replace") if final_files else ""
 
-    title = ""
-    if final_text:
-        m = re.search(r"^#\s*(?:第\s*[0-9零一二三四五六七八九十百千]+\s*章|ch_\d+)\s*(.+)$", final_text, re.M)
-        if m:
-            title = m.group(1).strip()
-        else:
-            m = re.search(r"^#\s*(.+)$", final_text, re.M)
-            if m:
-                title = m.group(1).strip()
-    if not title:
-        m = re.search(r"^#+\s*(.+)$", beats_text, re.M)
-        title = m.group(1).strip() if m else f"第{n}章"
+    # 章题：优先逐字取 final 首行（契约见 `.agents/skills/reader/SKILL.md`——
+    # synopsis.title 必须与 final 正文第一行完全一致，形态含纯文本「第一章 活死人」）。
+    # 此前只认 `#` 前缀，纯文本章题被判为「无章题行」后回退去扫 beats 的 `^#+`，
+    # 命中的是 front-matter 注释行，实测产出过
+    # synopsis.title = "推荐 10 大商业叙事章型（任选其一，灵活自定）："。
+    title = common.chapter_title_of(final_text) or _auto_beats_title(beats_text, n)
 
     lines_ops = []
     action_sec = "\n".join(common.md_section(beats_text, r"^##\s*.*线(索)?动作"))
@@ -678,7 +718,9 @@ def _cmd_proposal_auto(book: Path, ch: str, args) -> int:
                         up_item["content"] = ln
                     lines_ops.append(up_item)
 
-    lookup = evidence.entity_lookup(book)
+    # 在场名单只收「人物」。此前不过滤 type，道具与势力会混进来——实测
+    # proposal auto 产出 present_characters = ["叶澜心","寒冰玉镜","水云圣宫"]。
+    lookup = evidence.entity_lookup(book, kinds={"person"})
     present_chars = []
     if final_text:
         for name, aliases in lookup.items():
@@ -692,34 +734,15 @@ def _cmd_proposal_auto(book: Path, ch: str, args) -> int:
     raw_scenes = common.md_section(beats_text, r"^##\s*(?:.*冲突与场景脉络|.*场景推进|.*场景脉络|.*拍点|拍点与场景切片)")
     beats_scenes = []
     for ln in raw_scenes:
-        s = ln.strip().lstrip("-*· ").strip()
+        # 只剥真正的项目符号前缀（`- `/`* `/`· `）。**不要**用 lstrip("-*· ")——
+        # 后者会把「**粗体**」标签的开头两个星号一并吃掉（`- **内容**：x` →
+        # `内容**：x`），使粗体标签再也匹配不上，标签残留并写进
+        # situation/synopsis（这正是旧注释里那段「死代码」的真正成因）。
+        s = re.sub(r"^[-*·•]+\s+", "", ln.strip()).strip()
         if not s or s.startswith(("#", "<")):
             continue
-        # 上面这行的 lstrip("-*· ") 会把行首的 `**` 一并吃掉
-        # （"- **内容**：x" → "内容**：x"），于是紧随其后的 s.startswith("**内容")
-        # 永远不可能命中——五种写法实测全部 False，该分支自始即是死代码
-        # （把 **内容** 放宽成 **内容 也同样不命中）。
-        # 死代码的真实后果只有一个：残留的尾部 ** 漏进状态字段——proposal auto
-        # 实跑产出过 current.situation = "本章核心戏剧目标**：把「无主空灯」…"。
-        # 另有一个连带缺口：空标签行（如 "- **场景脉络**："，冒号后无内容）
-        # 会被当成正文收进来，在 situation 尾部留下 "；场景脉络：" 碎片。
-        #
-        # 这里刻意只做两件明确正确的事，不扩大过滤范围：
-        #   ① 剥掉成对 ** 粗体标记（与 P2-10 的 _clean() 同一口径）；
-        #   ② 跳过「冒号后无内容」的空标签行。
-        # 不去按「内容/场景/收束」前缀整行跳过——细纲里 "- 🎬 **内容**：天刚亮，
-        # 陆沉舟进屋蹲在灶台前…" 恰恰是真正的场景正文，把死代码复活成会删正文的
-        # 行为变更既无人要求，也会让 situation 丢掉实际内容。
-        s = re.sub(r"\*\*", "", s).strip()
-        if re.match(r"^[^：:]{1,12}[：:]\s*$", s):
-            continue
-        # 剥掉细纲模板的展示性前缀（🎬/📍 + 「内容」「场景」「收束」等标签），
-        # 只留正文。此前会把“🎬 内容：林舟摸进废料场。”整串写进 situation /
-        # synopsis，造成状态字段带装饰符号与标签。
-        s = re.sub(
-            r"^(?:🎬|📍|🔔|⚠️|💡|📌)?\s*(?:内容|场景|收束|章末物理刀口|拍点|节奏|动作)?[：:]\s*",
-            "", s).strip()
-        cleaned = re.sub(r"^(?:章末物理刀口|[-·*]*\s*📍\s*\**章末物理刀口卡点\**)[:：]\s*", "", s).strip()
+        # 剥掉细纲模板的展示性标签，只留正文（实现与理由见 _strip_beats_label）。
+        cleaned = _strip_beats_label(s)
         if cleaned and not cleaned.startswith(("<", "<!--")):
             beats_scenes.append(cleaned)
     synopsis_text = "；".join(beats_scenes[:3]) if beats_scenes else f"完成第{n}章主线剧情推进。"

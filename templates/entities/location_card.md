@@ -17,6 +17,7 @@ schema_version: novel-studio.location/v2
      关键场景卡用于锁定故事核心爆发点的空间格局与感官细节。
      防止场景描写漂移（例如上一章是千丈宽阔地宫，下一章写得像逼仄小水沟；或交通用时前后吃书）。
      复制至 entities/locations/<地名>.md 并填实。
+     ★ 语感规范：通俗直白大白话、空间格局与感官物象清晰易懂、严禁堆砌生涩晦涩词汇！
      ★ 状态同步提醒：本 YAML 中的 id, name, type, danger_tier, environment_rules, sensory_anchor, faction, status 属于 实体四表（persons/items/factions/places） 法定白名单；danger_level 属于卡片语义扩展，入库四表时请保留白名单字段。
      ★ 全题材适配：
        - 玄幻/仙侠：断魂溶洞/诸神战墟/圣宫主峰，填天地威压、禁空阵法、地热寒煞；

@@ -59,8 +59,9 @@ def _deceased_speaks(content: str, name: str) -> bool:
         return False
     if any(f"{name}{v}" in content for v in _SPEECH_VERBS):
         return True
-    return (f"「{name}" in content or f"“{name}" in content
-            or f"{name}」" in content or f"{name}”" in content)
+    # 引号边界判定收敛到 common.is_quote_adjacent：原先只认「」/“”，而流水线实际产出
+    # 用的是 ASCII 双引号，导致本判据对全部实战稿件静默失明。
+    return common.is_quote_adjacent(content, name)
 
 
 
@@ -173,14 +174,47 @@ def probe_locked_facts(text: str, lines: list[str], n: int, locked_st: dict, ent
     return candidates
 
 
-def probe_location_presence(text: str, lines: list[str], cur_st: dict, ents_st: list[dict]) -> list[dict]:
-    """探针 2：空间与在场探针（检查角色地理空间跳跃与存活状态）。"""
+def _not_yet_effective_deceased(locked_st: dict, ents_st: list[dict], n: int) -> set[str]:
+    """本章**或更晚**才登记死亡的已故实体名（时点豁免）。
+
+    最典型的就是「本章当场战死」的角色：他在本章绝大部分篇幅里活得好好的，
+    正文里当然会被反复提及；而 sync 之后实体表已把他标成 deceased，
+    本探针只读实体表、拿不到时点，于是必然误报「已亡角色活跃出场」。
+    （ch_002 实战：崔烈在窄道里被李玄一拳打死，全章都在场，却被判成已亡者出场。）
+
+    probe_locked_facts 早已用 `if n <= since_num: continue` 做了同一时点豁免——
+    本章或更晚才登记的事实，在本章时点尚未生效。本函数把该豁免补给探针 2，
+    判据仍是既有的 locked.since_ch，不引入新字段。
+    """
+    entries = locked_st.get("entries", []) if isinstance(locked_st, dict) else []
+    pending = [str(lk.get("fact", "")) for lk in entries
+               if isinstance(lk, dict)
+               and n <= (common.chapter_token_to_num(lk.get("since_ch", "ch_000")) or 0)]
+    if not pending:
+        return set()
+    out = set()
+    for ent in ents_st:
+        name = ent.get("name", "")
+        if name and ent.get("life_status") == "deceased" and any(name in f for f in pending):
+            out.add(name)
+    return out
+
+
+def probe_location_presence(text: str, lines: list[str], cur_st: dict, ents_st: list[dict],
+                            exempt_names: set[str] | None = None) -> list[dict]:
+    """探针 2：空间与在场探针（检查角色地理空间跳跃与存活状态）。
+
+    exempt_names：本章或更晚才登记死亡的实体——其死亡在本章时点尚未生效。
+    """
     candidates = []
+    exempt = exempt_names or set()
     for ent in ents_st:
         name = ent.get("name", "")
         if not name:
             continue
         if ent.get("life_status") == "deceased":
+            if name in exempt:
+                continue  # 本章才死（或更晚才死）：本章提及属正常，不是「活跃出场」
             hits = _find_mentions_with_lines(lines, name)
             for line_no, content in hits:
                 # 死亡当章及后世章里，凡同句带死亡叙事词（尸体/遇害/出殡/遗言/坟/棺等）的提及，
@@ -685,7 +719,7 @@ def probe_address_mismatch(text: str, lines: list[str], book: Path, ch_num: int,
                 if len(bad_term) < 2:
                     continue
                 for idx, line in enumerate(lines, start=1):
-                    dialogues = re.findall(r"[「“]([^」”]+)[」”]", line)
+                    dialogues = common.iter_line_dialogues(line)
                     for diag in dialogues:
                         if bad_term in diag:
                             ev_key = (idx, bad_term)
@@ -706,6 +740,100 @@ def probe_address_mismatch(text: str, lines: list[str], book: Path, ch_num: int,
                                 "state_ref": f"characters/{f.name}",
                                 "suggestion": f"请对照细纲法定称谓清单，使用唯一指定称谓替换违禁词「{bad_term}」。"
                             })
+    return candidates
+
+
+# 称谓核的剥离字符：省略号 / 引号 / 各类标点与空白
+_ADDR_TRIM_CHARS = "…⋯.。，,、·\"'“”‘’「」『』（）() \t　"
+
+
+def _addr_core(term: str) -> str:
+    """剥掉省略号/引号/标点，留下可机械校验的称谓核。
+
+    例：叶澜心对李玄的法定称谓是「……你」这种**带省略号的代词形态**——机械查它
+    既脆弱（省略号写法多变）又必然假阳性（「你」在正文里到处都是），故 core 长度
+    < 2 时一律跳过；这类形态交 Auditor 的 LLM 语义层判断。
+    """
+    return str(term).strip().strip(_ADDR_TRIM_CHARS).strip()
+
+
+def _present_name_set(cur_st: dict, ents_st: list[dict]) -> set[str]:
+    """本章在场角色名集合（含别名与实体 id 展开）。
+
+    在场唯一来源 = `current.present_characters`。**不能用「名字是否出现在正文」判在场**：
+    ch_001 里李玄的名字通篇未出现（叶澜心此时还不知道他叫什么），
+    但他确是在场说话的人，用正文判在场会直接漏掉他。
+    """
+    raw: list[str] = []
+    if isinstance(cur_st, dict):
+        v = cur_st.get("present_characters")
+        if isinstance(v, list):
+            raw = [str(x).strip() for x in v if str(x).strip()]
+    names: set[str] = set(raw)
+    for e in ents_st:
+        name = str(e.get("name") or "").strip()
+        alts = [str(a).strip() for a in (e.get("aliases") or []) if str(a).strip()]
+        if name in raw or any(a in raw for a in alts) or str(e.get("id") or "") in raw:
+            names.add(name)
+            names.update(alts)
+    names.discard("")
+    return names
+
+
+def probe_address_never_surfaced(text: str, lines: list[str], book: Path, ch_num: int,
+                                 ents_st: list[dict], cur_st: dict) -> list[dict]:
+    """探针 8 反向补盲：法定称谓「该叫却没叫」。
+
+    `probe_address_mismatch` 只查一个方向——「卡片严禁的称呼是否出现」。
+    ch_001 实战暴露了反向盲区：细纲明令李玄首句须以「丫头」称呼叶澜心，而 raw_v3
+    里整个称谓缺失，探针却一声不吭（因为它根本不查「该叫却没叫」）。
+
+    这里用 state 里机器可读的 address_matrix（`{目标: 我称呼对方}`，存的是**当前阶段**
+    的法定形态，已随剧情推进更新）补上这一向。
+
+    候选统一记在 `probe="address_mismatch"` 名下：这是同一探针的正反两面，
+    探针总数仍为 8，不改变既有 audit JSON 契约。
+    """
+    candidates: list[dict] = []
+    present = _present_name_set(cur_st, ents_st)
+    if not present:
+        return candidates
+    for e in ents_st:
+        if str(e.get("type") or "").lower() != "person":
+            continue
+        matrix = e.get("address_matrix")
+        if not isinstance(matrix, dict) or not matrix:
+            continue
+        owner = str(e.get("name") or "").strip()
+        if not owner or owner not in present:
+            continue
+        owner_in_text = owner in text
+        for target, term in matrix.items():
+            tgt = str(target).strip()
+            # 对方不在场 → 本章本就没有开口称呼的场景，不报
+            if not tgt or tgt not in present:
+                continue
+            core = _addr_core(term)
+            # 代词/省略号形态不可机械校验（见 _addr_core）
+            if len(core) < 2:
+                continue
+            if core in text:
+                continue
+            note = (f"（注：{owner} 的名字本身也未在正文出现，在场判定以 state 为准）"
+                    if not owner_in_text else "")
+            candidates.append({
+                "probe": "address_mismatch",
+                "severity": "candidate_soft",
+                "line_no": None,
+                "also_flagged_by": None,
+                "title": f"法定称谓未落笔：{owner} 通篇未以「{core}」称呼 {tgt}",
+                "description": (f"state 的 address_matrix 锁定 {owner} 对 {tgt} 的法定称谓为"
+                                f"「{core}」，双方本章均在场，但正文通篇未出现该称谓。{note}"),
+                "evidence": f"正文未出现「{core}」；在场名单含 {owner}、{tgt}",
+                "state_ref": f"persons[{owner}].address_matrix[{tgt}]",
+                "suggestion": (f"若本章 {owner} 确有开口机会，请让其以法定称谓「{core}」称呼 {tgt}"
+                               "（称谓递进是长线人物关系的一部分）；若确无开口场合，可忽略本条。"),
+            })
     return candidates
 
 
@@ -747,7 +875,9 @@ def run_audit(book: Path, ch: str) -> dict[str, Any]:
 
     raw_candidates: list[dict] = []
     raw_candidates.extend(probe_locked_facts(text, lines, n, locked_st, ents_st))
-    raw_candidates.extend(probe_location_presence(text, lines, cur_st, ents_st))
+    raw_candidates.extend(probe_location_presence(
+        text, lines, cur_st, ents_st,
+        exempt_names=_not_yet_effective_deceased(locked_st, ents_st, n)))
     raw_candidates.extend(probe_charges_possession(text, lines, ents_st, cur_st))
     raw_candidates.extend(probe_amount_ledger(text, lines, led_st))
     # 视角角色：只有指名得到具体角色，旁白/心理描写的知情差穿帮才可判定
@@ -756,6 +886,8 @@ def run_audit(book: Path, ch: str) -> dict[str, Any]:
     raw_candidates.extend(probe_cognition_stubs(text, lines, lines_st, cog_st))
     raw_candidates.extend(probe_alias_drift(text, lines, ents_st))
     raw_candidates.extend(probe_address_mismatch(text, lines, book, n, ents_st))
+    # 探针 8 的反向补盲：法定称谓「该叫却没叫」（候选同样计入 address_mismatch）
+    raw_candidates.extend(probe_address_never_surfaced(text, lines, book, n, ents_st, cur_st))
 
     candidates = []
     for idx, c in enumerate(raw_candidates, start=1):

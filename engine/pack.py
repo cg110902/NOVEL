@@ -1036,7 +1036,7 @@ ROLE_DENY: dict[str, tuple[str, ...]] = {
     "drafter": ("state/", "bible/", "characters/", "log/"),
     # 精修师：禁 bible/*、characters/*、state/*、log/*
     "editor": ("state/", "bible/", "characters/", "log/"),
-    # 审计员：禁 raw/*、bible/*、characters/*、state/*
+    # 审计员（Stage 4D）：禁 raw/*、bible/*、characters/*、state/*
     "reader": ("state/", "bible/", "characters/"),
     # 催更员：禁 outlines/*、raw/*、bible/*、characters/*、log/*；state 仅 current.json
     "critic": ("outlines/", "bible/", "characters/", "state/", "log/"),
@@ -1046,7 +1046,7 @@ ROLE_DENY: dict[str, tuple[str, ...]] = {
     # 脱水师（Stage 3B）：只看 beats + raw_v2 + 文风宪法；禁 state/卡片/日志。
     # bible/ 同理整体禁读——只有 06_style_guidelines.md 走白名单例外。
     "stylist": ("state/", "bible/", "characters/", "entities/", "log/", "snapshots/"),
-    # 仲裁员（Stage 4C）：只看定稿 + beats + locked/current/entities 三表；禁 raw/bible/卡片。
+    # 审查员（Stage 4A）：只看定稿 + beats + locked/current/entities 三表；禁 raw/bible/卡片。
     # ⚠️ state/ 必须整体禁读，否则 ROLE_ALLOW_EXTRA 的三表白名单形同虚设
     # （前缀没禁，白名单就成了摆设，ledger/timeline/cognition 一样读得到）。
     "auditor": ("state/", "bible/", "characters/", "entities/", "snapshots/"),

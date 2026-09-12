@@ -32,19 +32,21 @@ python studio.py check -w workspace/我的书
 
 ---
 
+
 ## 二、流水线一图流
 
 ```
 Stage 0A/0B  Architect   世界观公理 + 人物大纲 + 十一表播种（设定层直写）
 Stage 1      Director    细纲构思 beats（引擎注入一致性速查 / 资源池键名+ID 水位线 / 提案键形状）
-Stage 2      Drafter     初稿 raw_v1
+Stage 2      Drafter     初稿起草 raw_v1
 Stage 3A     Editor      骨肉重塑 raw_v2
-Stage 3B     Stylist     通俗脱水 final（全书唯一法定定稿）
-Stage 4A     Reader      事实提案 state/inbox/ch_XXX.json
-Stage 4B     Critic      老白催更便签 log/critic/ch_XXX.md
-Stage 4C     Auditor     三轨一致性仲裁 log/audit/ch_XXX.md（front-matter: hard/soft/logic，Stage 5 硬闸门）
-Stage 4D     Librarian   每 10 章长程巡检（近 10 章定稿 vs 四张台账平账）
+Stage 3B     Stylist     通俗脱水 raw_v3
+Stage 4A     Auditor     内容审查安检 log/audit/issues_ch_XXX.md
+Stage 4B     Critic      老白催更便签 log/critic/ch_XXX.md（专供下章参考）
+Stage 4C     Fixer       终局定稿 final（全书唯一法定定稿）
+Stage 4D     Reader      增量事实提案 state/inbox/ch_XXX.json
 Stage 5      Director    sync：提案合并 + 十一表盖章 + 快照封存
+Librarian    Librarian   每 10 章长程巡检 + 卷末对账大修
 Evolution    Evolver     人类变更诉求的波及面测算与手术刀改版
 ```
 
@@ -62,7 +64,7 @@ Evolution    Evolver     人类变更诉求的波及面测算与手术刀改版
 | `engine/README.md` | 引擎模块地图与 lore 系列速查说明 |
 | `engine/schemas/*.json` | 由 `engine/models/schema_gen.py` 从 Pydantic 模型生成，勿手改 |
 | `AGENTS.md` | 主控章程：流水线、角色矩阵、工序协议、目录契约 |
-| `.agents/skills/*/SKILL.md` | 10 个角色的技能卡（准读/准写/工艺/回执） |
+| `.agents/skills/*/SKILL.md` | 11 个角色的技能卡（含主控与 10 大专业子代理；准读/准写/工艺/回执） |
 | `templates/` | 建书脚手架：bible 七表、人物卡、大纲、beats、`project.json` |
 | `templates/README.md` | 模板字段逐项说明（与 Pydantic 模型同口径） |
 | `requirements.txt` | 运行时依赖（与 `pyproject.toml` 同源） |
@@ -106,7 +108,7 @@ Evolution    Evolver     人类变更诉求的波及面测算与手术刀改版
   `hard > 0`（机械矛盾）或 🧠 `logic > 0`（语义出戏）且未 `adjudicated: true` 一律拒封
   （`audit_mode: advisory` 降为提示）。🧠 轨是 **Auditor 的 LLM 专属判断**：世界观类目污染 / 违背世界公理 /
   性格突变 / 因果与代价断链 / 现场常识与时空矛盾，这类"读者当场出戏"的问题 `check` **结构上查不出来**
-  （引擎没有散文语义能力），所以做成第三轨而不是第四张探针清单；处置三选一：改正文（Stylist 手术刀）/
+  （引擎没有散文语义能力），所以做成第三轨而不是第四张探针清单；处置三选一：改正文（Fixer 手术刀）/
   转办 Evolver（设定层）/ 降级为 🟡 存疑（不计入 `logic`）。
 - **装配预算契约**（`pack`）：总量上限 **3W TOKEN**；超预算按**压缩阶梯**由远及近裁
   （P2 冷索引 → P2 旧章指针 → P1 间接关联 → P1 脊柱 → P0 上章余温），而**细纲全文 / current 块 / 硬提醒 /
@@ -137,10 +139,10 @@ Evolution    Evolver     人类变更诉求的波及面测算与手术刀改版
 
 | 场景 | 命令 |
 |---|---|
-| 命令目录与阶段配方 | `python studio.py help --json` |
+| 全景命令矩阵与角色映射 | [`docs/COMMAND_MATRIX.md`](file:///c:/Users/cg110902/Desktop/NOVEL/docs/COMMAND_MATRIX.md)（31 命令与 Agent 映射图谱） · `python studio.py help --json` |
 | 工作区/工序总览 | `python studio.py status` · `cockpit [ch]` |
 | 单章上下文装配 | `python studio.py pack ch_XXX [--lean／--full] [--open 路径 --as 角色]`（3W token 预算，超量自动压缩） |
-| 只读取证 | `python studio.py ask <关键词>`（2.0 引用链：每条命中带 cite 出处） · `evidence <kind>` · `pov` · `calendar` |
+| 只读取证 | `python studio.py ask <关键词>`（2.1 全域引用链：十一表+正文原句+全息卡片+世界圣经公理，每条命中带 cite 出处） · `evidence <kind>` · `pov` · `calendar` |
 | 细纲与稿件流转 | `beats new ch_XXX --write`（注入一致性速查 / 资源池 / ID 水位线 / 提案键形状，并支持 `world_refs` 按章取设定） · `critic` · `audit ch_XXX --write`（三轨仲裁） · `reconcile vol_XX`（卷末对账） |
 | 提案 | `proposal new [--v3] ch_XXX`（骨架；--v3 为寻址式防错版） · `proposal check ch_XXX` · `proposal auto ch_XXX --write` · `sync ch_XXX [--dry-run]` |
 | 体检与自愈 | `check`（`doctor` 为其别名；`--trend` 分数曲线 / `--bisect` 快照二分 / `--full` 全量 / `--accept` 确认消音） · `errcodes <码>` |
@@ -157,20 +159,3 @@ Evolution    Evolver     人类变更诉求的波及面测算与手术刀改版
 `python studio.py errcodes` 看全表（当前 106 条闸门码，`--level error` 过滤）；注册表在 `engine/errcodes.py`，
 新增体检码必须在此注册（文档里的码数由 `tests/test_docs_parity.py` 与本表实时对账）。
 
----
-
-
-## 六、开发约定
-
-- `engine/schemas/*.json` 由 `python -m engine.models.schema_gen` 生成；改模型后重跑，
-  仓库里不应出现漂移。
-- 枚举与类型集合一律从 Pydantic 模型派生（如 `LOCATION_TYPES`、`state._ATTITUDE`），
-  禁止在校验分支里再手写字面量集合。
-- 新增 `check` 错误码必须在 `engine/errcodes.py` 注册。
-- 用户可见文案里的数量口径（命令数、状态表数、字段数）改动时，同步更新
-  `AGENTS.md` / `engine/README.md` / `templates/README.md`——这些口径由 `python -m tests.test_docs_parity`
-  自动比对（命令数 = `len(COMMAND_HELP)`、状态表数 = `len(STATE_KEYS)`、错误码数 = `len(REGISTRY)`），
-  跑不过就回去改文档，不要反过来把数字改小。
-- 状态表口径的唯一说法：**十一表** = 11 张断言表（`ASSERTED_KEYS`，Agent 可写）；
-  **第十二张表** = `derived.json` 派生缓存（`STATE_KEYS` = 十一表 + derived）；
-  `project.json` 是 STATE_KEYS 之外的书级配置表，**不占表号**（表号只编到第十二张）。

@@ -10,6 +10,7 @@ import json
 import math
 import re
 from pathlib import Path
+from typing import Any
 
 from . import changelog, common, state, vocab
 
@@ -60,22 +61,15 @@ def final_chapter_files(book: Path) -> list[tuple[str, int, Path]]:
 def final_chapters(book: Path) -> list[tuple[str, int, str]]:
     """按 (卷, 章号) 升序的 [(ch_token, num, text)]，一章多文件时取版本号最大者（v10 > v2）。
     注意：key = (卷, 章号)，避免跨卷同章号互相覆盖（vol_02/ch_001 不会被 vol_01/ch_001 顶掉）。
-    字数口径：仅去除首行章题标题行，保留正文中其他 # 开头的行（如“#号房”对话）。
+    字数口径：仅去除首行章题行本体，保留正文中其他 # 开头的行（如“#号房”对话）。
+    章题形态认「第一章 活死人」纯文本与「# 第一章 …」两种，口径见 ``common.chapter_title_of``。
     """
     out = []
     for vol, n, p in final_chapter_files(book):
         tok = f"{vol}/ch_{n:03d}"
         raw = p.read_text(encoding="utf-8", errors="replace")
-        # 仅去除首个非空标题行（以 # 开头），而非全文所有 # 行，避免误删正文对话
-        lines = raw.splitlines()
-        idx = 0
-        while idx < len(lines) and not lines[idx].strip():
-            idx += 1
-        if idx < len(lines) and re.match(r"^\s*#", lines[idx]):
-            # 标题行后保留其余
-            body = "\n".join(lines[idx + 1:])
-        else:
-            body = raw
+        # 仅去除首个非空章题行，而非全文所有 # 行，避免误删正文对话
+        body = common.strip_chapter_title(raw)
         out.append((tok, n, body))
     return out
 
@@ -103,7 +97,14 @@ def count_aliases(text: str, aliases: list[str]) -> dict[str, int]:
     return per
 
 
-def entity_lookup(book: Path, safe_aliases: bool = False) -> dict[str, list[str]]:
+def entity_lookup(book: Path, safe_aliases: bool = False,
+                  kinds: set[str] | None = None) -> dict[str, list[str]]:
+    """``{主名: [主名+别名]}``。``kinds`` 非空时按实体 ``type`` 过滤（如 ``{"person"}``）。
+
+    ``kinds`` 的存在理由：调用方常需要「人物」语义（在场名单、POV、声纹），而
+    四表合并视图里混着道具/势力/地点；不过滤就会把「寒冰玉镜」（item）与
+    「水云圣宫」（faction）当成在场**人物**（proposal auto 实测事故）。
+    """
     ents = state.load_state(book, "entities")
     proj = common.load_json(book / "project.json", default={}) or {}
     all_stopwords = {str(w).strip() for w in (proj.get("generic_stopwords") or [])
@@ -111,6 +112,8 @@ def entity_lookup(book: Path, safe_aliases: bool = False) -> dict[str, list[str]
     lookup = {}
     for e in ents.get("entries", []):
         if e.get("status", "active") != "active":
+            continue
+        if kinds is not None and str(e.get("type") or "").strip().lower() not in kinds:
             continue
         primary = str(e.get("name", "")).strip()
         if not primary:
@@ -1020,6 +1023,216 @@ def _cite(table: str, key: str, events: list[dict], paths: tuple[str, ...] = (),
     return cite
 
 
+def _search_cards(book: Path, terms: list[str]) -> list[dict]:
+    """检索全息卡片域（characters/*.md 与 entities/*/*.md）。
+
+    提取核心灵魂资产：心理四维 (Want/Need/Fear/Redline)、标志物象、专属微动作、恒定称谓矩阵等。
+    """
+    card_dirs = [book / "characters", book / "entities"]
+    card_files: list[Path] = []
+    for cd in card_dirs:
+        if cd.is_dir():
+            for p in cd.rglob("*.md"):
+                if p.is_file() and not p.name.startswith("."):
+                    card_files.append(p)
+
+    hits: list[tuple[bool, dict[str, Any]]] = []
+    usable = [t for t in dict.fromkeys(terms) if len(t) >= 2]
+    if not usable:
+        return []
+
+    for cf in card_files:
+        try:
+            text = cf.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+
+        fm = common.parse_yaml_front_matter(text) or {}
+        card_name = str(fm.get("name") or cf.stem).strip()
+        card_id = str(fm.get("id") or "").strip()
+        aliases = [str(a).strip() for a in (fm.get("aliases") or []) if str(a).strip()]
+
+        name_matched = any(t in card_name or card_name in t for t in usable)
+        id_matched = bool(card_id and any(t == card_id for t in usable))
+        alias_matched = any(t in a or a in t for a in aliases for t in usable)
+        body_matched = any(t in text for t in usable)
+
+        if not (name_matched or id_matched or alias_matched or body_matched):
+            continue
+
+        rel_path = str(cf.relative_to(book)).replace("\\", "/")
+        card_type = fm.get("type") or ("character" if "characters" in rel_path else "entity")
+
+        parts = text.split("---", 2)
+        body = parts[-1] if len(parts) >= 3 else text
+
+        def _clean_str(val: Any) -> str:
+            s = str(val or "").strip()
+            s = re.sub(r"\{\{slot:[^\|]+\|([^}]+)\}\}", r"\1", s)
+            return s.strip()
+
+        # 1. 提取心理四维与核心动机
+        want_m = re.search(r"-\s*\*\*Want[^\*]*\*\*[:：]\s*(.+)", body, re.IGNORECASE)
+        need_m = re.search(r"-\s*\*\*Need[^\*]*\*\*[:：]\s*(.+)", body, re.IGNORECASE)
+        fear_m = re.search(r"-\s*\*\*Fear[^\*]*\*\*[:：]\s*(.+)", body, re.IGNORECASE)
+        redline_m = re.search(r"-\s*\*\*(?:绝对逆鳞|逆鳞)[^\*]*\*\*[:：]\s*(.+)", body)
+        motive_m = re.search(r"-\s*\*\*核心动机[^\*]*\*\*[:：]\s*(.+)", body)
+
+        # 2. 标志性物象 (Sensory Anchor)
+        sensory = fm.get("sensory_anchor")
+        if not sensory:
+            sensory_m = re.search(r"-\s*\*\*(?:容貌特征与标志性物象|容貌体貌与辨识物象|辨识物象)[^\*]*\*\*[:：]\s*(.+)", body)
+            if sensory_m:
+                sensory = sensory_m.group(1).strip()
+
+        # 3. 习惯微动作库
+        micro_actions: list[str] = []
+        in_micro = False
+        for ln in body.splitlines():
+            if re.match(r"^#{2,4}\s*(?:习惯微动作|微动作与神态库)", ln):
+                in_micro = True
+                continue
+            elif in_micro and re.match(r"^#{2,4}\s", ln):
+                in_micro = False
+            if in_micro and ln.strip().startswith("-"):
+                clean_ln = _clean_str(re.sub(r"^-\s*", "", ln.strip()))
+                if clean_ln and not clean_ln.startswith("（"):
+                    micro_actions.append(clean_ln[:60])
+
+        # 4. 匹配具体章节片段
+        matched_sections: list[dict[str, str]] = []
+        cur_heading = ""
+        sec_lines: list[str] = []
+        for ln in body.splitlines():
+            if re.match(r"^#{2,4}\s", ln):
+                if sec_lines and cur_heading:
+                    sec_text = "\n".join(sec_lines)
+                    if any(t in sec_text for t in usable):
+                        for sln in sec_lines:
+                            if any(t in sln for t in usable) and len(sln.strip()) > 3:
+                                matched_sections.append({
+                                    "heading": cur_heading,
+                                    "snippet": _clean_str(sln.strip())[:90]
+                                })
+                                break
+                cur_heading = re.sub(r"^#{2,4}\s*", "", ln).strip()
+                sec_lines = []
+            else:
+                sec_lines.append(ln)
+        if sec_lines and cur_heading:
+            sec_text = "\n".join(sec_lines)
+            if any(t in sec_text for t in usable):
+                for sln in sec_lines:
+                    if any(t in sln for t in usable) and len(sln.strip()) > 3:
+                        matched_sections.append({
+                            "heading": cur_heading,
+                            "snippet": _clean_str(sln.strip())[:90]
+                        })
+                        break
+
+        item: dict[str, Any] = {
+            "name": _clean_str(card_name),
+            "type": card_type,
+            "path": rel_path,
+        }
+        if card_id:
+            item["id"] = _clean_str(card_id)
+        if fm.get("role"):
+            item["role"] = _clean_str(fm.get("role"))
+        if fm.get("tier_name"):
+            item["tier_name"] = _clean_str(fm.get("tier_name"))
+        if fm.get("faction"):
+            item["faction"] = _clean_str(fm.get("faction"))
+        if sensory:
+            item["sensory_anchor"] = _clean_str(sensory)
+        if want_m:
+            item["want"] = _clean_str(want_m.group(1))
+        if need_m:
+            item["need"] = _clean_str(need_m.group(1))
+        if fear_m:
+            item["fear"] = _clean_str(fear_m.group(1))
+        if redline_m:
+            item["redline"] = _clean_str(redline_m.group(1))
+        if motive_m:
+            item["motive"] = _clean_str(motive_m.group(1))
+        if micro_actions:
+            item["micro_actions"] = micro_actions[:5]
+        if fm.get("address_matrix") and isinstance(fm["address_matrix"], dict):
+            item["address_matrix"] = fm["address_matrix"]
+        if matched_sections:
+            item["matched_sections"] = matched_sections[:3]
+
+        item["cite"] = {"table": "card", "key": rel_path, "chapters": []}
+        hits.append((name_matched or id_matched, item))
+
+    hits.sort(key=lambda x: not x[0])
+    return [h[1] for h in hits[:6]]
+
+
+def _search_bible(book: Path, terms: list[str]) -> list[dict]:
+    """检索世界圣经公理域（bible/*.md）。
+
+    按小节拆分匹配，提取世界公理、战力标尺、特殊机制或文风规范。
+    """
+    bible_dir = book / "bible"
+    if not bible_dir.is_dir():
+        return []
+
+    usable = [t for t in dict.fromkeys(terms) if len(t) >= 2]
+    if not usable:
+        return []
+
+    hits: list[dict] = []
+    files = sorted(bible_dir.glob("*.md"))
+    for bf in files:
+        if bf.name.startswith("."):
+            continue
+        try:
+            text = bf.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+
+        rel_path = str(bf.relative_to(book)).replace("\\", "/")
+        lines = text.splitlines()
+        cur_heading = bf.stem
+        sec_lines: list[str] = []
+
+        def _record_section(heading: str, s_lines: list[str]):
+            sec_text = "\n".join(s_lines)
+            heading_matched = any(t in heading for t in usable)
+            content_matched = any(t in sec_text for t in usable)
+            if heading_matched or content_matched:
+                snippet = ""
+                for ln in s_lines:
+                    clean = re.sub(r"\{\{slot:[^\|]+\|([^}]+)\}\}", r"\1", ln).strip()
+                    if clean and not clean.startswith(("#", "<!--")):
+                        if any(t in clean for t in usable) or not snippet:
+                            snippet = clean
+                            if any(t in clean for t in usable):
+                                break
+                if not snippet and s_lines:
+                    snippet = re.sub(r"\{\{slot:[^\|]+\|([^}]+)\}\}", r"\1", s_lines[0]).strip()
+                hits.append({
+                    "file": rel_path,
+                    "section": heading,
+                    "quote": snippet[:100],
+                    "cite": {"table": "bible", "key": f"{rel_path}#{heading}", "chapters": []}
+                })
+
+        for ln in lines:
+            if re.match(r"^#{1,4}\s", ln):
+                if sec_lines:
+                    _record_section(cur_heading, sec_lines)
+                cur_heading = re.sub(r"^#{1,4}\s*", "", ln).strip()
+                sec_lines = []
+            else:
+                sec_lines.append(ln)
+        if sec_lines:
+            _record_section(cur_heading, sec_lines)
+
+    return hits[:8]
+
+
 def ask(book: Path, query: str) -> dict:
     """ask：全书事实检索机（只读取证，零裁决）。
 
@@ -1037,7 +1250,12 @@ def ask(book: Path, query: str) -> dict:
         return out
     terms: list[str] = [q]
     try:
-        _cl_events = changelog.load_events(book)
+        # 轻量投影：cite 只需 6 个短键；千章书全量 load_events（数百 MB 文本
+        # → 数 GB dict）会 OOM（FIX-5c，chap-hell cp 实测）。
+        _cl_events = [{"table": e.get("table"), "path": e.get("path"),
+                       "seq": e.get("seq"), "ch": e.get("ch"),
+                       "op": e.get("op"), "op_id": e.get("op_id")}
+                      for e in changelog.iter_events(book) if not e.get("kind")]
     except OSError:
         _cl_events = []
 
@@ -1299,10 +1517,24 @@ def ask(book: Path, query: str) -> dict:
                 break
     if text_hits:
         out["text_hits"] = text_hits
-    out["ask_version"] = "2.0"
-    out["notes"] = ["2.0 引用链：每条命中自带 cite{table, key, chapters[]}；"
-                    "chapters 为空 = changelog 无记录（手术刀直改/老书/条目无章戳），不得脑补。",
-                    "未命中 = 合法事实（账面与正文均无记录）；本命令只读取证、零裁决，语义判断归主控。"]
+
+    # 8) 全息卡片命中（characters/*.md 与 entities/*/*.md）
+    card_hits = _search_cards(book, terms)
+    if card_hits:
+        out["cards"] = card_hits
+
+    # 9) 世界圣经公理命中（bible/*.md）
+    bible_hits = _search_bible(book, terms)
+    if bible_hits:
+        out["bible"] = bible_hits
+
+    out["ask_version"] = "2.1"
+    out["notes"] = [
+        "2.1 全域引用链：每条命中自带 cite{table, key, chapters[]}；"
+        "涵盖十一表真值、定稿正文、全息卡片（Want/Fear/逆鳞/微动作）与世界圣经公理。",
+        "chapters 为空 = changelog 无记录或设定/卡片常量，不得脑补。",
+        "未命中 = 合法事实（全域均无记录）；本命令只读取证、零裁决，语义判断归各角色。"
+    ]
     return out
 
 

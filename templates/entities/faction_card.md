@@ -21,6 +21,7 @@ schema_version: novel-studio.faction/v2
      长篇小说的冲突核心往往是宗门、门阀、跨国财阀或行星阵营之间的集团战争。
      本卡用于锁定核心势力的掌权架构、垄断资源、护宗王牌与敌友外交网络。
      复制至 entities/factions/<势力名>.md 并填实。
+     ★ 语感规范：通俗直白大白话、利益算计与爽点博弈分明、拒绝空洞堆砌！
      ★ 状态同步提醒：本 YAML 中的 id, name, type, scale_tier, tier_name, attitude, core_assets, diplomacy, status 属于 实体四表（persons/items/factions/places） 法定白名单；leader 与 headquarters 属于卡片语义扩展，入库四表时切勿带入未知键。
      ★ 全题材适配：
        - 玄幻/仙侠：水云圣宫/焚天神谷/太古世家，填功法道统、护山大阵、灵矿命脉、敌对死仇；

@@ -64,7 +64,7 @@ def _gather(book: Path, vol: str) -> dict:
         hi_seq = changelog.seal_seq_for(book, hi) or 0
         lo_seq = changelog.seal_seq_for(book, lo - 1) or 0
         _ent_tables = (*state.KIND_TABLES, state.LEGACY_ENTITIES_KEY)
-        for ev in changelog.load_events(book):
+        for ev in changelog.iter_events(book):   # 流式：千章书全量物化会 OOM（FIX-5c）
             if ev.get("kind") or ev.get("table") not in _ent_tables:
                 continue
             seq = int(ev.get("seq") or 0)

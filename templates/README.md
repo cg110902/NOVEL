@@ -157,6 +157,7 @@ templates/
      **任何一态都不会让 Drafter 看不到世界观**；钉住的节不受 `world_anchor_tokens` 截断，多钉不挤压别的内容。
 
 7. **CLI 底层词典秒级查询工具链 (Studio Lore CLI)**：
+   > 💡 完整命令全集（31 个命令名与各智能体矩阵映射图谱）请查阅 [`docs/COMMAND_MATRIX.md`](../docs/COMMAND_MATRIX.md)。
    - `python studio.py lore list`：全景列出所有已注册实体的物理 ID、名称与卡片状态；
    - `python studio.py lore entity <id/name>`：按 ID 或名称穿透调阅实体全息档案（EntityEntry 共 36 个字段，按实际填写渲染）；
    - `python studio.py lore compare <idA/nameA> <idB/nameB>`：秒级对校两实体位阶差距与法定互称矩阵；

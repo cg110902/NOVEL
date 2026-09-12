@@ -882,12 +882,35 @@ def _proposal_shapes_section() -> str:
     `state/`（ROLE_DENY），`proposal new --v3` 又只给 `"ops": []` 空骨架——子代理被要求
     写一种它拿不到形状表的格式，只能凭记忆猜键名。本小节以 `state.models.ProposalModel`
     与 `proposal_v3.V3_OP_SHAPES` 为单一真源生成，与 v2/v3 管线同源，不再复制字面量。
+
+    ch_001 实战补正：v2 分区**并不同构**（current/timeline/ledger/synopsis 是对象，
+    entities/lines/locked/cognition/… 是裸数组），而 v3 的 op 载荷（`current`·update →
+    `{"set":{…}}`、`timeline`·append_event → `{"event":{…}}`）此前紧接在 v2 分区名之后
+    且无任何标注，Reader 极易把 op 载荷当成分区形状——实战即产出
+    `cognition: {"entries":[…]}` 与 `current: {"set":{…}}`。现按两套契约分块标注。
     """
+    import typing
+
     from .. import proposal_v3 as v3_mod
     from ..models import ProposalModel
 
     meta_only = {"schema_version", "chapter", "operation_id", "draft"}
     v2_secs = [k for k in ProposalModel.model_fields if k not in meta_only]
+
+    def _v2_shape(key: str) -> str:
+        """从字段注解推导 v2 分区形状（注解形如 `X | None`，需先解包 Optional）。"""
+        ann = ProposalModel.model_fields[key].annotation
+        args = [a for a in typing.get_args(ann) if a is not type(None)]
+        inner = args[0] if args else ann
+        origin = typing.get_origin(inner)
+        if origin in (list, tuple, set):
+            return "裸数组 `[ … ]`"
+        if origin is dict or inner is dict:
+            return "对象 `{ … }`"
+        if isinstance(inner, type) and hasattr(inner, "model_fields"):
+            return "对象 `{ … }`"
+        return ""
+
     lines = ["### 📐 提案通道与键形状（Stage 4 Reader 照此写；**不要**打开 state/inbox/README.md"
              "——那是主控/人类的完整契约，且在你的禁读范围内）", ""]
     lines.append("- 二选一、同一文件禁止混写：**默认 v2 分区**；"
@@ -896,10 +919,49 @@ def _proposal_shapes_section() -> str:
     lines.append("- v2 顶层：`{\"schema\":\"novel-studio.state-mutation/v2\",\"chapter\":\"ch_XXX\","
                  "\"operation_id\":\"ch_XXX.reader.HHMM\", …分区}` ｜ 分区："
                  + " / ".join(f"`{k}`" for k in v2_secs))
+    lines.append("- **v2 分区形状（先看这张表，不要凭记忆猜）**——分区**不同构**：")
+    for k in v2_secs:
+        shape = _v2_shape(k)
+        if shape:
+            lines.append(f"  - `{k}` → {shape}")
+    lines.append("  - 形状写错时报错会直接点名并给修法（如 `cognition 必须是数组（实际 dict）"
+                 "——直接写条目列表，不要包成 {\"entries\": [...]}`），照修即可。")
     lines.append("- v3 顶层：`{\"schema\":\"…/v3\",\"chapter\",\"operation_id\",\"ops\":[{table,action,…}]}`；"
                  f"仅 v2 可用、无 v3 op 的分区：{'、'.join('`%s`' % x for x in v3_mod.V3_UNAVAILABLE_V2_ONLY)}")
+    lines.append("  - ⚠️ **以下各行是 v3 的 `ops` 载荷形状，不是 v2 分区形状**。"
+                 "同一个名字在两套契约里形状不同：v2 的 `current` 是**扁平字段字典**"
+                 "（`{\"present_characters\":[…],\"situation\":\"…\"}`），"
+                 "只有 v3 的 `current`·update 才写成 `{\"set\":{…}}`。")
     for table, action, shape in v3_mod.V3_OP_SHAPES:
         lines.append(f"  - `{table}` · {action} → `{shape}`")
+    # ch_002 实战补正：分区形状（对象/裸数组）之外，Reader 还需要知道**条目能写哪些键**。
+    # 此前这些白名单只存在于 state.validate_proposal 的局部字面量里，无任何途径可见，
+    # Reader 于是照 cognition 的形状填 cognition_delta，换来 9 条「含未知字段」整案拒收。
+    from ..models.timeline import ClockStatus, ClockUrgency
+    from .. import state as state_mod
+
+    lines.append("- **v2 分区条目字段（每条能写哪些键；写错会点名到 `分区[i] 含未知字段: xxx`）**：")
+    for sec_name, keys, note in state_mod.v2_entry_contracts():
+        lines.append(f"  - `{sec_name}` → {' / '.join('`%s`' % k for k in keys)} ｜ {note}")
+    lines.append("- **`lines` 分区的按 kind 契约（动作不对会被点名）**：")
+    for chunk in state_mod.v2_line_contracts():
+        for sub in chunk.split("\n"):
+            lines.append("  " + sub)
+    lines.append("- `timeline.clocks[]`：`status` 只认大写开头 "
+                 + " / ".join(f"`{x.value}`" for x in ClockStatus)
+                 + "；`urgency` 只认小写 "
+                 + " / ".join(f"`{x.value}`" for x in ClockUrgency) + "。")
+    # ch_002 实战补正：kind 枚举此前从未文档化，Reader 只能猜——把「当场战死」填成了
+    # irreversible_action，于是「已故角色仍在发言」探针按 kind=="death" 整条跳过、静默不检。
+    # 枚举取自模型层 LockedKind（单一真源），不手抄。
+    from typing import get_args
+
+    from ..models.locked import LockedKind
+    lines.append("- `locked[].kind` 只认 "
+                 + " / ".join(f"`{k}`" for k in get_args(LockedKind))
+                 + "。⚠️ **当场死亡一律填 `death`**"
+                   "（填 `irreversible_action` 会让「已故角色仍在发言」探针整条跳过）；"
+                   "`since_ch` 填本章号——填更晚的章号会被判为「该状态在本章尚未生效」。")
     lines.append("- 只写增量；每条尽量带 `\"quote\":\"本章 final 原句\"`（柔性接地，不逐字抠）。"
                  "`current` 缺省/空值＝不改；`locked[].note`、`lines[].target_ch`(plant) 必填。")
     lines.append("- 幂等：`operation_id` 全书唯一，同 id 换内容会被拒收——修正重提必须换新 id。")
@@ -1235,10 +1297,10 @@ def cmd_critic(args) -> int:
     if not final_files:
         if getattr(args, "json", False):
             print(json.dumps({"chapter": tok, "ok": False,
-                              "error": f"未找到 {tok} 的定稿（final），无法进行读者评测（需先由 Stage 3B Stylist 定稿）",
+                              "error": f"未找到 {tok} 的定稿（final），无法进行读者评测（需先由 Stage 4C 定稿师 Fixer 落盘 final）",
                               "code": "no_final"}, ensure_ascii=False))
         else:
-            print(f"❌ 未找到 {tok} 的定稿（final），无法进行读者评测（需先由 Stage 3B Stylist 定稿）")
+            print(f"❌ 未找到 {tok} 的定稿（final），无法进行读者评测（需先由 Stage 4C 定稿师 Fixer 落盘 final）")
         return 1
 
     final_text = final_files[-1].read_text(encoding="utf-8", errors="ignore")

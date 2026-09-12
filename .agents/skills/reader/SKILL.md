@@ -1,6 +1,6 @@
 ---
 name: novel-reader
-description: Universal factual auditor and state proposal generator for Novel Studio (Stage 4D). Objectively extracts chapter facts from final manuscripts and delivers standard v2 JSON state mutation proposals (state/inbox/ch_XXX.json).
+description: Universal factual auditor and state proposal generator for Novel Studio (Stage 4D). Objectively extracts chapter facts from final manuscripts, runs proposal check pre-flight verification, and delivers standard v2 JSON state mutation proposals (state/inbox/ch_XXX.json).
 ---
 
 # SKILL — novel-reader（事实整理员专属手册 · Stage 4D）
@@ -12,20 +12,25 @@ description: Universal factual auditor and state proposal generator for Novel St
 
 > 💡 **说人话指南（减轻你的认知负担）**：
 > - **不用背字段名字**：所有英文字段名已经在下面的模板里给你印好了，你不用去拼写，只要看中文注释，在双引号里填入对应中文；
+
 > - **重要事实才记，你自己凭常识判断**：
 >   - 主角突破了、受伤了，就顺手更新一下；没突破没受伤就保持原样；
 >   - 主角兜里的钱财、丹药、装备、宝物变动了，就在“家底清单”写上最新状态；
 >   - 有重要人物身亡、发毒誓等不可挽回的大事，就在 `locked` 里记一笔；日常琐事不用记；
 >   - 登场了重要的新角色或新宝物，就在 `entities` 里记个名字和来头；客栈店小二这种路人不用记；
-> - **没写的事绝不瞎编**：小说里写了什么就记什么，没提的内容不要自己脑补。
+>   - **没写的事绝不瞎编**：小说里写了什么就记什么，没提的内容不要自己脑补。
+>   - **动态演进与闭环**：正文发生的称谓与关系演变由你 提炼并封存入账，入账后自动成为后续章节新基准。
+
 
 ---
 
 ## 🔒 二、 你能用的工具与文件边界
 
-- 📖 **看什么**：只看这章定稿正文 `manuscript/vol_XX/final/ch_XXX.md`；需要核对已有角色/宝物ID时可以查一眼 `state/persons.json`、`state/items.json`；
+- 📖 **看什么**：只看这章定稿正文 `manuscript/vol_XX/final/ch_XXX.md`；
+- 🔍 **查重问书命令**：在终端运行 `python studio.py ask "<角色名/宝物名/线索名>" -w "workspace/<书名>"`，秒查历史已有实体 ID、当前位阶、归属与历史锁定事实，杜绝重复注册与 ID 碰撞；（仅允许查询一次）
+- 🧪 **提案只读预检命令**：保存提案文件后，在终端运行 `python studio.py proposal check ch_XXX -w "workspace/<书名>"`，0-Token 纯只读秒级自检 JSON Schema 语法、引文接地与 ID 冲突；若有 ❌ 红叉就地微调修复，确保 Stage 5 状态封存 100% 一次性绿灯通过；
 - ✍️ **写什么**：覆盖写入事实提案文件 `state/inbox/ch_XXX.json`（只写这一个文件，写完即止）；
-- ❌ **不干什么**：不写小说、不改文章、不写运行脚本，纯当一个细心客观的记录员。
+- ❌ **不干什么**：不写小说、不改文章、不写临时运行脚本，纯当一个细心客观的记录员。
 
 ---
 
@@ -96,18 +101,19 @@ description: Universal factual auditor and state proposal generator for Novel St
 ## 🔑 四、 大白话提醒（常识即可）
 
 1. **不用算加减账**：彻底取消了烦人的数学流水账，`ledger.transactions` 永远保持 `[]` 即可。主角花了多少、赚了多少，只要在 `current.assets`（家底）里用大白话写个大概结果就行；
-2. **老人物继承老编号**：如果更新已有角色，记得沿用他之前的编号（如 `p_001`），新角色才分配新编号（如 `p_002`，宝物用 `it_001`，地点用 `loc_001`）；
-3. **没有的大事留空数组**：如果这章没人死、没发毒誓，`locked` 直接填 `[]`；没埋新伏笔，`lines` 直接填 `[]`。大模型自行拿捏，按剧情实情填。
+2. **老人物继承老编号（查重先 ask，仅允许查询一次）**：如果更新已有角色或重要道具，可先敲一行 `python studio.py ask "<名字>"` 确认是否已有物理编号（如 `p_001`、`it_001`）；已有则沿用，新实体才赋予递增新编号；
+3. **没有的大事留空数组**：如果这章没人死、没发毒誓，`locked` 直接填 `[]`；没埋新伏笔，`lines` 直接填 `[]`。大模型自行判断，按剧情实情填；
+4. **存盘后顺手跑一句 proposal check（只读预检）**：写完保存 JSON 后，顺手跑一次 `python studio.py proposal check ch_XXX -w "workspace/<书名>"`，这不会改动任何数据，但能 1 秒确认 JSON 格式、引文是否一字不差匹配，零差错交卷！
 
 ---
 
 ## 🛑 五、 极简完工回执
 
-写好文件后，输出这 3 行回执交卷：
+写好文件并通过预检后，输出这 3 行回执交卷：
 
 ```text
 【章节工序完工回执】
 - 完工阶段：Stage 4D 事实提取 (Reader)
 - 产出路径：state/inbox/ch_XXX.json
-- 核心指标：标准v2格式 ｜ 事实提取完整 ｜ 随身家底已更新 ｜ 零脚本直接落盘
+- 核心指标：标准v2格式 ｜ proposal check 预检绿灯 ｜ 随身家底已更新 ｜ 零脚本直接落盘
 ```

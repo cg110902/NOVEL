@@ -1,6 +1,6 @@
 ---
 name: novel-librarian
-description: Universal long-range consistency sweep librarian and retroactive ledger reconciler for Novel Studio (Stage 4D, triggered every 10 chapters, plus volume-end reconcile sweeps). Conducts 10-chapter deep sweeps, recharges items, registers missing secondary entities, runs the volume-end reconcile worksheet (reconcile vol_XX --write) with projection-diff adjudication, and merges patches into state/inbox/ch_XXX.json.
+description: Universal long-range consistency sweep librarian and retroactive ledger reconciler for Novel Studio (Stage 4D, triggered every 10 chapters, plus volume-end reconcile sweeps). Conducts 10-chapter deep sweeps, recharges items, leverages evidence candidates to salvage missing secondary entities, runs the volume-end reconcile worksheet (reconcile vol_XX --write), and merges patches into state/inbox/ch_XXX.json.
 ---
 
 # SKILL — novel-librarian（长程档案巡检员专属手册）
@@ -13,16 +13,18 @@ description: Universal long-range consistency sweep librarian and retroactive le
 
 > 💡 **说人话指南（巡检心法）**：
 > - **不用通读数万字**：别傻傻地把过去 10 章全文全读一遍！借助命令工具（`evidence`, `ask`）或速读章节梗概（`synopsis`），精准抓疑点；
-> - **不查数学账目**：全书资产已经由主角随身家底快照统一维护，你不需要去算借贷加减；
 > - **单文件顺手补漏**：发现有遗漏的角色或法宝，直接把补丁合并进当章已有的提案文件 `state/inbox/ch_XXX.json` 里，再写一份 200 字巡查小结 `log/review/sweep_ch_XXX.md`。
 
 ---
 
 ## 🔒 二、 你能用的工具与文件边界
 
-- 💻 **跑辅助检索命令**：
-  - `python studio.py ask "<角色名/法宝名>"`（快速确认出处）；
-  - `python studio.py reconcile vol_XX --write -w "workspace/<书名>"`（卷末对账时跑一次，生成自动对账单）；
+- 💻 **跑辅助检索与对账命令**：
+  - 🎣 `python studio.py evidence candidates ch_XXX -w "workspace/<书名>"`（实体打捞神器：结巴分词+正文实体对撞，秒级拉出在正文中活跃但四表尚未登记的次要人物/物品候选池）；
+  - 🔍 `python studio.py ask "<角色名/法宝名>"`（全息问书，快速确认正文原句出处）；
+  - 📋 `python studio.py lore list -w "workspace/<书名>"`（全书实体 ID 与名称对照总览）；
+  - 🧾 `python studio.py reconcile vol_XX --write -w "workspace/<书名>"`（卷末对账大修工作单，自动比对全书不变量与投影差异）；
+  - ⚖️ `python studio.py ledger recompute -w "workspace/<书名>"`（账本手术刀：若发现流水或余额存疑，一键全量重算平账）。
 - 📖 **看什么文件**：
   - 实体档案四表（`state/persons.json`, `items.json`, `factions.json`, `places.json`）；
   - 章节速查与梗概（`state/synopsis.json`）；
@@ -30,13 +32,14 @@ description: Universal long-range consistency sweep librarian and retroactive le
 - ✍️ **写什么文件**：
   - 在途提案 `state/inbox/ch_XXX.json`（把补漏信息就地合并进去）；
   - 巡查备忘 `log/review/sweep_ch_XXX.md`；
-- ❌ **不干什么**：不改任何小说正文，不重写大纲，不编写临时脚本。
+- ❌ **不干什么**：不改任何小说正文，不重写大纲，不编写临时测试脚本。
 
 ---
 
 ## 📋 三、 巡检三大看点
 
-1. **出场较多的次要人物补登**：
+1. **出场较多的次要人物补登（善用 evidence candidates）**：
+   - 运行 `python studio.py evidence candidates ch_XXX`，查看引擎捞出的高频未登记实体候选；
    - 某个配角在近 10 章里出场了多次且有互动，但在角色表里还没登记；
    - 顺手在提案的 `entities` 里补上名字和一句话身份，次要小角色免建单独的 `.md` 卡片；
 2. **法宝道具使用次数核对**：

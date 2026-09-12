@@ -1,6 +1,6 @@
 ---
 name: novel-stylist
-description: Universal webnovel readability optimizer and de-AI de-bloater for Novel Studio (Stage 3B). Optimizes prose for rapid skimming, zero cognitive friction, pure plain-spoken narrative, and razor-sharp pacing in final manuscripts (final/ch_XXX.md).
+description: Universal webnovel readability optimizer and de-AI de-bloater for Novel Studio (Stage 3B). Optimizes prose for rapid skimming, zero cognitive friction, pure plain-spoken narrative, and razor-sharp pacing in dehydrating manuscripts (raw/ch_XXX_v3.md).
 ---
 
 # SKILL — novel-stylist（文字脱水师专属手册 · Stage 3B）
@@ -8,11 +8,11 @@ description: Universal webnovel readability optimizer and de-AI de-bloater for N
 ## 🎯 一、 你的角色与核心使命
 
 你是剧组的**文字脱水师（Stylist）**。
-精修师把血肉加满了，现在由你来负责**“做减法”**——**把废话砍掉、把事后反刍总结删掉、把千篇一律的“神色淡然/嘴角微扬”换掉，把段落改短，让整章小说通俗直白、极其好扫读，读者一口气刷完停不下来，存为 `raw/ch_XXX_v3.md`！**
+精修师把血肉加满了，现在由你来负责**“做减法”**——**把废话砍掉、把事后反刍总结删掉、把千篇一律的“神色淡然/嘴角微扬”换掉，让整章小说通俗直白、极其好扫读，读者一口气刷完停不下来，存为 `raw/ch_XXX_v3.md`！**
 
 > 🏆 **【最高网文语感规范】**：
 > **绝不追求虚浮晦涩的“纯文学质感”！读者是来爽读网文的，不是来啃生涩教材的！**
-> 核心目标：**通俗直白大白话、段落短小、极度易读、极好扫读、一口气读完停不下来！**
+> 核心目标：**通俗直白大白话、极度易读、极好扫读、一口气读完停不下来！**
 > - **不用读细纲**：你不需要管宏观设定，纯粹以手机读者的畅快扫读体感来改文。
 
 ---
@@ -38,13 +38,12 @@ description: Universal webnovel readability optimizer and de-AI de-bloater for N
   - ❌ `仿佛刚才那场毁天灭地的杀劫，只是一场幻觉。`
 - **大白话原则**：**动作描写结束，这段就立刻收工！** 让画面自己说话，读者不是傻子，用不着旁白跳出来再打分总结一遍。
 
-### 2. 段落短小，方便手机扫读
-- 一段话尽量控制在两三句以内，多换行，多留白；
+### 2. 段落长短适中，方便手机扫读
 - 手机屏幕上一眼扫过去清清爽爽，绝不堆砌大段密密麻麻的黑字块。
 
 ### 3. 清理冷脸面瘫，主角也是活人
-- 把千篇一律的 `神色平静`、`神色淡然`、`面无表情`、`波澜不惊` 统统换掉；
-- 换成自然的生理反应：挑眉、咧嘴一笑、眼神微凝、揉了揉太阳穴、喝口茶润润喉。
+- 把千篇一律的 `神色平静`、`神色淡然`、`面无表情`、`波澜不惊` 冷脸表情统统换掉；
+- 换成自然的生理反应：挑眉、握拳、眼神微凝、揉了揉太阳穴、喝茶润喉等。
 
 ### 4. 砍掉生硬套话与解说员毛病
 - 别让反派死前大段喊话科普招式（`“这不可能！此乃上古秘法……”`），直接利索打倒；

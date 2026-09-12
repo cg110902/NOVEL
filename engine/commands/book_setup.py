@@ -297,8 +297,9 @@ def _next_actions(brief: dict | None) -> list[str]:
         acts.append(f"state/inbox 有 {len(brief['pending_proposals'])} 份待合并提案：python studio.py sync ch_XXX")
     nxt = brief["latest_finalized"] + 1
     acts.append(f"下一章 ch_{nxt:03d}：Stage 1 主控写 beats → Stage 2 Drafter 毛坯 raw_v1 → "
-                f"Stage 3A Editor 骨肉稿 raw_v2 → Stage 3B Stylist 通俗脱水定稿 final → "
-                f"Stage 4 三轨并发（Reader 提案 ‖ Critic 便签 ‖ Auditor 仲裁 audit --write）→ "
+                f"Stage 3A Editor 骨肉稿 raw_v2 → Stage 3B Stylist 脱水预定稿 raw_v3 → "
+                f"Stage 4A/4B 并发（Auditor 问题清单 ‖ Critic 催更便签）→ "
+                f"Stage 4C Fixer 落盘法定定稿 final → Stage 4D Reader 增量事实提案 → "
                 f"Stage 5 sync 封存+快照")
     return acts
 
@@ -783,7 +784,7 @@ def _extract_address_from_markdown(text: str) -> tuple[dict[str, str], dict[str,
                 continue
             # 剥离括号内的限制说明（如：（唯一指定称谓！严禁出现“主人”等））
             main_part = re.sub(r"（[^）]*）|\([^\)]*\)", "", rest).strip()
-            quotes = re.findall(r"[「“]([^」”]+)[」”]", main_part)
+            quotes = common.iter_dialogues(main_part)
             if quotes:
                 clean_quotes = [q.strip() for q in quotes if not any(kw in q for kw in ("严禁", "唯一", "指定", "称谓"))]
                 if clean_quotes:
@@ -804,7 +805,7 @@ def _extract_address_from_markdown(text: str) -> tuple[dict[str, str], dict[str,
                 continue
             # 剥离括号内的限制说明
             main_part = re.sub(r"（[^）]*）|\([^\)]*\)", "", rest).strip()
-            quotes = re.findall(r"[「“]([^」”]+)[」”]", main_part)
+            quotes = common.iter_dialogues(main_part)
             if quotes:
                 clean_quotes = [q.strip() for q in quotes if not any(kw in q for kw in ("严禁", "唯一", "指定", "称谓"))]
                 if clean_quotes:
