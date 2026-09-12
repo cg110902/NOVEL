@@ -21,7 +21,7 @@ description: Universal webnovel readability optimizer and de-AI de-bloater for N
 
 - 📖 **看什么文件（仅限 2 个）**：
   1. `manuscript/vol_XX/raw/ch_XXX_v2.md`（Editor 刚改好的初修骨肉稿）；
-  2. `bible/06_style_guidelines.md`（文风基线与去 AI 味指南）。
+  2. `bible/06_style_guidelines.md`（文风基线与去 AI 味指南，加载其中规则）。
 - ✍️ **写什么文件**：
   - 覆盖写入脱水稿 `manuscript/vol_XX/raw/ch_XXX_v3.md`（纯小说正文，写完即止）；
 - ❌ **不干什么**：不查账、不跑复杂命令、不读细纲设定，纯粹打磨文字。
