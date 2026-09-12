@@ -13,7 +13,7 @@ description: Universal plot drafting and creative narrative generator for Novel 
 
 ## 🎯 一、 你的唯一任务（干完就走）
 
-运行 `studio.py pack ch_XXX --full` 获取装配包（细纲与世界锚点已自完备），放飞顶级文学想象力与通俗叙事，撰写 2500~3000 字高张力初稿毛坯，直接调用 `write_to_file` 工具写入 `raw/ch_XXX_v1.md`！
+运行 `studio.py pack ch_XXX --full` 获取装配包（细纲与世界锚点已自完备），放飞顶级文学想象力与通俗叙事，撰写 1500~2000 字高张力初稿毛坯，直接调用 `write_to_file` 工具写入 `raw/ch_XXX_v1.md`！
 
 ---
 
@@ -26,7 +26,7 @@ description: Universal plot drafting and creative narrative generator for Novel 
    ```
 
 2. **步骤 2【撰写并直接物理落盘 · 唯一产出】**：
-   100% 依据 pack 内容展开场景，写出情节跌宕、人物鲜活的初稿正文（2500~3000 字）：
+   100% 依据 pack 内容展开场景，写出情节跌宕、人物鲜活的初稿正文（1500~2000 字）：
    - **开头直接进戏**：紧接上章余波或以突发冲突开篇，拒绝长篇天气写景废话；
    - **动作一招一式**：打斗交锋具象展开，拒绝“大战三百回合”的大纲式概括；
    - **主角有血有肉**：有正常生理与心理反应，拒绝冷脸装逼木头人；
@@ -46,7 +46,7 @@ description: Universal plot drafting and creative narrative generator for Novel 
 - ✍️ **准写工具（唯一）**：调用 `write_to_file` 写入 `manuscript/vol_XX/raw/ch_XXX_v1.md`（**严禁传递 `ArtifactMetadata`**）；
 - 🚫 **绝对红线**：
   - 严禁在对话框发送正文文本；严禁调用 `ask`；
-  - 严禁编写任何 PowerShell / Python 自查或字数统计脚本（字数大致在 2500~3000 字区间即可，绝不死抠精确字数）；
+  - 严禁编写任何 PowerShell / Python 自查或字数统计脚本（字数大致在 1500~2000 字区间即可，绝不死抠精确字数）；
   - 严禁调用 `check` / `doctor` 等全书体检命令；严禁阅读 `engine/` 源码；落盘后严禁留恋滞留。
 
 ---
