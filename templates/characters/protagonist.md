@@ -21,11 +21,11 @@ schema_version: novel-studio.character/v2
        - 都市/商战：金融巨鳄/隐世兵王/超级宗师，填职级资本身家、贴身器械、标志风衣名表、锁定称谓「陆先生/老大」；
        - 科幻/星际：基因超体/星舰领航员/智械先驱，填代际军衔、外骨骼脉冲、机动光刃、锁定称谓「指挥官/长官」；
        - 历史/权谋：贬谪帝师/寒门谋主/边军统帅，填爵位官品、旧羊皮裘紫毫笔、佩剑虎符、锁定称谓「先生/九爷」。
-     ★ 核心对账：YAML Front-matter 中的 tier_rank (1-12)、tier_name、power_benchmark、faction、sensory_anchor、status 与 address_matrix 属于 实体四表（persons/items/factions/places） 法定白名单；role 属于卡片身份标注，入库四表时仅需保留白名单字段！ -->
+     ★ 状态对齐：YAML Front-matter 中的 id, name, type, role, tier_rank (1-12), tier_name, power_benchmark, faction, sensory_anchor, status, address_matrix 均已与 实体四表（persons/items/factions/places） 法定 Schema 100% 闭环对齐！ -->
 
 # {{slot:protagonist|主角名}}
 
-## 基础档案与外在伪装（仅为示例，灵活填写）
+## 基础外貌与感官伪装档案（Sensory Profile）
 
 - **真实身份与核心底蕴**：
   {{slot:mc_true_identity|【玄幻】万年太古禁忌混沌神尊 / 【都市】掌控万亿暗流的离岸资本操盘手 / 【科幻】第三纪元最后一位超弦领航员 / 【历史】先帝密诏托孤帝师}}
@@ -89,18 +89,14 @@ schema_version: novel-studio.character/v2
   - 对亲密伙伴 / 私下相处：「我」
   
 - **对关键人物称谓（唯一指定锁定）**：
-  
-  - 对核心角色 / 第一搭档：{{slot:mc_addr_to_deuteragonist|「称谓」 }}
-  - 对后生晚辈 / 宗门长老：平淡直呼其名，或称「小辈」、「后生」
-  - 对反派小丑 / 敌寇死囚：直呼其名，或蔑称「蝼蚁」、「死人」
+  - 对{{slot:target_char_1|核心搭档或第一女配名}}：「{{slot:mc_addr_to_target_1|对方称呼}}」
+  - 对后生晚辈：平淡直呼其名，或称「小辈」
+  - 对反派小丑：直呼其名，或称「蝼蚁」
   
 - **他人对主角称谓（绝对锁定）**：
-  - 核心角色 / 第一搭档：{{slot:deuteragonist_addr_to_mc|「称谓」}}
-  - 内部成员 / 门人下属：{{slot:subordinates_addr_to_mc|「太上神尊」 / 「先生」 / 「长官」}}
-  - 敌对势力 / 外界不知情者：{{slot:enemies_addr_to_mc|「狂徒」 / 「神秘人」 / 「阁下」}}
- 
-  
-- **（更多补充）**
+  - {{slot:target_char_1|核心搭档或第一女配名}}称呼本角色：「{{slot:target_1_addr_to_mc|主角称呼}}」
+  - 门人下属称呼本角色：「{{slot:subordinates_addr_to_mc|太上神尊 / 先生 / 长官}}」
+  - 敌对势力称呼本角色：「{{slot:enemies_addr_to_mc|狂徒 / 神秘人 / 阁下}}」
 
 ---
 

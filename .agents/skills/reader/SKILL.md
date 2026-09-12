@@ -1,42 +1,47 @@
 ---
 name: novel-reader
-description: Universal factual auditor and state proposal generator for Novel Studio (Stage 4D). Objectively extracts chapter facts from final manuscripts, runs proposal check pre-flight verification, and delivers standard v2 JSON state mutation proposals (state/inbox/ch_XXX.json).
+description: Universal factual auditor and state proposal generator for Novel Studio (Stage 4D). Objectively extracts chapter facts from final manuscripts, runs proposal check pre-flight verification, and delivers standard v2 JSON state mutation proposals (state/inbox/ch_XXX.json) via direct write_to_file.
 ---
 
 # SKILL — novel-reader（事实整理员专属手册 · Stage 4D）
 
-## 🎯 一、 你的角色与核心使命
-
-你是剧组的**事实整理员（Reader）**。
-你的任务非常纯粹：**读一遍刚刚定稿的本章正文（`final/ch_XXX.md`），对照下面的填空单，把这章发生的实际变化记录下来，存进 `state/inbox/ch_XXX.json`，存完就交卷！**
-
-> 💡 **说人话指南（减轻你的认知负担）**：
-> - **不用背字段名字**：所有英文字段名已经在下面的模板里给你印好了，你不用去拼写，只要看中文注释，在双引号里填入对应中文；
-
-> - **重要事实才记，你自己凭常识判断**：
->   - 主角突破了、受伤了，就顺手更新一下；没突破没受伤就保持原样；
->   - 主角兜里的钱财、丹药、装备、宝物变动了，就在“家底清单”写上最新状态；
->   - 有重要人物身亡、发毒誓等不可挽回的大事，就在 `locked` 里记一笔；日常琐事不用记；
->   - 登场了重要的新角色或新宝物，就在 `entities` 里记个名字和来头；客栈店小二这种路人不用记；
->   - **没写的事绝不瞎编**：小说里写了什么就记什么，没提的内容不要自己脑补。
->   - **动态演进与闭环**：正文发生的称谓与关系演变由你 提炼并封存入账，入账后自动成为后续章节新基准。
-
+> ⚡ **【开工第一步 · 防发呆零内耗死命令】**：
+> 派发令已给定工作区与章节。**若未在上下文装载本手册仅限首步读取 1 次，进入事实提取后绝对严禁回读倒嚼本手册！严禁调用 `list_dir` / `find_by_name` 搜寻目录！**
+> 起手**必须直接执行步骤 1 单次全读！** 提案落盘（**严禁传递 `ArtifactMetadata`**）并跑通 `proposal check` 后输出 3 行回执即刻交卷退出，绝不滞留！
 
 ---
 
-## 🔒 二、 你能用的工具与文件边界
+## 🎯 一、 你的唯一任务（干完就走）
 
-- 📖 **看什么**：只看这章定稿正文 `manuscript/vol_XX/final/ch_XXX.md`；
-- 🔍 **查重问书命令**：在终端运行 `python studio.py ask "<角色名/宝物名/线索名>" -w "workspace/<书名>"`，秒查历史已有实体 ID、当前位阶、归属与历史锁定事实，杜绝重复注册与 ID 碰撞；（仅允许查询一次）
-- 🧪 **提案只读预检命令**：保存提案文件后，在终端运行 `python studio.py proposal check ch_XXX -w "workspace/<书名>"`，0-Token 纯只读秒级自检 JSON Schema 语法、引文接地与 ID 冲突；若有 ❌ 红叉就地微调修复，确保 Stage 5 状态封存 100% 一次性绿灯通过；
-- ✍️ **写什么**：覆盖写入事实提案文件 `state/inbox/ch_XXX.json`（只写这一个文件，写完即止）；
-- ❌ **不干什么**：不写小说、不改文章、不写临时运行脚本，纯当一个细心客观的记录员。
+以 `final/ch_XXX.md` 法定定稿为唯一真值，对照 `beats/ch_XXX.md` 细纲声明，客观提炼现场即时态、主角随身家底、新实体、暗线与不可逆事实，调用 `write_to_file` 落盘至 `state/inbox/ch_XXX.json`，并运行 `proposal check` 确保 0 报错交卷！
 
 ---
 
-## 📋 三、 事实填空单模板 (`state/inbox/ch_XXX.json`)
+## ⚡ 二、 极速三步工序（单线推进，绝不空转）
 
-照着这个模板填空，直接保存为 JSON 文件：
+1. **步骤 1【单次全量读取定稿与细纲 · 双源输入】**：
+   调用 `view_file` 工具**单次全量读取**（**严禁切片翻读**）：
+   - 法定定稿：`workspace/<书名>/manuscript/vol_XX/final/ch_XXX.md`；
+   - 细纲声明：`workspace/<书名>/outlines/vol_XX/beats/ch_XXX.md`；
+
+2. **步骤 2【提取事实并直接物理落盘 · 唯一产出】**：
+   - 对照第三节标准 v2 模板，提炼当章增量事实（即时态 `current`、随身家底 `assets`、梗概 `synopsis`、不可逆大事 `locked`）；
+   - 🔍 **查重问书（严格≤1次）**：老人物/道具需查物理编号时，跑一行 `python studio.py ask "<名字>"`（**最多 1 次，无新登场老实体则跳过**）；
+   - **直接调用 `write_to_file` 工具写入 `workspace/<书名>/state/inbox/ch_XXX.json`**！
+   - ⚠️ **【核心铁律】绝对禁止在对话消息中输出 JSON！必须直接调用 `write_to_file` 工具落盘！**
+   - ⚠️ **【传参铁律】调用 `write_to_file` 时仅提供 `TargetFile`, `CodeContent`, `Description`, `Overwrite` 4 个参数，绝对严禁传递 `ArtifactMetadata` 参数（提案绝非 Brain Artifact，传错直接引发 Schema 报错）！**
+
+3. **步骤 3【跑预检命令自愈并提交回执 · 零报错封账】**：
+   在终端运行：
+   ```bash
+   python studio.py proposal check ch_XXX -w "workspace/<书名>"
+   ```
+   - 若返回通过无错误：立即输出 3 行标准完工回执交卷！**严禁在通过后再次调用 `view_file` 查验提案，严禁客套总结，干完即走！**
+   - 若返回错误（字段、ID 格式）：调用 `write_to_file` 就地修正并重跑 1 次 `proposal check`；若仍未通过，立即输出 3 行【阻断回执】向主控报告，严禁多轮盲目重试！
+
+---
+
+## 📋 三、 事实提案标准模板 (`state/inbox/ch_XXX.json`)
 
 ```json
 {
@@ -45,12 +50,13 @@ description: Universal factual auditor and state proposal generator for Novel St
   "operation_id": "ch_XXX.reader.done",
   "current": {
     "present_characters": ["主角名", "章末在场的核心配角名"],
-    "location": "章末主角所处的具体地点（如：落霞峰后山草庐）",
-    "time": "故事时间节点（如：三日后清晨 / 大选当晚）",
-    "power_level": "当前最新修为/位阶（无突破就照抄原样）",
-    "injury": "完好 或 具体伤势描述（如：左臂轻度挫伤）",
-    "equipment": "穿戴激活的装备（如：青冥剑佩在腰间、暗银内甲贴身）",
-    "assets": "主角随身家底快照（钱财/物资/丹药/核心道具，如：灵石约三千块，回气丹x2，兽皮残卷x1）",
+    "present_refs": ["p_001", "p_002"],
+    "location": "章末主角所处的具体地点",
+    "time": "故事时间节点（如：第1日清晨）",
+    "power_level": "当前最新修为/位阶（无突破照抄原样）",
+    "injury": "完好 或 具体伤势描述",
+    "equipment": "穿戴激活的装备",
+    "assets": "主角随身家底快照（大白话概括钱财/物资/道具）",
     "situation": "章末局势一句话速写",
     "aftershock": "留给下一章开头必须接上的突发余波事件",
     "active_pressures": ["悬在主角头上的即时危机或倒计时"]
@@ -58,11 +64,11 @@ description: Universal factual auditor and state proposal generator for Novel St
   "locked": [
     {
       "id": "LOCK-001",
-      "fact": "确凿发生、不可推翻的重大死结（如：赵崇山坠崖身亡，不可复活；死者文本只写本人）",
+      "fact": "确凿发生、不可推翻的重大死结（死者文本只写本人）",
       "kind": "irreversible_action",
       "since_ch": "ch_XXX",
       "quote": "正文里的原话句子",
-      "note": "提醒后文作者绝对不能违背这条事实"
+      "note": "提醒后文绝对不能违背这条事实"
     }
   ],
   "entities": [
@@ -90,30 +96,36 @@ description: Universal factual auditor and state proposal generator for Novel St
     "transactions": []
   },
   "synopsis": {
-    "title": "第X章 完整章节名（必须和 final 正文第一行完全一样）",
+    "title": "第X章 完整章节名（必须和 final 正文第一行完全一致）",
     "text": "100 字左右客观剧情梗概，讲清楚起因、转折与章末结果"
   }
 }
 ```
 
----
-
-## 🔑 四、 大白话提醒（常识即可）
-
-1. **不用算加减账**：彻底取消了烦人的数学流水账，`ledger.transactions` 永远保持 `[]` 即可。主角花了多少、赚了多少，只要在 `current.assets`（家底）里用大白话写个大概结果就行；
-2. **老人物继承老编号（查重先 ask，仅允许查询一次）**：如果更新已有角色或重要道具，可先敲一行 `python studio.py ask "<名字>"` 确认是否已有物理编号（如 `p_001`、`it_001`）；已有则沿用，新实体才赋予递增新编号；
-3. **没有的大事留空数组**：如果这章没人死、没发毒誓，`locked` 直接填 `[]`；没埋新伏笔，`lines` 直接填 `[]`。大模型自行判断，按剧情实情填；
-4. **存盘后顺手跑一句 proposal check（只读预检）**：写完保存 JSON 后，顺手跑一次 `python studio.py proposal check ch_XXX -w "workspace/<书名>"`，这不会改动任何数据，但能 1 秒确认 JSON 格式、引文是否一字不差匹配，零差错交卷！
+> 💡 **速填小提示**：当章无人阵亡 `locked` 填 `[]`；无新伏笔 `lines` 填 `[]`；`ledger.transactions` 恒保持 `[]`（主角资产在 `current.assets` 用大白话快照记录）。
 
 ---
 
-## 🛑 五、 极简完工回执
+## 🔒 四、 白名单与绝对红线
 
-写好文件并通过预检后，输出这 3 行回执交卷：
+- 💻 **准跑命令**：
+  - `python studio.py proposal check ch_XXX -w "workspace/<书名>"`（必跑，1次）；
+  - `python studio.py ask "<实体名>"`（选跑，**严格最多 1 次**）；
+- 📖 **准读文件（唯二）**：`manuscript/vol_XX/final/ch_XXX.md`、`outlines/vol_XX/beats/ch_XXX.md`；
+- ✍️ **准写工具（唯一）**：调用 `write_to_file` 写入 `state/inbox/ch_XXX.json`（**严禁传递 `ArtifactMetadata`**）；
+- 🚫 **绝对红线**：
+  - 严禁在对话消息中输出提案 JSON；没写的大事绝不瞎编；
+  - 严禁通读 `state/` 历史旧表；严禁修改正文；
+  - 严禁阅读 `engine/` 源码；严禁编写任何 PowerShell / Python 自查或 JSON 校验脚本（语法由 proposal check 唯一负责）；
+  - 严禁调用 `check` / `doctor` 等全书体检命令；绿灯交卷后严禁留恋滞留。
+
+---
+
+## 🛑 五、 极简标准完工回执 (3 行交卷)
 
 ```text
 【章节工序完工回执】
 - 完工阶段：Stage 4D 事实提取 (Reader)
 - 产出路径：state/inbox/ch_XXX.json
-- 核心指标：标准v2格式 ｜ proposal check 预检绿灯 ｜ 随身家底已更新 ｜ 零脚本直接落盘
+- 核心指标：标准v2格式 ｜ proposal check 预检绿灯 ｜ 随身家底已更新 ｜ 工具直接物理落盘
 ```

@@ -1,64 +1,68 @@
 ---
 name: novel-fixer
-description: Universal finalizer, issue resolver, and final manuscript publisher for Novel Studio (Stage 4C). Reviews issues from Stage 4A, resolves discrepancies against beats, outputs final/ch_XXX.md and passes Stage 5 audit gates.
+description: Universal finalizer, issue resolver, and final manuscript publisher for Novel Studio (Stage 4C). Copies raw_v3 to final, applies surgical fixes via replace_file_content based on audit issues, and passes Stage 5 audit gates.
 ---
 
 # SKILL — novel-fixer（终审定稿师专属手册 · Stage 4C）
 
-## 🎯 一、 你的角色与核心使命
-
-你是剧组的**终审定稿师（Fixer）**。
-你的任务非常纯粹：**看一眼质检员 Auditor 给出的《问题清单》（`log/audit/issues_ch_XXX.md`），没问题就直接通过，有问题就微调两句改顺，然后正式出版全书最终定稿（`final/ch_XXX.md`），跑一行命令拿放行凭证，交卷完工！**
-
-> 💡 **说人话指南（定稿三原则）**：
-> - **没问题秒级放行**：如果问题清单写着“未发现问题”，直接把脱水稿 `raw_v3.md` 原样复制为定稿 `final/ch_XXX.md`，绝不多折腾；
-> - **有小毛病精准微调**：对照细纲，只改有冲突或出戏的那一两句话，绝不推倒重写；
-> - **你是唯一合法定稿人**：你保存的 `final/ch_XXX.md` 就是读者真正要读的书，也是后续所有事实的唯一来源。
+> ⚡ **【开工第一步 · 防发呆零内耗死命令】**：
+> 派发令已给定工作区与章节。**若未在上下文装载本手册仅限首步读取 1 次，进入定稿后绝对严禁回读倒嚼本手册！严禁调用 `list_dir` / `find_by_name` 搜寻目录！**
+> 起手**必须直接执行步骤 1 的 Copy-Item 复制！** 完成修补与盖章命令后输出 3 行回执即刻交卷退出，绝不滞留！
 
 ---
 
-## 🔒 二、 你能用的工具与文件边界
+## 🎯 一、 你的唯一任务（干完就走）
 
-- 📖 **看什么文件（仅限 3 个）**：
-  1. `manuscript/vol_XX/raw/ch_XXX_v3.md`（Stylist 刚修好的脱水稿）；
-  2. `log/audit/issues_ch_XXX.md`（Auditor 找出的问题清单）；
-  3. `outlines/vol_XX/beats/ch_XXX.md`（细纲任务书，核对对错的标准）。
-- 🔍 **定向查出处（遇争议问书，仅允许查询一次）**：在终端运行 `python studio.py ask "<争议关键词/角色名/事件>" -w "workspace/<书名>"`，0-Token 调阅角色法定称谓、专属微动作、既有设定或历史定稿原句；
-- ✍️ **写什么文件**：
-  - `manuscript/vol_XX/final/ch_XXX.md`（全书最终法定定稿，100% 纯小说正文）。
-- 💻 **跑一行放行命令**：
-  - `python studio.py audit ch_XXX --write --adjudicate -w "workspace/<书名>"`
+将脱水稿 `raw_v3.md` 物理复制为 `final/ch_XXX.md`，对照 `log/audit/ch_XXX.md` 仲裁清单，针对硬矛盾与出戏点调用 `replace_file_content` 实施手术刀微调（无硬伤不改动），修补后运行 `audit ch_XXX --write --adjudicate` 盖章放行，发布全书唯一法定定稿！
 
 ---
 
-## 🛠️ 三、 定稿执行两步走
+## ⚡ 二、 极速三步工序（单线推进，绝不空转）
 
-### 第一步：对照清单微调并保存定稿
-1. 打开 `log/audit/issues_ch_XXX.md`；
-2. **情况 A（清单无问题）**：
-   - 直接把 `raw_v3.md` 的内容覆盖写入 `final/ch_XXX.md`；
-3. **情况 B（清单指出了几处小问题）**：
-   - 翻一眼 `beats/ch_XXX.md` 确认正确设定；
-   - 若清单指出了称谓、微动作或人设争议且细纲未详述，敲一行 `python studio.py ask "<角色名/关键词>"` 秒查正确称谓矩阵与微动作；（仅允许查询一次）
-   - 针对指出的段落，进行合理的针对性的修改，改通、改顺；
-   - 把改好后的完整全文覆盖写入 `final/ch_XXX.md`。
+1. **步骤 1【物理发布定稿基底 · 0.1秒】**：
+   在终端运行命令将预定稿直接复制为法定定稿基底：
+   ```powershell
+   Copy-Item -Force "workspace/<书名>/manuscript/vol_XX/raw/ch_XXX_v3.md" "workspace/<书名>/manuscript/vol_XX/final/ch_XXX.md"
+   ```
 
-### 第二步：跑命令盖通行章
-定稿保存后，在终端敲一行命令：
-```bash
-python studio.py audit ch_XXX --write --adjudicate -w "workspace/<书名>"
-```
-系统会在后台自动打上绿灯放行标记。
+2. **步骤 2【对照审查报告手术刀微调 · 严禁全文重写】**：
+   - 调用 `view_file` 查看：
+     - 仲裁报告：`workspace/<书名>/log/audit/ch_XXX.md`；
+     - 细纲任务书：`workspace/<书名>/outlines/vol_XX/beats/ch_XXX.md`；
+   - 🔍 **查证限制（严格≤1次）**：遇称谓或人设存疑可跑一行 `python studio.py ask "<争议词>"`（**最多 1 次**）；
+   - **手术刀微调规则**：
+     - 若报告无硬伤且 logic=0：**不需要做任何正文修改**；
+     - 若有确凿硬伤（称谓写错、时空穿帮、动作打架）：调用 `view_file` 查看 `final/ch_XXX.md` 对应行，**精确截取原文片段作为 `TargetContent`，必须且只能使用 `replace_file_content` 针对目标行进行最小范围局部替换**；
+     - ⚠️ **【核心铁律】绝对禁止调用 `write_to_file` 全文重写正文！只准使用 `replace_file_content` 局部替换！**
+
+3. **步骤 3【运行盖章命令并提交回执 · 绿灯放行】**：
+   在终端运行：
+   ```bash
+   python studio.py audit ch_XXX --write --adjudicate -w "workspace/<书名>"
+   ```
+   后台重新扫描正文并盖上 `adjudicated: true` 绿灯章后，立即输出 3 行标准完工回执交卷！**严禁在盖章后再调用 `view_file` 查验成稿，严禁客套总结，干完即走！**
 
 ---
 
-## 🛑 四、 极简完工回执
+## 🔒 三、 白名单与绝对红线
 
-命令跑完后，输出这 3 行回执交卷：
+- 💻 **准跑命令**：
+  - `Copy-Item` 复制底稿；
+  - `python studio.py audit ch_XXX --write --adjudicate -w "workspace/<书名>"`（必跑，1次）；
+  - `python studio.py ask "<争议词>"`（选跑，**严格最多 1 次**）；
+- 📖 **准读文件（唯三）**：`log/audit/ch_XXX.md`、`beats/ch_XXX.md`、`final/ch_XXX.md`；
+- ✍️ **准写工具（唯一）**：`replace_file_content` 修改 `final/ch_XXX.md`（**严禁 write_to_file 全文覆写**）；
+- 🚫 **绝对红线**：
+  - 严禁在对话消息中输出正文；严禁推倒大纲重写；
+  - 严禁阅读 `engine/` 源码；严禁编写任何 PowerShell / Python 自查脚本；严禁调用 `check` / `doctor` 等全书体检命令；盖章后严禁留恋滞留。
+
+---
+
+## 🛑 四、 极简标准完工回执 (3 行交卷)
 
 ```text
 【章节工序完工回执】
 - 完工阶段：Stage 4C 终审定稿 (Fixer)
 - 产出路径：manuscript/vol_XX/final/ch_XXX.md
-- 核心指标：法定定稿已落盘 ｜ 问题已清零 ｜ 绿灯通行章已盖 ｜ 零脚本直接落盘
+- 核心指标：法定定稿已发布 ｜ 手术刀微调完成 ｜ 绿灯通行章已盖 ｜ 验收达标无滞留
 ```

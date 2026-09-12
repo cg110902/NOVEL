@@ -22,8 +22,7 @@ templates/
 │   ├── 03_factions_geography.md   # 地缘区划、各方势力矩阵与利益冲突拓扑
 │   ├── 04_economy_items.md        # 经济通货、购买力锚点与物资道具品阶
 │   ├── 05_special_mechanics.md    # 特殊机制、体质/血脉/职业谱系与代偿惩戒法则
-│   ├── 06_style_guidelines.md     # 文风基线、微动作多样性库（防冷脸）
-│   └── 07_deviations.md           # 本书偏离清单与核心创作红线（推翻传统套路声明）
+│   └── 06_deviations.md           # 本书偏离清单与核心创作红线（推翻传统套路声明）
 ├── characters/                    # 角色全息卡模板
 │   ├── protagonist.md             # 主角高维专属全息卡（含万古底蕴、心理四维、防冷脸微动作、绝对称谓矩阵）
 │   └── character_card_standard.md # 标准重要角色/女主/宿敌全息卡模板
@@ -48,8 +47,7 @@ templates/
 | `bible/03_factions_geography.md` | `bible/03_factions_geography.md` | Architect | 地缘版图与势力利益冲突拓扑，默认恒给 `pack` P0（同上，可被 `world_refs` 收窄） |
 | `bible/04_economy_items.md` | `bible/04_economy_items.md` | Architect | 货币购买力平价锚点，道具品阶与损耗充能账本 |
 | `bible/05_special_mechanics.md` | `bible/05_special_mechanics.md` | Architect | 独家机制、体质相生相克与反噬走火入魔代偿法则 |
-| `bible/06_style_guidelines.md` | `bible/06_style_guidelines.md` | Architect | 通俗直白大白话规范、微表情多样性库 |
-| `bible/07_deviations.md` | `bible/07_deviations.md` | Architect | 本书偏离清单（`pack` 强制提取注入 P0 时空胶囊） |
+| `bible/06_deviations.md` | `bible/06_deviations.md` | Architect | 本书偏离清单（`pack` 强制提取注入 P0 时空胶囊） |
 | `characters/protagonist.md` | `characters/protagonist.md` | Architect | 主角全息卡（含绝对称谓矩阵）；卡是**人读视图**，称谓基准由主控抄进细纲、由 `pack` 从台账侧注入 |
 | `characters/character_card_standard.md` | 按需手工复制到 `characters/<角色名>.md` | 主控 / Architect | 重要角色/女主/宿敌全息卡（锁定法定称谓对账表） |
 | `entities/item_card.md` | 按需手工复制到 `entities/items/<道具名>.md` | 主控 / Architect | 核心道具/装备/神舟卡（追踪充能、持有者流转） |
@@ -90,6 +88,7 @@ templates/
      - `id`: 唯一物理 ID（终身不可变：`p_001`, `it_001`, `fac_001`, `loc_001`）
      - `name`: 实体中文法定全名（唯一主键）
      - `type`: 实体类型（严格枚举：`person`, `item`, `location`, `place`, `faction`, `other`）
+     - `role`: 角色叙事定位（如 `protagonist`, `deuteragonist`, `antagonist`, `ally` 等）
      - `aliases`: 别名、代号、尊号列表（`array[str]`）
      - `card`: 对应全息卡相对路径（核心实体如 `"characters/主角.md"`，次要路人留空 `""`）
      - `summary`: 实体一句话核心定位（`str`）
@@ -118,9 +117,12 @@ templates/
      - `durability`: 物理磨损/耐久度（`str`）
    - 🏰 **势力与据点专用**：
      - `scale_tier`: 势力规模梯级（`1 ~ 10`）
+     - `leader`: 最高掌权领袖角色名（`str`）
+     - `headquarters`: 总部据点/山门祖庭地名（`str`）
      - `core_assets`: 核心垄断王牌资产清单（`array[str]`）
      - `diplomacy`: 势力外交网络映射（`{"势力名": "hostile"|"neutral"|"friendly"|"allied"}`，词表同 `FactionAttitude` 枚举；⚠️ 本字段是自由字符串字典，引擎不校验取值也不会读它做推断，写错枚举值不会报错——请以枚举为准）
      - `danger_tier`: 地点危险系数（`1 ~ 10`）
+     - `danger_level`: 危险评级文字说明（`str`，如“安全腹地/争端前线/绝地死境”，与 `danger_tier` 形成数值孪生）
      - `environment_rules`: 地理环境法则与准入门槛（`array[str]`）
    - 🎭 **感官物象与称谓锁（防冷脸与防吃书）**：
      - `sensory_anchor`: 标志性外观、穿戴、气味与视觉记忆物象（`str`）
@@ -130,7 +132,7 @@ templates/
 
    > ⚠️ **【重要：Markdown 卡片 vs 数据库状态表分界规范】**：
    > - **Markdown 卡片（`characters/*.md`, `entities/*/*.md`）**：是面向大模型创作的**全息感官档案**，其正文允许有丰富的 Want/Fear、生平轶事、背景设定等自然语言描述；
-   > - **数据库状态表（`实体四表（persons/items/factions/places）`）**：是面向确定性引擎的**强类型检索台账**。提案中向 实体四表 写入的字段**必须且仅能来自上述白名单**，严禁私自添加未经 Schema 许可的字段（如 `leader`, `headquarters`, `bound_to` 等），否则会被引擎机械闸门直接拒绝！
+   > - **数据库状态表（`实体四表（persons/items/factions/places）`）**：是面向确定性引擎的**强类型检索台账**。提案中向 实体四表 写入的字段**必须且仅能来自上述白名单**（卡片 Front-matter 字段现已 100% 纳入白名单并受 Schema 校验保护），严禁私自添加未经 Schema 许可的字段（如 `bound_to`, `secret_weapon` 等），否则会被引擎机械闸门直接拒绝！
 
 5. **长篇增删改查（CRUD）对账机制**：
    - **增（新实体出场）**：在 beats 中声明，核心角色建卡，次要角色免建卡；由 Reader 在 Stage 4D 提案中分配递增 ID 注册；
@@ -148,7 +150,7 @@ templates/
      `pack` 只装 6 张表（current / entities / lines / synopsis / timeline / locked）而不是十二表——
      其余表是**账本**，写手不需要看；`--lean` 只给 P0 热层。实体四表（persons/items/factions/places）
      按 kind 物理拆分，`entities/` 目录只是人读投影（pack 走合并读视图）。
-   - **装配预算**：`pack` 总量上限 **3W token**，超预算按压缩阶梯由远及近裁（P2 冷索引 → P2 旧章指针 →
+   - **装配预算**：`pack` 总量上限 **2W token**，超预算按压缩阶梯由远及近裁（P2 冷索引 → P2 旧章指针 →
      P1 间接关联 → P1 脊柱 → P0 上章余温）；细纲全文 / current / 硬提醒 / 不可逆事实 / 钉住的锚点**永不自动裁**。
    - **`world_refs` 三态语义**（写细纲时按这三态理解，它不是开关）：
      ① 未声明 → **恒给**全部核心锚点节（旧书零改动）；② 声明且命中 → 只装命中节（**refs 最多取前 8 个**，`MAX_WORLD_ANCHOR_REFS`，超出忽略并点名），且当「世界公理 /

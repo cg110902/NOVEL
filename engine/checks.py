@@ -564,12 +564,8 @@ def verify_candidates(book: Path, ch: str, proposal: dict) -> dict:
         cur_p = proposal.get("current") or {}
         if isinstance(cur_p, dict):
             inj = str(cur_p.get("injury", ""))
-            crit_words = proj.get("critical_injury_words")
-            if crit_words is None:
-                add("info", "wordlist_unconfigured",
-                    "critical_injury_words 未配置：伤势高危警示档已跳过——"
-                    "请主控在 project.json 按本书题材供参（如 [\"重伤\",\"濒死\",...]）后生效（空表 = 明确关闭）")
-            elif inj:
+            crit_words = proj.get("critical_injury_words") or []
+            if inj and crit_words:
                 for kw in [w for w in crit_words if isinstance(w, str) and w]:
                     if kw in inj:
                         add("warn", "critical_mutation", f"🚨【高危状态变更】主角伤势出现严重伤残描述「{inj}」，请核实是否为正文真实设定！")
@@ -724,26 +720,26 @@ def unaccept_findings(book: Path, queries: list[str]) -> tuple[list[str], list[s
 _BEATS_FM_KEYS = {"chapter", "vol", "form", "pov", "words", "style_notes", "form_reason",
                   "editor_extra", "tension_curve", "tension_score",
                   "stage_mode", "suppression_factors", "release_trigger",
-                  # V3.2：按章钉住世界锚点的关键词（pack 消费；空/缺省 = 沿用恒给口径）
+                  # V3.3：按章钉住世界锚点的关键词（pack 消费；空/缺省 = 沿用恒给口径）
                   "world_refs"}
 
 PARAM_SPEC: dict[str, dict] = {
-    "generic_stopwords": {"shape": "str_list", "gap": True,
+    "generic_stopwords": {"shape": "str_list", "gap": False,
         "desc": "通用实体停用词（evidence 别名 P1 触发降噪 / pack）",
         "example": ["掌柜", "警官", "乘务员"]},
-    "critical_injury_words": {"shape": "str_list", "gap": True,
+    "critical_injury_words": {"shape": "str_list", "gap": False,
         "desc": "伤势高危警示词（verify critical_mutation 档）",
         "example": ["重伤", "濒死", "截瘫"]},
-    "abstract_phrases": {"shape": "str_list", "gap": True,
+    "abstract_phrases": {"shape": "str_list", "gap": False,
         "desc": "细纲假大空词（check beats_scene_abstract 档）",
         "example": ["巧妙化解", "发生争执"]},
-    "high_heat_forms": {"shape": "str_list", "gap": True,
+    "high_heat_forms": {"shape": "str_list", "gap": False,
         "desc": "高压章型名清单（check 连续高压疲劳检测，精确匹配 front-matter form 值）",
         "example": ["生死博弈", "高潮突破"]},
-    "empty_criteria_words": {"shape": "str_list", "gap": True,
+    "empty_criteria_words": {"shape": "str_list", "gap": False,
         "desc": "验收条目空判词（check acceptance_empty_criterion 档）",
         "example": ["读者", "沉浸感"]},
-    "hook_words": {"shape": "hook_tiers", "gap": True,
+    "hook_words": {"shape": "hook_tiers", "gap": False,
         "desc": "章尾钩子分档词表（strong/suspense/anticlimax 三键，值各为词表）",
         "example": {"strong": ["案发", "强敌登门"], "suspense": ["尾随", "深夜来电"], "anticlimax": ["虚惊一场"]}},
     "candidate_stopwords": {"shape": "str_list", "gap": False,

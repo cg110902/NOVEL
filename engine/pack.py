@@ -21,9 +21,9 @@ except ImportError:
 PREV_TAIL_CHARS = 1000
 SPINE_CAP = 10
 POINTER_WINDOW = 10
-# 装配预算：3W token。
+# 装配预算：2W token。
 # 但 beats 全文、current、硬提醒、不可逆事实与钉住的世界锚点永不裁。
-PACK_TOKEN_CAP = 30000
+PACK_TOKEN_CAP = 20000
 MAX_P1_ENTITIES = 12
 MAX_P1_INDIRECT = 5
 
@@ -105,8 +105,9 @@ def _prev_final_tail(book: Path, ch_num: int, cur_vol: str | None = None) -> str
 
 
 def _deviation_lines(book: Path) -> list[str]:
-    """提取「本书偏离清单」小节 bullet 行（支持 bible/07_deviations.md 与 legacy bible/project_bible.md）。"""
+    """提取「本书偏离清单」小节 bullet 行（支持 bible/06_deviations.md、07_deviations.md 与 legacy bible/project_bible.md）。"""
     targets = [
+        book / "bible" / "06_deviations.md",
         book / "bible" / "07_deviations.md",
         book / "bible" / "project_bible.md",
     ]
@@ -132,7 +133,7 @@ def _deviation_lines(book: Path) -> list[str]:
 MAX_WORLD_ANCHOR_REFS = 8
 
 # 世界锚点（world_anchors）预算帽：project.json.world_anchor_tokens 可调，缺省与上限同为 10000。
-# ⚠️ 设计口径（V3.2议题）：世界锚点不应「恒给全书」，而应按章取用——现阶段已支持
+# ⚠️ 设计口径（V3.3议题）：世界锚点不应「恒给全书」，而应按章取用——现阶段已支持
 # 用 beats front-matter 的 `world_refs` 钉住本章需要的节（见 _bible_core_anchors），
 # 未声明时回退为按关键词全量恒给（保持既有行为）。
 MAX_WORLD_ANCHOR_TOKENS = 10000
@@ -205,7 +206,7 @@ def _bible_core_anchors(book: Path, refs: list[str] | None = None) -> str:
         return ""
     sections = []
     for p in files:
-        if "07_deviations" in p.name or "06_style_guidelines" in p.name or "style.md" in p.name:
+        if "06_deviations" in p.name or "07_deviations" in p.name or "06_style_guidelines" in p.name or "style.md" in p.name:
             continue
         try:
             text = p.read_text(encoding="utf-8", errors="replace")
@@ -803,7 +804,7 @@ def build_pack(book: Path, ch: str, lean: bool = False, full: bool = False,
                                              "desc": desc})
                 except OSError:
                     continue
-        # 按角色准读网关过滤冷索引（V3.2 修复）：此前把 bible/、characters/ 连同
+        # 按角色准读网关过滤冷索引（V3.3 修复）：此前把 bible/、characters/ 连同
         # 「可用 --open 取原文」一起列给被禁读该目录的角色（drafter/reader/…），
         # 等于承诺一个必然被拒的动作——既白烧索引 token，又诱导子代理自行提权。
         # 现在被禁条目不列路径，只报数量，并把 open_hint 改成与该角色一致的口径。
@@ -880,7 +881,7 @@ def build_pack(book: Path, ch: str, lean: bool = False, full: bool = False,
             if original_len > 25:
                 budget["original_file_index_count"] = original_len
 
-    # 压缩阶梯（V3.2）：冷索引裁空仍超 3W 预算时，按「离创作现场由远及近」继续裁。
+    # 压缩阶梯（V3.3）：冷索引裁空仍超 2W 预算时，按「离创作现场由远及近」继续裁。
     # 永不裁：beats 全文 / current / 硬提醒 / 不可逆事实 / 钉住的世界锚点——那是本章合同与事实底座。
     def _recount(layer: str) -> None:
         rendered[layer] = render_layer(layer, payload.get(layer), full=full)
@@ -1040,11 +1041,11 @@ ROLE_DENY: dict[str, tuple[str, ...]] = {
     "reader": ("state/", "bible/", "characters/"),
     # 催更员：禁 outlines/*、raw/*、bible/*、characters/*、log/*；state 仅 current.json
     "critic": ("outlines/", "bible/", "characters/", "state/", "log/"),
-    # ---- 以下为 V3.2 新增角色（此前不在表内 → pack --as 合法选项被网关一律拒绝）----
+    # ---- 以下为 V3.3 新增角色（此前不在表内 → pack --as 合法选项被网关一律拒绝）----
     # 架构师（Stage 0/演进）：全局设定层，禁读成稿与日志（其职责是设定真值，不是正文）
     "architect": ("manuscript/", "log/", "snapshots/"),
-    # 脱水师（Stage 3B）：只看 beats + raw_v2 + 文风宪法；禁 state/卡片/日志。
-    # bible/ 同理整体禁读——只有 06_style_guidelines.md 走白名单例外。
+    # 脱水师（Stage 3B）：只看 beats + raw_v2 + 偏离红线；禁 state/卡片/日志。
+    # bible/ 同理整体禁读——只有 06_deviations.md 走白名单例外。
     "stylist": ("state/", "bible/", "characters/", "entities/", "log/", "snapshots/"),
     # 审查员（Stage 4A）：只看定稿 + beats + locked/current/entities 三表；禁 raw/bible/卡片。
     # ⚠️ state/ 必须整体禁读，否则 ROLE_ALLOW_EXTRA 的三表白名单形同虚设
@@ -1071,8 +1072,8 @@ ROLE_ALLOW_EXTRA: dict[str, tuple[str, ...]] = {
                "state/factions.json", "state/places.json"),
     # Editor / Stylist 准读清单第 3 项：全书文风宪法（此前文档授权、机械层一律拒绝，
     # 「双层防御」名不副实——真按网关走 Editor 连文风宪法都拿不到）
-    "editor": ("bible/06_style_guidelines.md",),
-    "stylist": ("bible/06_style_guidelines.md",),
+    "editor": ("bible/06_deviations.md",),
+    "stylist": ("bible/06_deviations.md",),
     # Auditor 的事实台账（准读清单第 3~5 项：locked/current + 实体四表）
     "auditor": ("state/locked.json", "state/current.json", "state/persons.json",
                 "state/items.json", "state/factions.json", "state/places.json"),

@@ -98,6 +98,11 @@
             "title": "Address Matrix",
             "type": "object"
           },
+          "role": {
+            "type": "string",
+            "description": "角色叙事角色定位（如 protagonist / deuteragonist / antagonist / mentor / ally 等）",
+            "title": "Role"
+          },
           "faction": {
             "type": "string",
             "description": "人物所属势力组织名",
@@ -184,12 +189,27 @@
             "title": "Diplomacy",
             "type": "object"
           },
+          "leader": {
+            "type": "string",
+            "description": "最高掌权领袖角色名",
+            "title": "Leader"
+          },
+          "headquarters": {
+            "type": "string",
+            "description": "总部据点/山门祖庭地名",
+            "title": "Headquarters"
+          },
           "danger_tier": {
             "maximum": 10,
             "minimum": 1,
             "type": "integer",
             "description": "地点危险度(1-10)",
             "title": "Danger Tier"
+          },
+          "danger_level": {
+            "type": "string",
+            "description": "危险评级文字说明（如安全腹地/争端前线/绝地死境）",
+            "title": "Danger Level"
           },
           "environment_rules": {
             "description": "地点特殊环境律则",

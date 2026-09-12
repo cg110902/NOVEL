@@ -23,8 +23,7 @@ TEMPLATE_MAP = {
     "bible/03_factions_geography.md": "bible/03_factions_geography.md",
     "bible/04_economy_items.md": "bible/04_economy_items.md",
     "bible/05_special_mechanics.md": "bible/05_special_mechanics.md",
-    "bible/06_style_guidelines.md": "bible/06_style_guidelines.md",
-    "bible/07_deviations.md": "bible/07_deviations.md",
+    "bible/06_deviations.md": "bible/06_deviations.md",
     # 核心角色全息档案
     "characters/protagonist.md": "characters/protagonist.md",
     # 核心剧情大纲与首卷大纲
@@ -716,14 +715,17 @@ def _find_lore_target(book: Path, query: str) -> Path | None:
         "factions": "03_factions_geography.md", "geo": "03_factions_geography.md", "势力": "03_factions_geography.md", "地理": "03_factions_geography.md",
         "economy": "04_economy_items.md", "items": "04_economy_items.md", "经济": "04_economy_items.md", "货币": "04_economy_items.md",
         "mechanics": "05_special_mechanics.md", "special": "05_special_mechanics.md", "机制": "05_special_mechanics.md", "体质": "05_special_mechanics.md",
-        "style": "06_style_guidelines.md", "文风": "06_style_guidelines.md",
-        "deviations": "07_deviations.md", "偏离": "07_deviations.md", "红线": "07_deviations.md",
+        "deviations": "06_deviations.md", "偏离": "06_deviations.md", "红线": "06_deviations.md",
     }
     bdir = book / "bible"
     if q in short_map:
         target = bdir / short_map[q]
         if target.is_file():
             return target
+        if q in ("deviations", "偏离", "红线"):
+            legacy = bdir / "07_deviations.md"
+            if legacy.is_file():
+                return legacy
     if bdir.is_dir():
         for p in bdir.glob("*.md"):
             if q in p.name.lower():

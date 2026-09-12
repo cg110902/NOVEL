@@ -16,7 +16,7 @@ schema_version: novel-studio.bible/v2
 
 {{slot:logline|一句话概括核心冲突：[主角身份/底蕴] 在 [特定世界/突发危机] 中，依靠 [核心优势/欲望驱动]，突破 [核心阻碍]，达成 [终极目标]。}}
 
-## 世界架构与空间/位面图谱
+## 世界底色架构与空间/位面图谱
 
 <!-- 明确本书的世界空间跨度与分层（全题材通用适配）：
      - 玄幻/仙侠：如【凡尘下界】➔【三千神域】➔【太古神界/天外禁区】；
@@ -61,7 +61,7 @@ schema_version: novel-studio.bible/v2
 - **当世乱局（The Current Quagmire）**：{{slot:history_current|当世各大势力表面和平下暗流涌动的根本原因}}
 - **主角因果锚点（The Spark）**：{{slot:history_spark|主角与这段历史的深层渊源或宿命交汇点}}
 
-## 核心金手指与特殊金律（The Core Advantage & Mechanism）
+## 核心金手指运转规则与金律（The Core Advantage & Mechanism）
 
 <!-- 主角在本书赖以破局、人前显圣与跨阶反杀的根本支柱（金手指/天赋/超前认知/神级底蕴）：
      ★ 规范：金手指不是无限万能机器，必须具备明确的运行逻辑、冷却充能、触发机制与发展阶梯！ -->

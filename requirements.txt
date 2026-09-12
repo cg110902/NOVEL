@@ -1,4 +1,4 @@
-# Novel Studio 3.2 运行时依赖（与 pyproject.toml [project].dependencies 同源，改一处请同步另一处）
+# Novel Studio 3.3 运行时依赖（与 pyproject.toml [project].dependencies 同源，改一处请同步另一处）
 # 安装：pip install -r requirements.txt
 # 注：sqlite3 是 Python 标准库模块（FTS5 全文索引），无需也无法 pip 安装。
 pydantic>=2.5.0

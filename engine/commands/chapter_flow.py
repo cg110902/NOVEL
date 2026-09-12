@@ -309,6 +309,23 @@ def cmd_check(args) -> int:
         sys_warns = sys_h.get("warnings", [])
         sys_infos = sys_h.get("infos", [])
 
+        nar_h = report.get("narrative_health", {})
+        nar_errs = nar_h.get("errors", [])
+        nar_warns = nar_h.get("warnings", [])
+        nar_infos = nar_h.get("infos", [])
+
+        total_errs = len(sys_errs) + len(nar_errs)
+        total_warns = len(sys_warns) + len(nar_warns)
+
+        if report["ok"]:
+            print(" 🎉 【全息体检通过 · 阻断性错误: 0】系统工程与核心事实底座完全达标！")
+            if total_warns > 0:
+                print(" 📢 【大模型免责与防空转铁律】：下方 warnings 均为长线写作审美与宏观参考（非 Bug、非阻断），严禁停下主流程去修改！若符合当前剧情设计，直接忽略，立即推进原定工作！\n")
+            else:
+                print(" ✅ 全书事实、因果逻辑与运行时环境 100% 满分自洽！\n")
+        else:
+            print(f" 🚨 【全息体检未通过 · 阻断性错误: {total_errs}】仅需根据下方 🚨 方案定向修复，warnings 无需处理！\n")
+
         print(" 🖥️  【内核一：系统工程运行时健康 (System & Runtime Health)】")
         if not sys_errs and not sys_warns and not sys_infos:
             print("    ✅ 运行环境、依赖完整性与工件链健康")
@@ -316,31 +333,26 @@ def cmd_check(args) -> int:
             for e in sys_errs:
                 print(f"    ❌ [{e['code']}] {e['msg']}")
                 if e.get("remedy"):
-                    print(f"       💡 [自愈方案] {e['remedy']}")
+                    print(f"       🚨 [阻断修复方案] {e['remedy']}")
             for w in sys_warns:
                 print(f"    ⚠️ [{w['code']}] {w['msg']}")
                 if w.get("remedy"):
-                    print(f"       💡 [建议处理] {w['remedy']}")
+                    print(f"       📝 [创作参考·非阻断] {w['remedy']}（若剧情符合预期直接忽略）")
             for i in sys_infos:
                 print(f"    ℹ️ [{i['code']}] {i['msg']}")
 
         print("\n 📖  【内核二：商业小说叙事与网文体感 (Narrative & Commercial Health)】")
-        nar_h = report.get("narrative_health", {})
-        nar_errs = nar_h.get("errors", [])
-        nar_warns = nar_h.get("warnings", [])
-        nar_infos = nar_h.get("infos", [])
-
         if not nar_errs and not nar_warns and not nar_infos:
             print("    ✅ 剧情张力、人设聚焦、伏笔与账本完全自洽")
         else:
             for e in nar_errs:
                 print(f"    ❌ [{e['code']}] {e['msg']}")
                 if e.get("remedy"):
-                    print(f"       💡 [自愈方案] {e['remedy']}")
+                    print(f"       🚨 [阻断修复方案] {e['remedy']}")
             for w in nar_warns:
                 print(f"    ⚠️ [{w['code']}] {w['msg']}")
                 if w.get("remedy"):
-                    print(f"       💡 [建议处理] {w['remedy']}")
+                    print(f"       📝 [创作参考·非阻断] {w['remedy']}（若剧情符合预期直接忽略）")
             for i in nar_infos:
                 print(f"    ℹ️ [{i['code']}] {i['msg']}")
 
@@ -349,9 +361,15 @@ def cmd_check(args) -> int:
                   "（开写后未填槽位将恢复阻断）")
 
         print("-" * 70)
-        print(f" 📊 汇总：System errors {len(sys_errs)}, warnings {len(sys_warns)}"
-              f" ｜ Narrative errors {len(nar_errs)}, warnings {len(nar_warns)}"
-              f" ｜ 定稿章数 {report['stats'].get('final_chapters', 0)}")
+        if report["ok"]:
+            print(f" 📊 汇总：阻断性错误 0（系统: 0 ｜ 叙事: 0）｜ 创作参考提示: {total_warns} 条"
+                  f" ｜ 定稿章数 {report['stats'].get('final_chapters', 0)}")
+            print(" 🟢 【体检判定：放行通过】退出码 0。请直接继续推进原定主流程，严禁停滞！")
+        else:
+            print(f" 📊 汇总：阻断性错误 {total_errs}（系统: {len(sys_errs)} ｜ 叙事: {len(nar_errs)}）"
+                  f" ｜ 创作参考提示: {total_warns} 条 ｜ 定稿章数 {report['stats'].get('final_chapters', 0)}")
+            print(f" 🔴 【体检判定：阻断拦截】退出码 1。仅需按上方 🚨 方案修复 {total_errs} 项阻断错误，严禁处理 warnings！")
+
         if report.get("stats", {}).get("accepted_hidden"):
             print(f" 📌 另有 {report['stats']['accepted_hidden']} 条已确认 findings 已折叠"
                   f"（check --accepted 查看，--full 重见全量）")
@@ -487,7 +505,7 @@ def _render_audit_md(payload: dict) -> str:
         f"hard: {hard_count}",
         f"soft: {soft_count}",
         # logic：轨 3（语义逻辑与出戏审查）的确凿条目数，由 Auditor 手填、引擎不计算。
-        # 与 hard 同闸：logic>0 且未 adjudicated 时 sync 拒绝封存（V3.2）。
+        # 与 hard 同闸：logic>0 且未 adjudicated 时 sync 拒绝封存（V3.3）。
         "logic: 0",
         "adjudicated: false",
         "---",
@@ -706,6 +724,9 @@ def cmd_audit(args) -> int:
     if not payload["candidates"]:
         print("   ✅ 未检出机械矛盾候选（状态与正文基础事实高度自洽）\n")
         return 0
+
+    if payload["hard_count"] == 0:
+        print("   🎉 0 项确凿硬矛盾！下方 🟡 软存疑仅供剧情参考，若符合剧情语境无需修改正文！\n")
 
     for c in payload["candidates"]:
         icon = "🔴" if c["severity"] == "candidate_hard" else "🟡"

@@ -1,4 +1,4 @@
-# engine/ — 确定性与图计算引擎（Novel Studio 3.2 基础设施）
+# engine/ — 确定性与图计算引擎（Novel Studio 3.3 基础设施）
 
 入口 `python studio.py <cmd>`（根壳转发 `engine.cli.main`）。
 全书 31 个命令与多智能体矩阵的详细使用映射，参见 [`docs/COMMAND_MATRIX.md`](file:///c:/Users/cg110902/Desktop/NOVEL/docs/COMMAND_MATRIX.md)。
@@ -29,7 +29,7 @@
 | `validator.py` + `schemas/` | mini JSON Schema 子集机械校验器（load/save 读写闸门 + 提案顶层）；`schemas/*.json` 为**构建产物**，由 `models/schema_gen.py` 从 Pydantic 模型生成（`python -m engine.models.schema_gen`），anyOf 失败时报告最接近分支的具体错误 | 模型唯一真源 + 闸门补丁层（落盘必完整） |
 | `checks.py` | 叙事 AST 编译器体检、伏笔饥饿告警 (`plotline_starvation`)、引文接地柔性容错、MIS/KNO 配额执法、bible 版本盖章对照 (`bible_drift`)、实体 ID 重复校验 (`entity_id_duplicate`) | **RapidFuzz**（引文模糊接地，消除语气助词偏差误报） |
 | `evidence.py` | 机械证据（all 汇总 / words / style / file / dup / mentions / gaps / candidates / prev / names / index）与 ask 全书检索（2.1 全域引用链：十一表+正文原句+全息卡片+世界圣经公理，每条命中带 cite{table,key,chapters}）、pov 角色视角包（只读取证）只出数、零裁决 | **Jieba**（`posseg` 提取专有名词 NER 候选 + `analyse` 关键词口癖雷达） |
-| `pack.py` | 三层上下文装配（P0 现场 / P1 动态触发 / P2 冷索引），自动注入实体唯一物理 ID（`[ID: p_001]`）与称谓对校矩阵；**预算 3W token**（`PACK_TOKEN_CAP`），超量走压缩阶梯（P2 冷索引 → P2 旧章指针 → P1 间接关联 → P1 脊柱 → P0 上章余温，`hard_reminders`/beats/不可逆事实永不裁）；`world_anchors` 按细纲 front-matter `world_refs` 取用（缺省＝恒给；命中＝只装命中节，若 `_ANCHOR_CORE_GROUPS` 五组里有组存在于 bible 却未被覆盖 → 包里打 ⚠️ 点名缺哪组；零命中＝回退恒给并列出可钉节名）；`ROLE_DENY` / `ROLE_ALLOW_EXTRA` 是准读网关单一真源，子代理 `file_index` 只列可读文件 | **NetworkX**（全书实体持有与归属拓扑图，1-Hop 强相关子图动态剪枝） |
+| `pack.py` | 三层上下文装配（P0 现场 / P1 动态触发 / P2 冷索引），自动注入实体唯一物理 ID（`[ID: p_001]`）与称谓对校矩阵；**预算 2W token**（`PACK_TOKEN_CAP`），超量走压缩阶梯（P2 冷索引 → P2 旧章指针 → P1 间接关联 → P1 脊柱 → P0 上章余温，`hard_reminders`/beats/不可逆事实永不裁）；`world_anchors` 按细纲 front-matter `world_refs` 取用（缺省＝恒给；命中＝只装命中节，若 `_ANCHOR_CORE_GROUPS` 五组里有组存在于 bible 却未被覆盖 → 包里打 ⚠️ 点名缺哪组；零命中＝回退恒给并列出可钉节名）；`ROLE_DENY` / `ROLE_ALLOW_EXTRA` 是准读网关单一真源，子代理 `file_index` 只列可读文件 | **NetworkX**（全书实体持有与归属拓扑图，1-Hop 强相关子图动态剪枝） |
 | `snapshot.py` | 快照管理（create / list / rollback，支持 `--clean-drafts` 清理超前稿件与旧版表补齐） | 原子目录快照与事务安全 |
 | `objects/` | 对象层：`registry` 三键寻址索引 / `envelope` 统一包络视图（`state object` 消费）/ `derive` 派生计算（derived.json 唯一写口） | 纯内存视图 + 纯函数（单节故障不污染他节） |
 

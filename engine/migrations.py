@@ -2,7 +2,7 @@
 
 设计契约：
 - 版本戳：`state/state_schema.json`（不带点，确保随快照一起备份/回滚，新旧格式永远配套）。
-- 版本判定：版本文件缺失 = 遗留格式（version 0，即未引入版本化之前的 3.2 时代产物）；
+- 版本判定：版本文件缺失 = 遗留格式（version 0，即未引入版本化之前的 3.3 时代产物）；
   版本高于引擎支持值 = 抛错要求升级引擎（防新数据被旧引擎误改）。
 - 迁移时机：`state.load_state` 入口处懒触发（`ensure_state_version`），首次读取即迁移，
   全程不打印到 stdout（避免污染 --json 消费方），审计写 `state/migrations.log`（JSONL）。

@@ -17,7 +17,7 @@ schema_version: novel-studio.character/v2
 <!-- 💡【Stage 0 架构师指南（填写后可删）】
      本模板是除主角外的所有重要角色（核心配角、核心反派宿敌、忠诚副手、宗门巨擘）的标准模板。
      复制本模板至 characters/<角色名>.md 并填实。
-     ★ 契约规范：YAML Front-matter 中的 tier_rank (1-12)、tier_name、power_benchmark、faction、sensory_anchor、status 与 address_matrix 属于 实体四表（persons/items/factions/places） 法定白名单；role 属于卡片标注，入库四表时仅保留白名单字段；称谓矩阵填定即为全书常量，后置工序严禁吃书！
+     ★ 状态对齐：YAML Front-matter 中的 id, name, type, role, tier_rank (1-12), tier_name, power_benchmark, faction, sensory_anchor, status, address_matrix 均已与 实体四表（persons/items/factions/places） 法定 Schema 100% 闭环对齐！称谓矩阵填定即为全书常量，后置工序严禁吃书！
      ★ 全题材适配：
        - 玄幻/仙侠：宗门圣女/少谷主/魔宗巨擘，填境界位阶、极道体质、锁定称谓「公子/贼子」；
        - 都市/商战：集团千金/刑侦队长/死对头操盘手，填职级资本、专属座驾风衣、锁定称谓「陆先生/林总」；
@@ -26,7 +26,7 @@ schema_version: novel-studio.character/v2
 
 # {{slot:char_name|角色名}}
 
-## 基础档案与体貌特征
+## 基础档案与外貌感官特征（Sensory Profile）
 
 - **核心身份与社会地位**：
   {{slot:char_identity|例如：水云圣宫圣女 / 焚天神谷少谷主 / 跨国财阀第一继承人 / 边关游击将军}}
@@ -61,14 +61,14 @@ schema_version: novel-studio.character/v2
   - 对外 / 正式场合：{{slot:addr_self_public|「本圣女」 / 「本少主」 / 「在下」 / 「鄙人」}}
   
 - **对关键人物称谓（唯一指定 · 严禁擅改）**：
-  - 对主角：「{{slot:addr_to_mc|公子}}」
+  - 对{{slot:protagonist|主角名}}：「{{slot:addr_to_mc|公子}}」
   - 对同门 / 下属：{{slot:addr_to_subordinates|平辈互称师兄妹，对下属从容令下}}
   - 对死敌 / 背叛者：{{slot:addr_to_enemies|冷酷直呼其名，或斥为“叛徒”、“狂徒”}}
   
-- **他人对本角色称谓**：
-  - 主角对本角色称谓：「{{slot:mc_addr_to_char|称谓}}」 或 「{{slot:mc_addr_to_char_alt|称谓}}」
-  - 内部成员/同门称谓：{{slot:faction_addr_to_char|「圣女殿下」 / 「萧师妹」 / 「林总」}}
-  - 敌对势力/外界称谓：{{slot:enemies_addr_to_char|「水云圣女」 / 「妖女」 / 「那个疯女人」}}
+- **他人对本角色称谓（绝对锁定）**：
+  - {{slot:protagonist|主角名}}称呼本角色：「{{slot:mc_addr_to_char|萧姑娘}}」
+  - 内部成员/同门称呼本角色：「{{slot:faction_addr_to_char|圣女殿下}}」
+  - 敌对势力称呼本角色：「{{slot:enemies_addr_to_char|水云圣女}}」
   
   **（更多补充）**
 

@@ -560,7 +560,7 @@ def build_cockpit_briefing(book: Path, ch: str | None = None) -> dict[str, Any]:
     # 1. 确定工作流与工序状态
     beats_files = common.find_chapter_files(book, "beats", ch_tok)
     raw_files = common.find_chapter_files(book, "raw", ch_tok)
-    # Stage 3A/3B 分轨（V3.2 流水线）：raw_v1 = Drafter 毛坯，raw_v2 = Editor 骨肉稿，
+    # Stage 3A/3B 分轨（V3.3 流水线）：raw_v1 = Drafter 毛坯，raw_v2 = Editor 骨肉稿，
     # raw_v3 = Stylist 脱水预定稿。
     # 此前把 `version >= 2` 一把抓成 raw_v2，导致 raw_v3 在驾驶舱里不存在：状态机
     # 从「有 raw_v2」直接跳到「有 final」，把 Stage 3B 脱水与 Stage 4C 定稿塌缩成
@@ -1022,23 +1022,32 @@ def render_cockpit_terminal(briefing: dict[str, Any]) -> None:
             console.print(Panel(ag_text, title="⚙️ [bold]确定性算法制导胶囊 (Algorithmic Guidance)[/bold]", border_style="cyan"))
 
         # 5. 健康度与自愈处方
-        if hr["ok"] and not hr["warnings_count"]:
-            health_text = "[bold green]✅ 全书事实与因果逻辑体检 100% 达标，无任何报错或警告！[/bold green]"
+        if hr["ok"]:
             border_col = "green"
+            if not hr["warnings_count"]:
+                health_text = "[bold green]✅ 全书事实与因果逻辑体检 100% 达标，无任何报错或警告！[/bold green]"
+            else:
+                lines = [
+                    "[bold green]✅ 系统工程与核心事实体检完全达标（阻断性错误: 0）！[/bold green]",
+                    f"[dim]📢 检出 {hr['warnings_count']} 项长线创作审美与宏观参考提示（非阻断，严禁停滞主流程去平账）：[/dim]\n"
+                ]
+                for r in hr["remedies"]:
+                    if r["level"] == "warning":
+                        lines.append(f"💭 【{r['code']}】 {r['msg']}")
+                health_text = "\n".join(lines)
+            console.print(Panel(health_text, title="🩺 [bold]剧情健康度舱（放行通过 · 阻断: 0）[/bold]", border_style=border_col))
         else:
-            border_col = "red" if not hr["ok"] else "yellow"
-            lines = [f"[bold]体检概况：[/bold]Errors: {hr['errors_count']}  Warnings: {hr['warnings_count']}  "
-                     f"死锁阻断: {'🚨 是(需人类)' if hr['is_deadlock'] else '🟢 否(主控可自愈)'}\n"]
+            border_col = "red"
+            lines = [f"[bold red]🚨 检出 {hr['errors_count']} 项阻断性错误（死锁: {'需人工介入' if hr['is_deadlock'] else '可按自愈指令修复'}）：[/bold red]\n"]
             for r in hr["remedies"]:
-                icon = "❌" if r["level"] == "error" else "⚠️"
-                lines.append(f"{icon} [{r['code']}] {r['msg']}")
-                if r.get("remedy"):
-                    lines.append(f"   💡 [自愈方案] {r['remedy']}")
-                if r.get("action_command"):
-                    lines.append(f"   💻 [自愈指令] {r['action_command']}")
+                if r["level"] == "error":
+                    lines.append(f"❌ 【{r['code']}】 {r['msg']}")
+                    if r.get("remedy"):
+                        lines.append(f"   🚨 [修复方案] {r['remedy']}")
+                    if r.get("action_command"):
+                        lines.append(f"   💻 [自愈指令] {r['action_command']}")
             health_text = "\n".join(lines)
-
-        console.print(Panel(health_text, title="🩺 [bold]剧情健康度与自愈处方舱[/bold]", border_style=border_col))
+            console.print(Panel(health_text, title="🩺 [bold]剧情健康度与自愈处方舱（阻断拦截）[/bold]", border_style=border_col))
         console.print()
 
     except ImportError:
@@ -1062,6 +1071,14 @@ def render_cockpit_terminal(briefing: dict[str, Any]) -> None:
             for item in lr.get('imminent', []):
                 print(f"  • {item}")
         print(f"体检状态：Errors {briefing['health_and_remedies']['errors_count']}, Warnings {briefing['health_and_remedies']['warnings_count']}")
-        for r in briefing['health_and_remedies']['remedies']:
-            print(f"  [{r['level']}] {r['msg']} -> 自愈: {r.get('remedy')}")
+        if briefing['health_and_remedies']['errors_count'] == 0:
+            print("  ✅ 阻断性错误: 0，体检放行通过！warnings 均为长线参考，无需执行平账！")
+        else:
+            for r in briefing['health_and_remedies']['remedies']:
+                if r["level"] == "error":
+                    print(f"  ❌ [{r['code']}] {r['msg']}")
+                    if r.get("remedy"):
+                        print(f"     🚨 [修复方案] {r['remedy']}")
+                    if r.get("action_command"):
+                        print(f"     💻 [自愈指令] {r['action_command']}")
         print()

@@ -87,6 +87,7 @@ class EntityEntry(BaseModel):
     address_matrix: dict[str, str] = Field(default_factory=dict, description="对特定实体的法定锁定称谓映射 {目标名: 我称呼对方}")
 
     # 人物与生命状态
+    role: Optional[str] = Field(None, description="角色叙事角色定位（如 protagonist / deuteragonist / antagonist / mentor / ally 等）")
     faction: Optional[str] = Field(None, description="人物所属势力组织名")
     life_status: Optional[LifeStatus] = Field(None, description="生命状态")
     attitude: Optional[FactionAttitude] = Field(None, description="势力政治阵营立场")
@@ -104,9 +105,12 @@ class EntityEntry(BaseModel):
     scale_tier: Optional[int] = Field(None, ge=1, le=10, description="势力规模等级(1-10)")
     core_assets: list[str] = Field(default_factory=list, description="势力核心垄断资产与王牌")
     diplomacy: dict[str, str] = Field(default_factory=dict, description="势力外交拓扑 {势力名: 态度}；态度词表同 FactionAttitude 枚举 (hostile/neutral/friendly/allied)，但本字段是自由字符串字典、引擎不校验取值")
+    leader: Optional[str] = Field(None, description="最高掌权领袖角色名")
+    headquarters: Optional[str] = Field(None, description="总部据点/山门祖庭地名")
 
     # 地标/场景专属字段
     danger_tier: Optional[int] = Field(None, ge=1, le=10, description="地点危险度(1-10)")
+    danger_level: Optional[str] = Field(None, description="危险评级文字说明（如安全腹地/争端前线/绝地死境）")
     environment_rules: list[str] = Field(default_factory=list, description="地点特殊环境律则")
 
     # 叙事元数据

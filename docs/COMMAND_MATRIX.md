@@ -18,7 +18,7 @@
 | **脱水师 (Stylist)** | Stage 3B | **【绝对零命令】** | **大白话脱水与去冷脸**：<br/>不读 beats，不跑命令。纯粹遣词脱水、消除反刍总结、确保极度通俗易扫读。 |
 | **审查员 (Auditor)** | Stage 4A | `audit ch_XXX --write`<br/>`ask 2.1` | **确定性探针与逆鳞质检**：<br/>1. 跑 `audit ch_XXX --write` 运行 8 大机械探针；<br/>2. 通读遇人设疑点，必跑 `ask "<角色名>"` 调阅角色卡逆鳞与心理四维，拒绝瞎猜。 |
 | **催更员 (Critic)** | Stage 4B | **【绝对零命令】** | **老白读者纯盲审**：<br/>模拟坐在手机前追更的十年老白读者，纯读者视角盲审预定稿，给出追更心理便签，绝不上帝视角查库。 |
-| **定稿师 (Fixer)** | Stage 4C | `ask 2.1` | **争议靶向对账定稿**：<br/>针对 Auditor 提出的争议清单，跑 `ask` 秒查角色原定称谓与专属微动作，精准微调出法定定稿 `final/ch_XXX.md`。 |
+| **定稿师 (Fixer)** | Stage 4C | `audit ch_XXX --write --adjudicate`<br/>`ask 2.1` | **争议靶向对账定稿与放行盖章**：<br/>针对 Auditor 在 `log/audit/ch_XXX.md` 中提出的争议清单，跑 `ask` 秒查设定，手术刀微调出法定定稿 `final/ch_XXX.md`，修完后跑 `audit ch_XXX --write --adjudicate` 盖章放行。 |
 | **审计员 (Reader)** | Stage 4D | `ask 2.1`<br/>`proposal check ch_XXX` | **查重与提案只读秒级预检**：<br/>1. 提取实体前跑 `ask` 查重已有物理 ID，防 ID 碰撞；<br/>2. 保存 JSON 提案后，跑 `proposal check ch_XXX` 进行 0-Token 纯只读预检，确保引文与 Schema 100% 正确，Stage 5 封存零失败。 |
 | **图书管理员 (Librarian)** | 每10章巡检<br/>卷末对账 | `evidence candidates`<br/>`lore list`<br/>`reconcile vol_XX`<br/>`ledger recompute`<br/>`ask 2.1` | **长程实体打捞与大修平账**：<br/>1. 跑 `evidence candidates ch_XXX` 自动打捞频繁出场但未登记的活跃龙套与道具；<br/>2. 跑 `lore list` 校验全书实体名册；<br/>3. 卷末跑 `reconcile vol_XX --write` 出具对账单；<br/>4. 账目存疑时跑 `ledger recompute` 一键修复。 |
 | **演进重构师 (Evolver)** | Stage Evolution<br/>（中途变更） | `simulate impact`<br/>`snapshot create/rollback`<br/>`state at/diff/blame`<br/>`ask 2.1`<br/>`check` | **剧情外科手术雷达**：<br/>1. 动刀前跑 `simulate impact --entity <实体> --action <动作>` 拓扑测算连锁因果波及；<br/>2. 动刀前跑 `snapshot create` 强制备份，遇阻用 `snapshot rollback` 一秒撤销；<br/>3. 用 `state at` 与 `state diff` 对校历史时点切面与改动前后差异。 |
@@ -50,7 +50,7 @@
 |---|---|---|---|
 | `beats` | `python studio.py beats new ch_XXX --write -w "..."` | Stage 1 细纲任务书脚手架生成（智能注入字数预算与情绪蓄水槽） | Director |
 | `pack` | `python studio.py pack ch_XXX -w "..."` | 单章上下文三层装配（P0 现场 / P1 别名触发 / P2 冷索引），为 Drafter 生成写作上下文包 | Director (或自动触发) |
-| `audit` | `python studio.py audit ch_XXX --write -w "..."` | 8 大确定性机械探针（在场/充能/金额/KNO/不可逆/认知差/别名漂移/称谓对账），生成问题清单骨架 | Auditor |
+| `audit` | `python studio.py audit ch_XXX --write -w "..."`<br/>`python studio.py audit ch_XXX --write --adjudicate -w "..."` | 8 大确定性机械探针（在场/充能/金额/KNO/不可逆/认知差/别名漂移/称谓对账），生成问题清单骨架；修复后带 `--adjudicate` 盖章放行 | Auditor (初审)<br/>Fixer (定稿盖章) |
 | `proposal` | `python studio.py proposal check ch_XXX -w "..."`<br/>`python studio.py proposal new ch_XXX` | 提案工具：`check` 为 0-Token 纯只读预检（自查 Schema、引文接地、ID 冲突）；`new` 生成空骨架 | Reader |
 | `sync` | `python studio.py sync ch_XXX -w "..."` | Stage 5 状态原子封存：提案合并 → 状态体检 → 快照归档（全书推进核心写咽喉） | Director |
 
@@ -70,8 +70,8 @@
 | `init` | `python studio.py init -w "..." -t "书名" -g "题材" -p "主角"` | 创建新书工作区：生成目录脚手架、模板槽位实例化与状态初始化播种 | Architect |
 | `milestone` | `python studio.py milestone add --title "..." --target-ch N` | 主线里程碑管理：播种宏观主线阶段目标与预期达成章节 | Architect |
 | `config` | `python studio.py config get/set <KEY> <VAL>` | 书级参数手术刀：动态查看或调整 `project.json` 配置项（如字数带、线索配额等） | Director |
-| `check` | `python studio.py check -w "..." [--trend] [--bisect]` | 结构/Schema/算术体检：退出码 0 为健康，1 为硬阻断；`--trend` 监控分数曲线防慢烂；`--bisect` 快照二分排查破坏点 | 全员验收<br/>Director 核心监控 |
-| `doctor` | `python studio.py doctor` | `check` 的同义别名，输出完全相同 | Director |
+| `check` | `python studio.py check -w "..." [--trend] [--bisect]` | 结构/Schema/算术体检：退出码 0 为健康，1 为硬阻断；`--trend` 监控分数曲线防慢烂；`--bisect` 快照二分排查破坏点 | Director / Architect / Evolver 专用<br/>（严禁工序子代理越权执行） |
+| `doctor` | `python studio.py doctor` | `check` 的同义别名，输出完全相同 | Director 专用 |
 | `errcodes` | `python studio.py errcodes [--json]` | 错误码字典速查：查询所有体检报错码的含义与自愈处方 | 开发者 / Director |
 | `index` | `python studio.py index --rebuild` | 重建 SQLite3 FTS5 全文检索引擎与拓扑缓存 | 引擎底层 / 维护 |
 | `export` | `python studio.py export --txt [--views]` | 全书编译：将各卷章节拼接输出为完整单行本 txt，或渲染全书状态视图 | Director / 人类作者 |
