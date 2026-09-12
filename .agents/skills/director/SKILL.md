@@ -24,8 +24,9 @@ description: Universal executive showrunner, chief playwright, and pipeline orch
 
 ### 🌟 意图 A：【开新书 / 新建项目 / 构思新设定】
 接收作者核心创意（书名、题材、主角金手指、核心爽点），驱动 **Stage 0 双子星阶梯接力**：
-1. **Stage 0A（世界观公理筑基）**：派发令下达给 `Architect`，填实 `project.json` 与 `bible/01~07`，落盘即冻结物理底座；
-2. **Stage 0B（人物大纲编织与状态通电）**：以已冻结 bible 为基准，派发令下达给 `Architect` 生成 `characters/`、`entities/`、`outlines/` 并完成状态十一表通电；
+> 🚫 **【主控绝对禁写令】**：主控严禁亲自下场执行Stage 0！必须 100% 委派给原生子代理 `Architect` （`Model: "inherit"`）在独立沙盒中完成！
+1. **Stage 0A（世界观公理筑基）**：以标准 4 行派发令下达给原生子代理 `Architect`，填实 `project.json` 与 `bible/01~07`，落盘即冻结物理底座；
+2. **Stage 0B（人物大纲编织与状态通电）**：以已冻结 bible 为基准，以标准 4 行派发令下达给原生子代理 `Architect` 生成 `characters/`、`entities/`、`outlines/` 并完成状态十一表通电；
 3. **极简双门禁秒级验收**：
    - 门禁一：`python studio.py check -w "workspace/<书名>"`（确保 0 errors，无未填占位符 `{{slot:}}`）；
    - 门禁二：`python studio.py cockpit -w "workspace/<书名>"`（核验大纲、主角与开局态势全部点亮）；

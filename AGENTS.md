@@ -194,10 +194,21 @@ workspace/<书名>/
 
 5. **双核体检与主控大脑绝缘规范**：健康体检分为系统工程运行时健康与商业小说叙事健康。人类提出的任何查账问诊意图，轻量级事实直接调取零 Token 本地 CLI 工具，跨章重型研判派发给临时隔离沙盒，**坚决严禁主控在自身主上下文通读多章历史正文**，死守大脑纯净度与构思算力；
 
+---
+
+## 八、 主控物理写屏障红线（Director Write-Barrier · 绝对禁止主控越权动笔）
+
+   主控（Director）的物理写入权限严格仅限于：
+   - ① Stage 1 细纲任务书（`outlines/vol_XX/beats/ch_XXX.md`）；
+   - ② 卷大纲微调（经人类作者同意后更新 `outlines/vol_XX/outline.md`）；
+   - ③ 运行引擎管理命令（如 `init`, `milestone`, `sync`, `beats new` 等）。
+   **主控绝对禁止在宿主主进程中直接调用 `write_to_file` 或 `replace_file_content` 亲笔撰写或修改 `workspace/<书名>`目录下的任何文件！**
+   进入 Stage 0、Stage 2、Stage 3、Stage 4 时，主控**必须且只能**通过 `invoke_subagent` 将任务以标准 4 行派发令下达给专职子代理（Architect / Drafter / Editor / Stylist / Auditor / Critic / Fixer / Reader / Evolver）在独立沙盒中完成落盘！在 Planning Mode（规划模式）下，实施计划中的执行步骤必须全部表述为【派发子代理令 ➔ 子代理独立沙盒落盘 ➔ 主控运行命令验收】，坚决杜绝主控亲自编写落地内容的违规越权行为！
+
 
 ---
 
-## 八、 架构分工与协议导航（单 SKILL 强内聚）
+## 九、 架构分工与协议导航（单 SKILL 强内聚）
 
 所有业务心法、工艺规范与权限清单已 100% 熔炼进各角色的自完备技能卡：
 - 引擎命令图谱：[`docs/COMMAND_MATRIX.md`](file:///c:/Users/cg110902/Desktop/NOVEL/docs/COMMAND_MATRIX.md)（Engine 31 核心命令与多智能体矩阵映射全景图）
