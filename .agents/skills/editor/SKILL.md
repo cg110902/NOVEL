@@ -60,7 +60,7 @@ description: Universal commercial webnovel structural editor and prose polisher 
     - **图什么？（明确心理目的）**：目光一动必有所图——是刺探底牌、寻觅破绽、眼神施压，还是寻找撤离路线、确认同伴暗号；
     - **带来什么？（后续动作连锁）**：视线落定后，必须立刻引出下一步动作。
 
-## 7. 大幅删除冗余元素（毫不留情）：
+## 7. 大幅删除冗余元素（不留情面）：
 - ❌ 包括但不限于：内心反刍、作者跳出来解释、内心旁白、各类总结、重复信息、毫无意义的抒情等等；
 - ❌ 包括：冗余的形容词、不恰当的比喻、多余的描述性词汇。（读者是来看故事剧情的，不是来看你的文采的）
 - ❌ 凡是读者自己能够直接或间接得出来的结论，一律删除，坚决不重复表达。 **信任读者原则**。
@@ -69,18 +69,12 @@ description: Universal commercial webnovel structural editor and prose polisher 
 
 ---
 
-## ⚡ 三、 极速三步工序（单线推进，绝不空转）
+## ⚡ 三、 极速两步工序（单线推进，绝不空转 · 绝对零命令）
 
-1. **步骤 1【物理复制底稿 · 0.1秒】**：
-   在终端运行命令将初稿直接复制为预定稿基底：
-   ```powershell
-   Copy-Item -Force "workspace/<书名>/manuscript/vol_XX/raw/ch_XXX_v1.md" "workspace/<书名>/manuscript/vol_XX/raw/ch_XXX_v3.md"
-   ```
+1. **步骤 1【单次全量阅读 · 严禁切片】**：
+   总控已在派发前将初稿预置为 `raw_v3.md`。起手直接调用 `view_file` 工具**单次全量读取** `raw_v3.md`（**严禁传 StartLine/EndLine 切片翻读**），根据**【修改清单】**通盘锁定 **4 ~ 6 处核心场景大块**。
 
-2. **步骤 2【单次全量阅读 · 严禁切片】**：
-   调用 `view_file` 工具**单次全量读取** `raw_v3.md`（**严禁传 StartLine/EndLine 切片翻读**），根据**【修改清单】**中涉及到需要修改的地方，通盘锁定 **4 ~ 6 处核心场景大块**。（先制定修改计划，再实施修改手段）
-
-3. **步骤 3【双核手术刀落盘 · 唯一产出】**：
+2. **步骤 2【双核手术刀落盘 · 唯一产出】**：
    - 聚焦选定的 4 ~ 6 处核心场景大块，调用 `replace_file_content` 实施大段深度重塑：
    
      - **【倒序下刀铁律（Bottom-to-Top）】**：若有多处替换，**必须从正文后部向头部倒序执行替换**（先替换靠后的高潮/章尾大块，再替换靠前的段落），彻底杜绝前文行号增删导致的后文行号漂移错误！
@@ -89,8 +83,7 @@ description: Universal commercial webnovel structural editor and prose polisher 
 	 
      - **精确匹配**：`TargetContent` 必须 100% 逐字截取自刚全读的正文片段；
 	 
-   - ⚠️ **【耗时与自愈平衡铁律】**：默认坚决使用 `replace_file_content`，
-   将修改控制在 5~7 块；仅当初稿全局彻底崩盘、碎片病态过重时，允许使用 `write_to_file` 全篇重写兜底（⚠️ **调用 `write_to_file` 时仅传 4 个核心参数，绝对严禁传递 `ArtifactMetadata` 参数！**）；
+   - ⚠️ **【耗时与自愈平衡铁律】**：默认坚决使用 `replace_file_content`，将修改控制在 5~7 块；仅当初稿全局彻底崩盘、碎片病态过重时，允许使用 `write_to_file` 全篇重写兜底（⚠️ **调用 `write_to_file` 时仅传 4 个核心参数，绝对严禁传递 `ArtifactMetadata` 参数！**）；
    
    - 替换完成后，立即输出 3 行标准完工回执交卷！**严禁在替换后再调用 `view_file` 查验修改结果，严禁客套总结，干完即走！**
 
@@ -99,12 +92,12 @@ description: Universal commercial webnovel structural editor and prose polisher 
 ## 🔒 四、 白名单与绝对红线
 
 - 📖 **准读文件（唯一）**：`manuscript/vol_XX/raw/ch_XXX_v3.md`（单次全量秒读，禁切片）；
-- 💻 **准跑命令（唯一）**：`Copy-Item` 复制底稿；
+- 💻 **准跑命令**：**【绝对零命令】**（无需运行任何命令，零终端操作，防一切脚本恐慌）；
 - ✍️ **准写工具（唯一）**：`replace_file_content` 修改 `raw_v3.md`（备用兜底：`write_to_file`，**严禁传递 `ArtifactMetadata`**）；
 - 🚫 **绝对红线**：
   - 严禁在对话消息中输出正文（所有修改必须在工具调用中物理落盘）；
-  - 严禁触碰 `final/ch_XXX.md`（由 Fixer 盖章发布）；严禁调用 `ask`；严禁翻看历史章节或设定卡；
-  - 严禁阅读 `engine/` 源码（引擎为绝对黑盒）；严禁编写任何自查脚本；严禁调用 `check` / `doctor` 等全书体检命令；修改落盘后严禁留恋滞留。
+  - 严禁触碰 `final/ch_XXX.md`（由 Stage 5 引擎自动发布）；严禁调用 `ask`；严禁翻看历史章节或设定卡；
+  - 严禁运行任何终端命令或脚本；严禁调用 `check` / `doctor` 等全书体检命令；修改落盘后严禁留恋滞留。
 
 ---
 

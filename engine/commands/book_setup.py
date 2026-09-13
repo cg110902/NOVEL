@@ -171,7 +171,7 @@ def cmd_init(args) -> int:
     if not proj:
         # 兜底路径（模板缺失/损坏才会走到）刻意只给最小集：不复制词表，避免与 templates/project.json
         # 形成第二真源。后果是六张词表与 state_watch 缺席＝对应启发式停用，`check` 会以
-        # wordlist_unconfigured（info）逐键提醒主控补配——属设计内行为，勿在此硬编码词表。
+        # wordlist_unconfigured（info）逐键提醒总控补配——属设计内行为，勿在此硬编码词表。
         proj = {
             "schema": "novel-studio.project/v1",
             "title": args.title or "",
@@ -210,7 +210,7 @@ def cmd_init(args) -> int:
     done = _instantiate_templates(book, {"title": args.title or "", "genre": args.genre or "",
                                          "protagonist": args.protagonist or ""})
     print(f"✅ 书工作区已创建: {book}（状态机播种 {seeded} 个 JSON；模板实例化 {len(done)} 份：{', '.join(done)}）")
-    print("   下一步（Stage 0）：主控读 AGENTS.md 开局地图，按 templates/模板实例化")
+    print("   下一步（Stage 0）：总控读 AGENTS.md 开局地图，按 templates/模板实例化")
     print("   填实 bible/ characters/ outlines/ 资产（未填的 {{slot:}} 会被 check 拦下）。")
     return 0
 
@@ -295,11 +295,10 @@ def _next_actions(brief: dict | None) -> list[str]:
     if brief["pending_proposals"]:
         acts.append(f"state/inbox 有 {len(brief['pending_proposals'])} 份待合并提案：python studio.py sync ch_XXX")
     nxt = brief["latest_finalized"] + 1
-    acts.append(f"下一章 ch_{nxt:03d}：Stage 1 主控写 beats → Stage 2 Drafter 毛坯 raw_v1 → "
+    acts.append(f"下一章 ch_{nxt:03d}：Stage 1 总控写 beats → Stage 2 Drafter 毛坯 raw_v1 → "
                 f"Stage 3 Editor 双核精修预定稿 raw_v3 → "
-                f"Stage 4A/4B 并发（Auditor 问题清单 ‖ Critic 催更便签）→ "
-                f"Stage 4C Fixer 落盘法定定稿 final → Stage 4D Reader 增量事实提案 → "
-                f"Stage 5 sync 封存+快照")
+                f"Stage 4A/4B 并发（Auditor 常识质检 ‖ Critic 催更便签）→ "
+                f"Stage 5 finalize 自动定稿盖章 → proposal auto 提取提案 → sync 封存+快照")
     return acts
 
 
@@ -391,7 +390,7 @@ def cmd_cockpit(args) -> int:
     ch = None
     if getattr(args, "chapter", None):
         # 显式传入非法章号直接报用法错（此前被静默吞掉自动推断，
-        # 主控拿到错误坐标的驾驶舱报而不知情）
+        # 总控拿到错误坐标的驾驶舱报而不知情）
         ch = _norm_ch(args.chapter)
         if ch is None:
             return usage_error(
@@ -494,7 +493,7 @@ def cmd_config(args) -> int:
 
     if act == "guide":
         payload = {"kind": "config_guide",
-                   "note": "引擎零题材词表：参数由主控按本书题材生成并注入；gap=true 的键缺席时对应启发式停用"
+                   "note": "引擎零题材词表：参数由总控按本书题材生成并注入；gap=true 的键缺席时对应启发式停用"
                            "并出 ℹ️ 提示，空表=明确关闭；形状错误会在 check 中报 param_shape_invalid。",
                    "params": {k: {"shape": v["shape"], "gap": v.get("gap", False), "desc": v["desc"],
                                   "example": v["example"]} for k, v in spec.items()}}
@@ -502,7 +501,7 @@ def cmd_config(args) -> int:
             print(json.dumps(payload, ensure_ascii=False, indent=2))
         else:
             print("=" * 74)
-            print(" 🧩 引擎可接受的词表参数型号单（主控按本书题材照此供参）")
+            print(" 🧩 引擎可接受的词表参数型号单（总控按本书题材照此供参）")
             print("=" * 74)
             for k, v in spec.items():
                 tag = "缺席即停用" if v.get("gap") else "可选增配"
@@ -534,7 +533,7 @@ def cmd_config(args) -> int:
             print(json.dumps(payload, ensure_ascii=False, indent=2))
         else:
             print("=" * 74)
-            print(f" 🧮 供参候选工作单（机械计数 {payload['final_chapters_scanned']} 章定稿；采纳与否归主控裁决）")
+            print(f" 🧮 供参候选工作单（机械计数 {payload['final_chapters_scanned']} 章定稿；采纳与否归总控裁决）")
             print("=" * 74)
             # alias_suggestions 是派生建议、不是 PARAM_SPEC 里的配置键，
             # 直接 spec[k] 会 KeyError（实测崩在文本渲染路径）。分开渲染。
@@ -549,7 +548,7 @@ def cmd_config(args) -> int:
                 else:
                     print("     （暂无候选）")
             _aliases = payload["suggestions"].get("alias_suggestions") or []
-            print(" • alias_suggestions（高频写法疑似既有实体的别名——挂别名还是建新实体归主控裁决）")
+            print(" • alias_suggestions（高频写法疑似既有实体的别名——挂别名还是建新实体归总控裁决）")
             if _aliases:
                 for it in _aliases:
                     tgt = it.get("suggest_alias_of")
@@ -595,7 +594,7 @@ def cmd_config(args) -> int:
         try:
             val = json.loads(raw)
         except json.JSONDecodeError:
-            # 区间类键容忍裸字符串 "1500,2500"（避免让主控先学 JSON 语法再谈形状）
+            # 区间类键容忍裸字符串 "1500,2500"（避免让总控先学 JSON 语法再谈形状）
             val = None
             if spec[key]["shape"] == "int_pair":
                 parts = [x for x in re.split(r"[,，\s]+", raw.strip()) if x]

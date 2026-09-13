@@ -22,13 +22,12 @@ Novel Studio 是通俗商业网文工业流水线框架：**大模型全权掌�
 
 | 角色 (Stage) | 算力模型 | 准读文件 | 准写工具 / 目标 | 专属命令 | 核心职责与严格边界 |
 |---|---|---|---|---|---|
-| **主控 Director**<br/>(Stage 1 / 5) | `inherit` | 全局状态、critic便签、cockpit | `outlines/vol_XX/beats/ch_XXX.md` | `cockpit`, `calendar`, `beats new`, `proposal auto`, `sync` | **总制片人**：剧情弧线把控，编制细纲，前置声明事实预期，派发前跑 `proposal auto` 备骨架，Stage 5 单步原子封存（禁写正文、章末正文零回读）。 |
+| **总控 Director**<br/>(Stage 1 / 5) | `inherit` | 全局状态、critic便签、cockpit | `outlines/vol_XX/beats/ch_XXX.md` | `cockpit`, `calendar`, `beats new`, `proposal auto`, `sync` | **总制片人**：剧情弧线把控，编制细纲，前置声明事实预期，派发前跑 `proposal auto` 备骨架，Stage 5 单步原子封存（禁写正文、章末正文零回读）。 |
 | **起草员 Drafter**<br/>(Stage 2) | `inherit` | **仅读 pack 输出**<br/>（严禁翻读beats） | `raw/ch_XXX_v1.md`<br/>(`write_to_file`) | `pack ch_XXX` | **剧情起草**：依据 pack 装配包展开 1500~2500 字初稿毛坯，pack 数据自完备且 Beats 置顶，严禁二次查验，直接起笔展开，落盘即走。 |
-| **精修师 Editor**<br/>(Stage 3) | `inherit` | `raw/ch_XXX_v3.md` | `raw/ch_XXX_v3.md`<br/>(`replace_file_content`) | `Copy-Item` (唯二操作) | **双核精修与脱水**：Copy-Item 复制 v1 为 v3，单次全读后倒序对 **5~7 处核心大块** 手术刀替换（通俗脱水、去冷脸面瘫词），绝对零命令，落盘即走。 |
-| **审查员 Auditor**<br/>(Stage 4A) | `flash` | `raw/ch_XXX_v3.md` | `log/audit/ch_XXX.md`<br/>(`write_to_file`) | `audit ch_XXX --write`<br/>`ask` (≤1次) | **客观安检**：运行 8 大探针（**严禁带 `--adjudicate`**），常识挑刺，预制替换配方输出至待修清单，与 Critic 并发执行。 |
-| **催更员 Critic**<br/>(Stage 4B) | `flash` | `raw/ch_XXX_v3.md` | `log/critic/ch_XXX.md`<br/>(`write_to_file`) | **【绝对零命令】** | **老白盲审**：十年老白读者盲审，输出 300~500 字追更便签供下章细纲参考，与 Auditor 并发执行，落盘即走。 |
-| **定稿师 Fixer**<br/>(Stage 4C) | `flash` | `log/audit/ch_XXX.md`<br/>（免读final/beats） | `final/ch_XXX.md`<br/>(`replace_file_content`) | `Copy-Item`<br/>`audit --write --adjudicate` | **终审发布**：Copy-Item 复制 v3 为 final，依 audit 配方直接手术刀微调（0 瑕疵免修改），跑 `audit --adjudicate` 盖章放行。 |
-| **审计员 Reader**<br/>(Stage 4D) | `flash` | `final/ch_XXX.md` | `state/inbox/ch_XXX.json`<br/>(`replace_file_content` / 补丁) | `proposal check ch_XXX`<br/>`proposal patch` | **事实审计质检员**：算法先导秒出 100% 合规底稿，Reader 单次全读 final，运行 `proposal check` 查阅人话清单核准事实，无误 0 修改 15s 交卷；微差单行 patch 打补丁，绝对不手写全量 JSON。 |
+| **精修师 Editor**<br/>(Stage 3) | `inherit` | `raw/ch_XXX_v3.md` | `raw/ch_XXX_v3.md`<br/>(`replace_file_content`) | **【绝对零命令】** | **双核精修与脱水**：总控派发前预置 v3，单次全读后倒序对 **5~7 处核心大块** 手术刀替换（通俗脱水、去冷脸面瘫词），纯读写零终端，落盘即走。 |
+| **审查员 Auditor**<br/>(Stage 4A) | `flash` | `raw/ch_XXX_v3.md`<br/>`log/audit/ch_XXX.md` | `log/audit/ch_XXX.md`<br/>(`replace_file_content`) | **【绝对零命令】** | **客观安检**：总控派发前预置探针骨架，单次全读常识挑刺，预制修补配方写入报告，纯读写零终端，与 Critic 并发执行。 |
+| **催更员 Critic**<br/>(Stage 4B) | `flash` | `raw/ch_XXX_v3.md`<br/>`current.json` | `log/critic/ch_XXX.md`<br/>(`write_to_file`) | **【绝对零命令】** | **老白盲审**：十年老白读者盲审，输出 300~500 字追更便签供下章细纲参考，纯读写零终端，与 Auditor 并发执行，落盘即走。 |
+| **终审封存交付**<br/>(Stage 5 总控/引擎) | `inherit` | 全局状态、成稿 | `final/ch_XXX.md`<br/>`state/inbox/ch_XXX.json` | `finalize`, `proposal auto`, `sync` | **极速三指令原子收口**：Auditor/Critic 并发完成后，总控秒级跑 `finalize`（自动吸纳配方生成 final 并盖章）+ `proposal auto --write`（自动提取变动）+ `sync`（合账封存与快照），彻底砍掉独立 Fixer 与 Reader 子代理（全过程 ≤0.5 秒；突发致命红旗由总控自主派发临时纯认知工排雷后收口）。 |
 
 *(注：Stage 0 架构师 Architect、Stage Evolution 重构师 Evolver、长程巡检 Librarian 详见各自 SKILL.md，日常章节无需载入。)*
 
@@ -36,7 +35,7 @@ Novel Studio 是通俗商业网文工业流水线框架：**大模型全权掌�
 
 ## 三、 双向极简交互协议（最高执行契约 · 严禁添油加醋）
 
-1. **主控下达 · 标准 4 行工序派发令（严格闭合，零主观说教）**：
+1. **总控下达 · 标准 4 行工序派发令（严格闭合，零主观说教）**：
    ```text
    【章节工序派发令（免读技能卡直接开工）】
    - 书籍工作区：workspace/<书名> ｜ 分卷章节：vol_XX / ch_XXX
@@ -58,22 +57,21 @@ Novel Studio 是通俗商业网文工业流水线框架：**大模型全权掌�
 
 1. **单步物理落盘与禁传 ArtifactMetadata 铁律**：所有生成/修改正文、报告、便签、提案的子代理，**必须在同一轮直接调用 `write_to_file` 或 `replace_file_content` 完成物理落盘**！调用 `write_to_file` 写入工作区文件时，仅提供 `TargetFile`, `CodeContent`, `Description`, `Overwrite` 4 个核心参数，**绝对严禁传递 `ArtifactMetadata` 参数**（非 Brain Artifact，传错即报 Schema 错误）。
 2. **禁发正文聊天与交卷即走铁律**：绝对严禁在对话框发送正文全文或闲聊客套；文件落盘（若有专属验证命令跑通 0 报错）后，立即且仅输出 3 行标准完工回执彻底结束当前轮次！**严禁在落盘后再调用 `view_file` 回读自验刚写的文件**！
-3. **零脚本自查与禁过度体检铁律**：所有子代理**绝对严禁编写任何 PowerShell / Python 脚本**去测字数、算正则或自检；**绝对严禁调用全书体检命令（`check` / `doctor`）**；主控 Stage 5 运行 `studio.py sync` 成功即交付，**绝对严禁在封存后再追跑全书 `check`**。
+3. **零脚本自查与禁过度体检铁律**：所有子代理**绝对严禁编写任何 PowerShell / Python 脚本**去测字数、算正则或自检；**绝对严禁调用全书体检命令（`check` / `doctor`）**；总控 Stage 5 运行 `studio.py sync` 成功即交付，**绝对严禁在封存后再追跑全书 `check`**。
 4. **严禁踩点探测与偷看旧章铁律**：子代理启动后**绝对严禁调用 `find_by_name` 或 `list_dir`** 搜寻目录；**绝对严禁调用 `view_file` 偷看其他历史章节**！
 5. **专职边界与免多余回读铁律**：
    - **Drafter**：运行 `pack` 获取自完备上下文（Beats 置顶一目了然）后**起手直写**，严禁写脚本、严禁二次查验，直接落盘；
    - **Editor**：单次全读 `raw_v3` 后，聚焦 **5~7 处核心大块** 自下而上倒序执行 `replace_file_content`，严禁全文推倒重写；
-   - **Fixer**：仅查看 `log/audit/ch_XXX.md` 清单，直接照方抓药替换，**绝对严禁调用 `view_file` 翻读 `final` 成稿或 `beats` 细纲**；
-   - **Reader**：单次全读 `final` 成稿，运行 `proposal check` 查阅人话清单对账，核准吻合 0 修改直接交卷（15s）；正文若有偏差跑 `proposal patch` 或微调 1 行，**绝对严禁手写或全量覆盖 60 行底稿 JSON，绝对严禁为引文推敲纠结**。
-6. **主控物理写屏障与 Stage 5 原子封存铁律**：主控写入权限严格仅限 Stage 1 细纲（`beats/ch_XXX.md`）与卷大纲微调；**主控绝对禁止亲笔撰写或修改小说正文、报告与提案**！Stage 5 必须且只能执行单行命令 `python studio.py sync ch_XXX -w "..."`，正文绝对零回读，封存完毕即交付。
+   - **Fixer 与 Reader 全面算法化**：彻底砍掉独立 Fixer 与 Reader 子代理！由总控在 Stage 5 直接运行 `finalize` 自动吸纳修补配方生成 final，再由 `proposal auto --write` 自动提取入库，彻底免除任何大模型手写或调试的内耗。
+6. **总控物理写屏障与 Stage 5 原子收尾铁律**：总控写入权限严格仅限 Stage 1 细纲（`beats/ch_XXX.md`）与卷大纲微调；**总控绝对禁止亲笔撰写或修改小说正文与审查报告**！Stage 5 必须且只能执行三连命令 `python studio.py finalize ch_XXX -w "..." && python studio.py proposal auto ch_XXX --write -w "..." && python studio.py sync ch_XXX -w "..."`，正文绝对零回读，封存完毕即交付。
 
 ---
 
 ## 五、 协议导航（专职技能卡索引）
 
 各角色深层业务细则与专用模板详见对应技能卡（日常执行免回读，派发令清晰时直接开工）：
-- 主控统筹：`.agents/skills/director/SKILL.md` ｜ 起草先锋：`.agents/skills/drafter/SKILL.md`
+- 总控统筹：`.agents/skills/director/SKILL.md` ｜ 起草先锋：`.agents/skills/drafter/SKILL.md`
 - 骨肉精修：`.agents/skills/editor/SKILL.md` ｜ 审查质检：`.agents/skills/auditor/SKILL.md`
-- 读者催更：`.agents/skills/critic/SKILL.md` ｜ 终审定稿：`.agents/skills/fixer/SKILL.md`
-- 事实审计：`.agents/skills/reader/SKILL.md` ｜ 演进重构：`.agents/skills/evolution/SKILL.md`
+- 读者催更：`.agents/skills/critic/SKILL.md` ｜ 演进重构：`.agents/skills/evolution/SKILL.md`
 - 宏观架构：`.agents/skills/architect/SKILL.md` ｜ 长程平账：`.agents/skills/librarian/SKILL.md`
+*(注：原 Fixer 终审与 Reader 审计已全面引擎算法化为 `finalize` 与 `proposal auto`，免除独立代理)*

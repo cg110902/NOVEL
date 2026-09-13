@@ -129,7 +129,7 @@ def _deviation_lines(book: Path) -> list[str]:
     return out
 
 
-# world_refs 可钉节数上限：钉太多就等于回到恒给（收窄失去意义），也避免主控一次性把五档视图全列进来。
+# world_refs 可钉节数上限：钉太多就等于回到恒给（收窄失去意义），也避免总控一次性把五档视图全列进来。
 MAX_WORLD_ANCHOR_REFS = 8
 
 # 世界锚点（world_anchors）预算帽：project.json.world_anchor_tokens 可调，缺省与上限同为 10000。
@@ -138,7 +138,7 @@ MAX_WORLD_ANCHOR_REFS = 8
 # 未声明时回退为按关键词全量恒给（保持既有行为）。
 MAX_WORLD_ANCHOR_TOKENS = 10000
 # 「基础世界节组」：按章取用模式下若整组缺席，多半是 world_refs 写漏而不是本章真用不上。
-# 引擎**不擅自扩大注入**（按章取用是契约），但必须在包里点名缺了哪组，让主控一条命令补上。
+# 引擎**不擅自扩大注入**（按章取用是契约），但必须在包里点名缺了哪组，让总控一条命令补上。
 # 关键词同时用于「池内是否本就存在该组」判定——书里没写这一组时不报，避免噪音。
 _ANCHOR_CORE_GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("世界公理", ("公理", "世界与规则", "运转规则", "底层规则", "世界底色")),
@@ -168,7 +168,7 @@ def _world_anchor_budget(book: Path) -> int:
 def _world_refs(beats_text: str) -> list[str]:
     """从当章 beats 的 front-matter `world_refs` 取「本章需要的世界节」关键词。
 
-    零 LLM 参与：主控在 Stage 1 写细纲时本就通读设定，让它顺手钉住锚点比让引擎
+    零 LLM 参与：总控在 Stage 1 写细纲时本就通读设定，让它顺手钉住锚点比让引擎
     猜相关性更准；未声明（键缺失/为空）则返回 []，由调用方回退恒给口径。
     """
     try:
@@ -179,7 +179,7 @@ def _world_refs(beats_text: str) -> list[str]:
     parts = re.split(r"[,，、;；|/\s]+", raw)
     kept = [x.strip() for x in parts if x.strip() and not x.strip().startswith("{{")]
     if len(kept) > MAX_WORLD_ANCHOR_REFS:
-        # 超出上限：按字面保序截断，并把被丢弃的词在包里说明——让主控知道引擎替他做了取舍
+        # 超出上限：按字面保序截断，并把被丢弃的词在包里说明——让总控知道引擎替他做了取舍
         kept, dropped = kept[:MAX_WORLD_ANCHOR_REFS], kept[MAX_WORLD_ANCHOR_REFS:]
         return kept + [f"__dropped__:{'、'.join(dropped)}"]
     return kept
@@ -270,7 +270,7 @@ def _bible_core_anchors(book: Path, refs: list[str] | None = None) -> str:
             return out + "\n" + note
         # 一条都没命中：不静默降级为"没有世界观"，回退恒给 + 点名 world_refs 可能写错。
         # 匹配是「refs 词 ⊆ 节标题或正文」的字面包含，所以必须用 bible 自己的措辞；
-        # 把可选节标题列出来（最多 6 条），主控照抄一次即可命中，不必回头翻文件。
+        # 把可选节标题列出来（最多 6 条），总控照抄一次即可命中，不必回头翻文件。
         cands = "、".join(sec.split("\n", 1)[0].lstrip("#").strip()[:22] for sec in sections[:6])
         hint = f"可钉的节：{cands}" if cands else "（当前 bible 无可钉节）"
         fallback_note = (f"⚠️ beats 的 world_refs（{'、'.join(refs[:6])}）未命中任何 bible 节标题/正文，"
@@ -466,7 +466,7 @@ def _hard_reminders(book: Path, ch: str, ch_num: int) -> list[str]:
 
     line_msgs.sort(key=lambda x: (x[0], x[1]))
     # 修复：此前 line_msgs 排序后从未并入 out，导致伏笔逾期/闲置催还/因果前置未达成
-    # 等全部硬提醒被静默丢弃（主控永远看不到伏笔催还，直接造成伏笔烂尾）。
+    # 等全部硬提醒被静默丢弃（总控永远看不到伏笔催还，直接造成伏笔烂尾）。
     out.extend(msg for _, _, msg in line_msgs)
     try:
         locked_state = state.load_state(book, "locked")
@@ -819,7 +819,7 @@ def build_pack(book: Path, ch: str, lean: bool = False, full: bool = False,
             if blocked:
                 p2["open_hint"] = (f"另有 {blocked} 份文件不在角色「{role}」的准读范围内，"
                                    "请勿尝试 --open（会被禁读网关拒绝）；本包未装的一律视为"
-                                   "『你不需要知道』，确需原文请交主控判断后转述。")
+                                   "『你不需要知道』，确需原文请交总控判断后转述。")
 
         finals = evidence.final_chapters(book)
         window = [c for c in finals if c[1] < ch_num][-POINTER_WINDOW:]
@@ -947,7 +947,7 @@ def build_pack(book: Path, ch: str, lean: bool = False, full: bool = False,
     if budget["over_budget"]:
         budget["hard_cap_breached"] = True
         note = (f"压缩阶梯已尽仍超预算（超出 {budget['total'] - budget['cap']} tok）："
-                "本章合同类内容不自动裁，请主控精简 beats 或调低 project.json.world_anchor_tokens")
+                "本章合同类内容不自动裁，请总控精简 beats 或调低 project.json.world_anchor_tokens")
         budget["trim_note"] = f"{budget['trim_note']}；{note}" if budget.get("trim_note") else note
 
     payload["budget_report"] = budget
@@ -1057,7 +1057,7 @@ def render_pack(payload: dict) -> str:
     if b.get("trimmed_file_index"):
         out += [f"trim: 已裁 P2 冷索引 {b['trimmed_file_index']} 条（{b.get('trim_note','')}）"]
     if b.get("hard_cap_breached"):
-        out += ["⚠️ 冷索引已裁空仍超预算，P0/P1 已保留，超限部分需主控手动精简 beats"]
+        out += ["⚠️ 冷索引已裁空仍超预算，P0/P1 已保留，超限部分需总控手动精简 beats"]
     return "\n".join(out)
 
 
@@ -1068,7 +1068,7 @@ def render_pack(payload: dict) -> str:
 # 默认取最严格的 drafter，越权读取必须显式 --as <角色> 才可，且留 debug 痕迹。
 # 键 = 禁读前缀（相对书工作区，正斜杠）；值为 None 表示按特例单独判定。
 ROLE_DENY: dict[str, tuple[str, ...]] = {
-    # 主控：AGENTS 只禁 engine/*（本就在书工作区之外，safe_child_path 已拦）
+    # 总控：AGENTS 只禁 engine/*（本就在书工作区之外，safe_child_path 已拦）
     "director": (),
     # 起草员：禁 state/*、bible/*、characters/*、log/*（含 log/critic/*）
     "drafter": ("state/", "bible/", "characters/", "log/"),
@@ -1089,7 +1089,7 @@ ROLE_DENY: dict[str, tuple[str, ...]] = {
     # 图书管理员：只看近 10 章定稿 + 四张台账；禁大纲/bible/卡片/日志/草稿（state/ 同理整体禁读）
     "librarian": ("state/", "outlines/", "bible/", "characters/", "entities/",
                   "log/", "snapshots/"),
-    # 演进员（跨卷改版）：与主控同权，engine/* 由 safe_child_path 兜底
+    # 演进员（跨卷改版）：与总控同权，engine/* 由 safe_child_path 兜底
     "evolver": (),
 }
 # 路径「段」级禁读（前缀表达不了的，如 manuscript/vol_XX/raw/*）
@@ -1160,7 +1160,7 @@ def open_file(book: Path, rel: str, role: str = "drafter") -> dict:
         raise PermissionError(
             f"{reason}：{rel_checked}\n"
             f"   确需越权读取请显式声明角色：pack --open {rel} --as director"
-            "（仅主控有全量准读权；子代理不得自行提权）")
+            "（仅总控有全量准读权；子代理不得自行提权）")
     if not p.is_file():
         raise ValueError(f"--open 目标不存在: {rel}")
     return {"path": rel, "text": p.read_text(encoding="utf-8", errors="replace")}

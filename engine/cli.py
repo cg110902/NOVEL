@@ -18,7 +18,7 @@ from .commands._shared import _add_common_opts
 from .commands.book_setup import (cmd_config, cmd_cockpit, cmd_errcodes, cmd_init, cmd_status,
                                   cmd_lore)
 from .commands.chapter_flow import (cmd_ask, cmd_audit, cmd_beats, cmd_calendar, cmd_check, cmd_critic,
-                                    cmd_evidence, cmd_export, cmd_graph, cmd_index, cmd_pack,
+                                    cmd_evidence, cmd_export, cmd_finalize, cmd_graph, cmd_index, cmd_pack,
                                     cmd_pov, cmd_review)
 from .commands.recall import cmd_recall
 from .commands.reconcile import cmd_reconcile
@@ -36,7 +36,7 @@ from .commands.state_sync import (cmd_checkpoint, cmd_ledger, cmd_milestone, cmd
 COMMAND_HELP = {
     "status": "进度总览 + 逐章流水线 + 下一步指向",
     "init": "创建/清理书工作区（脚手架+状态播种+模板槽位实例化）",
-    "cockpit": "主控态势驾驶舱：工作流导航 + 戏剧动力学 + 伏笔雷达 + 自愈处方 + 催更雷达",
+    "cockpit": "总控态势驾驶舱：工作流导航 + 戏剧动力学 + 伏笔雷达 + 自愈处方 + 催更雷达",
     "pack": "单章上下文三层装配（P0 热 / P1 别名触发 / P2 冷索引）",
     "ask": "全书事实检索机（只读取证：别名展开→十一表+final 原句双域，带章节出处；写细纲前先问书）",
     "pov": "角色视角包（档案/持有/关系/出场足迹/他知道与不知道的/未了线——由账本推导，advisory）",
@@ -48,7 +48,7 @@ COMMAND_HELP = {
     "checkpoint": "宏观航向校准点（每5章复盘分卷四分位里程碑与主线偏航）",
     "milestone": "主线里程碑管理：list ｜ add（Stage 0 播种主线里程碑与预期达成章节）",
     "state": "状态速查与手术刀纠偏：show ｜ get/set <表.字段> ｜ object <id/名>（对象包络）｜ at <章>（时点切面）｜ diff <章A> <章B> ｜ blame <表.路径>（溯源）｜ rollup <卷>（卷末态势摘要）｜ recompute（派生重算）",
-    "config": "书级参数手术刀：list|guide|suggest|get|set[--merge]|unset（主控供参通道，project.json；含 words_target/lines_cap 等项目级键）",
+    "config": "书级参数手术刀：list|guide|suggest|get|set[--merge]|unset（总控供参通道，project.json；含 words_target/lines_cap 等项目级键）",
     "sync": "提案合并 → 状态体检 → 快照（Stage 5 闭环，可 --dry-run）",
     "ledger": "账本手术刀：recompute（余额与 balance_after 按流水全量重算修复）",
     "snapshot": "快照 list / create NAME / rollback NAME [--clean-drafts]",
@@ -58,6 +58,7 @@ COMMAND_HELP = {
     "beats": "细纲脚手架：new [章节]（Stage 1 智能生成带字数预算与情绪蓄水泵的 beats 任务书）",
     "critic": "老白读者催更便签：查看 Stage 4B 便签或落盘 SKELETON 预填骨架（骨架不替代子代理评审）",
     "audit": "确定性矛盾排查探针（8大机械探针：在场/充能/金额/KNO/不可逆/认知差/别名漂移/称谓对账；0 Token 候选清单）",
+    "finalize": "终审自动定稿（吸纳 audit 修补配方、由 raw 生成 final 并自动盖章裁定；0-Token 极速收口）",
     "recall": "知乎残酷四问 0 Token 机械自证（主要人物知道什么/哪三条不能改/伏笔未兑现/下章红线）",
     "reconcile": "卷末对账大修（Stage 4D）：全书不变量复扫 + 本卷8探针批量重跑 + 高危字段变更史 + 投影diff候选（未登记专名/零出现实体），产出 LLM 对账工作单",
     "simulate": "剧情推演沙盒与走向假说（impact 因果链测算 ｜ branch 多分支走向参谋件）",
@@ -83,15 +84,15 @@ STAGE_MAP = {
         "description": "初稿剧情爆发起草，顺畅读感文学重塑，一次成型直接落盘",
         "commands": ["pack"],
     },
-    "Stage 4 (多轨质检)": {
-        "role": "Reader & Critic & Auditor",
-        "description": "事实审计提案生成（轨A）、老白读者催更评测（轨B）与一致性仲裁（轨C）",
-        "commands": ["evidence", "audit", "critic", "proposal", "reconcile"],
+    "Stage 4 (双轨质检)": {
+        "role": "Auditor & Critic",
+        "description": "客观常识质检预制配方（轨A）与老白读者催更评测（轨B）",
+        "commands": ["audit", "critic"],
     },
-    "Stage 5 (同步与封存)": {
+    "Stage 5 (终审封存交付)": {
         "role": "Director",
-        "description": "状态原子合并、全书双核机械体检、快照归档",
-        "commands": ["sync", "check", "doctor", "checkpoint", "snapshot", "export", "state"],
+        "description": "极速三连原子收口：finalize 定稿盖章 ➔ proposal auto 事实入账 ➔ sync 封存快照",
+        "commands": ["finalize", "proposal", "sync", "check", "doctor", "checkpoint", "snapshot", "export", "state"],
     },
 }
 
@@ -104,11 +105,10 @@ RECIPES = [
             "python studio.py pack ch_XXX",
             "# (Stage 2 Drafter 起草 raw/ch_XXX_v1.md)",
             "# (Stage 3 Editor 双核精修与脱水 raw/ch_XXX_v3.md)",
-            "# (Stage 4A/4B 并发：Auditor 问题清单 log/audit/issues_ch_XXX.md ｜ Critic 便签 log/critic/ch_XXX.md)",
-            "# (Stage 4C Fixer 落盘法定定稿 final/ch_XXX.md)",
-            "# (Stage 4D Reader 增量事实提案 state/inbox/ch_XXX.json)",
-            "python studio.py audit ch_XXX --write   # 生成带 front-matter 的仲裁报告（Stage 5 闸门必需）",
-            "python studio.py sync ch_XXX",
+            "# (Stage 4A/4B 并发：Auditor 常识质检 log/audit/ch_XXX.md ｜ Critic 便签 log/critic/ch_XXX.md)",
+            "python studio.py finalize ch_XXX   # 自动吸纳配方定稿并盖章",
+            "python studio.py proposal auto ch_XXX --write   # 0-Token 算法自动提取增量事实",
+            "python studio.py sync ch_XXX   # 原子合并台账并封存快照",
         ],
     },
     {
@@ -208,7 +208,7 @@ def _build_subparsers(sub: argparse._SubParsersAction) -> None:
     _add_common_opts(q)
     q.set_defaults(func=cmd_status)
 
-    q = sub.add_parser("cockpit", help="主控态势驾驶舱：工作流导航 + 戏剧动力学 + 自愈处方 + 催更雷达")
+    q = sub.add_parser("cockpit", help="总控态势驾驶舱：工作流导航 + 戏剧动力学 + 自愈处方 + 催更雷达")
     _add_common_opts(q)
     q.add_argument("chapter", nargs="?", help="目标章节（如 2 或 ch_002，缺省自动推断活跃章）")
     q.set_defaults(func=cmd_cockpit)
@@ -238,7 +238,7 @@ def _build_subparsers(sub: argparse._SubParsersAction) -> None:
     q.add_argument("--as", dest="as_role", default="drafter",
                    # 单一真源：直接取读权限网关的角色表，杜绝「choices 合法但网关不认」（P0-3）
                    choices=tuple(pack.ROLE_DENY),
-                   help="--open 的准读角色（默认 drafter=最严格；主控用 director/evolver 才有全量准读权）")
+                   help="--open 的准读角色（默认 drafter=最严格；总控用 director/evolver 才有全量准读权）")
     q.set_defaults(func=cmd_pack)
 
     q = sub.add_parser("ask", help="全书事实检索机（只读取证：十一表+final 原句双域，带章节出处）")
@@ -275,6 +275,11 @@ def _build_subparsers(sub: argparse._SubParsersAction) -> None:
     q.add_argument("--clear-logic", action="store_true", help="清空既有语义审查 logic 阻断计数（重置 logic: 0）")
     q.add_argument("--adjudicate", action="store_true", help="强制标记为已人工裁决（adjudicated: true）")
     q.set_defaults(func=cmd_audit)
+
+    q = sub.add_parser("finalize", help="终审自动定稿（吸纳 audit 修补配方、由 raw 生成 final 并自动盖章裁定；0-Token 极速收口）")
+    _add_common_opts(q)
+    q.add_argument("chapter", nargs="?", default="", help="章节标识（如 ch_002，缺省默认最新章）")
+    q.set_defaults(func=cmd_finalize)
 
     q = sub.add_parser("reconcile", help="卷末对账大修：机械复扫+探针重跑+投影diff候选清单 → 工作单（Stage 4D）")
     _add_common_opts(q)
@@ -412,13 +417,13 @@ def _build_subparsers(sub: argparse._SubParsersAction) -> None:
     r.set_defaults(func=cmd_state)
     q.set_defaults(func=cmd_state)
 
-    q = sub.add_parser("config", help="书级参数手术刀：list(默认)|guide|suggest|get|set|unset（主控供参通道，含 words_target/lines_cap）")
+    q = sub.add_parser("config", help="书级参数手术刀：list(默认)|guide|suggest|get|set|unset（总控供参通道，含 words_target/lines_cap）")
     _add_common_opts(q)
     cf_sub = q.add_subparsers(dest="config_action")
     for _name, _hlp, _extra in (
             ("list", "列出全部参数键的配置状态与当前值", ()),
-            ("guide", "引擎可接受参数的型号单（形状+示例，主控照此供参）", ()),
-            ("suggest", "供参候选工作单（机械计数高频短别名/泛词，主控裁决采纳）", ()),
+            ("guide", "引擎可接受参数的型号单（形状+示例，总控照此供参）", ()),
+            ("suggest", "供参候选工作单（机械计数高频短别名/泛词，总控裁决采纳）", ()),
             ("get", "查看指定参数键（-w 书目录）", ("key",)),
             ("set", "设置参数（值为 JSON 字面量；[]/{}=明确关闭；--merge 并入现有值）", ("key", "value")),
             ("unset", "移除参数（回到未配置态；gap 键将恢复缺口提示）", ("key",))):

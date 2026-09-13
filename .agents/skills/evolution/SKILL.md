@@ -25,7 +25,7 @@ description: Universal story evolution, setting refactoring, retcon surgery, and
    python studio.py simulate impact --entity <实体名> --action retcon -w "workspace/<书名>"
    ```
    - 🔍 **求证限制（严格≤1次）**：需检索正文绑定时，跑一行 `python studio.py ask "<诉求关键词>"`（**最多 1 次**）；
-   - 若因果矛盾过大不可调和：立即输出【阻断回执】请示主控与作者。
+   - 若因果矛盾过大不可调和：立即输出【阻断回执】请示总控与作者。
 
 2. **步骤 2【建立安全快照 · 铁律防线】**：
    确认可行后，动刀前在终端运行：

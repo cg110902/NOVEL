@@ -142,8 +142,8 @@ def cmd_sync(args) -> int:
 
     if not has_manuscript:
         return _fail(f"未找到 {ch} 的定稿（final），拒绝空同步（Stage 5 输入合同：beats/raw/final 齐）",
-                     hint=f"请先由 Stage 3 精修师 Editor 产出脱水预定稿 raw/{ch}_v3.md，"
-                          f"再由 Stage 4C 定稿师 Fixer 落盘法定定稿 manuscript/vol_XX/final/{ch}.md")
+                     hint=f"请先由 Stage 3 精修师 Editor 产出预定稿 raw/{ch}_v3.md，"
+                          f"再运行 `python studio.py finalize {ch}` 自动落盘法定定稿 manuscript/vol_XX/final/{ch}.md")
     if not has_proposal:
         # 非规范命名扫描：不按文件名前缀猜，直接看同章提案（chapter 字段 = ch）的
         # 其他 *.json——技能/代理若按旧习惯产出 sweep_ch_XXX.json 等第二文件，门闸
@@ -162,7 +162,7 @@ def cmd_sync(args) -> int:
         hint = (f"（发现同章非规范命名：{'、'.join(strays)}——在途提案每章仅一份，"
                 f"文件名须为 {ch}.json；已封存章的修订并入下一章提案随 sync 合并）") if strays else ""
         return _fail(f"未找到 {ch} 的正式状态提案（inbox 与 failed/ 均无），拒绝空同步{hint}",
-                     hint=f"运行 `python studio.py proposal new {ch} --write` 装配提案骨架，或由 Stage 4 Reader 审计交付")
+                     hint=f"运行 `python studio.py proposal auto {ch} --write` 自动装配提案，或手工编写 state/inbox/{ch}.json")
     try:
         proposal_data = common.load_json(proposal_path)
     except ValueError as exc:
@@ -184,7 +184,7 @@ def cmd_sync(args) -> int:
                 print(f" {note}")
         battery_items = battery.get("items") or []
         if battery_items:
-            print("—— Stage 5 机械对照候选（advisory · 不阻断，裁决归主控）——")
+            print("—— Stage 5 机械对照候选（advisory · 不阻断，裁决归总控）——")
             for it in battery_items:
                 mark = "⚠️" if it["sev"] == "warn" else "ℹ️"
                 print(f" {mark} [{it['code']}] {it['msg']}")
@@ -248,7 +248,7 @@ def cmd_sync(args) -> int:
                 if hard_count > 0 and not adjudicated:
                     if audit_mode == "strict":
                         return _fail(f"事实一致性仲裁未通过：{audit_file.name} 存在 {hard_count} 处确凿硬矛盾（hard > 0）且未裁定（adjudicated=false）",
-                                     hint=f"请由 Stage 4C 定稿师 Fixer 实施定向手术刀修复法定定稿后重跑 `python studio.py audit {ch} --write`，或在报告中完成交叉核实并将 adjudicated 设为 true / hard 修正为 0")
+                                     hint=f"请运行 `python studio.py finalize {ch}` 自动套用修补配方落盘定稿并盖章，或在报告中完成交叉核实并将 adjudicated 设为 true / hard 修正为 0")
                     else:
                         if not js:
                             print(f"⚠️ [audit_mode=advisory] 仲裁报告提示存在 {hard_count} 处硬矛盾未裁定")
@@ -460,7 +460,7 @@ def _cmd_proposal_check(book: Path, ch: str, args) -> int:
             print(" 汇总：幂等重复（operation_id 已应用过，sync 会跳过）")
         else:
             print(" 汇总：结构通过（正式预演仍走 sync ch_XXX --dry-run）")
-        print(" 三方对照（事实，是否上账归主控）：")
+        print(" 三方对照（事实，是否上账归总控）：")
         if facts.get("amounts_in_final") is not None:
             amt = "、".join(f"{a['samples'][0]}×{a['count']}（{a['pool']}）" for a in facts["amounts_in_final"]) or "无"
             print(f"   final 金额表达: {amt} ｜ 提案 ledger 交易: {facts.get('ledger_tx_in_proposal', 0)} 笔")
@@ -477,12 +477,12 @@ def _cmd_proposal_check(book: Path, ch: str, args) -> int:
         if facts.get("kno_reveal_timing"):
             tm = "、".join(f"{x['id']}(计划 ch_{x['planned_ch']:03d}，本章 ch_{x['chapter']:03d}，"
                            f"{'提前' if x['early'] else '逾期'})" for x in facts["kno_reveal_timing"])
-            print(f"   知识线揭示时机与计划不符: {tm}（改不改归主控）")
+            print(f"   知识线揭示时机与计划不符: {tm}（改不改归总控）")
         if facts.get("resolve_cold_prereqs"):
             cp = "；".join(f"{x['id']}←前置{x['req']}《{x['req_label']}》"
                            + (f"已{x['gap']}章未见" if x.get("gap") is not None else "正文从未落笔")
                            for x in facts["resolve_cold_prereqs"])
-            print(f"   回收的前置依赖已冷却: {cp}（兑现前建议先回响锚定，改不改归主控）")
+            print(f"   回收的前置依赖已冷却: {cp}（兑现前建议先回响锚定，改不改归总控）")
         if facts.get("present_mentions") is not None:
             pm = facts["present_mentions"]
             pm_str = "、".join(f"{k}×{v}" for k, v in sorted(pm.items(), key=lambda x: -x[1])[:8]) or "无"
@@ -531,7 +531,7 @@ def _cmd_proposal_verify(book: Path, ch: str, args) -> int:
         print(json.dumps(payload, ensure_ascii=False, indent=2))
         return 0
     print("=" * 70)
-    print(f" 🔎 [Stage 5 机械对照] {ch}（{proposal_path.name}；0 token 机械对照——候选清单，裁决归主控）")
+    print(f" 🔎 [Stage 5 机械对照] {ch}（{proposal_path.name}；0 token 机械对照——候选清单，裁决归总控）")
     print("=" * 70)
     if common.find_chapter_files(book, "final", ch):
         print(f" 引文柔性接地：{'✅ 全部命中（或未携带）' if not quote_notes else f'🟡 {len(quote_notes)} 条提示（不阻断）'}")
@@ -785,6 +785,24 @@ def _cmd_proposal_auto(book: Path, ch: str, args) -> int:
                 "summary": edesc,
                 "quote": ""
             })
+        else:
+            # 兼容更多常见自然写法：- 赵三 (p_004)：临川赵家恶奴... 或 赵三 (p_004, 临川赵家恶奴)
+            m2 = re.search(r"[-*·•]?\s*([^（(\[【\s]+?)\s*[（(\[【]([a-z]{1,4}_\d+)(?:[，,\s]+([^）)\]】]+))?[）)\]】][：:\s]*(.+)?", ln)
+            if m2:
+                ename = m2.group(1).strip()
+                eid = m2.group(2).strip()
+                extra_desc = (m2.group(3) or "").strip()
+                main_desc = (m2.group(4) or "").strip()
+                edesc = f"{extra_desc} {main_desc}".strip() if extra_desc else main_desc
+                etype = "person" if eid.startswith("p_") else "item" if eid.startswith("it_") else "place" if eid.startswith("loc_") else "faction"
+                entity_ops.append({
+                    "action": "upsert",
+                    "id": eid,
+                    "name": ename,
+                    "type": etype,
+                    "summary": edesc or ename,
+                    "quote": ""
+                })
 
     # 自动从 beats 提取危机时钟更新
     clocks_ops = []
@@ -823,21 +841,46 @@ def _cmd_proposal_auto(book: Path, ch: str, args) -> int:
                     ent["quote"] = q
         for lk in locked_ops:
             if not lk.get("quote"):
-                for cand_kw in ["李玄", "姜晚照", lk["fact"][:4]]:
+                for cand_kw in [lk["fact"][:4], lk.get("note", "")[:4]]:
                     q = _find_quote(final_text, cand_kw)
                     if q:
                         lk["quote"] = q
                         break
+        for l_op in lines_ops:
+            if not l_op.get("quote"):
+                kw = l_op.get("name") or l_op.get("secret") or l_op.get("content", "")
+                kw_clean = re.sub(r"^[^\u4e00-\u9fa5]+", "", kw)[:6]
+                if kw_clean:
+                    q = _find_quote(final_text, kw_clean)
+                    if q:
+                        l_op["quote"] = q
 
-    # 在场名单只收「人物」。此前不过滤 type，道具与势力会混进来——实测
-    # proposal auto 产出 present_characters = ["叶澜心","寒冰玉镜","水云圣宫"]。
+    # 优先解析 beats 中的在场角色与物理 ID
+    beats_present = []
+    char_sec = "\n".join(common.md_section(beats_text, r"^##\s*.*(?:法定事实与称谓对校|在场互称|在场角色)"))
+    for ln in char_sec.splitlines():
+        ln = ln.strip()
+        if not ln or ln.startswith(("#", "<")):
+            continue
+        cm = re.findall(r"([^\s,，、(（\[【]+?)\s*[（(\[【]([a-z]{1,4}_\d+)", ln)
+        for cname, cid in cm:
+            cname = cname.strip("- *·•")
+            if cname and cname not in beats_present and not cname.startswith(("p_", "it_", "loc_")):
+                beats_present.append(cname)
+
     lookup = evidence.entity_lookup(book, kinds={"person"})
     present_chars = []
-    if final_text:
-        for name, aliases in lookup.items():
-            c = sum(evidence.count_aliases(final_text, aliases).values())
-            if c >= 2 and name not in present_chars:
-                present_chars.append(name)
+    if beats_present:
+        for bp in beats_present:
+            if not final_text or bp in final_text:
+                present_chars.append(bp)
+    else:
+        if final_text:
+            for name, aliases in lookup.items():
+                c = sum(evidence.count_aliases(final_text, aliases).values())
+                if c >= 2 and name not in present_chars:
+                    present_chars.append(name)
+
     cur_state = state.load_state(book, "current") or {}
     if not present_chars:
         present_chars = list(cur_state.get("present_characters", []))
@@ -857,12 +900,243 @@ def _cmd_proposal_auto(book: Path, ch: str, args) -> int:
     beats_scenes = []
     for ln in raw_scenes:
         s = re.sub(r"^[-*·•]+\s+", "", ln.strip()).strip()
-        if not s or s.startswith(("#", "<")):
+        if not s or s.startswith(("#", "<", "-", "—")) or s in ("---", "——"):
             continue
         cleaned = _strip_beats_label(s)
-        if cleaned and not cleaned.startswith(("<", "<!--")):
+        if cleaned and not cleaned.startswith(("<", "<!--", "-", "—")):
             beats_scenes.append(cleaned)
-    synopsis_text = "；".join(beats_scenes[:3]) if beats_scenes else f"完成第{n}章主线剧情推进。"
+    if beats_scenes:
+        first_clause = beats_scenes[0].split("。")[0].strip(" ；;")
+        last_clause = beats_scenes[-1].split("。")[0].strip(" ；;")
+        if first_clause and last_clause and first_clause != last_clause:
+            synopsis_text = f"{first_clause}；{last_clause}。"
+        else:
+            synopsis_text = f"{first_clause}。"
+    else:
+        synopsis_text = f"完成第{n}章主线剧情推进。"
+
+    # ==========================================
+    # 1. 通用全题材主角状态跃迁抽取 (Genre-Agnostic State Mutations)
+    # ==========================================
+    state_sec = "\n".join(common.md_section(beats_text, r"^##\s*.*(?:法定事实与称谓对校|主角状态变动|状态变动)"))
+    power_from_beats = ""
+    injury_from_beats = ""
+    equip_from_beats = ""
+    time_from_beats = ""
+    time_day_from_beats = None
+
+    for ln in state_sec.splitlines():
+        ln = ln.strip()
+        if not ln or ln.startswith(("#", "<")):
+            continue
+        # 实力/境界/战力/位阶/等级/身价/职级
+        m_pw = re.search(r"(?:境界|修为|实力|战力|位阶|阶位|等级|职级|评级|状态)[变动]*[：:\s]+([^\n，,；;]+)", ln)
+        if m_pw:
+            val = m_pw.group(1).strip()
+            if val and val not in ("无", "未变", "无变动", "不变", "暂无"):
+                val = re.sub(r"^(?:变动|提升至|突破至|晋升至|升至|转为)\s*", "", val).strip()
+                if val:
+                    power_from_beats = val
+
+        # 伤势/健康/身心/污染度/精神力/生命体征
+        m_inj = re.search(r"(?:伤势|健康|负伤|身心状态|精神状态|污染度|异化度|生命体征)[变动]*[：:\s]+([^\n，,；;]+)", ln)
+        if m_inj:
+            val = m_inj.group(1).strip()
+            if val and val not in ("无", "未变", "无变动", "不变", "暂无"):
+                val = re.sub(r"^(?:变动|恶化|好转|转为)\s*", "", val).strip()
+                if val:
+                    injury_from_beats = val
+
+        # 装备/道具/法宝/载具/武器/遗物
+        m_eq = re.search(r"(?:装备|道具|法宝|武器|载具|遗物|神兵|圣物|佩饰|随身物品)[变动]*[：:\s]+([^\n，,；;]+)", ln)
+        if m_eq:
+            val = m_eq.group(1).strip()
+            if val and val not in ("无", "未变", "无变动", "不变", "暂无"):
+                val = re.sub(r"^(?:变动|新增|更替为|获得|装配)\s*", "", val).strip()
+                if val:
+                    equip_from_beats = val
+
+        # 时间/纪元/星历/日期
+        m_tm = re.search(r"(?:时间|时令|时辰|纪元|星历|历法|日期)[变动]*[：:\s]+([^\n，,；;]+)", ln)
+        if m_tm:
+            val = m_tm.group(1).strip()
+            if val and val not in ("无", "未变", "无变动", "不变", "暂无"):
+                time_from_beats = val
+
+        # 故事日推进
+        m_day = re.search(r"(?:故事日|第\s*(\d+)\s*日|Day\s*(\d+))", ln, re.I)
+        if m_day:
+            try:
+                d_str = m_day.group(1) or m_day.group(2)
+                day_num = int(d_str) if d_str else None
+                if day_num and day_num >= 1:
+                    time_day_from_beats = day_num
+            except Exception:
+                pass
+
+    # ==========================================
+    # 2. 通用全题材随身家底与收支明细区块准确定位 (Accurate Asset & Ledger Block)
+    # ==========================================
+    assets_lines_raw = []
+    in_asset_block = False
+    for raw_ln in beats_text.splitlines():
+        stripped = raw_ln.strip()
+        if re.match(r"^#{1,3}\s*.*(?:主角随身家底|随身家底|资产与收支|收支明细|财务收支|随身资产|随身家当)", stripped):
+            in_asset_block = True
+            continue
+        elif re.match(r"^[-*·•]?\s*\*{0,2}(?:主角随身家底|随身家底|资产与收支|收支明细|财务收支|随身资产|随身家当)[^*]*\*{0,2}[：:\s]*$", stripped):
+            in_asset_block = True
+            continue
+        elif in_asset_block:
+            if re.match(r"^#{1,3}\s+", stripped) or stripped.startswith("---"):
+                in_asset_block = False
+                continue
+            if re.match(r"^[-*·•]\s+\*{1,2}[^*]+\*{1,2}[：:\s]*$", stripped):
+                in_asset_block = False
+                continue
+            if stripped:
+                assets_lines_raw.append(stripped)
+
+    # ==========================================
+    # 2. 动态全题材复式记账流水引擎 (Dynamic Multi-Genre Ledger Engine)
+    # ==========================================
+    ledger_txs = []
+    led_st = state.load_state(book, "ledger") if (book / "state" / "ledger.json").is_file() else {}
+    pools = led_st.get("pools", {})
+    pool_alias_map = {}
+
+    for pid, pinfo in pools.items():
+        pool_alias_map[pid.lower()] = pid
+        pool_alias_map[pid] = pid
+        if isinstance(pinfo, dict):
+            pname = pinfo.get("name", "").strip()
+            punit = pinfo.get("unit", "").strip()
+            if pname:
+                pool_alias_map[pname] = pid
+                pool_alias_map[pname.lower()] = pid
+            if punit:
+                pool_alias_map[punit] = pid
+                pool_alias_map[punit.lower()] = pid
+
+    # 动态探测细纲中是否声明了新增资源池（剧情跨阶段/换地图/新货币）
+    # 格式支持：- 新增资源池：[spirit_stones] 下品灵石 (块, 期初=0) 或 - [new_pool] spirit_stones ｜ 下品灵石 ｜ 块 ｜ 0
+    new_pools_ops = {}
+    for ln in assets_lines_raw:
+        ln_clean = ln.strip()
+        m_np1 = re.search(r"[-*·•]?\s*(?:新增资源池|新开资源池|开辟资源池|声明资源池)[：:\s]*\[([a-zA-Z0-9_]{2,32})\]\s*([^（(\[【\s]+?)\s*[（(\[【]([^\s,，、)）\]】]+)(?:[，,\s]+(?:期初|initial)[=：:]*(\d+))?[）)\]】]", ln_clean)
+        if m_np1:
+            n_pid = m_np1.group(1).strip()
+            n_name = m_np1.group(2).strip()
+            n_unit = m_np1.group(3).strip()
+            n_init = int(m_np1.group(4)) if m_np1.group(4) else 0
+            new_pools_ops[n_pid] = {"name": n_name, "unit": n_unit, "initial": n_init}
+        else:
+            m_np2 = re.search(r"[-*·•]?\s*\[(?:new_pool|pool)\]\s*([a-zA-Z0-9_]{2,32})\s*[｜|]\s*([^｜|]+?)\s*[｜|]\s*([^｜|\s]+)(?:\s*[｜|]\s*(\d+))?", ln_clean)
+            if m_np2:
+                n_pid = m_np2.group(1).strip()
+                n_name = m_np2.group(2).strip()
+                n_unit = m_np2.group(3).strip()
+                n_init = int(m_np2.group(4)) if m_np2.group(4) else 0
+                new_pools_ops[n_pid] = {"name": n_name, "unit": n_unit, "initial": n_init}
+
+    for n_pid, n_info in new_pools_ops.items():
+        pools[n_pid] = n_info
+        pool_alias_map[n_pid.lower()] = n_pid
+        pool_alias_map[n_pid] = n_pid
+        pool_alias_map[n_info["name"]] = n_pid
+        pool_alias_map[n_info["name"].lower()] = n_pid
+        pool_alias_map[n_info["unit"]] = n_pid
+        pool_alias_map[n_info["unit"].lower()] = n_pid
+
+    single_pool_id = list(pools.keys())[0] if len(pools) == 1 else ""
+    default_pool_id = "standard_currency" if "standard_currency" in pools else ("cny" if "cny" in pools else ("credits" if "credits" in pools else single_pool_id))
+
+    consumed_by_ledger = set()
+    for ln in assets_lines_raw:
+        ln = ln.strip()
+        if not ln or ln.startswith(("#", "<")) or "无则填无" in ln or "无变动" in ln:
+            continue
+        m_tx = re.search(r"[-*·•]?\s*(支出|花费|消耗|用去|支付|扣除|消费|收入|赚取|进账|获得|赏赐|奖励|充值)\s*([a-zA-Z0-9_\u4e00-\u9fa5]+)?\s*(\d+)?\s*([a-zA-Z0-9_\u4e00-\u9fa5]{1,4})?\s*[：:\s]*(.+)?", ln)
+        if m_tx:
+            act_verb = m_tx.group(1)
+            part1 = (m_tx.group(2) or "").strip()
+            part2 = (m_tx.group(3) or "").strip()
+            part3 = (m_tx.group(4) or "").strip()
+            desc_cand = (m_tx.group(5) or "").strip()
+
+            amt = 0
+            matched_pool_id = ""
+
+            if part1.isdigit():
+                amt = int(part1)
+                unit_word = part2 or part3
+                if unit_word and unit_word in pool_alias_map:
+                    matched_pool_id = pool_alias_map[unit_word]
+            elif part2.isdigit():
+                amt = int(part2)
+                if part1 in pool_alias_map:
+                    matched_pool_id = pool_alias_map[part1]
+                elif part3 in pool_alias_map:
+                    matched_pool_id = pool_alias_map[part3]
+            else:
+                m_compact = re.search(r"(\d+)\s*([^\s0-9]+)?", ln)
+                if m_compact:
+                    amt = int(m_compact.group(1))
+                    cand_unit = m_compact.group(2) or ""
+                    for k_alias, p_target in pool_alias_map.items():
+                        if k_alias and k_alias in cand_unit:
+                            matched_pool_id = p_target
+                            break
+
+            if not matched_pool_id:
+                for k_alias, p_target in pool_alias_map.items():
+                    if k_alias and k_alias in ln:
+                        matched_pool_id = p_target
+                        break
+
+            # 若未指明单位但明确是纯数值收支，缺省落入当前主货币池
+            if not matched_pool_id and default_pool_id and amt > 0:
+                matched_pool_id = default_pool_id
+
+            if amt > 0 and matched_pool_id in pools:
+                is_exp = act_verb in ("支出", "花费", "消耗", "用去", "支付", "扣除", "消费")
+                delta = -amt if is_exp else amt
+                pool_unit = pools[matched_pool_id].get("unit", "")
+                subject = desc_cand or f"{act_verb}{amt}{pool_unit}".strip()
+
+                tx_quote = ""
+                if final_text:
+                    tx_quote = _find_quote(final_text, str(amt)) or _find_quote(final_text, subject[:4])
+
+                tx_item = {
+                    "chapter": ch,
+                    "pool": matched_pool_id,
+                    "delta": delta,
+                    "type": "expense" if is_exp else "income",
+                    "subject": subject[:60]
+                }
+                if tx_quote:
+                    tx_item["quote"] = tx_quote
+                ledger_txs.append(tx_item)
+                consumed_by_ledger.add(ln)
+
+    # ==========================================
+    # 3. 通用全题材随身家底抽取（未被金融流水消费的条目全部自动沉淀进随身资产，零遗漏兜底）
+    # ==========================================
+    assets_from_beats = ""
+    asset_lines = []
+    for ln in assets_lines_raw:
+        if ln.startswith(("#", "<")) or "无则填无" in ln or "新增资源池" in ln:
+            continue
+        if ln in consumed_by_ledger:
+            continue
+        clean_ln = re.sub(r"^[-*·•]+\s*", "", ln).strip()
+        clean_ln = re.sub(r"^\*{1,2}[^*]+\*{1,2}[：:\s]*", "", clean_ln).strip()
+        if clean_ln and not clean_ln.startswith(("<", "<!--", "*")):
+            if not any(hint in clean_ln for hint in ("格式：", "留空", "无变动填", "选填", "占位")):
+                asset_lines.append(clean_ln)
+    if asset_lines:
+        assets_from_beats = "，".join(asset_lines[:3])
 
     from datetime import datetime
     mmdd = datetime.now().strftime("%m%d_%H%M%S")
@@ -873,14 +1147,18 @@ def _cmd_proposal_auto(book: Path, ch: str, args) -> int:
         "present_characters": present_chars,
         "present_refs": present_refs,
         "location": loc_from_beats or cur_state.get("location", ""),
-        "time": cur_state.get("time", ""),
-        "power_level": cur_state.get("power_level", ""),
-        "injury": cur_state.get("injury", ""),
-        "equipment": cur_state.get("equipment", ""),
-        "assets": cur_state.get("assets", ""),
+        "time": time_from_beats or cur_state.get("time", ""),
+        "power_level": power_from_beats or cur_state.get("power_level", ""),
+        "injury": injury_from_beats or cur_state.get("injury", ""),
+        "equipment": equip_from_beats or cur_state.get("equipment", ""),
+        "assets": assets_from_beats or cur_state.get("assets", ""),
         "situation": synopsis_text[:120],
         "aftershock": cur_state.get("aftershock", "")
     }
+    if time_day_from_beats:
+        cur_block["time_day"] = time_day_from_beats
+    elif "time_day" in cur_state:
+        cur_block["time_day"] = cur_state["time_day"]
 
     tl_block = {
         "events": [{"time": f"第{n}日", "event": synopsis_text[:60]}],
@@ -896,7 +1174,7 @@ def _cmd_proposal_auto(book: Path, ch: str, args) -> int:
         "current": {k: v for k, v in cur_block.items() if v not in ("", [], None)},
         "entities": entity_ops,
         "lines": lines_ops,
-        "ledger": {"transactions": []},
+        "ledger": ({"pools": new_pools_ops, "transactions": ledger_txs} if new_pools_ops else {"transactions": ledger_txs}),
         "timeline": tl_block,
         "synopsis": {
             "title": clean_title,
@@ -955,7 +1233,7 @@ def _cmd_proposal_auto(book: Path, ch: str, args) -> int:
             print(f"   已自动对齐标题「{title}」、在场人物 {present_chars} 与 {len(lines_ops)} 条线动作。")
             print("   ⚠️ auto 草案的 synopsis/timeline 会与 beats 存在措辞重叠（beats_overlap advisory 属预期噪声），"
                   "事实性文字请以 final 为源微调后再 sync。")
-            print(f"   主控可按需微调 current 字段后直接运行 `python studio.py sync {ch}`！")
+            print(f"   总控可按需微调 current 字段后直接运行 `python studio.py sync {ch}`！")
         return 0
     else:
         print(json.dumps(proposal, ensure_ascii=False, indent=2))
@@ -1016,7 +1294,7 @@ def _cmd_proposal_patch(book: Path, ch: str, args) -> int:
         print("ℹ️ 未指定任何修补参数（支持: --location/--time/--injury/--assets/--title/--synopsis/--add-char/--remove-char）")
         return 0
 
-    common.atomic_write_json(pfile, data)
+    common.dump_json(pfile, data)
     print(f"✅ 已成功更新 {ch} 在途提案：{' ｜ '.join(patched)}")
     return 0
 
@@ -1324,7 +1602,7 @@ def cmd_checkpoint(args) -> int:
     print(" 🧭 航向与偏离评估（Drift Assessment）：")
     for a in assessment:
         print(f"   {a}")
-    print(" 💡 主控调优指令（Next 5-Chapter Directives）：")
+    print(" 💡 总控调优指令（Next 5-Chapter Directives）：")
     for d in directives:
         print(f"   👉 {d}")
     print("=" * 70)

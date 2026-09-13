@@ -9,7 +9,7 @@
 - 幂等：operation_id → canonical hash 登记于 .applied_operations.json；重复跳过、同 id 异内容拒绝。
 - 账本：余额永远由流水重算得出，balance_after/current 都不是 AI 可信字段——引擎重算后写回。
 - 迁移守卫（advisory）：高危实体状态迁移（复活/退场反转/立场大翻转/充能回升）与时间线回退
-  只出警示、绝不阻断，裁决权归主控。
+  只出警示、绝不阻断，裁决权归总控。
 - sync 流水线：apply_inbox → verify_state → snapshot <ch>_done（由 cli.cmd_sync 编排）。
 """
 from __future__ import annotations
@@ -417,7 +417,7 @@ _ATTITUDE_BIG_FLIPS = {("hostile", "allied"), ("hostile", "friendly"),
 
 
 def _guard_entity_transitions(name: str, old: dict, new: dict, rep: dict) -> None:
-    """状态迁移守卫（advisory）：可疑迁移只警示不阻断，裁决权归主控。"""
+    """状态迁移守卫（advisory）：可疑迁移只警示不阻断，裁决权归总控。"""
     old_life = str(old.get("life_status") or "").strip().lower()
     new_life = str(new.get("life_status") or "").strip().lower()
     if new_life == "deceased" and old_life != "deceased":
@@ -1844,7 +1844,7 @@ def _merge_timeline(state: dict, patch: dict, ch: str, rep: dict) -> None:
         # 原写法 `m_idx.get(mid) if mid else m_title_idx.get(title)` 在「提案带了一个
         # 尚不存在的 ID + 一个已登记的 title」时只看 ID，于是把同一里程碑静默新建成
         # 第二条——实测 MS-001「夺取断刀」pending 与 MS-009「夺取断刀」achieved 并存，
-        # 全程无告警：主控本想标记达成，结果里程碑凭空多了一条还停在 pending。
+        # 全程无告警：总控本想标记达成，结果里程碑凭空多了一条还停在 pending。
         ment = m_idx.get(str(mid)) if mid else None
         if ment is None and title:
             ment = m_title_idx.get(str(title))
@@ -2147,7 +2147,7 @@ def _merge_cognition(state: dict, patch: list, ch: str, rep: dict) -> None:
             kind = "fact" if item.get("learned") else ("suspicion" if item.get("doubted") else ("misunderstanding" if item.get("misread") else "fact"))
             if not char or not content:
                 # 空认知条目（character 之外的字段全缺/全空）不落盘——静默吞掉会让
-                # 主控以为已登记，实际查无此条。显式警告后跳过，绝不写空行。
+                # 总控以为已登记，实际查无此条。显式警告后跳过，绝不写空行。
                 rep["warnings"].append(
                     f"🧠 cognition 条目缺内容（character={char or '∅'}），按无效跳过——"
                     "learned/doubted/misread/content 至少提供一个非空值")
@@ -2286,7 +2286,7 @@ def _merge_proposal_into(data: dict, proposal: dict, ch, ch_num, rep: dict) -> N
             data["cognition"] = defaults_for("cognition")
         _merge_cognition(data["cognition"], cog_patch, ch, rep)
     if proposal.get("locked_candidates"):
-        rep["updated"].append(f"🔒 记录 {len(proposal['locked_candidates'])} 条不可逆事实提名（待主控审定入账）")
+        rep["updated"].append(f"🔒 记录 {len(proposal['locked_candidates'])} 条不可逆事实提名（待总控审定入账）")
         rep["locked_candidates"] = [
             {"fact": str(it.get("fact", "")), "kind": str(it.get("kind", "") or ""),
              "quote": str(it.get("quote", "") or ""), "note": str(it.get("note", "") or "")}

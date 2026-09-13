@@ -48,14 +48,14 @@ templates/
 | `bible/04_economy_items.md` | `bible/04_economy_items.md` | Architect | 货币购买力平价锚点，道具品阶与损耗充能账本 |
 | `bible/05_special_mechanics.md` | `bible/05_special_mechanics.md` | Architect | 独家机制、体质相生相克与反噬走火入魔代偿法则 |
 | `bible/06_deviations.md` | `bible/06_deviations.md` | Architect | 本书偏离清单（`pack` 强制提取注入 P0 时空胶囊） |
-| `characters/protagonist.md` | `characters/protagonist.md` | Architect | 主角全息卡（含绝对称谓矩阵）；卡是**人读视图**，称谓基准由主控抄进细纲、由 `pack` 从台账侧注入 |
-| `characters/character_card_standard.md` | 按需手工复制到 `characters/<角色名>.md` | 主控 / Architect | 重要角色/女主/宿敌全息卡（锁定法定称谓对账表） |
-| `entities/item_card.md` | 按需手工复制到 `entities/items/<道具名>.md` | 主控 / Architect | 核心道具/装备/神舟卡（追踪充能、持有者流转） |
-| `entities/faction_card.md` | 按需手工复制到 `entities/factions/<势力名>.md` | 主控 / Architect | 核心势力卡（组织架构与对外关系） |
-| `entities/location_card.md` | 按需手工复制到 `entities/locations/<地名>.md` | 主控 / Architect | 核心地标与第一案发现场空间格局 |
+| `characters/protagonist.md` | `characters/protagonist.md` | Architect | 主角全息卡（含绝对称谓矩阵）；卡是**人读视图**，称谓基准由总控抄进细纲、由 `pack` 从台账侧注入 |
+| `characters/character_card_standard.md` | 按需手工复制到 `characters/<角色名>.md` | 总控 / Architect | 重要角色/女主/宿敌全息卡（锁定法定称谓对账表） |
+| `entities/item_card.md` | 按需手工复制到 `entities/items/<道具名>.md` | 总控 / Architect | 核心道具/装备/神舟卡（追踪充能、持有者流转） |
+| `entities/faction_card.md` | 按需手工复制到 `entities/factions/<势力名>.md` | 总控 / Architect | 核心势力卡（组织架构与对外关系） |
+| `entities/location_card.md` | 按需手工复制到 `entities/locations/<地名>.md` | 总控 / Architect | 核心地标与第一案发现场空间格局 |
 | `outlines/main_plot.md` | `outlines/main_plot.md` | Architect | 全书主线脊柱、核心三幕与长线里程碑 |
 | `outlines/volume_outline.md` | `outlines/vol_01/outline.md` | Architect | 首卷分卷大纲与四分位剧情航标 |
-| `beats.md` | `studio.py beats new [章节] --write` 自动装配生成（`beats` 只有 `new` 一个子命令；在场人册来自 `state/current.json.present_characters`，注入速查节） | 主控 (Director) | 单章细纲任务书（反套路推演、场景脉络、法定事实对校）；选填 `world_refs` 决定本章取用哪些 bible 锚点 |
+| `beats.md` | `studio.py beats new [章节] --write` 自动装配生成（`beats` 只有 `new` 一个子命令；在场人册来自 `state/current.json.present_characters`，注入速查节） | 总控 (Director) | 单章细纲任务书（反套路推演、场景脉络、法定事实对校）；选填 `world_refs` 决定本章取用哪些 bible 锚点 |
 
 ---
 
@@ -80,7 +80,7 @@ templates/
      - **台账**：在 `实体四表（persons/items/factions/places）` 中配置对应 `card: "characters/<名字>.md"` 路径。
    - 🍃 **次要/临时实体（占 80%，服务即时情节）**：客栈掌柜、巡逻守卫、传话执事、临时消耗符箓、路过村庄。
      - **标准**：**坚决不建 `.md` 冗余卡片**，避免文件污染与磁盘膨胀；
-     - **台账**：直接由 Reader 在 Stage 4D 提案中登记入 `实体四表（persons/items/factions/places）`（设置 `card: ""`），记录其姓名、ID、境界、阵营与正文引文即可。
+     - **台账**：直接在提案中登记入 `实体四表（persons/items/factions/places）`（设置 `card: ""`），记录其姓名、ID、境界、阵营与正文引文即可。
 
 4. **强类型物理通用字段（Entities Schema 核心白名单）**：
    底层状态表 `实体四表（persons/items/factions/places）` 开启了 `"additionalProperties": false` 强类型闸门。各角色向状态表登记实体时，**必须严格使用以下法定字段**：
@@ -139,22 +139,22 @@ templates/
    > - **数据库状态表（`实体四表（persons/items/factions/places）`）**：是面向确定性引擎的**强类型检索台账**。提案中向 实体四表 写入的字段**必须且仅能来自上述白名单**（卡片 Front-matter 字段现已 100% 纳入白名单并受 Schema 校验保护），严禁私自添加未经 Schema 许可的字段（如 `bound_to`, `secret_weapon` 等），否则会被引擎机械闸门直接拒绝！
 
 5. **长篇增删改查（CRUD）对账机制**：
-   - **增（新实体出场）**：在 beats 中声明，核心角色建卡，次要角色免建卡；由 Reader 在 Stage 4D 提案中分配递增 ID 注册；
-   - **删（战死/毁损/退场）**：由 Reader 在 Stage 4D 提案中附原句引文，登记为 `deceased` 或 `destroyed`，并生成 `state/locked.json` 锁定；
-   - **改（境界突破/道具流转/称谓变更）**：通过 beats 声明演进，Reader 提取更新；主角随身物资与装备由 Reader 在提案以通俗大白话快照维护（`current.assets` / `current.equipment`）；
-   - **查（对校核验）**：Auditor (Stage 4A) 运行探针与语义常识扫描问题清单，Fixer (Stage 4C) 对校 beats 与问题清单完成法定终局定稿。
+   - **增（新实体出场）**：在 beats 中声明，核心角色建卡，次要角色免建卡；Stage 5 由 `proposal auto` 自动提取入库并分配递增 ID；
+   - **删（战死/毁损/退场）**：正文叙及后，Stage 5 由 `proposal auto` 登记为 `deceased` 或 `destroyed`，并生成 `state/locked.json` 锁定；
+   - **改（境界突破/道具流转/称谓变更）**：通过 beats 声明演进，Stage 5 由 `proposal auto` 自动提取更新；主角随身物资与装备由引擎在提案以通俗大白话快照维护（`current.assets` / `current.equipment`）；
+   - **查（对校核验）**：Auditor (Stage 4A) 单次全读提出常识出戏与预制修补配方，Stage 5 由 `studio.py finalize` 自动套用配方定稿盖章，`proposal auto` 提取事实增量，`sync` 归档封存。
 
 6. **与引擎的三条对账关系（改模板前必读）**：
    - **模板 ↔ JSON Schema 同源**：本目录是字段契约的**人读侧**，机读侧是 `engine/schemas/*.json`
      （由 `python -m engine.models.schema_gen` 从 Pydantic 模型生成，勿手改）；三者（模板 / Pydantic 模型 /
      Schema）任一改动都必须同步其余两个。子代理**不读 schemas**——给它们的当章合同是 `beats new` 注入的
-     `### 📐 提案通道与键形状` 小节；`state/inbox/README.md` 面向主控与人类。
+     `### 📐 提案通道与键形状` 小节；`state/inbox/README.md` 面向总控与人类。
    - **表数口径**：`state/*.json` = **十一表**（`ASSERTED_KEYS`，Agent 可写）+ `derived.json`（第十二张，
      引擎派生缓存）；`project.json` 是 **STATE_KEYS 之外**的书级配置表，**不占表号**（表号只编到第十二张）。
      `pack` 只装 6 张表（current / entities / lines / synopsis / timeline / locked）而不是十二表——
      其余表是**账本**，写手不需要看；`--lean` 只给 P0 热层。实体四表（persons/items/factions/places）
      按 kind 物理拆分，`entities/` 目录只是人读投影（pack 走合并读视图）。
-   - **装配预算**：`pack` 总量上限 **2W token**，超预算按压缩阶梯由远及近裁（P2 冷索引 → P2 旧章指针 →
+   - **装配预算**：`pack` 总量上限 **15,000 Token**（`PACK_TOKEN_CAP = 15000`），超预算按压缩阶梯由远及近裁（P2 冷索引 → P2 旧章指针 →
      P1 间接关联 → P1 脊柱 → P0 上章余温）；细纲全文 / current / 硬提醒 / 不可逆事实 / 钉住的锚点**永不自动裁**。
    - **`world_refs` 三态语义**（写细纲时按这三态理解，它不是开关）：
      ① 未声明 → **恒给**全部核心锚点节（旧书零改动）；② 声明且命中 → 只装命中节（**refs 最多取前 8 个**，`MAX_WORLD_ANCHOR_REFS`，超出忽略并点名），且当「世界公理 /

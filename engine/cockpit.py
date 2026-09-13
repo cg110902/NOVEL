@@ -1,10 +1,10 @@
-"""cockpit：主控态势驾驶舱与自愈雷达（专供 AI / 主控秒懂全链路态势与自愈决策）。
+"""cockpit：总控态势驾驶舱与自愈雷达（专供 AI / 总控秒懂全链路态势与自愈决策）。
 
 功能矩阵：
 1. workflow：精准定位当前章节与活跃工序 Stage，提供 0 歧义的下一步调度指令与标准派发参数。
 2. dramatic_momentum：计算戏剧动力学（承接余震 aftershock、悬顶危机 active_pressures、现场信息差机锋 dramatic_irony、两两张力网络 scene_tensions）。
 3. health_and_remedies：全书事实核验、确定性断言体检与具备可操作性的自愈处方（Remedies）。
-4. critic_radar：直接透视上一章读者催更便签（体感/连续性红旗/最想看/最怕踩），免去主控翻读外部文件。
+4. critic_radar：直接透视上一章读者催更便签（体感/连续性红旗/最想看/最怕踩），免去总控翻读外部文件。
 """
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ def _infer_active_chapter(book: Path) -> str:
      P1-4：口径与 `status` 的「下一章」统一——**连续推进，绝不跳章**。
     原实现取 beats/raw/final/inbox/synopsis 里出现过的最大章号，于是一份游离的
     未来章 beats（如手滑 `beats new ch_7`）会把工序指针劫持到 ch_007，而 `status`
-    仍说 ch_005；主控按 SKILL「严禁猜测工序，直接执行 next_action.command」就会跳过
+    仍说 ch_005；总控按 SKILL「严禁猜测工序，直接执行 next_action.command」就会跳过
     中间章。现改为：锚点 = max(最后定稿章, 最后封存章)，指针 = [1, 锚点+1] 里第一个
     尚未封存的章号。
     """
@@ -238,7 +238,7 @@ def _get_critic_radar(book: Path, ch_num: int) -> dict[str, str]:
     except OSError:
         pass  # 便签不可读：雷达字段留空（：不再吞全部异常）
 
-    # 便签存在但雷达字段全空 → 明示「格式疑似偏离模板」，不再让主控误读为「无反馈」
+    # 便签存在但雷达字段全空 → 明示「格式疑似偏离模板」，不再让总控误读为「无反馈」
     try:
         _text = critic_path.read_text(encoding="utf-8", errors="replace")
         _is_skeleton = "SKELETON" in _text[:400] or "（待评）" in _text[:1200]
@@ -539,7 +539,7 @@ def get_algorithmic_guidance(book: Path, current_ch: int) -> list[str]:
 
 
 def build_cockpit_briefing(book: Path, ch: str | None = None) -> dict[str, Any]:
-    """计算并构建主控态势驾驶舱完整数据模型。"""
+    """计算并构建总控态势驾驶舱完整数据模型。"""
     # NOVEL_STUDIO_DEBUG=1 时聚合各节耗时（briefing.debug_timing_ms + stderr）
     import time as _time
     timings: dict[str, float] = {}
@@ -616,7 +616,7 @@ def build_cockpit_briefing(book: Path, ch: str | None = None) -> dict[str, Any]:
         # issues_*.md 由 Auditor 子代理产出、是 Stage 4C 定稿师的输入；ch_*.md 由引擎
         # `audit --write` 机械生成、是 sync 的闸门。驾驶舱此前只追踪后者，
         # 于是完全无从提示「先跑 Auditor 出问题清单」。
-        "issues": (book / "log" / "audit" / f"issues_{ch_tok}.md").is_file(),
+        "issues": (book / "log" / "audit" / f"{ch_tok}.md").is_file() or (book / "log" / "audit" / f"issues_{ch_tok}.md").is_file(),
         "final": bool(final_files),
         "proposal": inbox_file,
         "proposal_failed": inbox_failed,
@@ -668,40 +668,39 @@ def build_cockpit_briefing(book: Path, ch: str | None = None) -> dict[str, Any]:
             "target_file": f"manuscript/{vol}/raw/{ch_tok}_v3.md"
         }
     elif not status["critic"] or not status["issues"]:
-        # Stage 4A/4B 并发：Auditor 出问题清单（Stage 4C 定稿师的**输入**）＋ Critic 出催更便签。
-        # 二者都以 raw_v3 为源，必须先于 Stage 4C 完成——否则 Fixer 拿不到问题清单。
+        # Stage 4A/4B 并发：Auditor 出常识质检与配方 ＋ Critic 出催更便签。
+        # 二者都以 raw_v3 为源，零命令并发执行。
         curr_stage = "Stage 4A/4B (并发审查与催更便签)"
         missing = []
         if not status["issues"]:
-            missing.append("Auditor (Stage 4A-问题清单)")
+            missing.append("Auditor (Stage 4A-常识质检与配方)")
         if not status["critic"]:
             missing.append("Critic (Stage 4B-老白催更便签)")
         next_action = {
             "actor": "Auditor & Critic (并发)",
             "stage": "Stage 4A/4B",
             "instruction": ("在单次 invoke_subagent 调用中并发唤起审查员 Auditor（交付 "
-                            f"log/audit/issues_{ch_tok}.md 问题清单）与催更员 Critic"
+                            f"log/audit/{ch_tok}.md 配方）与催更员 Critic"
                             f"（交付 log/critic/{ch_tok}.md 便签），二者均以 raw_v3 为源"),
             "command": f"view_file manuscript/{vol}/raw/{ch_tok}_v3.md",
-            "target_file": f"log/audit/issues_{ch_tok}.md | log/critic/{ch_tok}.md",
+            "target_file": f"log/audit/{ch_tok}.md | log/critic/{ch_tok}.md",
             **({"missing": missing} if missing else {})
         }
     elif not status["final"]:
-        curr_stage = "Stage 4C (终局定稿)"
+        curr_stage = "Stage 5 (终审定稿与盖章)"
         next_action = {
-            "actor": "Fixer",
-            "stage": "Stage 4C",
-            "instruction": ("向定稿师 Fixer 下达 Stage 4C 标准工序派发令：读 beats + raw_v3 + "
-                            f"log/audit/issues_{ch_tok}.md 靶向微调正文硬矛盾，落盘全书唯一法定定稿 final"),
-            "command": f"view_file manuscript/{vol}/raw/{ch_tok}_v3.md",
+            "actor": "Director / 引擎",
+            "stage": "Stage 5",
+            "instruction": (f"运行 `python studio.py finalize {ch_tok}` 自动套用修补配方由 raw 生成 final 并盖章裁定（0-Subagent 极速模式）"),
+            "command": f"python studio.py finalize {ch_tok}",
             "target_file": f"manuscript/{vol}/final/{ch_tok}.md"
         }
     elif not status["proposal"]:
-        curr_stage = "Stage 4D (增量事实提案)"
+        curr_stage = "Stage 5 (增量事实提取)"
         if status.get("proposal_failed"):
             next_action = {
-                "actor": "Director / Reader (修复 failed/ 提案)",
-                "stage": "Stage 4D",
+                "actor": "Director (修复 failed/ 提案)",
+                "stage": "Stage 5",
                 "instruction": (f"本章提案位于 state/inbox/failed/{ch_tok}.json（上次 sync 校验未过）；"
                                 "请就地修复该 JSON 后重跑 sync，引擎会自动捡回，无需重头起草提案"),
                 "command": f"python studio.py sync {ch_tok} --dry-run",
@@ -709,15 +708,14 @@ def build_cockpit_briefing(book: Path, ch: str | None = None) -> dict[str, Any]:
             }
         else:
             next_action = {
-                "actor": "Reader",
-                "stage": "Stage 4D",
-                "instruction": ("向审计员 Reader 下达 Stage 4D 标准工序派发令："
-                                "以 final 为唯一法定事实源交付事实提案 JSON"),
-                "command": f"view_file manuscript/{vol}/final/{ch_tok}.md",
+                "actor": "Director / 引擎",
+                "stage": "Stage 5",
+                "instruction": ("运行 `python studio.py proposal auto " + ch_tok + " --write` 自动装配事实提案，准备 Stage 5 封存（零 Subagent 极速模式）"),
+                "command": f"python studio.py proposal auto {ch_tok} --write",
                 "target_file": f"state/inbox/{ch_tok}.json"
             }
     elif not status["audit"] or status.get("audit_state") == "blocked":
-        # 引擎仲裁报告（由 final 机械生成，Stage 5 闸门必需）——排在 Stage 4D 之后、sync 之前
+        # 引擎仲裁报告（由 final 机械生成，Stage 5 闸门必需）——排在 proposal 之后、sync 之前
         curr_stage = "Stage 5 前置 (仲裁闸门报告)"
         if status.get("audit_state") == "blocked":
             instruct = ("仲裁报告存在硬矛盾且未裁定：请在报告中完成交叉核实并将 adjudicated 设为 true，"
@@ -726,7 +724,7 @@ def build_cockpit_briefing(book: Path, ch: str | None = None) -> dict[str, Any]:
             instruct = (f"运行 `python studio.py audit {ch_tok} --write` 生成带 front-matter 的"
                         "仲裁报告并补写裁决（Stage 5 闸门必需）")
         next_action = {
-            "actor": "Auditor",
+            "actor": "Director / 引擎",
             "stage": "Stage 5 前置",
             "instruction": instruct,
             "command": f"python studio.py audit {ch_tok} --write",
@@ -737,8 +735,8 @@ def build_cockpit_briefing(book: Path, ch: str | None = None) -> dict[str, Any]:
         next_action = {
             "actor": "Director",
             "stage": "Stage 5",
-            "instruction": "主控审定 Reader 提案，一键执行 sync 原子合并账目并封存快照"
-                           "（审定存疑处可 `studio ask <关键词>` 只读取证后再裁决）",
+            "instruction": "总控核对提案，一键执行 sync 原子合并账目并封存快照"
+                           "（存疑处可 `studio ask <关键词>` 只读取证后再裁决）",
             "command": f"python studio.py sync {ch_tok}",
             "target_file": f"state/snapshots/"
         }
@@ -916,13 +914,12 @@ def render_cockpit_terminal(briefing: dict[str, Any]) -> None:
                         "off": "➖ 已关闭 (audit_mode=off)"}.get(_ast, "⭕ 缺报告")
         st_sync = "✅" if st["synced"] else "⭕"
 
-        # 工序状态按真实依赖链排列：1 → 2 → 3 → 4A/4B → 4C → 4D → 5
+        # 工序状态按真实依赖链排列：1 → 2 → 3 → 4A/4B → 5 (finalize → proposal auto → sync)
         status_line = (
             f"细纲 beats: {st_beats}  毛坯 raw_v1: {st_raw}  "
             f"精修 raw_v3: {st_raw3}\n"
-            f"问题清单(4A): {st_issues}  定稿 final(4C): {st_final}  "
-            f"事实提案(4D): {st_prop}  催更便签(4B): {st_crit}\n"
-            f"事实仲裁: {_audit_label}  快照同步: {st_sync}"
+            f"审查配方(4A): {st_issues}  催更便签(4B): {st_crit}  "
+            f"定稿盖章(5A): {st_final}  事实提取(5B): {st_prop}  快照同步(5C): {st_sync}"
         )
 
         wf_text = (
@@ -931,7 +928,7 @@ def render_cockpit_terminal(briefing: dict[str, Any]) -> None:
             f"[bold green]👉 下一步执行指令：[/bold green][bold white]{act['instruction']}[/bold white]\n"
             f"[dim]   建议操作/命令：{act['command']} ｜ 交付目标：{act['target_file']}[/dim]"
         )
-        # 游离的超前工件显式提示，避免主控误以为指针跳章
+        # 游离的超前工件显式提示，避免总控误以为指针跳章
         if wf.get("stray_ahead_artifacts"):
             wf_text += ("\n\n[bold yellow]⚠️ 游离超前工件（不参与指针推断）：[/bold yellow]"
                         + "、".join(wf["stray_ahead_artifacts"][:6])

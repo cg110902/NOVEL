@@ -71,7 +71,7 @@ description: Universal worldbuilding architect and setup generator for Novel Stu
 1. **第一轨【机器硬闸门 · 必须 0 errors】**：
    - 终端运行：`python studio.py check -w "workspace/<书名>"`；
    - 零容忍项：未填槽位 `unfilled_slot` 必须为 0（彻底消除 `{{slot:...}}` 与 `<!-- ... -->` 注释）；未注册角色 `unregistered_character` 必须为 0；`project.json` 必填项严禁留空。
-2. **第二轨【大模型三棱镜常识逻辑扫荡】**：
+2. **第二轨【大模型三棱镜常识逻辑扫荡（LLM自带语义识别和内容理解功能）】**：
    - 因果时空尺度自洽、经济购买力平价自洽、人性利益避险与动机自洽。
 3. **闭环交卷**：调用 `replace_file_content` 修复微瑕，复跑 `check` 确认 **0 errors**，输出 3 行回执即刻交卷！
 

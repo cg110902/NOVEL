@@ -66,7 +66,7 @@ schema_version: novel-studio.character/v2
   - 对死敌 / 背叛者：{{slot:addr_to_enemies|冷酷直呼其名，或斥为“叛徒”、“狂徒”}}
   
 - **他人对本角色称谓（绝对锁定）**：
-  - {{slot:protagonist|主角名}}称呼本角色：「{{slot:mc_addr_to_char|萧姑娘}}」
+  - {{slot:protagonist|主角名}}称呼本角色：「{{slot:mc_addr_to_char|李姑娘}}」
   - 内部成员/同门称呼本角色：「{{slot:faction_addr_to_char|圣女殿下}}」
   - 敌对势力称呼本角色：「{{slot:enemies_addr_to_char|水云圣女}}」
   

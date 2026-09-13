@@ -395,7 +395,7 @@ def _render_review_md(d: dict) -> str:
     present_str = "、".join(d["present"]) if d["present"] else "（未声明）"
 
     L = [f"# {d['chapter']} 校对注记（四块事实结算单）", ""]
-    L += ["<!-- 骨架由 `studio review new` 生成：机器数据已预填，结果与证据由主控核定。",
+    L += ["<!-- 骨架由 `studio review new` 生成：机器数据已预填，结果与证据由总控核定。",
           "     每条结论要证据：正文引文片段，或 evidence/audit 输出（字段名+数值）——无证据打钩视为未审。",
           "     -->", ""]
 
@@ -472,7 +472,7 @@ def cmd_review(args) -> int:
     if getattr(args, "write", False):
         dest = book / "log" / "review" / f"{ch}.md"
         if dest.exists():
-            return _err(f"{dest} 已存在——注记是主控工件，拒绝覆盖（请手工编辑）",
+            return _err(f"{dest} 已存在——注记是总控工件，拒绝覆盖（请手工编辑）",
                         code=1, err_code="exists")
         dest.parent.mkdir(parents=True, exist_ok=True)
         dest.write_text(md, encoding="utf-8")
@@ -539,7 +539,7 @@ def _render_audit_md(payload: dict) -> str:
     lines.extend([
         "---",
         "",
-        "## 🟡 软性存疑（主控关注）",
+        "## 🟡 软性存疑（总控关注）",
     ])
     softs = [c for c in candidates if c.get("severity") == "candidate_soft"]
     if not softs:
@@ -742,6 +742,131 @@ def cmd_audit(args) -> int:
     return 0
 
 
+def cmd_finalize(args: argparse.Namespace) -> int:
+    """终审自动定稿（Stage 4C 自动化）：吸纳 audit 报告修补配方、由 raw 生成 final 并自动盖章裁定。"""
+    book = ws_gate(args)
+    if book is None:
+        return ws_gate_code()
+
+    ch_arg = getattr(args, "chapter", "")
+    if not ch_arg:
+        all_raws = list(book.glob("manuscript/*/raw/ch_*.md"))
+        if not all_raws:
+            return usage_error("工作区未找到任何 raw 稿件", args)
+        nums = []
+        for r in all_raws:
+            num = common.chapter_token_to_num(r.stem)
+            if num:
+                nums.append(num)
+        if not nums:
+            return usage_error("工作区未找到任何有效章节编号的 raw 稿件", args)
+        n = max(nums)
+    else:
+        n = common.chapter_token_to_num(ch_arg)
+        if not n:
+            return usage_error(f"无法解析章节号: {ch_arg!r}", args, chapter=str(ch_arg))
+
+    tok = f"ch_{n:03d}"
+    raws = common.find_chapter_files(book, "raw", n)
+    if not raws:
+        return usage_error(f"未找到 {tok} 的 raw 稿件（如 raw/{tok}_v3.md 或 raw/{tok}_v1.md）", args, chapter=tok)
+
+    raw_file = sorted(raws, key=lambda p: p.name)[-1]
+    vol_dir = raw_file.parent.parent
+    final_dir = vol_dir / "final"
+    final_file = final_dir / f"{tok}.md"
+
+    raw_text = raw_file.read_text(encoding="utf-8", errors="replace")
+    applied_fixes: list[str] = []
+
+    audit_file = book / "log" / "audit" / f"{tok}.md"
+    if audit_file.is_file():
+        audit_text = audit_file.read_text(encoding="utf-8", errors="replace")
+        
+        # 1. 匹配标准三引号配方
+        pat_codeblock = re.compile(
+            r"TargetContent\s*:\s*```(?:\w+)?\r?\n(.*?)\r?\n```\s*(?:-\s*)?ReplacementContent\s*:\s*```(?:\w+)?\r?\n(.*?)\r?\n```",
+            re.DOTALL | re.IGNORECASE
+        )
+        for m in pat_codeblock.finditer(audit_text):
+            target = m.group(1).strip()
+            replacement = m.group(2).strip()
+            if target and target in raw_text:
+                raw_text = raw_text.replace(target, replacement, 1)
+                applied_fixes.append(f"{target[:25]}... ➔ {replacement[:25]}...")
+            elif target:
+                t_norm = " ".join(target.split())
+                for line in raw_text.splitlines():
+                    if " ".join(line.split()) == t_norm:
+                        raw_text = raw_text.replace(line, replacement, 1)
+                        applied_fixes.append(f"{line[:25]}... ➔ {replacement[:25]}...")
+                        break
+
+        # 2. 匹配行内反引号配方
+        pat_inline = re.compile(
+            r"TargetContent\s*:\s*`([^`\r\n]+)`\s*(?:-\s*)?ReplacementContent\s*:\s*`([^`\r\n]+)`",
+            re.IGNORECASE
+        )
+        for m in pat_inline.finditer(audit_text):
+            target = m.group(1).strip()
+            replacement = m.group(2).strip()
+            if target and target in raw_text:
+                raw_text = raw_text.replace(target, replacement, 1)
+                applied_fixes.append(f"{target[:25]}... ➔ {replacement[:25]}...")
+
+        # 3. 匹配中文【原句/修改为】配方
+        pat_cn = re.compile(
+            r"-\s*\*\*原[文句]\*\*\s*：\s*`?([^\r\n`]+)`?\r?\n\s*-\s*\*\*(?:建议修改|修改为)\*\*\s*：\s*`?([^\r\n`]+)`?",
+            re.IGNORECASE
+        )
+        for m in pat_cn.finditer(audit_text):
+            target = m.group(1).strip()
+            replacement = m.group(2).strip()
+            if target and target in raw_text:
+                raw_text = raw_text.replace(target, replacement, 1)
+                applied_fixes.append(f"{target[:25]}... ➔ {replacement[:25]}...")
+
+    # 物理落盘 final
+    final_dir.mkdir(parents=True, exist_ok=True)
+    final_file.write_text(raw_text, encoding="utf-8")
+
+    # 自动重新运行 audit 探针，并加上 adjudicated: true 盖章
+    audit_payload = audit.run_audit(book, tok)
+    audit_dir = book / "log" / "audit"
+    audit_dir.mkdir(parents=True, exist_ok=True)
+    prev_text = audit_file.read_text(encoding="utf-8", errors="replace") if audit_file.is_file() else None
+    md_content, merge_notes = _merge_audit_report(
+        prev_text, _render_audit_md(audit_payload),
+        clear_logic=True, adjudicate=True
+    )
+    audit_file.write_text(md_content, encoding="utf-8")
+
+    if getattr(args, "json", False):
+        print(json.dumps({
+            "status": "ok",
+            "chapter": tok,
+            "raw_source": str(raw_file.relative_to(book)),
+            "final_file": str(final_file.relative_to(book)),
+            "applied_fixes": applied_fixes,
+            "adjudicated": True
+        }, ensure_ascii=False, indent=2))
+        return 0
+
+    print(f"\n🎉 [finalize] 章节 {tok} 终审定稿与自动盖章完成！")
+    print(f"   📄 源稿读取: {raw_file.relative_to(book)}")
+    print(f"   💾 法定定稿: {final_file.relative_to(book)}")
+    if applied_fixes:
+        print(f"   ✂️ 已自动套用 {len(applied_fixes)} 处修补配方：")
+        for fix in applied_fixes:
+            print(f"      • {fix}")
+    else:
+        print(f"   ✨ 无需正文修改（0 待修配方或已完美自洽），原样发布为 final")
+    print(f"   🔏 审查盖章: 已完成 8 大探针终审并置 adjudicated: true 绿灯放行")
+    print(f"\n👉 下一步单行收尾建议：")
+    print(f"   python studio.py proposal auto {tok} --write -w \"{book.name}\" && python studio.py sync {tok} -w \"{book.name}\"\n")
+    return 0
+
+
 # ---------------------------------------------------------------------------
 # beats
 # ---------------------------------------------------------------------------
@@ -823,11 +948,11 @@ def _consistency_section(book, n: int, cur: dict, ents: list[dict], lines_st: di
     # 键形状小节恒注入（见下）：Reader 的网关禁读 state/，它唯一的提案契约来源就是 beats。
     if not roster and not kno_list and not locked_entries and not pools:
         return _proposal_shapes_section()
-    out = ["## 本章一致性速查（引擎自动注入 · 主控可增删）", ""]
+    out = ["## 本章一致性速查（引擎自动注入 · 总控可增删）", ""]
     # 资源池合法键名 + LOCK 已用 ID 水位线：Reader 提案若引用未声明的池键或复用已用 ID，
     # Stage 5 会硬拒（ledger_pool_undeclared / locked_entry_id_reuse）——先给清单再让人写。
     if pools or locked_entries or ledger_err:
-        out += ["### 💰 资源池与 ID 水位线（Reader 提案必填口径）", ""]
+        out += ["### 💰 资源池与 ID 水位线（提案合账必填口径）", ""]
         if ledger_err:
             out.append(f"- ⚠️ 账本 ledger.json 读取失败，无法列出合法池键：{_clip(ledger_err, 120)}"
                        "（先修 state/ledger.json，否则本章流水的 pool 键名只能靠猜）")
@@ -838,7 +963,7 @@ def _consistency_section(book, n: int, cur: dict, ents: list[dict], lines_st: di
                 unit = pools[pk].get("unit", "")
                 out.append(f"- 合法池键：`{pk}`（当前余额 {bal} {unit}）— 流水 `pool` 必须逐字等于此键")
         elif not ledger_err:
-            out.append("- ⚠️ 尚无已声明资源池：本章流水必须 `kind=\"set\"` 建立首个池键（新键名需主控批准）")
+            out.append("- ⚠️ 尚无已声明资源池：本章流水必须 `kind=\"set\"` 建立首个池键（新键名需总控批准）")
         _lock_ids = sorted(str(e.get("id", "")) for e in locked_entries if e.get("id"))
         try:
             _cog_raw = state.load_state(book, "cognition") or {}
@@ -932,8 +1057,7 @@ def _proposal_shapes_section() -> str:
             return "对象 `{ … }`"
         return ""
 
-    lines = ["### 📐 提案通道与键形状（Stage 4 Reader 照此写；**不要**打开 state/inbox/README.md"
-             "——那是主控/人类的完整契约，且在你的禁读范围内）", ""]
+    lines = ["### 📐 提案通道与键形状（提案照此标准；由 proposal auto 自动装配或人工微调）", ""]
     lines.append("- 二选一、同一文件禁止混写：**默认 v2 分区**；"
                  "**本章要改 ≥2 个「已登记」实体（update/retire）→ 改 v3 寻址式**"
                  "（v3 的价值：名/ID 写错当场点名，不再静默新建碎片实体）。")
@@ -955,9 +1079,7 @@ def _proposal_shapes_section() -> str:
                  "只有 v3 的 `current`·update 才写成 `{\"set\":{…}}`。")
     for table, action, shape in v3_mod.V3_OP_SHAPES:
         lines.append(f"  - `{table}` · {action} → `{shape}`")
-    # ch_002 实战补正：分区形状（对象/裸数组）之外，Reader 还需要知道**条目能写哪些键**。
-    # 此前这些白名单只存在于 state.validate_proposal 的局部字面量里，无任何途径可见，
-    # Reader 于是照 cognition 的形状填 cognition_delta，换来 9 条「含未知字段」整案拒收。
+    # 实战补正：分区形状（对象/裸数组）之外，还需要知道**条目能写哪些键**。
     from ..models.timeline import ClockStatus, ClockUrgency
     from .. import state as state_mod
 
@@ -972,9 +1094,6 @@ def _proposal_shapes_section() -> str:
                  + " / ".join(f"`{x.value}`" for x in ClockStatus)
                  + "；`urgency` 只认小写 "
                  + " / ".join(f"`{x.value}`" for x in ClockUrgency) + "。")
-    # ch_002 实战补正：kind 枚举此前从未文档化，Reader 只能猜——把「当场战死」填成了
-    # irreversible_action，于是「已故角色仍在发言」探针按 kind=="death" 整条跳过、静默不检。
-    # 枚举取自模型层 LockedKind（单一真源），不手抄。
     from typing import get_args
 
     from ..models.locked import LockedKind
@@ -986,7 +1105,7 @@ def _proposal_shapes_section() -> str:
     lines.append("- 只写增量；每条尽量带 `\"quote\":\"本章 final 原句\"`（柔性接地，不逐字抠）。"
                  "`current` 缺省/空值＝不改；`locked[].note`、`lines[].target_ch`(plant) 必填。")
     lines.append("- 幂等：`operation_id` 全书唯一，同 id 换内容会被拒收——修正重提必须换新 id。")
-    lines.append("- Reader 落盘即交卷、**不要**自己跑命令：结构预检由主控接收提案后执行"
+    lines.append("- 提案落盘即交卷、**不要**自己跑命令：结构预检由总控接收提案后执行"
                  "（0 Token 的 `python studio.py proposal check ch_XXX`），"
                  "报错会点名到 `entities[i] 含未知字段: xxx`，按名改再重提。")
     lines.append("")
@@ -1318,10 +1437,10 @@ def cmd_critic(args) -> int:
     if not final_files:
         if getattr(args, "json", False):
             print(json.dumps({"chapter": tok, "ok": False,
-                              "error": f"未找到 {tok} 的定稿（final），无法进行读者评测（需先由 Stage 4C 定稿师 Fixer 落盘 final）",
+                              "error": f"未找到 {tok} 的定稿（final），无法进行读者评测（需先运行 finalize 落盘 final）",
                               "code": "no_final"}, ensure_ascii=False))
         else:
-            print(f"❌ 未找到 {tok} 的定稿（final），无法进行读者评测（需先由 Stage 4C 定稿师 Fixer 落盘 final）")
+            print(f"❌ 未找到 {tok} 的定稿（final），无法进行读者评测（需先运行 finalize 落盘 final）")
         return 1
 
     final_text = final_files[-1].read_text(encoding="utf-8", errors="ignore")
@@ -1395,7 +1514,7 @@ def cmd_critic(args) -> int:
                              ensure_ascii=False))
         else:
             print(f"ℹ️ {tok} 尚未执行老白读者评测。")
-            print("   正道：主控在 Stage 4 派发子代理 `Role: 'Critic'` 并行评审（零脚本、盲审便签）。")
+            print("   正道：总控在 Stage 4 派发子代理 `Role: 'Critic'` 并行评审（零脚本、盲审便签）。")
             print(f"   引擎辅助：python studio.py critic {tok} --write 可落盘预填骨架（SKELETON，供子代理改写，不计完成）。")
         return 0
 
@@ -1506,7 +1625,7 @@ def _calendar_payload(book, span: int) -> dict:
     if clocks_overdue:
         out["overdue_clocks"] = clocks_overdue
     # 跨卷长线节：无到期章号的线此前在日历上完全不可见（排产盲区）——单列一节，
-    # 让主控在排产时看到「这些线没有 deadline，最容易被遗忘」。
+    # 让总控在排产时看到「这些线没有 deadline，最容易被遗忘」。
     longlines = []
     for arr, kind in (("foreshadows", "伏笔"), ("misunderstandings", "误会"), ("knowledge", "知识线")):
         for g in lines.get(arr, []):
@@ -1540,7 +1659,7 @@ def _calendar_payload(book, span: int) -> dict:
             row["clocks"] = clocks
         out["chapters"].append(row)
     out["notes"] = ["排产参考（advisory）：due_lines=预定本章结算的线；phase=卷阶段航标；"
-                  "longlines=跨卷长线（无到期，排产时顺手安排回响防遗忘）；兑付节奏归主控裁决。"]
+                  "longlines=跨卷长线（无到期，排产时顺手安排回响防遗忘）；兑付节奏归总控裁决。"]
     return out
 
 

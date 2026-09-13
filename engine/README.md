@@ -13,7 +13,7 @@
 | `models/` | 状态机领域对象与语义原子补丁强类型模型 | **Pydantic V2**（严格禁止未知键注入 `extra='forbid'`，支持 `SemanticEntityPatch`） |
 | `cli.py` | 31 命令名（30 个处理函数，`check`/`doctor` 共用 `cmd_check`）薄壳调度：参数解析 + help 目录 + `main`（命令实现下沉至 `commands/`） | argparse |
 | `commands/` | 命令实现层六模块：`book_setup`（init/status/cockpit/config/errcodes/lore）、`chapter_flow`（pack/beats/evidence/check/review/critic/graph/export/audit/index + ask/pov/calendar 只读取证）、`state_sync`（sync/proposal/snapshot/checkpoint/state/ledger/milestone）、`recall`（残酷四问自证）、`simulate`（剧情推演沙盒）、`reconcile`（卷末对账大修：机械复扫+探针重跑+投影diff）；共享助手在 `_shared` | **Rich**（高保真圆角面板、彩色 Markdown 渲染、老白读者评分卡与状态流） |
-| `cockpit.py` | 主控态势驾驶舱：工作流导航、戏剧动力学（余震/悬顶危机/信息差机锋）、伏笔暗线分类雷达、角色活跃度与自愈处方 | 确定性聚合（秒级出报） |
+| `cockpit.py` | 总控态势驾驶舱：工作流导航、戏剧动力学（余震/悬顶危机/信息差机锋）、伏笔暗线分类雷达、角色活跃度与自愈处方 | 确定性聚合（秒级出报） |
 | `audit.py` | 确定性机械审计探针：**8大探针**（不可逆事实违背/在场与死亡/道具充能/金额一致/知情差泄露/认知差冲突/别名漂移/称谓与修饰词对账 `address_mismatch`）；**轨 3 是 LLM 的活**——`audit --write` 生成的报告含 `## 🧠 语义逻辑与出戏审查` 骨架与 `logic: 0` 键，重跑时 `_merge_audit_report` 保留 🧠 正文与 `logic` 计数 | 确定性跨域比对算法（语义判断不在此列，故交 Auditor） |
 | `db.py` | SQLite3 双平面投影与 FTS5 检索加速：BM25 段落级语义召回与角色 POV 聚合（支持优雅降级）；R3 增量缓存：定稿指纹 finals_fp + 按章内容哈希 fts_ch_hash（改稿才重刷） | **sqlite3**（FTS5 全文索引）+ **jieba**（专名切词） |
 | `migrations.py` | 状态机版本化与迁移器：`state/state_schema.json` 版本戳；老书首次读取自动迁移（迁移前强制快照 + 闸门预验 + JSONL 审计日志 `state/migrations.log`）；只修结构不碰事实 | 快照回滚双保险 |
@@ -29,7 +29,7 @@
 | `validator.py` + `schemas/` | mini JSON Schema 子集机械校验器（load/save 读写闸门 + 提案顶层）；`schemas/*.json` 为**构建产物**，由 `models/schema_gen.py` 从 Pydantic 模型生成（`python -m engine.models.schema_gen`），anyOf 失败时报告最接近分支的具体错误 | 模型唯一真源 + 闸门补丁层（落盘必完整） |
 | `checks.py` | 叙事 AST 编译器体检、伏笔饥饿告警 (`plotline_starvation`)、引文接地柔性容错、MIS/KNO 配额执法、bible 版本盖章对照 (`bible_drift`)、实体 ID 重复校验 (`entity_id_duplicate`) | **RapidFuzz**（引文模糊接地，消除语气助词偏差误报） |
 | `evidence.py` | 机械证据（all 汇总 / words / style / file / dup / mentions / gaps / candidates / prev / names / index）与 ask 全书检索（2.1 全域引用链：十一表+正文原句+全息卡片+世界圣经公理，每条命中带 cite{table,key,chapters}）、pov 角色视角包（只读取证）只出数、零裁决 | **Jieba**（`posseg` 提取专有名词 NER 候选 + `analyse` 关键词口癖雷达） |
-| `pack.py` | 三层上下文装配（P0 现场 / P1 动态触发 / P2 冷索引），自动注入实体唯一物理 ID（`[ID: p_001]`）与称谓对校矩阵；**预算 2W token**（`PACK_TOKEN_CAP`），超量走压缩阶梯（P2 冷索引 → P2 旧章指针 → P1 间接关联 → P1 脊柱 → P0 上章余温，`hard_reminders`/beats/不可逆事实永不裁）；`world_anchors` 按细纲 front-matter `world_refs` 取用（缺省＝恒给；命中＝只装命中节，若 `_ANCHOR_CORE_GROUPS` 五组里有组存在于 bible 却未被覆盖 → 包里打 ⚠️ 点名缺哪组；零命中＝回退恒给并列出可钉节名）；`ROLE_DENY` / `ROLE_ALLOW_EXTRA` 是准读网关单一真源，子代理 `file_index` 只列可读文件 | **NetworkX**（全书实体持有与归属拓扑图，1-Hop 强相关子图动态剪枝） |
+| `pack.py` | 三层上下文装配（P0 现场 / P1 动态触发 / P2 冷索引），自动注入实体唯一物理 ID（`[ID: p_001]`）与称谓对校矩阵；**预算上限 1.5W Token**（`PACK_TOKEN_CAP = 15000`），超量走压缩阶梯（P2 冷索引 → P2 旧章指针 → P1 间接关联 → P1 脊柱 → P0 上章余温，`hard_reminders`/beats/不可逆事实永不裁）；`world_anchors` 按细纲 front-matter `world_refs` 取用（缺省＝恒给；命中＝只装命中节，若 `_ANCHOR_CORE_GROUPS` 五组里有组存在于 bible 却未被覆盖 → 包里打 ⚠️ 点名缺哪组；零命中＝回退恒给并列出可钉节名）；`ROLE_DENY` / `ROLE_ALLOW_EXTRA` 是准读网关单一真源，子代理 `file_index` 只列可读文件 | **NetworkX**（全书实体持有与归属拓扑图，1-Hop 强相关子图动态剪枝） |
 | `snapshot.py` | 快照管理（create / list / rollback，支持 `--clean-drafts` 清理超前稿件与旧版表补齐） | 原子目录快照与事务安全 |
 | `objects/` | 对象层：`registry` 三键寻址索引 / `envelope` 统一包络视图（`state object` 消费）/ `derive` 派生计算（derived.json 唯一写口） | 纯内存视图 + 纯函数（单节故障不污染他节） |
 
@@ -38,11 +38,10 @@
 ## 输出契约与退出码
 
 - **输出契约**：数据类命令与 Agent 交互首选 `--json`；常规模式由 Rich 呈现易读彩色终端。
-- **封账闸门链（Stage 5 顺序不可交换）**：`audit <ch> --write` → `sync <ch>` → `check <ch>`。
-  `cmd_sync` 的拒绝顺序即输入合同顺序：① 定稿存在 ② 提案存在且可解析、`chapter` 与目标一致
-  ③ beats + raw 齐（缺 beats 直接点名 `beats new --write`）④ **Stage 4C 仲裁闸门**：报告必须存在、
-  front-matter 四键可解析，且 `hard > 0` **或** 🧠 `logic > 0` 时须 `adjudicated: true`
-  （`audit_mode: advisory` 全部降级为提示，`off` 整段跳过）⑤ 空变更拒封 ⑥ `verify_state` 前置因果闸门。
+- **封账闸门链（Stage 5 极速三连顺序不可交换）**：`finalize <ch>` → `proposal auto <ch> --write` → `sync <ch>`。
+  ① `finalize`：自动吸纳 Auditor 预制修补配方，内存补丁替换生成 final，验证 8 大机械探针无阻断并盖章 `adjudicated: true`；
+  ② `proposal auto --write`：从定稿与 Beats 自动抽取实体、账本、伏笔增量并校验 Schema；
+  ③ `sync` 依次通过：定稿存在、提案存在且可解析、beats+raw齐、仲裁放行、因果体检通过，执行原子封存与快照归档（全过程 ≤0.5秒）。
   台账指纹不在 `sync` 阻断——离线手改由 `check` 的 `state_offline_edit` 报出（warning + changelog 留痕）。
 - **退出码**：
   - `0` = 成功 (OK)；
@@ -95,7 +94,7 @@
    - 势力/门派：`fac_001`, `fac_002`...
    - 地点/场景：`loc_001`, `loc_002`...
 2. **`_merge_entities` 双键合并解析策略**：
-   - 合并 Reader 提案时，引擎跨 persons/items/factions/places 四表优先检查 `item.id`（ID 索引）；
+   - 合并章节增量提案时（由 `proposal auto` 自动提取或人工/Evolver修订），引擎跨 persons/items/factions/places 四表优先检查 `item.id`（ID 索引）；
    - 若 `id` 命中已有实体，即便中文 `name` 发生变更（如“断水剑”被重铸为“断水龙吟剑”），也会精准就地更新该实体的属性与演化轨迹，绝不裂变为两个实体；
    - 若 `item.id` 未指定，则降级按 `item.name` 寻址，并将已有实体的 `id` 继承给更新条目；
    - 若 ID 与 Name 均未命中，则作为全新实体入册。
@@ -109,7 +108,7 @@
 
 ## 底层词典速查指令集 (studio lore CLI)
 
-`studio lore` 系列命令为人类作者与各 Stage 子代理（Director, Drafter, Editor, Auditor）提供零成本的秒级设定对账与事实检索能力：
+`studio lore` 系列命令为人类作者与总控 (Director) / 架构师 (Architect) 提供零成本的秒级设定对账与事实检索能力：
 
 ```bash
 python studio.py lore list [-w BOOK]                         # 全量查看已注册实体 ID、名称与卡片状态

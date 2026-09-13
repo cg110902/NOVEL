@@ -28,9 +28,9 @@ description: Universal long-range consistency sweep librarian and retroactive le
    调用 `view_file` **单次全读**实体四表（`state/persons.json`, `items.json`）与章节梗概 `state/synopsis.json`；
    - 🔍 **求证限制（严格≤1次）**：需核查实体正文出处时，跑一行 `python studio.py ask "<名字>"`（**最多 1 次**）。
 
-3. **步骤 3【直接物理落盘合并提案与小结 · 双产出】**：
-   - 将补登实体或法宝充能调用 `write_to_file` 合并写入 `workspace/<书名>/state/inbox/ch_XXX.json`；
-   - 将 200 字巡检小结调用 `write_to_file` 写入 `workspace/<书名>/log/review/sweep_ch_XXX.md`；
+3. **步骤 3【直接物理落盘巡检与对账小结 · 唯一产出】**：
+   - 将巡检发现、补漏实体清单与平账建议调用 `write_to_file` 写入 `workspace/<书名>/log/review/sweep_ch_XXX.md`（卷末则写入 `log/review/reconcile_vol_XX.md`）；
+   - ⚠️ **【严禁手搓底层 JSON】**：绝对禁止直接手写或修改 `state/*.json` 或 `state/inbox/`！若有补登需求，在巡检小结中列出标准字段，由总控跑 `state set` 或提案通道统一合账；
    - ⚠️ **【核心铁律】绝对禁止在对话消息中输出报告！必须直接调用 `write_to_file` 工具落盘！**
    - ⚠️ **【传参铁律】调用 `write_to_file` 时仅提供 `TargetFile`, `CodeContent`, `Description`, `Overwrite` 4 个参数，绝对严禁传递 `ArtifactMetadata` 参数（项目文件绝非 Brain Artifact）！**
    - 文件落盘完成后，立即输出 3 行标准完工回执交卷！**严禁在落盘后再次调用 `view_file` 查验，严禁客套总结，干完即走！**
@@ -44,10 +44,10 @@ description: Universal long-range consistency sweep librarian and retroactive le
   - `python studio.py reconcile vol_XX --write -w "workspace/<书名>"`；
   - `python studio.py ask "<名字>"`（选跑，**严格最多 1 次**）；
 - 📖 **准读文件**：`state/persons.json`、`items.json`、`synopsis.json`；
-- ✍️ **准写工具（唯一）**：调用 `write_to_file` 写入 `state/inbox/ch_XXX.json` 与 `log/review/sweep_ch_XXX.md`（**严禁传递 `ArtifactMetadata`**）；
+- ✍️ **准写工具（唯一）**：调用 `write_to_file` 写入 `log/review/sweep_ch_XXX.md`（**严禁传递 `ArtifactMetadata`**）；
 - 🚫 **绝对红线**：
-  - 严禁修改任何小说正文（`manuscript/`）；只做温和补漏，严禁改写主线；
-  - 严禁阅读 `engine/` 源码；严禁编写任何 PowerShell / Python 自查脚本；严禁调用 `check` / `doctor` 等全书体检命令；落盘后严禁留恋滞留。
+  - 严禁修改任何小说正文（`manuscript/`）；严禁手搓底层 JSON；
+  - 严禁阅读 `engine/` 源码；严禁编写任何自查脚本；严禁调用 `check` / `doctor` 等全书体检命令；落盘后严禁留恋滞留。
 
 ---
 
