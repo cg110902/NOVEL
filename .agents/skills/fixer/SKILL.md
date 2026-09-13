@@ -25,14 +25,11 @@ description: Universal finalizer, issue resolver, and final manuscript publisher
    Copy-Item -Force "workspace/<书名>/manuscript/vol_XX/raw/ch_XXX_v3.md" "workspace/<书名>/manuscript/vol_XX/final/ch_XXX.md"
    ```
 
-2. **步骤 2【对照审查报告手术刀微调 · 严禁全文重写】**：
-   - 调用 `view_file` 查看：
-     - 仲裁报告：`workspace/<书名>/log/audit/ch_XXX.md`；
-     - 细纲任务书：`workspace/<书名>/outlines/vol_XX/beats/ch_XXX.md`；
-   - 🔍 **查证限制（严格≤1次）**：遇称谓或人设存疑可跑一行 `python studio.py ask "<争议词>"`（**最多 1 次**）；
+2. **步骤 2【照方抓药手术刀微调 · 严禁全文重写】**：
+   - 调用 `view_file` 查看仲裁报告：`workspace/<书名>/log/audit/ch_XXX.md`；
    - **手术刀微调规则**：
      - 若报告无硬伤且 logic=0：**不需要做任何正文修改**；
-     - 若有确凿硬伤（称谓写错、时空穿帮、动作打架）：调用 `view_file` 查看 `final/ch_XXX.md` 对应行，**精确截取原文片段作为 `TargetContent`，必须且只能使用 `replace_file_content` 针对目标行进行最小范围局部替换**；
+     - 若报告有待修条目：**直接照方抓药，按 Auditor 预制的 `TargetContent` 与 `ReplacementContent` 调用 `replace_file_content` 精确替换**，免反复回读与重复推导，单次搞定！
      - ⚠️ **【核心铁律】绝对禁止调用 `write_to_file` 全文重写正文！只准使用 `replace_file_content` 局部替换！**
 
 3. **步骤 3【运行盖章命令并提交回执 · 绿灯放行】**：

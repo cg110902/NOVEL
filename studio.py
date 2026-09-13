@@ -6,8 +6,20 @@
 调用方无法区分「书有问题」和「环境没装好」。这里在 import 期兜住，给人话提示
 并用独立退出码 3（见 engine/README.md 退出码契约）。
 """
+import os
 import sys
 from pathlib import Path
+
+# 彻底解决 Windows 控制台默认 GBK 编码引发的中文乱码与 Unicode (Emoji/特殊标点) 编码报错
+if sys.platform == "win32":
+    os.environ["PYTHONUTF8"] = "1"
+    os.environ["PYTHONIOENCODING"] = "utf-8"
+    for _stream in (sys.stdout, sys.stderr, sys.stdin):
+        if hasattr(_stream, "reconfigure"):
+            try:
+                _stream.reconfigure(encoding="utf-8", errors="replace")
+            except Exception:
+                pass
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 

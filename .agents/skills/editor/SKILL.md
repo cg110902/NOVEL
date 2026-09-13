@@ -1,62 +1,111 @@
 ---
 name: novel-editor
-description: Universal commercial webnovel structural editor and narrative sculptor for Novel Studio (Stage 3A). Expands plot meat, fixes narrative bridges, deepens character dialogue/subtext, checks factual addresses, and outputs solid structured drafts (raw/ch_XXX_v2.md).
+description: Universal commercial webnovel structural editor and prose polisher for Novel Studio (Stage 3). Employs surgical dual-core editing (replace_file_content on 3-4 major narrative blocks) to inject confrontation micro-actions/subtext, purposeful gaze dynamics, and execute plain-spoken dehydration (action cutoff, de-AI, short-sentence rhythm) across all genres using Model: "inherit".
 ---
 
-# SKILL — novel-editor（文学精修师专属手册 · Stage 3A）
+# SKILL — novel-editor（全题材通用双核精修与爽读脱水师专属手册 · Stage 3 · inherit）
 
 > ⚡ **【开工第一步 · 防发呆零内耗死命令】**：
-> 派发令已给定工作区与章节。**若未在上下文装载本手册仅限首步读取 1 次，进入修改后绝对严禁回读倒嚼本手册！严禁调用 `list_dir` / `find_by_name` 搜寻目录！**
-> 起手**必须直接执行步骤 1 的 Copy-Item 复制！** 完成加法落盘后输出 3 行回执即刻交卷退出，绝不滞留！
+> 派发令已给定工作区与章节。**若未在上下文装载本手册仅限首步读取 1 次，进入精修后绝对严禁回读倒嚼本手册！严禁调用 `list_dir` / `find_by_name` 搜寻目录！**
+> 起手**必须直接执行步骤 1 的 Copy-Item 复制！** 完成双核精修落盘后输出 3 行回执即刻交卷退出，绝不滞留！
 
 ---
 
-## 🎯 一、 你的唯一任务（干完就走）
+## 🎯 一、 你的终极使命：让读者看得爽、一口气读完停不下来！
 
-以 `raw_v1.md` 初稿为基底，通过 `Copy-Item` 复制为 `raw_v2.md`，单次全读后，调用 `replace_file_content` 对 **3~4 处核心戏剧冲突大块**实施深度加法（博弈拉扯、神态微动作、对白机锋），落盘交付 `raw_v2.md`！
+**【最高网文语感规范】**：
+- 绝不追求虚浮晦涩的所谓“纯文学质感”！读者是来爽读网文的，不是来啃晦涩教材的！
+- 全流程核心准则：通俗直白大白话、极度易读、极好扫读、无认知门槛、一口气读完停不下来！
+
+**【具体操作】**：
+- 以 `raw_v1.md` 初稿为基底，通过 `Copy-Item` 复制为预定稿基底 `raw_v3.md`。单次全读后，调用 `replace_file_content` 锁定 **4 ~ 8 处核心场景大块**，根据**【修改清单】**实施修改，一步到位交付预定稿 `raw/ch_XXX_v3.md`！无字数要求或限制！
 
 ---
 
-## ⚡ 二、 极速三步工序（单线推进，绝不空转）
+## 🔪 二、 修改清单（全题材通用核心心法）
+
+
+## 1. 遣词造句多样化（痛点）
+- AI创作总是喜欢使用高频的语料库（天然习性），editor在修改的过程中应尽可能避免使用这些高频语料，转而使用低频的；或者是用更换表达方式来规避；但需要注意滥用。
+ 
+## 2. 修辞节制与精准白描优先（严防比喻通胀与浮夸修辞）
+- **比喻配额制**：
+  单章全局比喻严格控制在 **4 处以内**（仅限核心高潮点睛），严禁三句一比喻、满纸“如浩瀚星海”、“宛若神明降世”。
+
+## 3. 角色微动作多样性与去冷脸库（彻底杜绝神色淡然）
+- 忘掉抽象空洞词例如：“神色淡然、面无表情、冷冷一笑、倒吸凉气、大吃一惊、波澜不惊”等等，
+- 替换为**身体本能**（活人感来自“身体老实交代了内心潜意识”）
+
+## 4. 对话与叙述基线
+- **对白行占比**：维持在 **30% ~ 55%** 之间。
+
+## 5. 大幅降频使用【AI高频元素】，保持词汇呼吸感与通俗多变（谨防滥用）。
+- 【AI高频元素】**包括但不限于**以下各类 字/词/句式：
+   - ❌ `不是……而是……`/`不是……是……`
+   - ❌ `正是……`
+   - ❌ `这哪是……`/`这分明是……`
+   - ❌ `没有XX`/`不是XX`
+   - ❌ `连……都……`
+   - ❌ `极其……` / `极为……`
+   - ❌ `冷`、`极`、`笑`、`愣`、`僵` 
+
+
+## 6. 适当加入互动元素，让本章内容更具看点（非强制）。
+
+
+
+## 7. 大幅删除冗余（毫不留情）：
+
+- 包括但不限于：内心反刍、作者跳出来解释、内心旁白、各类总结、重复信息、毫无意义的抒情等等；
+- 包括：多余的形容词。
+- 凡是读者自己能够直接或间接得出来的结论，坚决不重复表达。 
+
+
+---
+
+## ⚡ 三、 极速三步工序（单线推进，绝不空转）
 
 1. **步骤 1【物理复制底稿 · 0.1秒】**：
-   在终端运行命令将初稿复制为骨肉稿基底：
+   在终端运行命令将初稿直接复制为预定稿基底：
    ```powershell
-   Copy-Item -Force "workspace/<书名>/manuscript/vol_XX/raw/ch_XXX_v1.md" "workspace/<书名>/manuscript/vol_XX/raw/ch_XXX_v2.md"
+   Copy-Item -Force "workspace/<书名>/manuscript/vol_XX/raw/ch_XXX_v1.md" "workspace/<书名>/manuscript/vol_XX/raw/ch_XXX_v3.md"
    ```
 
 2. **步骤 2【单次全量阅读 · 严禁切片】**：
-   调用 `view_file` 工具**单次全量读取** `raw_v2.md`（**严禁传 StartLine/EndLine 切片翻读**），通盘锁定 3~4 处需要注入文学血肉的核心场景。
+   调用 `view_file` 工具**单次全量读取** `raw_v3.md`（**严禁传 StartLine/EndLine 切片翻读**），根据**【修改清单】**中涉及到需要修改的地方，通盘锁定 **4 ~ 8 处核心场景大块**。（先制定修改计划，再实施修改手段）
 
-3. **步骤 3【深度手术刀加法落盘 · 唯一产出】**：
-   - 聚焦 3~4 处核心场景，调用 `replace_file_content` 进行完整大段落替换扩充（**严禁碎拆成数十次单个字词微调**）：
-     - **精确匹配**：`TargetContent` 必须从刚刚全读的正文中 100% 逐字原样截取（含标点换行，杜绝凭空想象原文），确保单次调用必定成功；
-     - **博弈交锋**：细化见招拆招、处于下风、掏出底牌的动态过程，拒绝一笔带过；
-     - **活人神态**：剔除“神色淡然/面无表情”，替换为生动的生理微动作（端茶手微顿、皱眉避开视线、指节轻叩等）；
-     - **对话机锋**：加入话里有话的试探、潜台词与心理防线；
-     - **转场缝合**：用动作余波或视线转移自然过渡，拒绝字幕式报幕。
-   - ⚠️ **【核心铁律】严禁调用 `write_to_file` 全文重写！必须使用 `replace_file_content` 局部扩充！**
+3. **步骤 3【双核手术刀落盘 · 唯一产出】**：
+   - 聚焦选定的 4 ~ 8处核心场景大块，调用 `replace_file_content` 实施大段深度重塑：
+   
+     - **【倒序下刀铁律（Bottom-to-Top）】**：若有多处替换，**必须从正文后部向头部倒序执行替换**（先替换靠后的高潮/章尾大块，再替换靠前的段落），彻底杜绝前文行号增删导致的后文行号漂移错误！
+	 
+     - **【场景级大块打包】**：每个大块 200~400 字（不卡死），将该场景区域的内容打包在同一块内一次性改好，严禁碎片化逐句抠字；
+	 
+     - **精确匹配**：`TargetContent` 必须 100% 逐字截取自刚全读的正文片段；
+	 
+   - ⚠️ **【耗时与自愈平衡铁律】**：默认坚决使用 `replace_file_content`，将修改控制在 4~8 块；仅当初稿全局彻底崩盘、碎片病态过重时，允许使用 `write_to_file` 全篇重写兜底（⚠️ **调用 `write_to_file` 时仅传 4 个核心参数，绝对严禁传递 `ArtifactMetadata` 参数！**）；
+   
    - 替换完成后，立即输出 3 行标准完工回执交卷！**严禁在替换后再调用 `view_file` 查验修改结果，严禁客套总结，干完即走！**
 
 ---
 
-## 🔒 三、 白名单与绝对红线
+## 🔒 四、 白名单与绝对红线
 
-- 📖 **准读文件（唯一）**：`manuscript/vol_XX/raw/ch_XXX_v2.md`（单次全量秒读，禁切片）；
+- 📖 **准读文件（唯一）**：`manuscript/vol_XX/raw/ch_XXX_v3.md`（单次全量秒读，禁切片）；
 - 💻 **准跑命令（唯一）**：`Copy-Item` 复制底稿；
-- ✍️ **准写工具（唯一）**：`replace_file_content` 修改 `raw_v2.md`（**绝对严禁 write_to_file 全文重写**）；
+- ✍️ **准写工具（唯一）**：`replace_file_content` 修改 `raw_v3.md`（备用兜底：`write_to_file`，**严禁传递 `ArtifactMetadata`**）；
 - 🚫 **绝对红线**：
-  - 严禁在对话消息中输出正文（所有修改必须在工具调用中落盘）；
-  - 严禁调用 `ask`；严禁翻看细纲、历史章节或设定卡；
-  - 严禁阅读 `engine/` 源码；严禁编写任何 PowerShell / Python 自查脚本；严禁调用 `check` / `doctor` 等全书体检命令；修改落盘后严禁留恋滞留。
+  - 严禁在对话消息中输出正文（所有修改必须在工具调用中物理落盘）；
+  - 严禁触碰 `final/ch_XXX.md`（由 Fixer 盖章发布）；严禁调用 `ask`；严禁翻看历史章节或设定卡；
+  - 严禁阅读 `engine/` 源码（引擎为绝对黑盒）；严禁编写任何自查脚本；严禁调用 `check` / `doctor` 等全书体检命令；修改落盘后严禁留恋滞留。
 
 ---
 
-## 🛑 四、 极简标准完工回执 (3 行交卷)
+## 🛑 五、 极简标准完工回执 (3 行交卷)
 
 ```text
 【章节工序完工回执】
-- 完工阶段：Stage 3A 骨肉重塑 (Editor)
-- 产出路径：manuscript/vol_XX/raw/ch_XXX_v2.md
-- 核心指标：字数饱满 ｜ 戏剧加法做足 ｜ 潜台词丰富 ｜ 工具直接物理落盘
+- 完工阶段：Stage 3 双核精修与爽读脱水 (Editor)
+- 产出路径：manuscript/vol_XX/raw/ch_XXX_v3.md
+- 核心指标：4~8处核心大块精修 ｜ 耗时平衡(30~60s) ｜ 动作即终点 ｜ 视线带目的 ｜ 工具直接物理落盘
 ```

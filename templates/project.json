@@ -5,8 +5,8 @@
   "protagonist": "{{slot:protagonist|主角名}}",
   "audit_mode": "strict",
   "words_target": [
-    2000,
-    3000
+    1500,
+    2500
   ],
   "lines_cap": {
     "active_foreshadows": 8,

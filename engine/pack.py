@@ -1044,9 +1044,7 @@ ROLE_DENY: dict[str, tuple[str, ...]] = {
     # ---- 以下为 V3.3 新增角色（此前不在表内 → pack --as 合法选项被网关一律拒绝）----
     # 架构师（Stage 0/演进）：全局设定层，禁读成稿与日志（其职责是设定真值，不是正文）
     "architect": ("manuscript/", "log/", "snapshots/"),
-    # 脱水师（Stage 3B）：只看 beats + raw_v2 + 偏离红线；禁 state/卡片/日志。
-    # bible/ 同理整体禁读——只有 06_deviations.md 走白名单例外。
-    "stylist": ("state/", "bible/", "characters/", "entities/", "log/", "snapshots/"),
+
     # 审查员（Stage 4A）：只看定稿 + beats + locked/current/entities 三表；禁 raw/bible/卡片。
     # ⚠️ state/ 必须整体禁读，否则 ROLE_ALLOW_EXTRA 的三表白名单形同虚设
     # （前缀没禁，白名单就成了摆设，ledger/timeline/cognition 一样读得到）。
@@ -1073,7 +1071,6 @@ ROLE_ALLOW_EXTRA: dict[str, tuple[str, ...]] = {
     # Editor / Stylist 准读清单第 3 项：全书文风宪法（此前文档授权、机械层一律拒绝，
     # 「双层防御」名不副实——真按网关走 Editor 连文风宪法都拿不到）
     "editor": ("bible/06_deviations.md",),
-    "stylist": ("bible/06_deviations.md",),
     # Auditor 的事实台账（准读清单第 3~5 项：locked/current + 实体四表）
     "auditor": ("state/locked.json", "state/current.json", "state/persons.json",
                 "state/items.json", "state/factions.json", "state/places.json"),

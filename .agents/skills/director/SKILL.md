@@ -161,37 +161,83 @@ graph TD
   - **重要生死/突破事实**：如 `赵寒山被击杀 (deceased)`；
   这样 Stage 4D 的 Reader 可以直接对照细纲预期核验 final 成稿，彻底告别盲猜。
 
+### 3. 【极简动线化 · 严禁大篇幅小作文】（妙招 1 · 立省 20 秒）
+- 细纲核心是“填空与动线导航”，**每个场景脉络严格 2~3 句话点明物理动作与冲突焦点即可，绝对严禁写成大篇幅小作文！**
+- 快速填完戏剧目标、场景动线与状态声明，追求 15~20 秒内落盘交卷！
+
 ---
 
 ## 🔄 六、 闭环流水线调度与原子封存 (Stages 2 ~ 5)
 
-主控以 AGENTS.md 规定的极简 4 行派发令驱动流水线严密咬合（所有派发令末尾一律强化带上：**`严禁调用 check/doctor，严禁自写脚本，落盘即交卷`**，在运行时直接形成指令级物理压制）：
+### 🚨 【主控派发令标准 4 行铁律 · 严禁添油加醋与主观指导】
+主控下达工序派发令时，**必须严格死守 AGENTS.md 规定的标准 4 行格式，绝对严禁添加任何主观发挥、文学说教、情绪指导或额外废话！**
+- **第 1 行（标题）**：`【章节工序派发令（免读技能卡直接开工）】`
+- **第 2 行（位置）**：`- 书籍工作区：workspace/<书名> ｜ 分卷章节：vol_XX / ch_XXX`
+- **第 3 行（角色）**：`- 执行阶段：Stage X (<角色名>) ｜ 算力级别：[inherit / flash]`
+- **第 4 行（输入）**：`- 核心输入/待修清单：[输入源文件相对路径/内联核心待修项或实体事实，免查多余文件]`
+- **第 5 行（指令）**：`- 执行指令：起手直接执行[第1步动作] ➔ 准读/准写=[调用工具直接落盘（禁传ArtifactMetadata）] ➔ 执行[专属验证命令] ➔ 3行回执交卷（禁倒嚼/禁发正文聊天/禁写脚本/落盘即走）`
+> ⚠️ **【红线违纪警告】**：严禁增加第 5 个子项列表行；严禁在派发令前后附加说明段落；严禁在指令中附带“写出反差、幽默、热血”等主观文学指导！所有剧情爆发由细纲（beats）与 Drafter 依照 pack 自然展开！
 
 ```mermaid
 graph LR
     S1[Stage 1: 细纲 beats] --> S2[Stage 2: Drafter 起草 raw_v1]
-    S2 --> S3A[Stage 3A: Editor 骨肉做加法 raw_v2]
-    S3A --> S3B[Stage 3B: Stylist 通俗脱水 raw_v3]
-    S3B --> S4A[Stage 4A: Auditor 探针初审 ch_XXX.md]
-    S3B --> S4B[Stage 4B: Critic 老白便签]
+    S2 --> S3[Stage 3: Editor 双核精修脱水 raw_v3]
+    S3 --> S4A[Stage 4A: Auditor 探针初审 ch_XXX.md]
+    S3 --> S4B[Stage 4B: Critic 老白便签]
     S4A --> S4C[Stage 4C: Fixer 定向手术刀定稿 final + 盖章]
     S4C --> S4D[Stage 4D: Reader 事实提案 + 预检]
     S4D --> S5[Stage 5: Director 状态封存 sync]
 ```
 
-1. **Stage 1 (beats 任务书落盘)** ➔ 派发 **Drafter (Stage 2 | Model: inherit)**：
-   - 派发令：准读=[免倒嚼，起手直接跑 pack 取包] ➔ 准写=[调用 write_to_file 直接落盘 `raw/ch_XXX_v1.md`（禁传 ArtifactMetadata）] ➔ 3 行回执交卷（落盘即走）；
-2. **Stage 2 完工回执** ➔ 派发 **Editor (Stage 3A | Model: flash)**：
-   - 派发令：准读=[免倒嚼，起手 Copy-Item 将 `raw_v1.md` 复制到 `raw_v2.md` 后单次全读 `raw_v2.md` 禁切片] ➔ 准写=[聚焦 3~4 个关键戏剧冲突大块，调用 replace_file_content 实施深度文学加法] ➔ 3 行回执交卷（落盘即走）；
-3. **Stage 3A 完工回执** ➔ 派发 **Stylist (Stage 3B | Model: flash)**：
-   - 派发令：准读=[免倒嚼，起手 Copy-Item 将 `raw_v2.md` 复制到 `raw_v3.md` 后单次全读 `raw_v3.md` 与 `bible/06`] ➔ 准写=[聚焦 3~4 个关键大块，调用 replace_file_content 实施深度脱水做减法（斩反刍/去冷脸/拆长句）交付预定稿 `raw_v3.md`] ➔ 3 行回执交卷（落盘即走）；
-4. **Stage 3B 完工回执** ➔ 并发派发 **Auditor (Stage 4A)** 与 **Critic (Stage 4B)** (Model: flash)：
-   - Auditor：准读=[免倒嚼，单次全读 `raw/ch_XXX_v3.md` 禁切片 ＋ 跑 `audit ch_XXX --write`（**禁带 `--adjudicate`**）] ➔ 准写=[在 `log/audit/ch_XXX.md` 补充语义问题] ➔ 3 行回执交卷（落盘即走）；
-   - Critic：准读=[免倒嚼，单次全读 `raw/ch_XXX_v3.md` 与 `current.json` 禁切片] ➔ 准写=[调用 write_to_file 直接落盘 `log/critic/ch_XXX.md`（禁传 ArtifactMetadata）] ➔ 3 行回执交卷（落盘即走）；
-5. **4A/4B 完工回执** ➔ 派发 **Fixer (Stage 4C | Model: flash)**：
-   - 派发令：准读=[免倒嚼，起手 Copy-Item 将 `raw_v3.md` 复制到 `final/ch_XXX.md`，通读 `log/audit/ch_XXX.md` 待修项与 `beats/ch_XXX.md`] ➔ 准写=[针对硬伤调用 replace_file_content 微调 `final/ch_XXX.md` ➔ 跑 `audit ch_XXX --write --adjudicate` 盖章] ➔ 3 行回执交卷（盖章即走）；
-6. **Stage 4C 完工回执** ➔ 派发 **Reader (Stage 4D | Model: flash)**：
-   - 派发令：准读=[免倒嚼，单次全读 `final/ch_XXX.md` 与 `beats/ch_XXX.md`] ➔ 准写=[调用 write_to_file 直接落盘 `state/inbox/ch_XXX.json`（禁传 ArtifactMetadata） ➔ 跑 `proposal check ch_XXX` 0-error 预检] ➔ 3 行回执交卷（绿灯即走）；
+#### 📋 各阶段标准 4 行派发模板（纯动作流，一字不添）：
+1. **Stage 2 (Drafter | Model: inherit)**：
+   ```text
+   【章节工序派发令（免读技能卡直接开工）】
+   - 书籍工作区：workspace/<书名> ｜ 分卷章节：vol_XX / ch_XXX
+   - 执行阶段：Stage 2 (Drafter 初稿起草) ｜ 算力级别：inherit
+   - 核心输入/待修清单：运行 python studio.py pack ch_XXX --full 获取装配包
+   - 执行指令：起手直接执行 pack 取包 ➔ 依据装配包展开正文（字数 1500~2500） ➔ 准写=[调用 write_to_file 直接落盘至 manuscript/vol_XX/raw/ch_XXX_v1.md（禁传 ArtifactMetadata）] ➔ 3行回执交卷（禁倒嚼/禁发正文聊天/禁写脚本/落盘即走）
+   ```
+2. **Stage 3 (Editor | Model: inherit)**：
+   ```text
+   【章节工序派发令（免读技能卡直接开工）】
+   - 书籍工作区：workspace/<书名> ｜ 分卷章节：vol_XX / ch_XXX
+   - 执行阶段：Stage 3 (Editor 双核精修与爽读脱水) ｜ 算力级别：inherit
+   - 核心输入/待修清单：manuscript/vol_XX/raw/ch_XXX_v1.md
+   - 执行指令：起手直接 Copy-Item 复制 v1 为 v3 ➔ view_file 单次全读 v3 ➔ 准写=[调用 replace_file_content 聚焦3~4处大块替换落盘至 manuscript/vol_XX/raw/ch_XXX_v3.md] ➔ 3行回执交卷（零命令/禁倒嚼/禁发正文聊天/禁写脚本/落盘即走）
+   ```
+3. **Stage 4A (Auditor | Model: flash)**：
+   ```text
+   【章节工序派发令（免读技能卡直接开工）】
+   - 书籍工作区：workspace/<书名> ｜ 分卷章节：vol_XX / ch_XXX
+   - 执行阶段：Stage 4A (Auditor 内容质检) ｜ 算力级别：flash
+   - 核心输入/待修清单：manuscript/vol_XX/raw/ch_XXX_v3.md
+   - 执行指令：起手直接运行 python studio.py audit ch_XXX --write（禁带 --adjudicate） ➔ view_file 全读 v3 审查常识 ➔ 准写=[顺手在 log/audit/ch_XXX.md 预制【TargetContent ➔ ReplacementContent】修补配方] ➔ 3行回执交卷（禁盖章/禁改正文/禁写脚本/落盘即走）
+   ```
+4. **Stage 4B (Critic | Model: flash)**：
+   ```text
+   【章节工序派发令（免读技能卡直接开工）】
+   - 书籍工作区：workspace/<书名> ｜ 分卷章节：vol_XX / ch_XXX
+   - 执行阶段：Stage 4B (Critic 老白催更便签) ｜ 算力级别：flash
+   - 核心输入/待修清单：manuscript/vol_XX/raw/ch_XXX_v3.md 与 state/current.json
+   - 执行指令：起手直接 view_file 读稿与现场 ➔ 撰写 300~500 字便签 ➔ 准写=[调用 write_to_file 直接落盘至 log/critic/ch_XXX.md（禁传 ArtifactMetadata）] ➔ 3行回执交卷（零命令/禁倒嚼/禁发正文聊天/落盘即走）
+   ```
+5. **Stage 4C (Fixer | Model: flash)**：
+   ```text
+   【章节工序派发令（免读技能卡直接开工）】
+   - 书籍工作区：workspace/<书名> ｜ 分卷章节：vol_XX / ch_XXX
+   - 执行阶段：Stage 4C (Fixer 终审定稿与盖章) ｜ 算力级别：flash
+   - 核心输入/待修清单：log/audit/ch_XXX.md 待修清单 与 manuscript/vol_XX/raw/ch_XXX_v3.md
+   - 执行指令：起手直接 Copy-Item 复制 v3 为 final ➔ 准写=[照方抓药按 audit 预制配方调用 replace_file_content 修复 final/ch_XXX.md] ➔ 运行 python studio.py audit ch_XXX --write --adjudicate 盖章 ➔ 3行回执交卷（盖章即走）
+   ```
+6. **Stage 4D (Reader | Model: flash · 提案直出模式)**：
+   ```text
+   【章节工序派发令（免读技能卡直接开工）】
+   - 书籍工作区：workspace/<书名> ｜ 分卷章节：vol_XX / ch_XXX
+   - 执行阶段：Stage 4D (Reader 增量事实对账与提案) ｜ 算力级别：flash
+   - 核心输入/待修清单：manuscript/vol_XX/final/ch_XXX.md 与 outlines/vol_XX/beats/ch_XXX.md ｜ 内联实体/暗线增量：[ID清单]
+   - 执行指令：起手直接 view_file 读 final 与 beats ➔ 准写=[按标准模板调用 write_to_file 直接落盘 state/inbox/ch_XXX.json（禁传 ArtifactMetadata）] ➔ 运行 python studio.py proposal check ch_XXX 预检 ➔ 3行回执交卷（禁读engine/禁写脚本/落盘即走）
+   ```
 7. **Stage 4D 完工回执 ➔ Stage 5 极速原子封存与成品交付（严格 3 秒极限闭环）**：
    - ⚡ **【唯一准跑命令（单步原子封存）】**：主控收到 Stage 4D 回执后，执行单行原子封存命令：
      ```bash
@@ -204,6 +250,8 @@ graph LR
 8. **卷末节奏（逢卷界章如 ch_050/ch_100 等封存后追加）**：
    - 执行 `python studio.py state rollup vol_XX -w "workspace/<书名>"` 生成卷末态势（下卷 pack 前情源）；
    - 派发 Librarian 执行卷末对账大修（`reconcile vol_XX --write` 工作单 + 投影差异裁决）。
+
+9. **每轮流水线结束后报告本轮消耗的时间**。
 
 ---
 

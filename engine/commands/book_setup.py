@@ -178,7 +178,7 @@ def cmd_init(args) -> int:
             "genre": args.genre or "",
             "protagonist": args.protagonist or "",
             "audit_mode": "strict",
-            "words_target": [2000, 3000],
+            "words_target": [1500, 2500],
             "lines_cap": {
                 "active_foreshadows": 8,
                 "longline_foreshadows": 5,
@@ -296,7 +296,7 @@ def _next_actions(brief: dict | None) -> list[str]:
         acts.append(f"state/inbox 有 {len(brief['pending_proposals'])} 份待合并提案：python studio.py sync ch_XXX")
     nxt = brief["latest_finalized"] + 1
     acts.append(f"下一章 ch_{nxt:03d}：Stage 1 主控写 beats → Stage 2 Drafter 毛坯 raw_v1 → "
-                f"Stage 3A Editor 骨肉稿 raw_v2 → Stage 3B Stylist 脱水预定稿 raw_v3 → "
+                f"Stage 3 Editor 双核精修预定稿 raw_v3 → "
                 f"Stage 4A/4B 并发（Auditor 问题清单 ‖ Critic 催更便签）→ "
                 f"Stage 4C Fixer 落盘法定定稿 final → Stage 4D Reader 增量事实提案 → "
                 f"Stage 5 sync 封存+快照")
@@ -595,14 +595,14 @@ def cmd_config(args) -> int:
         try:
             val = json.loads(raw)
         except json.JSONDecodeError:
-            # 区间类键容忍裸字符串 "2000,3000"（避免让主控先学 JSON 语法再谈形状）
+            # 区间类键容忍裸字符串 "1500,2500"（避免让主控先学 JSON 语法再谈形状）
             val = None
             if spec[key]["shape"] == "int_pair":
                 parts = [x for x in re.split(r"[,，\s]+", raw.strip()) if x]
                 if len(parts) == 2 and all(p.lstrip("-").isdigit() for p in parts):
                     val = [int(parts[0]), int(parts[1])]
             if val is None:
-                return _cfg_err('值必须是合法 JSON 字面量（区间类键如 words_target 也可裸写 "2000,3000"）')
+                return _cfg_err('值必须是合法 JSON 字面量（区间类键如 words_target 也可裸写 "1500,2500"）')
         if getattr(args, "merge", False):
             # 合并前先校验新值形状——此前标量进 merge 会被逐字拆分静默落盘，
             # 且 dict 形状键收到标量会触发裸 TypeError/AttributeError

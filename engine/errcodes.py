@@ -225,10 +225,10 @@ REGISTRY: dict[str, ErrCode] = {c.code: c for c in (
          "或正式回收（resolve）；确认废弃请 retire。判定口径＝正文落笔章距 > 记忆阈值×2（权重越高越宽松）。"),
     # ---- 定稿字数出带（config guide 承诺的字数闸门）----
     _reg("word_band_deviation", "warning", "定稿中文字数落在 project.json.words_target 目标带之外（20% 容差内）",
-         "定稿字数出带属可接受偏移：需要严格达标请让 Stylist 在 Stage 3B 增删内容，"
+         "定稿字数出带属可接受偏移：需要严格达标请让 Editor 在 Stage 3 增删内容，"
          "或按本书实际节奏用 python studio.py config set words_target --merge '[下限, 上限]' 校准目标带。"),
     _reg("word_band_breach", "warning", "定稿中文字数偏离目标带超过 20% 容差（严重出带）",
-         "严重出带会影响读者节奏预期：请让 Stylist 回 Stage 3B 补足/删减到目标带内，"
+         "严重出带会影响读者节奏预期：请让 Editor 回 Stage 3 补足/删减到目标带内，"
          "或确认目标带本身过时后用 config set words_target 校准。字数口径＝中文字符数（与 evidence 一致）。"),
     _reg("state_offline_edit", "warning", "state 十一表在上次封存后被离线改动（绕过提案写入口）",
          "state/*.json 的法定写入口是提案（sync 合并）：请核对该表改动来源，"

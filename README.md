@@ -39,8 +39,7 @@ python studio.py help --json
 | **Stage 0** | **Architect** | `inherit` | 开局世界公理筑基 (0A)、人物大纲通电 (0B) 与全息对账 (0C) | `bible/`, `characters/`, `outlines/`, `state/` |
 | **Stage 1** | **Director** | `inherit` | 前瞻研判、细纲任务书编织与当章事实变更预期前置声明 | `outlines/vol_XX/beats/ch_XXX.md` |
 | **Stage 2** | **Drafter** | `inherit` | 100% 依据 pack 上下文展开，通俗大白话撰写高张力初稿毛坯 | `manuscript/vol_XX/raw/ch_XXX_v1.md` |
-| **Stage 3A** | **Editor** | `flash` | 结构继承式全篇手术刀加法（深度充实戏剧博弈、神态微动作与潜台词） | `manuscript/vol_XX/raw/ch_XXX_v2.md` |
-| **Stage 3B** | **Stylist** | `flash` | 结构继承式全篇手术刀脱水（切除反刍总结、清零冷脸面瘫词、长句拆短） | `manuscript/vol_XX/raw/ch_XXX_v3.md` |
+| **Stage 3** | **Editor** | `inherit` | 双核手术刀精修与脱水一体化（充实博弈微动作与潜台词＋斩断反刍去冷脸） | `manuscript/vol_XX/raw/ch_XXX_v3.md` |
 | **Stage 4A** | **Auditor** | `flash` | 8 大机械探针初审（禁带 `--adjudicate`）+ 常识出戏审查，输出待修清单 | `log/audit/ch_XXX.md` |
 | **Stage 4B** | **Critic** | `flash` | 资深老白读者纯盲审，评估阅读疲劳度与活人感，输出下章催更便签 | `log/critic/ch_XXX.md` |
 | **Stage 4C** | **Fixer** | `flash` | 复制预定稿至 final，依据 audit 报告靶向微调，跑 `--adjudicate` 盖章放行 | `manuscript/vol_XX/final/ch_XXX.md` |
@@ -78,8 +77,7 @@ workspace/<书名>/
 ├── manuscript/vol_XX/
 │   ├── raw/
 │   │   ├── ch_XXX_v1.md      # 初稿毛坯（Stage 2 Drafter 产出）
-│   │   ├── ch_XXX_v2.md      # 初修骨肉稿（Stage 3A Editor 产出）
-│   │   └── ch_XXX_v3.md      # 通俗脱水预定稿（Stage 3B Stylist 产出）
+│   │   └── ch_XXX_v3.md      # 精修脱水预定稿（Stage 3 Editor 产出，双核加肉脱水一体化）
 │   └── final/ch_XXX.md        # 终局法定定稿（Stage 4C Fixer 修复并发布）
 ├── state/                    # 十一表真值（含 locked/cognition） + inbox/ 提案收件箱 + snapshots/ 快照
 │   ├── rollups/              # 卷级态势折叠（vol_XX.json，供跨卷装配）

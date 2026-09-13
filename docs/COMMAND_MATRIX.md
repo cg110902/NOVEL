@@ -14,8 +14,7 @@
 | **主控 (Director)** | 全局统筹<br/>Stage 1 / 5 | `cockpit`<br/>`calendar [N]`<br/>`simulate branch`<br/>`graph path/neighbors`<br/>`lore compare/entity`<br/>`ask 2.1` / `pov`<br/>`recall`<br/>`beats new`<br/>`sync`<br/>`state rollup`<br/>`check --trend/--bisect` | **总制片人四大实战武器库**：<br/>1. 每章动笔前跑 `cockpit` 与 `calendar 3` 研判态势与危机时钟；<br/>2. 剧情卡点时跑 `simulate branch --write` 生成走向参谋单；<br/>3. 需借力打力时跑 `graph path` 拓扑寻路；<br/>4. Stage 5 跑 `sync` 完成原子状态封存与卷末 `state rollup`。 |
 | **架构师 (Architect)** | Stage 0A / 0B<br/>（仅开新书） | `init`<br/>`milestone add`<br/>`check` | **创世播种双门禁**：<br/>1. `init` 初始化脚手架与物理底座；<br/>2. `milestone add` 播种主线里程碑与达成章节；<br/>3. `check` 确保 Stage 0 结束时 0 errors 通电交卷。 |
 | **起草员 (Drafter)** | Stage 2 | `pack` (资料获取) | **100% 依靠装配包起草**：<br/>仅跑一行 `pack` 获取当章全部写作资料包。杜绝分心与心流打断，把 100% 算力倾注在初稿爆发上。 |
-| **精修师 (Editor)** | Stage 3A | **【绝对零命令】** | **纯文学骨肉做加法**：<br/>不读 beats，不跑命令。专心丰富人物互动潜台词、场景博弈与情绪温差。 |
-| **脱水师 (Stylist)** | Stage 3B | **【绝对零命令】** | **大白话脱水与去冷脸**：<br/>不读 beats，不跑命令。纯粹遣词脱水、消除反刍总结、确保极度通俗易扫读。 |
+| **精修师 (Editor)** | Stage 3<br/>(加肉与脱水一体化) | **【绝对零命令】** | **双核手术刀精修与脱水**：<br/>不读 beats，不跑命令。既深度丰富人物互动潜台词与博弈微动作，又全面大白话脱水、消除反刍总结与冷脸面瘫词，一步到位产出极度好扫读的预定稿 `raw_v3`。 |
 | **审查员 (Auditor)** | Stage 4A | `audit ch_XXX --write`<br/>`ask 2.1` | **确定性探针与逆鳞质检**：<br/>1. 跑 `audit ch_XXX --write` 运行 8 大机械探针；<br/>2. 通读遇人设疑点，必跑 `ask "<角色名>"` 调阅角色卡逆鳞与心理四维，拒绝瞎猜。 |
 | **催更员 (Critic)** | Stage 4B | **【绝对零命令】** | **老白读者纯盲审**：<br/>模拟坐在手机前追更的十年老白读者，纯读者视角盲审预定稿，给出追更心理便签，绝不上帝视角查库。 |
 | **定稿师 (Fixer)** | Stage 4C | `audit ch_XXX --write --adjudicate`<br/>`ask 2.1` | **争议靶向对账定稿与放行盖章**：<br/>针对 Auditor 在 `log/audit/ch_XXX.md` 中提出的争议清单，跑 `ask` 秒查设定，手术刀微调出法定定稿 `final/ch_XXX.md`，修完后跑 `audit ch_XXX --write --adjudicate` 盖章放行。 |

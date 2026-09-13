@@ -757,7 +757,7 @@ PARAM_SPEC: dict[str, dict] = {
         "example": {"power_level": ["突破", "晋升"], "injury": ["断骨", "咳血"]}},
     "words_target": {"shape": "int_pair", "gap": False,
         "desc": "定稿字数目标带 [下限, 上限]（check word_band_deviation / word_band_breach 判定依据）",
-        "example": [2000, 3000]},
+        "example": [1500, 2500]},
     "lines_cap": {"shape": "cap_map", "gap": False,
         "desc": "活跃线索配额 {active_foreshadows, longline_foreshadows, active_knowledge, active_misunderstandings}",
         "example": {"active_foreshadows": 8, "longline_foreshadows": 5,
@@ -925,7 +925,7 @@ def validate_param_value(key: str, value) -> str | None:
             return f"「{key}」必须是 字段名→字符串数组 的对象（形状示例：{eg}）"
 
     elif shape == "int_pair":
-        # 亦容忍字符串形态："[2000, 3000]"（JSON）或 "2000,3000" / "2000 3000"（逗号/空格，中文逗号亦容忍）
+        # 亦容忍字符串形态："[1500, 2500]"（JSON）或 "1500,2500" / "1500 2500"（逗号/空格，中文逗号亦容忍）
         if isinstance(value, str):
             s = value.strip()
             try:
@@ -934,7 +934,7 @@ def validate_param_value(key: str, value) -> str | None:
                 value = None
         if (not isinstance(value, list) or len(value) != 2
                 or any(not isinstance(x, int) or isinstance(x, bool) or x < 1 for x in value)):
-            return f"「{key}」必须是 [下限, 上限] 正整数对（形状示例：{eg} 或字符串 \"2000,3000\"）"
+            return f"「{key}」必须是 [下限, 上限] 正整数对（形状示例：{eg} 或字符串 \"1500,2500\"）"
         if value[0] > value[1]:
             return f"「{key}」下限不能大于上限：{value}"
     elif shape == "cap_map":

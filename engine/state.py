@@ -218,92 +218,6 @@ def defaults_for(key: str) -> dict:
     raise KeyError(f"未知状态键: {key}")
 
 
-INBOX_README = """# state/inbox — 提案收件箱（Stage 4 Reader 交付 / Stage 5 主控审定工位）
-
-一切状态修改从这里进：每章一个 `ch_XXX.json`（填提案以本 README 样例为准，
-业务规则见 `AGENTS.md` 与 `.agents/skills/reader/SKILL.md`）。processed/ = 已应用的审计记录（永不删改；
-唯一例外：`init --force` 整本重开）；failed/ = 失败提案，就地处修复后重跑 `sync`，
-引擎自动捡回（含重名归档的 .2/.3 变体）。
-
-正式提案必须带 operation_id（建议 `<ch>.<角色>.<时间戳/序号>`，如 ch_007.director.0829a、
-ch_007.reader.0901_2125）；`*.draft.json`/`*.template.json`/`*.sample.json` 不参与合并，
-可放这里当草稿。entities.action 支持 upsert/register/retire（register 为 upsert 别名）。
-
-收件箱**单文件制**：每章在途提案仅一份、文件名恰为 `ch_XXX.json`；修补封存章的修订
-并入下一章在途提案随 sync 合并。`sweep_ch_*.json`、`ch_XXX.*.json` 等非规范命名一律
-不参与合并（与正式提案并存时被静默忽略、单独出现时 sync 拒收并给出规范命名提示）。
- 
-
-写提案的纪律：只写增量；事实必须能在本章 final 正文找到出处；不确定就不上账。
-locked 不可逆事实的 note 为必填（写作红线执行提示，如「严禁再次出场，回忆除外」）——
-只记 fact 不记红线，日后判断能否绕过时将无据可依；缺 note 整案拒收。
-current 只写要刷新的字段：缺省/空值＝不修改（引擎跳过空串与空数组，不当作清档）。
-status 只许 active/retired（越界整案回滚进 failed/）；"现状/近况"一律并入 summary——upsert 即覆盖，逐章刷新。
-修订通道（随提案合并，全程留审计痕迹）：
-  timeline.events 条目支持 {"time": "…", "event": "既有事件原文", "replace": "修订后描述"}——
-  按 time+event 逐字命中既有事件后只改写其描述（不新增、chapter 保持原值），未命中整案拒绝；
-  synopsis 支持 {"chapters": {"ch_XXX": {"title": "…", "synopsis": "…"}}——跨章修订历史章的标题/梗概。
-  ⚠️ 跨章梗概修订仅对「已登记」章节生效：指向未注册章整案拒收（不再静默 no-op）。
-lines 字段口径：
-  target_ch 取值 = int 章号（如 21）/ ch_NNN（三位补零，如 ch_007）/ "第N章"（如 "第29章"）/ "longline" 四选一；
-  字符串数字（"21"）与无补零章号（ch_7）均拒收。plant 必填 target_ch。
-  knowledge（秘密线）plant 可携带选填 "holders": ["实体名/别名", …] 声明知情圈——
-  pov 推导对知情圈内角色不再误标「不应知情」（防吃书）；缺省 = 除正文另行交代外全员不知情。
-ledger.pools 资源池口径（ P3-1：此前全部 AI 向文档零说明，池只能读源码试出来）：
-  ⚠️ Stage 0 就应在 bible/04 定死池键名、首章提案建池（灵石/银两/寿元/功勋…），不要等写到有账目才补。
-  新建池：{"pools": {"my_pool": {"name": "灵石", "unit": "块", "initial": 0}}}
-    · name/unit/initial 三项均必填：name/unit 为非空字符串，initial 为整数。
-      省略 initial 即整案拒收——期初余额是账本的基准，省略会被当成 0，
-      而欠账/存量类资源池恰恰不是从 0 开始的（键名打错如 intial 同样拒收）；
-    · 池对象只接受 name/unit/initial 三键，多出任何键即「含未知字段」拒收；
-    · ❌ 严禁声明 "current"——余额一律由流水重算，声明即整案拒收；
-    · 既有池禁止修改 initial（改动 = 拒收）；对既有池声明 name/unit 只出「声明已修订」提示；
-    · 流水 transactions[].pool 引用未声明的池 → 拒收（「流水引用未声明资源池」），
-      所以**先建池、再记流水**；`proposal check` 与 `sync` 都会跑这道账本试算，
-      提案校验期即可暴露（此前本文档写「提案校验期不拦这一条」，与实测相反）；
-      本章合法池键名与 LOCK/COG 已用 ID 水位线已由引擎注入 beats 的「💰 资源池与 ID 水位线」小节；
-    · standard_currency（主通货）为引擎内置池，无需声明即可直接用。
-  记流水：{"ledger": {"transactions": [{"chapter": "ch_007", "pool": "my_pool", "delta": -30,
-           "type": "expense", "subject": "发生了什么", "counterparty": "对手方(选填)",
-           "note": "备注(选填)", "quote": "本章 final 支撑句(选填)"}]}}
-    · chapter 必须等于提案自身的 chapter（跨章写账 = 整案拒收，见 ledger_tx_order）；
-    · delta 用带符号整数（收入正、支出负）；balance_after 由引擎重算，不必手写。
-timeline.clocks 危机时钟口径（ P3-2：此前字段契约完全未文档化，按常识写 id/deadline_ch 必被拒）：
-  合法字段仅五个，多一个即「含未知字段」整案拒收：
-    · name（字符串，必填）：时钟名，如「灯债半年滚利」；
-    · target_ch（整数，必填，≥1）：目标爆发/结算章号——⚠️ 只收 int，不收 "ch_012"/"第12章"/"longline"；
-    · urgency（选填）：low | medium | high | critical；
-    · desc（选填，字符串）：危机内容与超时后果；
-    · status（选填，默认 "Active"）：Active | Triggered | Defused | Expired（首字母大写）。
-  ❌ 没有 id 字段，也没有 deadline_ch——时钟按 name 去重，改名等于新建。
-引文柔性接地（建议携带，绝不阻断）：各条目（entities/lines/locked/cognition/ledger.transactions/timeline.events/timeline.clocks/synopsis/current.present_moods）
-  可携带 "quote": "凭印象摘录的本章 final 支撑句"——引擎模糊接地：相似度 ≥85% 视为命中；
-  60~85% 提示「近似命中」；更低仅提示「存疑」。全程只出提示、绝不阻断 sync，
-  摘录严禁逐字抠字眼浪费算力；但战死/退役等高危变更强烈建议附引文，便于日后回溯审计。
-current 出厂情绪快照（选填；在场角色章末隐含情绪，pack 自动注入 P1 实体块与下章 beats 速查）：
-  {"current": {"present_moods": {"林牧": {"label": "暴怒", "level": 4, "quote": "final 支撑句"}}}}
-  · 键必须是已登记实体名/别名（否则 check 报 mood_character_unknown 警告）；
-  · label 必填（情绪词，不限词表）；level 选填 1~5（1=微澜，5=失控边缘）；
-  · quote 建议携带（走同一套柔性接地）；缺席/空对象 = 本章无特殊情绪交代。
-对象化引用字段（v2，均选填；填了即享精确装配与机械校验）：
-  current.time_day（正整数故事日计数）/ pov_ref / place_ref / present_refs（实体 id 或法定名）；
-  entities[].injury_level（0~5）/ injury_desc / renown（整数声望）；
-  entities[].relations[] 可带 strength（1~5）/ status（active/resolved）/ since_ch（ch_NNN）；
-  locked[].refs（关联实体引用，免记忆盲区）；cognition[].truth_ref（GUN-/KNO-/EVT-/LOCK-编号）；
-  timeline.events[] 可带 id（EVT-编号，缺省自动分配）/ participants / place / causes / consequences。
-  按 id 修订事件：{"id": "EVT-003", "replace": "新描述"}；补元数据：{"id": "EVT-003", "participants": [...]}。
-  引用完整性（分两档，选填不罚、填错点名）：pov_ref/place_ref/present_refs 悬空是 error（state_inconsistent，
-  阻断）；其余 participants/refs/holders/character/address 键须命中（否则 entity_ref_unknown warning）；
-  truth_ref 只收 GUN-/KNO-/MIS-/EVT-/LOCK-编号，causes/consequences 只收 EVT-编号且须存在（否则 dangling_ref）。
-  EVT place 为场景描述自由文本，不查。
-v3 寻址式提案（schema novel-studio.state-mutation/v3；与 v2 二选一，同一文件禁止混写）：\n  取 `proposal new --v3` 骨架；ops 数组每元素 = {table, action, …载荷}，寻址全十一表：\n  · persons/items/factions/places（严格寻址——v3 核心价值：名写错不再静默新建碎片）：\n    create {\"table\":\"persons\",\"action\":\"create\",\"entry\":{\"id\":\"…\",\"name\":\"…\",…}}——\n      id/名必须双不存在；type 缺省按寻址表推断（persons→person…），与地址表矛盾则拒收；\n    update {\"table\":\"items\",\"action\":\"update\",\"id\":\"…\",\"set\":{…}}——id 须存在且归属表一致，\n      set 非空、禁 name/id（改名走手术刀），set.type 变 kind 触发搬迁（警告留痕）；\n    retire {\"table\":\"places\",\"action\":\"retire\",\"id\":\"…\"}——id 须存在且归属表一致。\n    寻址失败（id 不存在/表错位/重名）整案拒收，错误带 [op#N table/action] 定位。\n  · current：{\"table\":\"current\",\"action\":\"update\",\"set\":{要刷新的字段}}（同案重复 set 同键拒收）。\n  · lines：{\"table\":\"lines\",\"action\":\"plant/remind/resolve/…\",\"kind\":\"foreshadow|misunderstanding|knowledge\",…余同 v2 条目字段}（kind 必填，只认这三个值，漏填整案拒收）。\n  · timeline：append_event {\"event\":{…}} / revise_event {\"id\":\"EVT-…\",\"replace\":\"…\"} /\n    append_clock {\"clock\":{…五字段…}} / append_arc {\"arc\":{…}} / append_milestone {\"milestone\":{…}}。\n  · locked/cognition：{\"table\":\"locked\",\"action\":\"plant/upsert/retire\",…余同 v2 条目字段}。\n  · ledger：append_transaction {\"entry\":{…流水…}} / declare_pool {\"pool\":\"池键名\",\"spec\":{\"name\",\"unit\",\"initial\"}}。\n  · synopsis：{\"table\":\"synopsis\",\"action\":\"set\",…余同 v2 synopsis 字段}。\n  分层门：信封错→先修信封；寻址错→[op#N]点名；字段错→沿用 v2 措辞。\n  locked_candidates 无 v3 op（要用请写 v2 提案）。\n  locked 提名经 sync 记入 log/locked_candidates.jsonl 待审；审定后走 locked plant 入账（fact 原文复用自动核销），check 会提醒未审定项。
-  ⚠️ consequences 是历史遗留分区：引擎只出提示、**不落盘**（合并时显式降级警告）——
-     因果后果请写进 `cognition_delta`（角色认知变化）或 `timeline.events[].causes/consequences`；
-     细纲声明"本章应发生而正文没写"的事，写进回执备注交主控，**不要**用 consequences 记账。\n注：提案写入后由 Stage 5 主控统一运行 `python studio.py sync ch_XXX` 校验并合并（支持 --dry-run 预演）。
-Stage 4 Reader 仅需落盘本 JSON 即可交付。
-"""
-
-
 def init_state(book: Path) -> int:
     sd = state_dir(book)
     seeded = 0
@@ -317,9 +231,8 @@ def init_state(book: Path) -> int:
     (sd / "snapshots").mkdir(parents=True, exist_ok=True)
     (Path(book) / "log" / "review").mkdir(parents=True, exist_ok=True)
     (Path(book) / "log" / "critic").mkdir(parents=True, exist_ok=True)
-    readme = sd / INBOX_NAME / "README.md"
-    if not readme.exists():
-        readme.write_text(INBOX_README, encoding="utf-8")
+ 
+
     common.dump_json(migrations.version_path(book),
                      {"version": migrations.CURRENT_STATE_VERSION,
                       "created_at": datetime.date.today().isoformat()})
