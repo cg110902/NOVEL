@@ -182,11 +182,11 @@ graph TD
 
 ### 🚨 【总控派发令标准 4 行铁律 · 严禁添油加醋与主观指导】
 总控下达工序派发令时，**必须严格死守 AGENTS.md 规定的标准 4 行格式，绝对严禁添加任何主观发挥、文学说教、情绪指导或额外废话！**
-- **第 1 行（标题）**：`【章节工序派发令（免读技能卡直接开工）】`
+- **第 1 行（标题）**：`【章节工序派发令】`
 - **第 2 行（位置）**：`- 书籍工作区：workspace/<书名> ｜ 分卷章节：vol_XX / ch_XXX`
 - **第 3 行（角色）**：`- 执行阶段：Stage X (<角色名>) ｜ 算力级别：[inherit / flash]`
 - **第 4 行（输入）**：`- 核心输入/待修清单：[输入源文件相对路径/内联核心待修项或实体事实，免查多余文件]`
-- **第 5 行（指令）**：`- 执行指令：起手直接执行[第1步动作] ➔ 准读/准写=[调用工具直接落盘（禁传ArtifactMetadata）] ➔ 执行[专属验证命令] ➔ 3行回执交卷（禁倒嚼/禁发正文聊天/禁写脚本/落盘即走）`
+- **第 5 行（指令）**：`- 执行指令：首步并发读取角色技能卡与核心输入 ➔ 展开作业 ➔ 准写=[调用工具直接物理落盘（禁传ArtifactMetadata）] ➔ 执行[专属验证命令] ➔ 3行回执交卷（中途禁回读技能卡/禁发正文聊天/禁写脚本/落盘即走）`
 > ⚠️ **【红线违纪警告】**：严禁增加第 5 个子项列表行；严禁在派发令前后附加说明段落；严禁在指令中附带任何指导！所有剧情爆发由细纲（beats）与 Drafter 依照 pack 自然展开！
 
 ```mermaid
@@ -205,37 +205,37 @@ graph TD
 #### 📋 各阶段标准 4 行派发模板（纯动作流，一字不添）：
 1. **Stage 2 (Drafter | Model: inherit)**：
    ```text
-   【章节工序派发令（免读技能卡直接开工）】
+   【章节工序派发令】
    - 书籍工作区：workspace/<书名> ｜ 分卷章节：vol_XX / ch_XXX
    - 执行阶段：Stage 2 (Drafter 初稿起草) ｜ 算力级别：inherit
    - 核心输入/待修清单：运行 python studio.py pack ch_XXX --full 获取装配包（pack 数据已完全自完备，严禁二次查验）
-   - 执行指令：起手直接执行 pack 取包 ➔ pack 数据已完全自完备，严禁二次查验（严禁调用 view_file 翻看 beats 细纲），直接起笔展开正文（字数 1500~2500） ➔ 准写=[调用 write_to_file 直接落盘至 manuscript/vol_XX/raw/ch_XXX_v1.md（禁传 ArtifactMetadata）] ➔ 3行回执交卷（禁倒嚼/禁发正文聊天/禁写脚本/落盘即走）
+   - 执行指令：起手若未装载技能卡首步读取 .agents/skills/drafter/SKILL.md 再运行 pack 取包 ➔ 依据 pack 展开正文（字数 1500~2500） ➔ 准写=[调用 write_to_file 直接落盘至 manuscript/vol_XX/raw/ch_XXX_v1.md（禁传 ArtifactMetadata）] ➔ 3行回执交卷（中途禁回读技能卡/禁发正文聊天/禁写脚本/落盘即走）
    ```
 2. **Stage 3 (Editor | Model: inherit)**：
    - ⚡ 总控派发前预执行（0.01秒）：`Copy-Item -Force "workspace/<书名>/manuscript/vol_XX/raw/ch_XXX_v1.md" "workspace/<书名>/manuscript/vol_XX/raw/ch_XXX_v3.md"`
    ```text
-   【章节工序派发令（免读技能卡直接开工）】
+   【章节工序派发令】
    - 书籍工作区：workspace/<书名> ｜ 分卷章节：vol_XX / ch_XXX
    - 执行阶段：Stage 3 (Editor 双核精修与脱水) ｜ 算力级别：inherit
    - 核心输入/待修清单：manuscript/vol_XX/raw/ch_XXX_v3.md（底稿已预置）
-   - 执行指令：起手直接 view_file 单次全读 v3 ➔ 准写=[调用 replace_file_content 聚焦5~7处核心大块倒序替换落盘至 manuscript/vol_XX/raw/ch_XXX_v3.md] ➔ 3行回执交卷（绝对零命令/禁倒嚼/禁发正文聊天/禁写脚本/落盘即走）
+   - 执行指令：首步调用 view_file 同时读取 .agents/skills/editor/SKILL.md（锁定全题材文风与负面词库）与 raw/ch_XXX_v3.md 底稿 ➔ 依据规范全篇通俗大白话重塑 ➔ 准写=[调用 write_to_file 物理落盘覆盖 v3（禁传 ArtifactMetadata）] ➔ 【绝对零命令】 ➔ 3行回执交卷并在回执后附带完整正文（中途禁回读技能卡/禁写脚本/落盘即走）
    ```
-3. **Stage 4A (Auditor | Model: flash)**：
+3. **Stage 4A (Auditor | Model: inherit)**：
    - ⚡ 总控派发前预执行（0.2秒）：`python studio.py audit ch_XXX --write -w "workspace/<书名>"`
    ```text
-   【章节工序派发令（免读技能卡直接开工）】
+   【章节工序派发令】
    - 书籍工作区：workspace/<书名> ｜ 分卷章节：vol_XX / ch_XXX
    - 执行阶段：Stage 4A (Auditor 内容质检) ｜ 算力级别：flash
    - 核心输入/待修清单：manuscript/vol_XX/raw/ch_XXX_v3.md 与 log/audit/ch_XXX.md（探针骨架已预置）
-   - 执行指令：起手直接 view_file 单次全读 v3 审查常识 ➔ 准写=[调用 replace_file_content 预制修补配方补充至 log/audit/ch_XXX.md] ➔ 3行回执交卷（绝对零命令/禁盖章/禁改正文/禁写脚本/落盘即走）
+   - 执行指令：首步调用 view_file 同时读取 .agents/skills/auditor/SKILL.md、v3 预定稿与 log/audit/ch_XXX.md ➔ 审查常识与出戏 ➔ 准写=[若发现语义问题调用 replace_file_content 预制修补配方补充至 log/audit/ch_XXX.md] ➔ 【绝对零命令】 ➔ 3行回执交卷（禁盖章/禁改正文/禁写脚本/落盘即走）
    ```
 4. **Stage 4B (Critic | Model: flash)**：
    ```text
-   【章节工序派发令（免读技能卡直接开工）】
+   【章节工序派发令】
    - 书籍工作区：workspace/<书名> ｜ 分卷章节：vol_XX / ch_XXX
    - 执行阶段：Stage 4B (Critic 老白催更便签) ｜ 算力级别：flash
    - 核心输入/待修清单：manuscript/vol_XX/raw/ch_XXX_v3.md 与 state/current.json
-   - 执行指令：起手直接 view_file 读稿与现场 ➔ 撰写 300~500 字便签 ➔ 准写=[调用 write_to_file 直接落盘至 log/critic/ch_XXX.md（禁传 ArtifactMetadata）] ➔ 3行回执交卷（零命令/禁倒嚼/禁发正文聊天/落盘即走）
+   - 执行指令：首步调用 view_file 同时读取 .agents/skills/critic/SKILL.md、v3 预定稿与 state/current.json ➔ 撰写 300~500 字追更便签 ➔ 准写=[调用 write_to_file 直接落盘至 log/critic/ch_XXX.md（禁传 ArtifactMetadata）] ➔ 【绝对零命令】 ➔ 3行回执交卷（落盘即走）
    ```
 5. **Stage 5 (Director 极速原子定稿与合账封存 · 严格 ≤0.5 秒极限闭环)**：
    - 🟢 **日常快轨（95% 场景 · 全绿灯秒级收口）**：

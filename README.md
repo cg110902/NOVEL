@@ -40,7 +40,7 @@ python studio.py help --json
 | **Stage 1** | **Director** | `inherit` | 前瞻研判、细纲任务书编织与当章事实变更预期前置声明 | `outlines/vol_XX/beats/ch_XXX.md` |
 | **Stage 2** | **Drafter** | `inherit` | 100% 依据 pack 上下文展开，通俗大白话撰写高张力初稿毛坯（仅跑1次pack） | `manuscript/vol_XX/raw/ch_XXX_v1.md` |
 | **Stage 3** | **Editor** | `inherit` | 双核手术刀精修与脱水一体化（总控预置底稿，纯读写【绝对零命令】） | `manuscript/vol_XX/raw/ch_XXX_v3.md` |
-| **Stage 4A** | **Auditor** | `flash` | 常识与出戏审查，预制修补配方（总控预置探针骨架，纯读写【绝对零命令】） | `log/audit/ch_XXX.md` |
+| **Stage 4A** | **Auditor** | `inherit` | 常识与出戏审查，预制修补配方（总控预置探针骨架，纯读写【绝对零命令】） | `log/audit/ch_XXX.md` |
 | **Stage 4B** | **Critic** | `flash` | 资深老白读者纯盲审，评估阅读疲劳度与活人感，输出下章催更便签（【绝对零命令】） | `log/critic/ch_XXX.md` |
 | **Stage 5** | **Director / Engine** | `inherit` | 极速三连原子收口：`finalize` 自动定稿盖章 ➔ `proposal auto` 动态事实入账 ➔ `sync` 封存（≤0.5秒） | `final/ch_XXX.md`, `state/*.json` |
 | **低频巡检** | **Librarian** | `flash` | 每 10 章事实深层巡检打捞遗漏次要实体；卷末执行对账大修（纯Markdown对账单） | `log/review/` |

@@ -945,9 +945,9 @@ def _consistency_section(book, n: int, cur: dict, ents: list[dict], lines_st: di
     except Exception as exc:  # 账本读不回来 ≠ 没有资源池，必须显式说出来
         res_st, ledger_err = {}, str(exc)
     pools = (res_st.get("pools", {}) if isinstance(res_st.get("pools", {}), dict) else {})
-    # 键形状小节恒注入（见下）：Reader 的网关禁读 state/，它唯一的提案契约来源就是 beats。
+    # 键形状小节已由 proposal auto 算法取代，Reader 已退役，不再注入 beats 增加总控负担
     if not roster and not kno_list and not locked_entries and not pools:
-        return _proposal_shapes_section()
+        return ""
     out = ["## 本章一致性速查（引擎自动注入 · 总控可增删）", ""]
     # 资源池合法键名 + LOCK 已用 ID 水位线：Reader 提案若引用未声明的池键或复用已用 ID，
     # Stage 5 会硬拒（ledger_pool_undeclared / locked_entry_id_reuse）——先给清单再让人写。
@@ -1016,9 +1016,8 @@ def _consistency_section(book, n: int, cur: dict, ents: list[dict], lines_st: di
             secret = _clip(str(k.get("secret", "")), 60)
             note = _clip(str(k.get("note", "") or "保密中"), 60)
             out.append(f"- [{k.get('id', 'KNO')}] 秘密：{secret} ｜ 知情边界：{note}")
-        out.append("")
-    out.append(_proposal_shapes_section())
-    return "\n".join(out)
+    # out.append(_proposal_shapes_section())  # 已由 proposal auto 取代，不再注入 beats 浪费 token
+    return "\n".join(out).strip()
 
 
 def _proposal_shapes_section() -> str:
