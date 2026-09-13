@@ -63,4 +63,4 @@ schema_version: novel-studio.location/v2
 
 ## 历史大事件与场景变迁（Event Footprints）
 
-- [第一现场] 第 {{slot:loc_event_ch|1}} 章：{{slot:loc_event_desc|萧灵汐在此强行双修唤醒神棺，主角万年神躯复苏，第一案发核心现场}}；
+- [第一现场] 第 {{slot:loc_event_ch|1}} 章：{{slot:loc_event_desc|开局核心冲突或命运转折在此爆发，主角显露不对称优势，第一案发核心现场}}；

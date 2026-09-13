@@ -1,76 +1,94 @@
 ---
 name: novel-architect
-description: Universal worldbuilding architect and setup generator for Novel Studio (Stage 0). Builds project bible (Stage 0A) and character profiles, outlines, initial state tables, milestones (Stage 0B) in an isolated sandbox, followed by holographic cross-reconciliation (Stage 0C).
+description: Universal worldbuilding architect and setup generator for Novel Studio (Stage 0). Covers all genres. Builds project bible (Stage 0A), MVU character cards & outlines, initial state tables (Stage 0B), and holographic verification (Stage 0C).
 ---
 
-# SKILL — novel-architect（开局架构师专属手册 · Stage 0）
+# SKILL — novel-architect（全题材开局架构师专属手册 · Stage 0 筑基指南）
 
 > ⚡ **【开工第一步 · 防发呆零内耗死命令】**：
-> 派发令已给定书名、题材、主角与核心脑洞。**若未在上下文装载本手册仅限首步读取 1 次，进入创世架构后绝对严禁回读倒嚼本手册！严禁漫游目录！**
-> 起手**必须直接执行对应子阶段工具操作！** 消除所有占位槽位，以工具物理落盘（**严禁传递 `ArtifactMetadata`**）后输出 3 行回执即刻交卷退出，绝不滞留！
+> 派发令已给定书名、题材、主角名与核心创意。**读取本手册仅限首步 1 次，严禁反复回读倒嚼！严禁漫游目录！**
+> 任何题材（都市、科幻、历史、悬疑、玄幻等）皆按本手册通用法则推导。
+> 起手**必须直接执行工具操作！** 彻底消灭所有 `{{slot:}}` 占位符与模板 `<!-- ... -->` 注释，
+> 交付 MVU 六件套并完成状态机六表通电，以工具物理落盘（**严禁传递 `ArtifactMetadata`**），`check` 0 报错后输出 3 行回执即刻交卷，绝不滞留！
 
 ---
 
-## 🎯 一、 你的唯一任务（干完就走）
+## 🎯 一、 你的唯一任务（从 0 到 1 筑基并完全通电）
 
-专注于全书从 0 到 1 的顶层创世架构搭建（Stage 0），在独立沙盒中分三步执行，消除所有 `{{slot:}}` 占位符，直接调用工具将设定、卡片、大纲与状态表物理落盘，确保 `check` 0 报错！
+在独立沙盒中分三步推进，交付全书物理与数据底座：
+1. **Stage 0A**：跑 `studio.py init`，依据作者脑洞填实 `bible/` 圣经六表与 `project.json`（消除 `{{slot:}}` 与注释）；
+2. **Stage 0B**：交付“冷启动最小可用宇宙 (MVU 六件套)”，完成 `state/` 六表全息通电；
+3. **Stage 0C**：跑 `studio.py check` 确保 **0 errors**，大模型三棱镜常识逻辑扫荡，闭环交卷！
 
 ---
 
 ## ⚡ 二、 极速三步工序（单线推进，绝不空转）
 
-### 阶段一：Stage 0A【世界观公理筑基 (Architect-World)】
-1. **初始化工作区**：在终端运行 `python studio.py init -w "workspace/<书名>" -t "<书名>" -g "<题材>" -p "<主角名>"`；
-2. **直接调用工具填实圣经六表与 `project.json`**（消除所有 `{{slot:}}`）：
-   - `01_world_axioms.md`（Logline、空间地理尺度、底层法则公理、金手指代偿）；
-   - `02_power_system.md`（1~12 级常量梯阶与破坏力标尺）；
-   - `03_factions_geography.md`（地图骨架与核心势力拓扑）；
-   - `04_economy_items.md`（货币购买力与道具品阶）；
-   - `05_special_mechanics.md`（题材专属机制与阵营相克）；
-   - `06_deviations.md`（绝对偏离清单，严禁触碰的套路红线）；
-   
-   > 🚨 **【全题材通用 · Stage 0A 防瞎填三大铁律（严防假大空）】**：
-   > 1. **公理即客观机制与代价（拒绝空洞背景散文）**：无论何种题材（都市异能/科幻末世/悬疑无限/历史架空/奇幻玄幻），严禁填写无约束力的“历史悠久、科技发达、神秘莫测”等抒情废话。必须写死底层运行机制：**触发前置条件、运转规则逻辑、作用边界极限、以及不可豁免的损耗/反噬代价**；
-   > 2. **能力与破坏力生活化物理锚点（杜绝战力脱节与形容词通胀）**：任何体系的阶梯划分（等级/境界/职能阶层/科技代际），必须以凡人与现实物理环境可直接感知的标尺严格锚定（如：单人抗衡常规人力数量、对冷热兵器或常规物理冲击的防御阈值、单点击穿破坏的物理建筑尺度如门窗/砖石/街区/掩体），严禁使用“恐怖如斯、深不可测”等空洞修辞；
-   > 3. **核心金手指/异常资源锁死代偿与上限**：无论金手指形态（系统面板、未知造物、重生物资、超自然异能、家族特权），必须明确限定：**单次/阶段性收益上限、严格触发限制、以及潜在致命破绽或排他性代偿成本**，严禁出现无门槛、无上限、无风险的全知全能。
+### 步骤 1：Stage 0A【世界观公理与设定筑基 (Architect-World)】
+1. **运行初始化命令**：
+   ```powershell
+   python studio.py init -w "workspace/<书名>" -t "<书名>" -g "<题材>" -p "<主角名>"
+   ```
+2. **填实圣经六表与 `project.json`**（消灭所有 `{{slot:}}`，删除模板自带的 `<!-- ... -->` 指南注释）：
+   - `bible/01_world_axioms.md`：
+     - **Logline**：公式 `[主角身份/处境] 在 [危机背景] 中，依靠 [核心不对称优势]，对抗 [核心阻碍]，实现 [主线目标]`；
+     - **空间三层**：基础层（新手舞台） ➔ 中进层（中盘舞台） ➔ 极顶层（终局舞台）；
+     - **3~5 条底层公理**：客观物理/社会法则，必须标明破坏法则时的反噬代价；
+     - **金手指四要素闭环**：机制原理 + 消耗/代偿代价 + **当前阶段绝对做不到的事（防开局无敌崩张力）** + 升级阶梯。
+   - `bible/02_power_system.md`：
+     - **Tier 1~5 实力梯阶与实物标尺**：用具体的受力形变、武器防御阈值、调动规模或账户量级说话，**绝对禁止使用“恐怖如斯/深不可测”等空洞形容词**；
+     - **越级反杀支点**：写明主角凭借何种确凿物理机制（信息差/克制道具/弱点打击）跨阶克敌，严禁唯心爆种。
+   - `bible/03_factions_geography.md`：地理版图；三大核心势力与真实利益冲突（争夺资源/市场/生存/理念），拒绝无脑恶霸。
+   - `bible/04_economy_items.md`：
+     - **购买力平价 (PPP) 锚定**：锁定 1 单位（底层日常口粮）、100 单位（体面家当/精良装备）、百万/千万级（撬动世界格局的战略极值）的实物比率；
+     - **道具五阶与损耗法则**：凡/良/珍/绝/神，明确使用代价、充能上限与持有者唯一性。
+   - `bible/05_special_mechanics.md`：题材独家风味机制（如竞业协议/义体排异/宗法礼制/灵异规则/心魔劫等）及负荷代偿。
+   - `bible/06_deviations.md`：本书反俗套偏离清单，推翻同题材中最烂俗的 3~5 个套路（起草员创作高压线）。
+   - `project.json`：填实必填字段，配置题材专属停用词与悬念钩子词种子。
 
-3. **物理落盘交卷**：调用 `write_to_file` 或 `replace_file_content` 写入（仅传 4 个核心参数，**严禁传递 `ArtifactMetadata`**），提交 0A 回执。
+### 步骤 2：Stage 0B【冷启动 MVU 六件套与状态机通电 (Architect-Story & Energization)】
+严禁建 100 张虚无废卡！必须严格交付 **MVU 六件套** 并立即执行 **状态机六表全息通电**：
+1. **MVU 六件套交付清单**：
+   - 👤 **1. 主角专属卡 (`characters/protagonist.md`)**：Front-matter 规范闭环、心理四维（Want 眼前欲望/Need 灵魂渴求/Fear 致命软肋/Lie 认知谎言）、触碰必死的绝对逆鳞、专属习惯微动作库（去冷脸面瘫）、恒定称谓矩阵；
+   - 👥 **2. 关键搭档/女主卡 (`characters/<搭档名>.md`)**：独立生存诉求，锁定与主角的法定互称；
+   - 🦹 **3. 首卷核心对手卡 (`characters/<对手名>.md`)**：合理的利益争夺或生存避险动机，拒绝无脑送人头；
+   - ⚔️ **4. 核心道具/法宝卡 (`entities/items/<道具名>.md`)**：明确 `holder: "主角名"`、品阶、剩余充能 `charges`、单次代价 `cost_per_use`；
+   - 🏰 **5. 核心初始势力卡 (`entities/factions/<势力名>.md`)**：掌权人 `leader`、总部 `headquarters`、危险等级 `danger_level`；
+   - 🗺️ **6. 开局场景/地点卡 (`entities/locations/<地名>.md`)**：长宽空间物象、特殊环境法则 `environment_rules`；
+   - 📖 **7. 大纲双件套**：`outlines/main_plot.md`（三幕主干脊柱）与 `outlines/vol_01/outline.md`（首卷四分位大纲）。
+2. **状态机六表全息通电规约**（卡片写完必须同一轮写入 `state/`，严禁留空）：
+   - `persons.json`, `items.json`, `factions.json`, `places.json`：注册对应实体，设好对应属性；
+   - `current.json`（开局第一现场）：填实 `time`（开局动笔时刻）、`location`（对齐地点卡）、`situation`（一句话危机处境）、`power_level`（主角初始层级）、`equipment`、`assets`、`present_characters`（第1章开场在场人）、`loadout`（四件套：职业核心、机动手段、对抗招式、绝杀底牌）；
+   - `lines.json`：埋设首卷贯穿暗线 `GUN-001`、机密知情差 `KNO-001`、外界认知偏差 `MIS-001`；
+   - `locked.json`：登记世界运转或主角身上不可撤销的既定事实 `LOCK-001`；
+   - `ledger.json`：在 `pools` 中声明本题材需记账的货币池（如 `"stone": {"name": "下品灵石", "unit": "枚", "initial": 0, "current": 0}`）；
+   - 命令行添加首卷破局里程碑：
+     ```powershell
+     python studio.py milestone add --title "完成开局破局首战" --target-ch 5 --desc "粉碎开局危机，夺回核心主动权"
+     ```
 
-### 阶段二：Stage 0B【人物大纲编织与状态通电 (Architect-Story)】
-1. **直接调用工具生成卡片与大纲**：
-   - `characters/protagonist.md`（主角档案：Want/Fear/逆鳞/称谓/微动作）；
-   - `characters/<角色名>.md`（首卷核心配角/女主/反派卡）；
-   - `entities/`（核心法宝、宗门、地标卡）；
-   - `outlines/main_plot.md`（全书故事脊柱）与 `outlines/vol_01/outline.md`（第 1 卷四分位大纲）；
-2. **状态表初始化**：
-   - 登记 `state/persons.json`, `items.json`, `factions.json`, `places.json`（实体名册四表）；
-   - 登记 `state/lines.json`（首卷核心伏笔 GUN-001 与秘密 KNO-001）；
-   - 登记 `state/current.json`（开局现场、主角初始随身家底 assets 与装备 equipment）；
-   - 登记 `state/locked.json`（不可逆事实 LOCK-001 起号）；
-   - 运行 `python studio.py milestone add --title "..." --target-ch N --desc "..."` 登记首卷里程碑；
-3. **物理落盘交卷**：调用工具落盘后提交 0B 回执。
-
-### 阶段三：Stage 0C【全息双轨审查与体检闭环 (Architect-Inspector)】
-1. **第一轨【机器死算·机械账目】**：
-   - 七维拉通核查：称谓矩阵两两互称无漏水、战力阶级咬合、道具权属无冲突、时间线自洽；
-   - 在终端运行 `python studio.py check -w "workspace/<书名>"` 确保 **0 errors**（warnings 均为创作参考，无需清零）；
-2. **第二轨【大模型常识挑刺·三棱镜全题材逻辑审查（双核防暗伤）】**：
-   - 架构师在交卷前必须使用大模型推理能力进行 3 维全题材常识逻辑扫荡，发现矛盾立即调用工具纠偏：
-     - **因果与时空尺度（Causality & Scale）**：地理空间跨度与当期可用交通工具/移动速度是否吻合？事件发生的时间跨度是否与主线悬顶危机倒计时发生时差穿帮？
-     - **底层经济与购买力自洽（Economy & Purchasing Power）**：基础流通货币购买基础生活生存物资（口粮、日用品、常规消耗品）的购买力基准是否稳定？底层平民/底层人员与中高层掌控者的资源收支倍率是否符合基本社会分工常识，严禁数值随意脱节；
-     - **人性动机避险与利益博弈（Psychological Plausibility）**：任何阵营角色（包括对手、同盟、路人）的行为举措必须合乎生存避险、利益权衡或组织戒律本能，严禁为了强推剧情而让角色做出违背自身利益逻辑的机械降智送死举动；
-3. **闭环交卷**：直接调用 `replace_file_content` 修正后再次 check 0-error，提交 0C 完工回执！**严禁在通过后留恋滞留！**
+### 步骤 3：Stage 0C【全息双轨审查与闭环交卷 (Architect-Inspector)】
+1. **第一轨【机器硬闸门 · 必须 0 errors】**：
+   - 终端运行：`python studio.py check -w "workspace/<书名>"`；
+   - 零容忍项：未填槽位 `unfilled_slot` 必须为 0（彻底消除 `{{slot:...}}` 与 `<!-- ... -->` 注释）；未注册角色 `unregistered_character` 必须为 0；`project.json` 必填项严禁留空。
+2. **第二轨【大模型三棱镜常识逻辑扫荡】**：
+   - 因果时空尺度自洽、经济购买力平价自洽、人性利益避险与动机自洽。
+3. **闭环交卷**：调用 `replace_file_content` 修复微瑕，复跑 `check` 确认 **0 errors**，输出 3 行回执即刻交卷！
 
 ---
 
 ## 🔒 三、 白名单与绝对红线
 
 - 💻 **准跑命令**：`studio.py init`、`studio.py milestone add`、`studio.py check`；
-- 📖 **准读输入**：`templates/*` 模板、`bible/*` 设定；
-- ✍️ **准写工具**：调用 `write_to_file` / `replace_file_content` 写入文件（**严禁传递 `ArtifactMetadata`**）；
+- 📖 **准读输入**：`templates/*` 模板、`bible/*` 设定、`state/*` 数据；
+- ✍️ **准写工具**：调用 `write_to_file` / `replace_file_content` 写入（**严禁传递 `ArtifactMetadata`**）；
 - 🚫 **绝对红线**：
-  - 严禁在对话框输出长文本设定（必须工具落盘）；
-  - 严禁写小说正文；严禁阅读 `engine/` 源码；严禁编写任何 PowerShell / Python 自查脚本；交卷后严禁留恋滞留。
+  - 严禁在对话框输出长篇大论的世界观设定小说（必须直接调用工具物理落盘）；
+  - 严禁擅自编写任何 PowerShell / Python 自查脚本；
+  - 严禁窥探或修改 `engine/` 源码；
+  - 严禁遗留任何 `{{slot:...}}` 占位符；
+  - 严禁建卡不给 `state/` 通电；
+  - `check` 0 报错通过后立即交卷，严禁留恋滞留！
 
 ---
 
@@ -79,6 +97,6 @@ description: Universal worldbuilding architect and setup generator for Novel Stu
 ```text
 【章节工序完工回执】
 - 完工阶段：Stage 0 [0A/0B/0C] (Architect)
-- 产出路径：workspace/<书名>/[bible/characters/outlines/state]
-- 核心指标：设定填实通电 ｜ 0-error 验证通过 ｜ 工具直接物理落盘 ｜ 验收达标无滞留
+- 产出路径：workspace/<书名>/[bible/characters/entities/outlines/state]
+- 核心指标：MVU六件套落盘 ｜ 状态机六表通电 ｜ 0-slot 0-error 验证通过 ｜ 验收达标无滞留
 ```

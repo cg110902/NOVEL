@@ -71,6 +71,7 @@ class EntityEntry(BaseModel):
     card: Optional[str] = Field(None, description="对应卡片路径，如 characters/protagonist.md")
     summary: Optional[str] = Field(None, description="一句话实体简介")
     status: Optional[EntityStatus] = Field(None, description="活跃/退场状态")
+    schema_version: Optional[str] = Field(None, description="卡片或实体规范版本")
 
     # 实力与层级标尺（全题材通用）- 区间由 checks 层 entity_tier_invalid 守卫（1-12），
     # 模型层不设 ge/le 以便该检查码可达（此前模型层直接拒收，导致该码为死码）。

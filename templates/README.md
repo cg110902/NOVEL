@@ -41,7 +41,7 @@ templates/
 
 | 模板源文件 | `studio.py init` 目标路径 | 负责角色 | 核心功能与引擎联动 |
 |---|---|---|---|
-| `project.json` | `project.json` | 引擎自动 | **20 个顶层键**：建档元数据 + 引擎旋钮（`words_target`/`lines_cap`/`audit_mode`/`tier_shift_grace`/`voiceprint`/`reader_memory`/`state_watch`）+ 取证词表 + **六张题材词表**（脚手架带跨题材兜底种子，Architect 须按本书题材**重写**；缺席＝该档停用、`[]`＝明确关闭。供参流程：`config guide` → `config suggest` → `config set <键> --merge`） |
+| `project.json` | `project.json` | 引擎自动 | **21 个顶层键**（元数据 5 + 算法参数 16）：建档元数据 + 引擎旋钮（`words_target`/`lines_cap`/`audit_mode`/`tier_shift_grace`/`voiceprint`/`reader_memory`/`state_watch`）+ 取证词表 + **六张题材词表**（脚手架带跨题材兜底种子，Architect 须按本书题材**重写**；缺席＝该档停用、`[]`＝明确关闭。供参流程：`config guide` → `config suggest` → `config set <键> --merge`） |
 | `bible/01_world_axioms.md` | `bible/01_world_axioms.md` | Architect | 世界底层物理与逻辑公理，金手指运转机制 |
 | `bible/02_power_system.md` | `bible/02_power_system.md` | Architect | 力量/社会地位实物标尺，默认恒给 `pack` P0；细纲声明 `world_refs` 后改为按章取用 |
 | `bible/03_factions_geography.md` | `bible/03_factions_geography.md` | Architect | 地缘版图与势力利益冲突拓扑，默认恒给 `pack` P0（同上，可被 `world_refs` 收窄） |
@@ -124,11 +124,15 @@ templates/
      - `danger_tier`: 地点危险系数（`1 ~ 10`）
      - `danger_level`: 危险评级文字说明（`str`，如“安全腹地/争端前线/绝地死境”，与 `danger_tier` 形成数值孪生）
      - `environment_rules`: 地理环境法则与准入门槛（`array[str]`）
-   - 🎭 **感官物象与称谓锁（防冷脸与防吃书）**：
+   - 🎭 **感官物象、叙事元数据与称谓锁（防冷脸与防吃书）**：
      - `sensory_anchor`: 标志性外观、穿戴、气味与视觉记忆物象（`str`）
      - `micro_actions`: 标志性习惯微动作与神态库（`array[str]`）
      - `address_matrix`: 对特定实体的法定称谓映射（`{"目标名": "我称呼对方"}`）
      - `relations`: 与特定实体的动态张力网络（`[{"target": "角色名", "type": "rival", "desc": "宿敌"}]`）
+     - `dossier`: 恩怨羁绊、历史过节与交互备忘（`str`）
+     - `scope`: 所属分卷生命周期（如 `vol_01`；省略表示全书通用）
+     - `golden_quote`: 首次高光定稿切片（100~200字物象细节）
+     - `schema_version`: 卡片或实体规范版本（`str`，如 `novel-studio.character/v2`）
 
    > ⚠️ **【重要：Markdown 卡片 vs 数据库状态表分界规范】**：
    > - **Markdown 卡片（`characters/*.md`, `entities/*/*.md`）**：是面向大模型创作的**全息感官档案**，其正文允许有丰富的 Want/Fear、生平轶事、背景设定等自然语言描述；

@@ -43,7 +43,7 @@ schema_version: novel-studio.faction/v2
 ## 权力架构与核心人物名册（Hierarchy & Key Figures）
 
 - **最高掌权领袖**：{{slot:faction_leader}}（当前实力/定位：{{slot:faction_leader_realm|闭关半步神海老祖 / 董事局主席 / 舰队总司令}}）
-- **第二序列 / 继承人/副手**：{{slot:faction_second_in_command|例如：圣女萧灵汐 / 执行董事 / 第一副官}}
+- **第二序列 / 继承人/副手**：{{slot:faction_second_in_command|例如：宗门圣女/少主 / 执行董事 / 第一副官}}
 - **核心骨干与执行层**：{{slot:faction_elders|执法长老、首席战略顾问、舰队参谋长}}
 - **内部派系倾轧与暗流**：{{slot:faction_internal_strife|正统护道派 vs 勾结外敌篡权党 / 保守创业元老 vs 激进资本系}}
 
@@ -72,4 +72,4 @@ schema_version: novel-studio.faction/v2
 
 ## 存亡变迁与不可逆大事件轨迹（Milestones）
 
-- [历史大事件] 第 {{slot:fac_event_ch|5}} 章：{{slot:fac_event_desc|大长老逼宫败露被一举肃清，主角晋升为最高战略尊荣，势力底蕴彻底稳固}}；
+- [历史大事件] 第 {{slot:fac_event_ch|5}} 章：{{slot:fac_event_desc|内部派系斗争或外敌挑衅被粉碎，确立核心威信，势力格局重塑}}；

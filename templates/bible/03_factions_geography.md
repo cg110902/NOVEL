@@ -45,13 +45,13 @@ schema_version: novel-studio.bible/v2
 <!-- 描述核心势力彼此之间的血仇、同盟、制衡与利益交叉点，这是剧情推进的根本发动机： -->
 
 1. **死敌冲突线（生死不容）**：
-   - **冲突双方**：{{slot:fac_rivalry_parties|例如：水云圣宫 vs 焚天神谷}}
-   - **根源原因**：{{slot:fac_rivalry_cause|争夺某项能够打破平衡的稀世宝物/万年宿怨/道统不两立}}
-   - **现状表现**：{{slot:fac_rivalry_status|边界摩擦不断，暗杀与伏击频发，正蓄积全面决战的总爆发}}
+   - **冲突双方**：{{slot:fac_rivalry_parties|例如：主角阵营 vs 首要对立阵营 / 敌对门阀 / 竞争巨头}}
+   - **根源原因**：{{slot:fac_rivalry_cause|争夺某项能够打破平衡的稀缺资源/宿怨/垄断利益不两立}}
+   - **现状表现**：{{slot:fac_rivalry_status|摩擦不断，暗杀与商业/军事封锁频发，正蓄积全面决战的总爆发}}
 
 2. **内部派系倾轧（内鬼与政变动机）**：
-   - **涉及组织**：{{slot:fac_internal_target|例如：主角所属势力内部}}
-   - **派系对立**：{{slot:fac_internal_factions|保守正统派（效忠圣女/家主） vs 激进夺权派（勾结外敌大长老）}}
+   - **涉及组织**：{{slot:fac_internal_target|例如：主角所属势力或主要合作组织内部}}
+   - **派系对立**：{{slot:fac_internal_factions|守成掌权派 vs 激进夺权派 / 创业元老系 vs 外来资本派}}
    - **爆点引线**：{{slot:fac_internal_spark|何时会撕破脸皮当众发难？主角如何借助打脸立威？}}
 
 3. **中立势力的博弈机制（商会/第三方/执法局）**：

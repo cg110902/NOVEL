@@ -97,21 +97,21 @@ schema_version: novel-studio.character/v2
 ## 实力配置、物理标尺与关键道具
 
 - **实力层级（Tier Rank & Name）**：
-  {{slot:char_tier_name|通玄境后期}}（Tier Rank: {{slot:char_tier_rank|2}}）
+  {{slot:char_tier_name|实力层级或职级称号}}（Tier Rank: {{slot:char_tier_rank|2}}）
 - **破坏力/影响力实物标尺（Power Benchmark）**：
-  {{slot:char_power_benchmark|一剑斩断合抱古木、寒霜剑气封冻百丈潭水}}
+  {{slot:char_power_benchmark|核心破坏力/业务影响力实物标尺}}
 - **特殊体质 / 核心技能机制**：
-  {{slot:char_special_power|例如：极道水灵体、九天玄水诀 / 顶级量子加密黑客技术}}
+  {{slot:char_special_power|例如：极道体质、特殊武学 / 顶级黑客技术 / 独家商业操盘网络}}
 - **随身武器与关键道具**：
-  {{slot:char_items|例如：秋水玄冰剑（三阶灵宝）、水灵神珠（本命传承信物）}}
+  {{slot:char_items|例如：核心装备、本命信物或专属资产（须在 entities/items 中有卡）}}
 - **战斗风格与局限**：
-  擅长远程控场与剑气杀伐，贴身纯肉搏力量稍逊。
+  擅长特定领域攻伐或周旋，在特定弱点或盲区稍逊。
 
 ---
 
 ## 与主角关系及不可逆演进轨迹
 
 - **与主角核心关系定性**：
-  {{slot:char_relation_mc|命中注定的第一道侣 / 生死交付的商业合伙人 / 唯一能托付后背的副手}}
+  {{slot:char_relation_mc|命中注定的第一搭档 / 生死交付的商业合伙人 / 唯一能托付后背的副手}}
 - **不可逆重大里程碑记录**：
-  - [初始节点] 第 {{slot:char_init_ch|1}} 章：{{slot:char_init_event|断魂洞绝境与主角结识并结下深层契约羁绊}}；
+  - [初始节点] 第 {{slot:char_init_ch|1}} 章：{{slot:char_init_event|开局危难或重大事件中与主角初次相遇，建立初始合作或羁绊契约}}；

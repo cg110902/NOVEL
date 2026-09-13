@@ -81,6 +81,17 @@ _LINE_KIND_SPEC = {
 # 去填 cognition_delta，一次性换来 3 条 × 3 键 = 9 条「含未知字段」整案拒收。
 # 现升为模块级常量：校验器与 beats 文档同源，修一处即两处同步（与 _LINE_KIND_SPEC
 # + line_kind_spec() 同一套路）。
+ENTITY_MUTATION_KEYS = frozenset({
+    "action", "id", "name", "type", "card", "summary", "status", "aliases",
+    "holder", "location", "condition", "quote",
+    "realm", "faction", "life_status", "attitude", "charges", "max_charges",
+    "cost_per_use", "durability", "scale_tier", "core_assets", "diplomacy",
+    "danger_tier", "danger_level", "environment_rules", "tier_rank", "tier_name",
+    "power_benchmark", "sensory_anchor", "micro_actions", "address_matrix",
+    "dossier", "scope", "golden_quote", "relations",
+    "injury_level", "injury_desc", "renown",
+    "role", "leader", "headquarters", "schema_version",
+})
 COGNITION_KEYS = frozenset({"action", "id", "character", "kind", "content",
                             "since_ch", "quote", "note", "truth_ref", "overwrite"})
 COGNITION_DELTA_KEYS = frozenset({"character", "learned", "misread", "doubted", "quote"})
@@ -110,6 +121,10 @@ def v2_entry_contracts() -> list[tuple[str, tuple[str, ...], str]]:
     的公开只读入口。返回 [(分区, 合法键（字典序）, 备注)]。
     """
     return [
+        ("entities",
+         tuple(sorted(ENTITY_MUTATION_KEYS)),
+         "实体增量条目；action ∈ upsert/register/retire；name 必填；"
+         "type ∈ person/item/faction/place/location/other"),
         ("locked",
          tuple(sorted(LOCKED_KEYS)),
          "id 必填（^LOCK-\\d{3,}$、从水位线之后起号）；**note 为必填红线提示**；"
@@ -194,7 +209,8 @@ def defaults_for(key: str) -> dict:
         return {"time": "", "region": "", "location": "", "power_level": "", "abilities": "",
                 "injury": "", "equipment": "", "assets": "", "situation": "", "mood": "",
                 "goal": "", "key_relationships": "", "present_characters": [],
-                "aftershock": "", "active_pressures": []}
+                "aftershock": "", "active_pressures": [],
+                "present_refs": [], "present_moods": {}}
     if key == "entities" or key in KIND_TABLES:
         return {"entries": []}
     if key == "lines":
@@ -755,16 +771,7 @@ def validate_proposal(proposal, expected_chapter: str | None = None,
     ents = proposal.get("entities")
     if isinstance(ents, list):
         _plan("entities", len(ents))
-        allowed_entity_keys = {
-            "action", "id", "name", "type", "card", "summary", "status", "aliases",
-            "holder", "location", "condition", "quote",
-            "realm", "faction", "life_status", "attitude", "charges", "max_charges",
-            "cost_per_use", "durability", "scale_tier", "core_assets", "diplomacy",
-            "danger_tier", "environment_rules", "tier_rank", "tier_name",
-            "power_benchmark", "sensory_anchor", "micro_actions", "address_matrix",
-            "dossier", "scope", "golden_quote", "relations",
-            "injury_level", "injury_desc", "renown"
-        }
+        allowed_entity_keys = ENTITY_MUTATION_KEYS
         for i, e in enumerate(ents):
             if not isinstance(e, dict):
                 errors.append(f"entities[{i}] 必须为对象")
@@ -1495,7 +1502,8 @@ def _merge_entities(data: dict, items: list[dict], rep: dict) -> None:
         for f in ("id", "type", "card", "summary", "holder", "location", "condition",
                   "realm", "faction", "life_status", "attitude", "charges", "max_charges", "dossier",
                   "scope", "golden_quote", "tier_rank", "tier_name", "power_benchmark", "sensory_anchor",
-                  "cost_per_use", "durability", "scale_tier", "danger_tier",
+                  "cost_per_use", "durability", "scale_tier", "danger_tier", "danger_level",
+                  "role", "leader", "headquarters", "schema_version",
                   "injury_level", "injury_desc", "renown"):
             if f in e and e[f] is not None:
                 ent[f] = e[f]

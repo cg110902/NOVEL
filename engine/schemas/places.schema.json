@@ -57,6 +57,11 @@
             "type": "string",
             "description": "活跃/退场状态"
           },
+          "schema_version": {
+            "type": "string",
+            "description": "卡片或实体规范版本",
+            "title": "Schema Version"
+          },
           "tier_rank": {
             "type": "integer",
             "description": "标准化实力/阶层档位(1-12数字标尺，便于跨题材比大小)",
