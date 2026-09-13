@@ -21,9 +21,9 @@ except ImportError:
 PREV_TAIL_CHARS = 1000
 SPINE_CAP = 10
 POINTER_WINDOW = 10
-# 装配预算：2W token。
+# 装配预算：1.5W token 卡死。
 # 但 beats 全文、current、硬提醒、不可逆事实与钉住的世界锚点永不裁。
-PACK_TOKEN_CAP = 20000
+PACK_TOKEN_CAP = 15000
 MAX_P1_ENTITIES = 12
 MAX_P1_INDIRECT = 5
 
@@ -907,6 +907,38 @@ def build_pack(book: Path, ch: str, lean: bool = False, full: bool = False,
             payload["p0"]["prev_tail"] = str(payload["p0"]["prev_tail"])[:400] + "…"
             ladder.append("上章余温裁至 400 字")
             _recount("p0")
+        if budget["over_budget"] and payload.get("p1") and payload["p1"].get("entities"):
+            has_long_card = False
+            for b in payload["p1"]["entities"]:
+                if b.get("card_text") and len(b["card_text"]) > 300:
+                    b["card_text"] = b["card_text"][:300] + "…"
+                    has_long_card = True
+            if has_long_card:
+                ladder.append("P1 实体卡收缩至 300 字")
+                _recount("p1")
+        if budget["over_budget"] and payload.get("p0") and payload["p0"].get("world_anchors"):
+            wa = str(payload["p0"]["world_anchors"])
+            secs = wa.split("\n\n### ")
+            trimmed_sec_count = 0
+            while budget["over_budget"] and len(secs) > 1:
+                secs.pop()
+                trimmed_sec_count += 1
+                payload["p0"]["world_anchors"] = "\n\n### ".join(secs) + "\n\n" + _WORLD_ANCHOR_HINT
+                _recount("p0")
+            if trimmed_sec_count:
+                ladder.append(f"裁剪世界锚点 {trimmed_sec_count} 节（算法优先保核心公理）")
+        if budget["over_budget"] and payload.get("p1") and payload["p1"].get("entities"):
+            on_stage = [e for e in payload["p1"]["entities"] if e.get("on_stage")]
+            if len(on_stage) < len(payload["p1"]["entities"]):
+                trimmed_off = len(payload["p1"]["entities"]) - len(on_stage)
+                payload["p1"]["entities"] = on_stage
+                ladder.append(f"裁离场实体卡 {trimmed_off} 条")
+                _recount("p1")
+        if budget["over_budget"] and payload.get("p0") and payload["p0"].get("world_anchors"):
+            if payload["p0"]["world_anchors"] != _WORLD_ANCHOR_HINT:
+                payload["p0"]["world_anchors"] = _WORLD_ANCHOR_HINT
+                ladder.append("世界锚点收缩为按需检索提示")
+                _recount("p0")
         if ladder:
             budget["compressed"] = ladder
             budget["trim_note"] = ((budget["trim_note"] + "；") if budget.get("trim_note") else "") \
@@ -928,6 +960,11 @@ def render_layer(name: str, obj, full: bool = False) -> str:
         return ""
     if name == "p0":
         lines = []
+        if obj.get("beats"):
+            lines += ["=== beats ===", obj["beats"]]
+        if obj.get("prev_tail"):
+            lines += ["", "=== 上章余温 ===", obj["prev_tail"]]
+        lines += ["", "=== 即时现场与人物状态 ==="]
         for k, v in obj["current"].items():
             if k == "loadout" and isinstance(v, dict):
                 friendly = {"cultivation": "主修", "movement": "身法", "attack": "杀招",
@@ -942,13 +979,8 @@ def render_layer(name: str, obj, full: bool = False) -> str:
                 lines.append(f"loadout: {' | '.join(parts)}")
             else:
                 lines.append(f"{k}: {v}")
-        if obj.get("prior_volumes"):
-            lines += ["", "=== 前情卷末态势（远卷摘要，细节用 lore 按需取） ==="] \
-                     + [f"- {ln}" for ln in obj["prior_volumes"]]
-        if obj.get("volume_phase"):
-            lines += ["", "=== 本卷阶段航标 ===", f"- {obj['volume_phase']}"]
-        if obj.get("world_anchors"):
-            lines += ["", "=== 世界底层与战力标尺 ===", obj["world_anchors"]]
+        if obj.get("hard_reminders"):
+            lines += ["", "=== 硬提醒 ==="] + [f"- {m}" for m in obj["hard_reminders"]]
         if obj.get("aftershock"):
             lines += ["", "=== 戏剧余震与开篇承接（首段必咬住） ===", f"- {obj['aftershock']}"]
         if obj.get("active_pressures"):
@@ -957,11 +989,16 @@ def render_layer(name: str, obj, full: bool = False) -> str:
             lines += ["", "=== 现场人际张力拓扑（AI专用） ==="] + [f"- {t}" for t in obj["scene_tensions"]]
         if obj.get("dramatic_irony"):
             lines += ["", "=== 现场信息差机锋（AI写对手戏必用） ==="] + [f"- {di}" for di in obj["dramatic_irony"]]
-        lines += ["", "=== beats ===", obj["beats"], "", "=== 上章余温 ===", obj["prev_tail"],
-                  "", "=== 硬提醒 ==="] + [f"- {m}" for m in obj["hard_reminders"]]
         if obj.get("cold_recall_hints"):
             lines += ["", "=== 冷线回收锚定（读者或已忘记，先锚定再兑现） ==="] \
                      + [f"- {h}" for h in obj["cold_recall_hints"]]
+        if obj.get("volume_phase"):
+            lines += ["", "=== 本卷阶段航标 ===", f"- {obj['volume_phase']}"]
+        if obj.get("prior_volumes"):
+            lines += ["", "=== 前情卷末态势（远卷摘要，细节用 lore 按需取） ==="] \
+                     + [f"- {ln}" for ln in obj["prior_volumes"]]
+        if obj.get("world_anchors"):
+            lines += ["", "=== 世界底层与战力标尺 ===", obj["world_anchors"]]
         return "\n".join(lines)
     if name == "p1":
         lines = []

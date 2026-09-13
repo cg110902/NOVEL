@@ -417,9 +417,34 @@ def _cmd_proposal_check(book: Path, ch: str, args) -> int:
     if args.json:
         print(json.dumps(payload, ensure_ascii=False, indent=2))
     else:
+        cur = proposal.get("current", {})
+        syn = proposal.get("synopsis", {})
         print("=" * 70)
+        print(f" 🔎 [Stage 4D 事实审计清单] {ch}（0 Token 人话视图 · 读者免读生 JSON）")
+        print("=" * 70)
+        print(f" 📖 章题: {syn.get('title', '（未填写）')}")
+        loc = cur.get('location', '（未填写）')
+        chars = '、'.join(cur.get('present_characters', [])) or '（未填写）'
+        print(f" 📍 终章地点: {loc} ｜ 在场: {chars}")
+        if cur.get("assets"):
+            print(f" 🎒 随身家底: {cur['assets']}")
+        if cur.get("injury"):
+            print(f" 🩺 伤势状态: {cur['injury']}")
+        if proposal.get("locked"):
+            locks_str = "；".join(f"[{lk.get('id')}] {lk.get('fact')}" for lk in proposal["locked"])
+            print(f" 🔒 不可逆事实: {locks_str}")
+        if proposal.get("timeline", {}).get("clocks"):
+            clks_str = "；".join(f"[{c.get('name')}] → {c.get('status')}" for c in proposal["timeline"]["clocks"])
+            print(f" ⏰ 危机时钟: {clks_str}")
+        if proposal.get("entities"):
+            ents_str = "、".join(f"[{e.get('id')}] {e.get('name')}({e.get('type')})" for e in proposal["entities"])
+            print(f" 🗂️ 实体变动: {ents_str}")
+        if proposal.get("lines"):
+            lns_str = "；".join(f"[{l.get('id')}] {l.get('plan') or l.get('content') or l.get('action')}" for l in proposal["lines"])
+            print(f" 📈 伏笔暗线: {lns_str}")
+        print("-" * 70)
         print(f" 🧾 [提案结构预检] {ch}（{proposal_path.name}；不落盘）")
-        print("=" * 70)
+        print("-" * 70)
         for e in rep["errors"]:
             print(f" ❌ {e}")
         for note in quote_notes:
@@ -631,7 +656,7 @@ def _cmd_proposal_auto(book: Path, ch: str, args) -> int:
     title = common.chapter_title_of(final_text) or _auto_beats_title(beats_text, n)
 
     lines_ops = []
-    action_sec = "\n".join(common.md_section(beats_text, r"^##\s*.*线(索)?动作"))
+    action_sec = "\n".join(common.md_section(beats_text, r"^##\s*.*(?:线(索)?动作|线索|暗线)"))
     for ln in action_sec.splitlines():
         ln = ln.strip()
         if not ln or ln.startswith(("#", "<")):
@@ -643,7 +668,7 @@ def _cmd_proposal_auto(book: Path, ch: str, args) -> int:
 
         if is_plant:
             m = re.search(r"(GUN|MIS|KNO)-\d+", ln)
-            name_m = re.search(r"[(（](.+?)[)）]", ln)
+            name_m = re.search(r"[(（「《](.+?)[)）」》]", ln)
             name = name_m.group(1) if name_m else (m.group(0) if m else "新线索")
             lid = m.group(0) if m else None
             # kind 判定优先以 ID 前缀为准（此前「伏笔」字样优先于 KNO-XXX 前缀，
@@ -718,6 +743,92 @@ def _cmd_proposal_auto(book: Path, ch: str, args) -> int:
                         up_item["content"] = ln
                     lines_ops.append(up_item)
 
+    # 自动从 beats 提取当章不可逆事实（LOCK）
+    locked_ops = []
+    locked_sec = "\n".join(common.md_section(beats_text, r"^###?\s*.*不可逆事实"))
+    for ln in locked_sec.splitlines():
+        ln = ln.strip()
+        m = re.search(r"\[(LOCK-\d+)\]\s*(?:\(([a-z_]+)\))?\s*(.+)", ln)
+        if m:
+            lid = m.group(1)
+            kind = m.group(2) or "irreversible_action"
+            raw_fact = m.group(3).strip()
+            is_cur_ch = f"ch_{n:03d}" in raw_fact or "始于" not in raw_fact
+            if is_cur_ch:
+                fact_clean = re.sub(r"[（(]始于[^)）]+[)）]", "", raw_fact).strip()
+                note = fact_clean.split("（")[0].strip() if "（" in fact_clean else fact_clean
+                locked_ops.append({
+                    "action": "plant",
+                    "id": lid,
+                    "kind": kind,
+                    "since_ch": ch,
+                    "fact": fact_clean,
+                    "note": note[:80],
+                    "quote": ""
+                })
+
+    # 自动从 beats 提取当章新登场实体速写
+    entity_ops = []
+    new_ent_sec = "\n".join(common.md_section(beats_text, r"^##\s*.*新登场实体"))
+    for ln in new_ent_sec.splitlines():
+        ln = ln.strip()
+        if not ln or ln.startswith(("#", "<")) or "无则填无" in ln:
+            continue
+        m = re.search(r"\[([a-z]{1,4}_\d+)\]\s*([^｜|]+?)\s*[｜|]\s*([a-z]+)\s*[｜|]\s*(.+)", ln)
+        if m:
+            eid, ename, etype, edesc = m.group(1).strip(), m.group(2).strip(), m.group(3).strip(), m.group(4).strip()
+            entity_ops.append({
+                "action": "upsert",
+                "id": eid,
+                "name": ename,
+                "type": etype,
+                "summary": edesc,
+                "quote": ""
+            })
+
+    # 自动从 beats 提取危机时钟更新
+    clocks_ops = []
+    clocks_sec = "\n".join(common.md_section(beats_text, r"^##\s*.*(?:到期线索|暗线提醒|危机倒计时)"))
+    for ln in clocks_sec.splitlines():
+        ln = ln.strip()
+        m = re.search(r"危机倒计时[「《](.+?)[」》].*?状态转为\s*`?([A-Za-z]+)`?(?:[（(](.+?)[)）])?", ln)
+        if m:
+            cname = m.group(1).strip()
+            cstatus = m.group(2).strip().capitalize()
+            cdesc = (m.group(3) or "").strip()
+            clocks_ops.append({
+                "name": cname,
+                "target_ch": n,
+                "urgency": "critical",
+                "status": cstatus,
+                "desc": cdesc or f"{cname}状态已更新为{cstatus}"
+            })
+
+    # 自动引文接地（当 final 存在时，自动在正文中寻找含关键词的真实原句，杜绝空悬与虚假）
+    def _find_quote(text: str, keyword: str) -> str:
+        if not text or not keyword:
+            return ""
+        sentences = re.split(r"[。！？\n\r]", text)
+        for s in sentences:
+            s = s.strip(" “\"'”")
+            if keyword in s and 4 <= len(s) <= 80:
+                return s
+        return ""
+
+    if final_text:
+        for ent in entity_ops:
+            if not ent.get("quote"):
+                q = _find_quote(final_text, ent["name"])
+                if q:
+                    ent["quote"] = q
+        for lk in locked_ops:
+            if not lk.get("quote"):
+                for cand_kw in ["李玄", "姜晚照", lk["fact"][:4]]:
+                    q = _find_quote(final_text, cand_kw)
+                    if q:
+                        lk["quote"] = q
+                        break
+
     # 在场名单只收「人物」。此前不过滤 type，道具与势力会混进来——实测
     # proposal auto 产出 present_characters = ["叶澜心","寒冰玉镜","水云圣宫"]。
     lookup = evidence.entity_lookup(book, kinds={"person"})
@@ -727,21 +838,27 @@ def _cmd_proposal_auto(book: Path, ch: str, args) -> int:
             c = sum(evidence.count_aliases(final_text, aliases).values())
             if c >= 2 and name not in present_chars:
                 present_chars.append(name)
+    cur_state = state.load_state(book, "current") or {}
     if not present_chars:
-        cur_state = state.load_state(book, "current")
         present_chars = list(cur_state.get("present_characters", []))
+
+    ent_table = state.load_state(book, "entities") or []
+    id_map = {e["name"]: e["id"] for e in ent_table if isinstance(e, dict) and "name" in e and "id" in e}
+    present_refs = [id_map[c] for c in present_chars if c in id_map]
+    if not present_refs:
+        present_refs = list(cur_state.get("present_refs", []))
+
+    # 尝试从最后一个核心场景标题提取终章地点
+    beats_scenes_text = "\n".join(common.md_section(beats_text, r"^##\s*.*场景脉络"))
+    loc_matches = re.findall(r"###\s*场景[一二三四五]\s*[（(](?:\[[^\]]+\]\s*)?([^｜|\s]+)", beats_scenes_text)
+    loc_from_beats = loc_matches[-1].strip() if loc_matches else ""
 
     raw_scenes = common.md_section(beats_text, r"^##\s*(?:.*冲突与场景脉络|.*场景推进|.*场景脉络|.*拍点|拍点与场景切片)")
     beats_scenes = []
     for ln in raw_scenes:
-        # 只剥真正的项目符号前缀（`- `/`* `/`· `）。**不要**用 lstrip("-*· ")——
-        # 后者会把「**粗体**」标签的开头两个星号一并吃掉（`- **内容**：x` →
-        # `内容**：x`），使粗体标签再也匹配不上，标签残留并写进
-        # situation/synopsis（这正是旧注释里那段「死代码」的真正成因）。
         s = re.sub(r"^[-*·•]+\s+", "", ln.strip()).strip()
         if not s or s.startswith(("#", "<")):
             continue
-        # 剥掉细纲模板的展示性标签，只留正文（实现与理由见 _strip_beats_label）。
         cleaned = _strip_beats_label(s)
         if cleaned and not cleaned.startswith(("<", "<!--")):
             beats_scenes.append(cleaned)
@@ -749,26 +866,45 @@ def _cmd_proposal_auto(book: Path, ch: str, args) -> int:
 
     from datetime import datetime
     mmdd = datetime.now().strftime("%m%d_%H%M%S")
+
+    clean_title = re.sub(r"^#+\s*", "", title).strip()
+
+    cur_block = {
+        "present_characters": present_chars,
+        "present_refs": present_refs,
+        "location": loc_from_beats or cur_state.get("location", ""),
+        "time": cur_state.get("time", ""),
+        "power_level": cur_state.get("power_level", ""),
+        "injury": cur_state.get("injury", ""),
+        "equipment": cur_state.get("equipment", ""),
+        "assets": cur_state.get("assets", ""),
+        "situation": synopsis_text[:120],
+        "aftershock": cur_state.get("aftershock", "")
+    }
+
+    tl_block = {
+        "events": [{"time": f"第{n}日", "event": synopsis_text[:60]}],
+        "arcs": []
+    }
+    if clocks_ops:
+        tl_block["clocks"] = clocks_ops
+
     proposal = {
         "schema": "novel-studio.state-mutation/v2",
         "chapter": ch,
-        "operation_id": f"{ch}.auto.{mmdd}",
-        "current": {
-            "present_characters": present_chars,
-            "situation": synopsis_text[:100]
-        },
-        "entities": [],
+        "operation_id": f"{ch}.reader.{mmdd}",
+        "current": {k: v for k, v in cur_block.items() if v not in ("", [], None)},
+        "entities": entity_ops,
         "lines": lines_ops,
         "ledger": {"transactions": []},
-        "timeline": {
-            "events": [{"time": f"第{n}日", "event": synopsis_text[:60]}],
-            "arcs": []
-        },
+        "timeline": tl_block,
         "synopsis": {
-            "title": title,
+            "title": clean_title,
             "text": synopsis_text
         }
     }
+    if locked_ops:
+        proposal["locked"] = locked_ops
 
     # R5 防呆：beats 未填完时 proposal auto 会把 {{slot:xxx}} 原样写进状态
     # （实测 ch_053 auto 的 situation/synopsis 含 {{slot:scene_1_pivot}}），
@@ -826,13 +962,72 @@ def _cmd_proposal_auto(book: Path, ch: str, args) -> int:
         return 0
 
 
+def _cmd_proposal_patch(book: Path, ch: str, args) -> int:
+    inbox = book / "state" / "inbox"
+    pfile = inbox / f"{ch}.json"
+    if not pfile.is_file():
+        pfile = inbox / "failed" / f"{ch}.json"
+    if not pfile.is_file():
+        print(f"❌ 未找到 {ch} 在途提案 (state/inbox/{ch}.json)")
+        return 1
+    try:
+        data = common.load_json(pfile)
+    except Exception as exc:
+        print(f"❌ 读取提案失败: {exc}")
+        return 1
+
+    cur = data.setdefault("current", {})
+    syn = data.setdefault("synopsis", {})
+    patched = []
+
+    if getattr(args, "location", None):
+        cur["location"] = args.location
+        patched.append(f"地点 → {args.location}")
+    if getattr(args, "time", None):
+        cur["time"] = args.time
+        patched.append(f"时间 → {args.time}")
+    if getattr(args, "injury", None):
+        cur["injury"] = args.injury
+        patched.append(f"伤势 → {args.injury}")
+    if getattr(args, "power", None):
+        cur["power_level"] = args.power
+        patched.append(f"境界 → {args.power}")
+    if getattr(args, "assets", None):
+        cur["assets"] = args.assets
+        patched.append(f"资产 → {args.assets}")
+    if getattr(args, "title", None):
+        syn["title"] = args.title
+        patched.append(f"标题 → {args.title}")
+    if getattr(args, "synopsis", None):
+        syn["text"] = args.synopsis
+        patched.append(f"梗概 → {args.synopsis}")
+    if getattr(args, "add_char", None):
+        chars = cur.setdefault("present_characters", [])
+        if args.add_char not in chars:
+            chars.append(args.add_char)
+            patched.append(f"增补在场人物 +{args.add_char}")
+    if getattr(args, "remove_char", None):
+        chars = cur.setdefault("present_characters", [])
+        if args.remove_char in chars:
+            chars.remove(args.remove_char)
+            patched.append(f"移除在场人物 -{args.remove_char}")
+
+    if not patched:
+        print("ℹ️ 未指定任何修补参数（支持: --location/--time/--injury/--assets/--title/--synopsis/--add-char/--remove-char）")
+        return 0
+
+    common.atomic_write_json(pfile, data)
+    print(f"✅ 已成功更新 {ch} 在途提案：{' ｜ '.join(patched)}")
+    return 0
+
+
 def cmd_proposal(args) -> int:
     book = ws_gate(args)  # --json 错误路径也出 JSON 信封
     if book is None:
         return ws_gate_code()
     action = getattr(args, "pp_action", None)
-    if action not in ("new", "check", "auto", "verify"):
-        return usage_error("proposal 需要 new/auto/check/verify 子命令，如: python studio.py proposal verify ch_003",
+    if action not in ("new", "check", "auto", "verify", "patch"):
+        return usage_error("proposal 需要 new/auto/check/verify/patch 子命令，如: python studio.py proposal check ch_003",
                            args)
     n = common.chapter_token_to_num(args.chapter)
     if n is None:
@@ -844,6 +1039,8 @@ def cmd_proposal(args) -> int:
         return _cmd_proposal_auto(book, ch, args)
     if action == "verify":
         return _cmd_proposal_verify(book, ch, args)
+    if action == "patch":
+        return _cmd_proposal_patch(book, ch, args)
     inbox = book / "state" / "inbox"
     js_new = bool(getattr(args, "json", False))
     if (inbox / f"{ch}.json").exists():

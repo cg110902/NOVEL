@@ -18,7 +18,13 @@ description: Universal commercial webnovel structural editor and prose polisher 
 - 全流程核心准则：通俗直白大白话、极度易读、极好扫读、无认知门槛、一口气读完停不下来！
 
 **【具体操作】**：
-- 以 `raw_v1.md` 初稿为基底，通过 `Copy-Item` 复制为预定稿基底 `raw_v3.md`。单次全读后，调用 `replace_file_content` 锁定 **4 ~ 8 处核心场景大块**，根据**【修改清单】**实施修改，一步到位交付预定稿 `raw/ch_XXX_v3.md`！无字数要求或限制！
+- 以 `raw_v1.md` 初稿为基底，通过 `Copy-Item` 复制为预定稿基底 `raw_v3.md`。单次全读后，调用 `replace_file_content` 锁定 **4 ~ 6 处核心场景大块**，严格执行**【全题材通用 · 两死两活】精修作业规范**，一步到位交付预定稿 `raw/ch_XXX_v3.md`：
+  - 🔒 **两死（绝对锁死 · 严禁越权魔改）**：
+    1. **事实走向与胜负锁死（Facts Invariance）**：精修仅限于语言脱水、动作具象化与对白打磨，**绝对严禁改动剧情胜负、角色生死、道具资源收支与能力位阶等既定事实**；
+    2. **物理场景刀口锁死（Boundary Invariance）**：章末悬念定格处绝不准擅自延伸，**严禁在章末跳出旁白作总结抒情或剧透下章**！
+  - ⚡ **两活（放飞叙事算力 · 爽读最大化）**：
+    1. **微动作与生理本能放活**：彻底清零冷脸面瘫词，将抽象心理活动转化为具象肢体反应、生理微表情与视线博弈；
+    2. **手机短句与通俗扫读放活**：毫不留情删除冗余反刍，长句拆短为通俗直白大白话，确保读者在移动端极好扫读、一口气读完停不下来！
 
 ---
 
@@ -57,7 +63,7 @@ description: Universal commercial webnovel structural editor and prose polisher 
 ## 7. 大幅删除冗余（毫不留情）：
 
 - 包括但不限于：内心反刍、作者跳出来解释、内心旁白、各类总结、重复信息、毫无意义的抒情等等；
-- 包括：多余的形容词。
+- 包括：冗余的形容词、描述性词汇。
 - 凡是读者自己能够直接或间接得出来的结论，坚决不重复表达。 
 
 
@@ -72,10 +78,10 @@ description: Universal commercial webnovel structural editor and prose polisher 
    ```
 
 2. **步骤 2【单次全量阅读 · 严禁切片】**：
-   调用 `view_file` 工具**单次全量读取** `raw_v3.md`（**严禁传 StartLine/EndLine 切片翻读**），根据**【修改清单】**中涉及到需要修改的地方，通盘锁定 **4 ~ 8 处核心场景大块**。（先制定修改计划，再实施修改手段）
+   调用 `view_file` 工具**单次全量读取** `raw_v3.md`（**严禁传 StartLine/EndLine 切片翻读**），根据**【修改清单】**中涉及到需要修改的地方，通盘锁定 **4 ~ 6 处核心场景大块**。（先制定修改计划，再实施修改手段）
 
 3. **步骤 3【双核手术刀落盘 · 唯一产出】**：
-   - 聚焦选定的 4 ~ 8处核心场景大块，调用 `replace_file_content` 实施大段深度重塑：
+   - 聚焦选定的 4 ~ 6 处核心场景大块，调用 `replace_file_content` 实施大段深度重塑：
    
      - **【倒序下刀铁律（Bottom-to-Top）】**：若有多处替换，**必须从正文后部向头部倒序执行替换**（先替换靠后的高潮/章尾大块，再替换靠前的段落），彻底杜绝前文行号增删导致的后文行号漂移错误！
 	 
@@ -83,7 +89,7 @@ description: Universal commercial webnovel structural editor and prose polisher 
 	 
      - **精确匹配**：`TargetContent` 必须 100% 逐字截取自刚全读的正文片段；
 	 
-   - ⚠️ **【耗时与自愈平衡铁律】**：默认坚决使用 `replace_file_content`，将修改控制在 4~8 块；仅当初稿全局彻底崩盘、碎片病态过重时，允许使用 `write_to_file` 全篇重写兜底（⚠️ **调用 `write_to_file` 时仅传 4 个核心参数，绝对严禁传递 `ArtifactMetadata` 参数！**）；
+   - ⚠️ **【耗时与自愈平衡铁律】**：默认坚决使用 `replace_file_content`，将修改控制在 4~6 块；仅当初稿全局彻底崩盘、碎片病态过重时，允许使用 `write_to_file` 全篇重写兜底（⚠️ **调用 `write_to_file` 时仅传 4 个核心参数，绝对严禁传递 `ArtifactMetadata` 参数！**）；
    
    - 替换完成后，立即输出 3 行标准完工回执交卷！**严禁在替换后再调用 `view_file` 查验修改结果，严禁客套总结，干完即走！**
 
@@ -107,5 +113,5 @@ description: Universal commercial webnovel structural editor and prose polisher 
 【章节工序完工回执】
 - 完工阶段：Stage 3 双核精修与爽读脱水 (Editor)
 - 产出路径：manuscript/vol_XX/raw/ch_XXX_v3.md
-- 核心指标：4~8处核心大块精修 ｜ 耗时平衡(30~60s) ｜ 动作即终点 ｜ 视线带目的 ｜ 工具直接物理落盘
+- 核心指标：4~6处核心大块精修 ｜ 耗时平衡(30~60s) ｜ 动作即终点 ｜ 视线带目的 ｜ 工具直接物理落盘
 ```

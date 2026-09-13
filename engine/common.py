@@ -614,12 +614,18 @@ def md_section(text: str, title_pat: str) -> list[str]:
     """从 Markdown 提取某级标题下的全部正文行（直到同级或更高级别标题；兼容 UTF-8 BOM）。"""
     lines: list[str] = []
     inside = False
+    cur_level = 0
     for ln in (text or "").lstrip("\ufeff").splitlines():
-        if re.match(r"^##\s", ln):
+        m = re.match(r"^(#{1,6})\s", ln)
+        if m:
+            lvl = len(m.group(1))
             if inside:
-                break
-            inside = bool(re.match(title_pat, ln))
-            continue
+                if lvl <= cur_level:
+                    break
+            elif re.match(title_pat, ln):
+                inside = True
+                cur_level = lvl
+                continue
         if inside:
             lines.append(ln)
     return lines

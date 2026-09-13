@@ -25,11 +25,12 @@ description: Universal finalizer, issue resolver, and final manuscript publisher
    Copy-Item -Force "workspace/<书名>/manuscript/vol_XX/raw/ch_XXX_v3.md" "workspace/<书名>/manuscript/vol_XX/final/ch_XXX.md"
    ```
 
-2. **步骤 2【照方抓药手术刀微调 · 严禁全文重写】**：
-   - 调用 `view_file` 查看仲裁报告：`workspace/<书名>/log/audit/ch_XXX.md`；
+2. **步骤 2【照方抓药手术刀微调 · 免读正文与细纲（立省 10 秒）】**：
+   - 调用 `view_file` **仅查看仲裁报告**：`workspace/<书名>/log/audit/ch_XXX.md`；
+   - ⚠️ **【免读正文铁律】**：Auditor 报告已精准提供待修原句与替换配方，**绝对严禁调用 `view_file` 翻读 `final/ch_XXX.md` 或 `beats` 细纲**，省去多余全量回读！
    - **手术刀微调规则**：
-     - 若报告无硬伤且 logic=0：**不需要做任何正文修改**；
-     - 若报告有待修条目：**直接照方抓药，按 Auditor 预制的 `TargetContent` 与 `ReplacementContent` 调用 `replace_file_content` 精确替换**，免反复回读与重复推导，单次搞定！
+     - 若报告无硬伤且 logic=0：**不需要做任何正文修改**，直接进入步骤 3 盖章；
+     - 若报告有待修条目：**直接照方抓药，按 Auditor 预制的 `TargetContent` 与 `ReplacementContent` 调用 `replace_file_content` 精确替换**，免预读正文，单次搞定！
      - ⚠️ **【核心铁律】绝对禁止调用 `write_to_file` 全文重写正文！只准使用 `replace_file_content` 局部替换！**
 
 3. **步骤 3【运行盖章命令并提交回执 · 绿灯放行】**：
@@ -47,9 +48,10 @@ description: Universal finalizer, issue resolver, and final manuscript publisher
   - `Copy-Item` 复制底稿；
   - `python studio.py audit ch_XXX --write --adjudicate -w "workspace/<书名>"`（必跑，1次）；
   - `python studio.py ask "<争议词>"`（选跑，**严格最多 1 次**）；
-- 📖 **准读文件（唯三）**：`log/audit/ch_XXX.md`、`beats/ch_XXX.md`、`final/ch_XXX.md`；
+- 📖 **准读文件（唯一）**：`log/audit/ch_XXX.md`（**绝对严禁调用 `view_file` 翻读 `final/ch_XXX.md` 与 `beats` 细纲**）；
 - ✍️ **准写工具（唯一）**：`replace_file_content` 修改 `final/ch_XXX.md`（**严禁 write_to_file 全文覆写**）；
 - 🚫 **绝对红线**：
+  - 严禁调用 `view_file` 翻读 `final/` 成稿或 `beats/` 细纲（照方抓药直接下刀，多余翻看属严重内耗违纪）；
   - 严禁在对话消息中输出正文；严禁推倒大纲重写；
   - 严禁阅读 `engine/` 源码；严禁编写任何 PowerShell / Python 自查脚本；严禁调用 `check` / `doctor` 等全书体检命令；盖章后严禁留恋滞留。
 

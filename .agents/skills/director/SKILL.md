@@ -195,8 +195,8 @@ graph LR
    【章节工序派发令（免读技能卡直接开工）】
    - 书籍工作区：workspace/<书名> ｜ 分卷章节：vol_XX / ch_XXX
    - 执行阶段：Stage 2 (Drafter 初稿起草) ｜ 算力级别：inherit
-   - 核心输入/待修清单：运行 python studio.py pack ch_XXX --full 获取装配包
-   - 执行指令：起手直接执行 pack 取包 ➔ 依据装配包展开正文（字数 1500~2500） ➔ 准写=[调用 write_to_file 直接落盘至 manuscript/vol_XX/raw/ch_XXX_v1.md（禁传 ArtifactMetadata）] ➔ 3行回执交卷（禁倒嚼/禁发正文聊天/禁写脚本/落盘即走）
+   - 核心输入/待修清单：运行 python studio.py pack ch_XXX --full 获取装配包（pack 数据已完全自完备，严禁二次查验）
+   - 执行指令：起手直接执行 pack 取包 ➔ pack 数据已完全自完备，严禁二次查验（严禁调用 view_file 翻看 beats 细纲），直接起笔展开正文（字数 1500~2500） ➔ 准写=[调用 write_to_file 直接落盘至 manuscript/vol_XX/raw/ch_XXX_v1.md（禁传 ArtifactMetadata）] ➔ 3行回执交卷（禁倒嚼/禁发正文聊天/禁写脚本/落盘即走）
    ```
 2. **Stage 3 (Editor | Model: inherit)**：
    ```text
@@ -204,7 +204,7 @@ graph LR
    - 书籍工作区：workspace/<书名> ｜ 分卷章节：vol_XX / ch_XXX
    - 执行阶段：Stage 3 (Editor 双核精修与爽读脱水) ｜ 算力级别：inherit
    - 核心输入/待修清单：manuscript/vol_XX/raw/ch_XXX_v1.md
-   - 执行指令：起手直接 Copy-Item 复制 v1 为 v3 ➔ view_file 单次全读 v3 ➔ 准写=[调用 replace_file_content 聚焦3~4处大块替换落盘至 manuscript/vol_XX/raw/ch_XXX_v3.md] ➔ 3行回执交卷（零命令/禁倒嚼/禁发正文聊天/禁写脚本/落盘即走）
+   - 执行指令：起手直接 Copy-Item 复制 v1 为 v3 ➔ view_file 单次全读 v3 ➔ 准写=[调用 replace_file_content 聚焦4~6处核心大块替换落盘至 manuscript/vol_XX/raw/ch_XXX_v3.md] ➔ 3行回执交卷（零命令/禁倒嚼/禁发正文聊天/禁写脚本/落盘即走）
    ```
 3. **Stage 4A (Auditor | Model: flash)**：
    ```text
@@ -227,16 +227,17 @@ graph LR
    【章节工序派发令（免读技能卡直接开工）】
    - 书籍工作区：workspace/<书名> ｜ 分卷章节：vol_XX / ch_XXX
    - 执行阶段：Stage 4C (Fixer 终审定稿与盖章) ｜ 算力级别：flash
-   - 核心输入/待修清单：log/audit/ch_XXX.md 待修清单 与 manuscript/vol_XX/raw/ch_XXX_v3.md
-   - 执行指令：起手直接 Copy-Item 复制 v3 为 final ➔ 准写=[照方抓药按 audit 预制配方调用 replace_file_content 修复 final/ch_XXX.md] ➔ 运行 python studio.py audit ch_XXX --write --adjudicate 盖章 ➔ 3行回执交卷（盖章即走）
+   - 核心输入/待修清单：log/audit/ch_XXX.md 待修清单（配方已自完备，严禁翻读 final/beats）
+   - 执行指令：起手直接 Copy-Item 复制 v3 为 final ➔ view_file 仅读 audit 报告 ➔ 准写=[照方抓药按 audit 预制配方直接调用 replace_file_content 修复 final/ch_XXX.md（若0瑕疵免修改）] ➔ 运行 python studio.py audit ch_XXX --write --adjudicate 盖章 ➔ 3行回执交卷（盖章即走）
    ```
-6. **Stage 4D (Reader | Model: flash · 提案直出模式)**：
+6. **Stage 4D (Reader | Model: flash · 骨架补齐模式)**：
+   主控在派发 Stage 4D 前直接运行：`python studio.py proposal auto ch_XXX --write -w "workspace/<书名>"`（0.5秒秒出骨架）！
    ```text
    【章节工序派发令（免读技能卡直接开工）】
    - 书籍工作区：workspace/<书名> ｜ 分卷章节：vol_XX / ch_XXX
    - 执行阶段：Stage 4D (Reader 增量事实对账与提案) ｜ 算力级别：flash
-   - 核心输入/待修清单：manuscript/vol_XX/final/ch_XXX.md 与 outlines/vol_XX/beats/ch_XXX.md ｜ 内联实体/暗线增量：[ID清单]
-   - 执行指令：起手直接 view_file 读 final 与 beats ➔ 准写=[按标准模板调用 write_to_file 直接落盘 state/inbox/ch_XXX.json（禁传 ArtifactMetadata）] ➔ 运行 python studio.py proposal check ch_XXX 预检 ➔ 3行回执交卷（禁读engine/禁写脚本/落盘即走）
+   - 核心输入/待修清单：定稿 manuscript/vol_XX/final/ch_XXX.md ｜ 基础骨架已由 proposal auto 预生成 ｜ 细纲预期变动清单：[直接内联beats中的随身家底/LOCK/线索/时间钟预期变动]
+   - 执行指令：起手直接 view_file 读 final 与 state/inbox/ch_XXX.json ➔ 对照预期清单补齐条目后调用 write_to_file 落盘至 state/inbox/ch_XXX.json（禁传 ArtifactMetadata） ➔ 严格仅运行 1 次 python studio.py proposal check ch_XXX 验证 ➔ 3行回执交卷（禁跑探测/落盘即走）
    ```
 7. **Stage 4D 完工回执 ➔ Stage 5 极速原子封存与成品交付（严格 3 秒极限闭环）**：
    - ⚡ **【唯一准跑命令（单步原子封存）】**：主控收到 Stage 4D 回执后，执行单行原子封存命令：
@@ -246,6 +247,7 @@ graph LR
      （若当章恰好有主线里程碑到期，在同一步链式执行：`python studio.py sync ch_XXX -w "..." && python studio.py milestone achieve <ID> -c ch_XXX -w "..."`）；
    - 🚫 **【严禁现场查语法】**：严禁在 Stage 5 调用 `--help` 探测命令用法；
    - 🚫 **【正文绝对零回读】**：严禁调用 `view_file` 翻读 `final/ch_XXX.md` 成稿正文（定稿已由 Fixer 盖章放行，梗概已入库，主控死守大脑纯净）；
+   - 🚫 **【严禁封存后追跑体检】**：`studio.py sync` 已在底层执行原子强一致性验证，封存成功即代表全息达标，**绝对严禁出于“不放心”在 Stage 5 追跑全书 `check` 或 `doctor` 体检命令**！
    - 💬 **【同轮一次性文本交付】**：`sync` 运行完成后，主控**立即在同一轮回复中向作者输出极简交付卡片**（定稿路径、核心爽点速报、下章前瞻），全过程耗时严格锁定在 3~5 秒内！
 8. **卷末节奏（逢卷界章如 ch_050/ch_100 等封存后追加）**：
    - 执行 `python studio.py state rollup vol_XX -w "workspace/<书名>"` 生成卷末态势（下卷 pack 前情源）；
