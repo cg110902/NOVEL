@@ -5,7 +5,7 @@
   （unregistered_character）、章号断档、占位符未填、同 form 无理由、账本重算不符
   （state.verify_state）、锁台账生命状态冲突、因果前置倒挂/成环。
 - warnings：算术数出来的偏离事实（字数出带、线逾期、tension 连击、form 占比超 40%）——
-  是否修、怎么修由总控决定。
+  是否修、怎么修由主控决定。
 - infos：事实性提示与流程留痕（final 无 raw/beats、候选新专名、境界首次登记等）。
 
 两处与旧措辞的差别，按实现如实记录，勿再写回：
@@ -158,8 +158,8 @@ def validate_quotes(book: Path, ch: str, proposal: dict) -> list[str]:
 
     分级语义（2026-09 引文柔性化：摘录凭印象即可，严禁 LLM 逐字抠字眼浪费算力）：
     - 逐字 / 空白归一 / 标点归一 / 模糊 ≥ QUOTE_PASS_RATIO → 命中，静默通过；
-    - 模糊 [QUOTE_NEAR_RATIO, PASS) → 「近似命中」提示（凭印象摘录的预期偏差，供总控参考）；
-    - 其余（含短引文无法可靠模糊判定）→ 「存疑」提示（可能编造或版本漂移，总控复核）；
+    - 模糊 [QUOTE_NEAR_RATIO, PASS) → 「近似命中」提示（凭印象摘录的预期偏差，供主控参考）；
+    - 其余（含短引文无法可靠模糊判定）→ 「存疑」提示（可能编造或版本漂移，主控复核）；
     - 战死/退役等高危变更未携带引文 → 醒目提示（建议附原句，便于日后回溯）。
     返回值为提示清单，调用方一律不得据此阻断 sync。
     """
@@ -201,11 +201,11 @@ def validate_quotes(book: Path, ch: str, proposal: dict) -> list[str]:
         if score >= QUOTE_NEAR_RATIO:
             common.debug(f"quote {where}: near miss (score={score:.1f}, [{QUOTE_NEAR_RATIO}, {QUOTE_PASS_RATIO}))")
             notes.append(f"🟡 {where}.quote 近似命中（相似度 {score:.0f}%，与原文存在字词偏差）"
-                         f"——凭印象摘录的预期现象，仅供总控参考: 「{frag}」")
+                         f"——凭印象摘录的预期现象，仅供主控参考: 「{frag}」")
         else:
             common.debug(f"quote {where}: MISS (score={score:.1f} < {QUOTE_NEAR_RATIO})")
             notes.append(f"🟡 {where}.quote 未命中当章 final（存疑引文，不阻断）"
-                         f"——总控复核是否编造或版本漂移: 「{frag}」")
+                         f"——主控复核是否编造或版本漂移: 「{frag}」")
     for e in (proposal.get("entities") or []):
         if not isinstance(e, dict):
             continue
@@ -433,7 +433,7 @@ def verify_candidates(book: Path, ch: str, proposal: dict) -> dict:
             name, c = _warn_cand
             add("warn", "mention_not_present",
                 f"「{name}」本章提及 {c} 次、章末尾段仍在场，却未列入 present_characters"
-                "（疑似漏报，归总控判）")
+                "（疑似漏报，归主控判）")
         elif _info_cand:
             name, c = _info_cand
             add("info", "mention_not_present",
@@ -856,7 +856,7 @@ def param_suggestions(book: Path, top: int = 12) -> dict:
     # 而真正可执行的「某高频写法应挂到既有实体当别名」两边都不给——names 只把它列进
     # unregistered/known_variants 而不说该怎么办，suggest 的 generic_stopwords 又只统计
     # **已登记**别名，永远提不出新别名。现直接复用 evidence.names 的结果，保证两个入口
-    # 口径一致，并给出可执行的别名归属建议（采纳与否仍归总控）。
+    # 口径一致，并给出可执行的别名归属建议（采纳与否仍归主控）。
     try:
         _nm = evidence.names(book)
     except Exception as exc:  # 取证失败不应拖垮整个 suggest
@@ -869,7 +869,7 @@ def param_suggestions(book: Path, top: int = 12) -> dict:
                     f"python studio.py state set 'entities.{v['of'][0]}.aliases' "
                     f"'{json.dumps([v['name']], ensure_ascii=False)}'（覆盖写，需带上既有别名）；"
                     "或在 Stage 5 提案里用 entities 变更单登记。若其实是新实体，则另建条目。")
-         if v.get("of") else "无法自动归属，请总控判断是建实体还是加停用词"}
+         if v.get("of") else "无法自动归属，请主控判断是建实体还是加停用词"}
         for v in sorted(_nm.get("known_variants", []), key=lambda x: -x["count"])[:top]]
 
     return {"kind": "config_suggest", "final_chapters_scanned": len(texts),
@@ -877,7 +877,7 @@ def param_suggestions(book: Path, top: int = 12) -> dict:
             "adopt": "采纳手势：停用词走 python studio.py config set <键> --merge '<JSON数组>'（并入现有值）；"
                      "alias_suggestions 走 python studio.py state set 'entities.<实体>.aliases' '<JSON数组>'"
                      "（覆盖写，需带上既有别名）或在 Stage 5 提案里用 entities 变更单登记；"
-                     "判断采纳与否属语义裁决，归总控）"}
+                     "判断采纳与否属语义裁决，归主控）"}
 
 
 def param_write_guard(key: str, value) -> str | None:
@@ -1143,7 +1143,7 @@ def proposal_cross_facts(book: Path, ch: str, proposal: dict) -> dict:
     if timing:
         facts["kno_reveal_timing"] = timing
     # 回收冷前置（事实位，不判分）：提案 resolve 的线若 requires 前置已冷/深冷，
-    # 回收＝兑现读者已忘的承诺——总控看到事实自行决定是否先回响锚定。
+    # 回收＝兑现读者已忘的承诺——主控看到事实自行决定是否先回响锚定。
     _resolve_ids = [str(g.get("id")) for g in (proposal.get("lines") or [])
                     if isinstance(g, dict) and g.get("action") == "resolve" and g.get("id")]
     if _resolve_ids:
@@ -1637,7 +1637,7 @@ def run_checks(book: Path, *, full: bool = False) -> dict:
             if wl_key not in proj:
                 infos.append(_err("wordlist_unconfigured",
                                   f"project.json 未配置「{wl_key}」（{wl_desc}）——对应启发式档已跳过；"
-                                  "请总控按本书题材供参后生效（空表 = 明确关闭）"
+                                  "请主控按本书题材供参后生效（空表 = 明确关闭）"
                                   "（形状与示例见 `python studio.py config guide`）"))
         for pkey in PARAM_SPEC:
             if pkey in proj:
@@ -1994,7 +1994,7 @@ def run_checks(book: Path, *, full: bool = False) -> dict:
     ms = book / "manuscript"
     # 中文稿的拉丁残留原先无任何闸门——`residue` 只数 `{{slot:` 与 `candidate_`，
     # 实测 beats/正文里留一句「说这小子比他想的是 harder 谈」全程无反应。现补机械检出，
-    # 白名单走 project.json.latin_allowlist（外文专名/品牌等合法情形由总控声明）。
+    # 白名单走 project.json.latin_allowlist（外文专名/品牌等合法情形由主控声明）。
     _latin_allow = {str(w).strip().lower() for w in (proj.get("latin_allowlist") or [])
                     if isinstance(w, str) and w.strip()}
     if ms.is_dir():
@@ -2227,14 +2227,14 @@ def run_checks(book: Path, *, full: bool = False) -> dict:
                 # 引擎自带模板 templates/beats.md 的交付契约行是
                 # `- **核心看点**：<!-- 明确本章必须呈现给读者的核心爽点与看点 -->`，
                 # 行首是 `-` 而非 `<`，旧的 startswith("<") 跳过逻辑失效，于是注释里的
-                # 占位措辞被当成总控写的判据扫描——**每份未改写的脚手架 beats 必报**，
+                # 占位措辞被当成主控写的判据扫描——**每份未改写的脚手架 beats 必报**，
                 # 引擎用自己的模板触发自己的闸门。现先剥掉 HTML 注释再判定。
                 s = re.sub(r"<!--.*?-->", "", ln, flags=re.S).strip()
                 s = re.sub(r"^[-*·\s]+", "", s)
                 s = re.sub(r"<!--.*", "", s).strip()
                 if not s or s.startswith("#"):
                     continue
-                # 未填的 {{slot:key|示例措辞}} 是引擎自己模板的兜底文案，不是总控写的判据。
+                # 未填的 {{slot:key|示例措辞}} 是引擎自己模板的兜底文案，不是主控写的判据。
                 # 剥掉占位符后再判定，否则「引擎用自己的模板触发自己的闸门」（P1-8）。
                 s = re.sub(r"\{\{slot:[^}]*\}\}", "", s)
                 s = re.sub(r"^[：:\s*·\-]+", "", s)
@@ -2269,7 +2269,7 @@ def run_checks(book: Path, *, full: bool = False) -> dict:
         if missing_ids:
             warnings.append(_err("line_action_missing",
                                  f"{f.name}: 到期/逾期线 {', '.join(missing_ids[:5])} 未出现在「线动作」栏"
-                                 "（不还须在 beats 写明顺延理由，归总控 Stage 1 裁决）"))
+                                 "（不还须在 beats 写明顺延理由，归主控 Stage 1 裁决）"))
         # 读者记忆闸门（二）：beats 计划回收 × 该线已冷（gap 超过按 weight 缩放的阈值）。
         # 只在「本章真要回收」时才报——把提醒推到动作发生的那一刻，而非全程噪声。
         for _lid in sorted(planned_resolves & set(_cold_by_id)):
@@ -2295,7 +2295,7 @@ def run_checks(book: Path, *, full: bool = False) -> dict:
 
     if len(locked_entries) > 15:
         warnings.append(_err("locked_quota_exceeded",
-                             f"不可逆事实当前共 {len(locked_entries)} 条，超出 15 条软配额（防上下文膨胀，建议总控精简合并历史事实）"))
+                             f"不可逆事实当前共 {len(locked_entries)} 条，超出 15 条软配额（防上下文膨胀，建议主控精简合并历史事实）"))
 
     if locked_entries:
         try:

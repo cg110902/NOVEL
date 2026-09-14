@@ -5,8 +5,8 @@ description: Universal worldbuilding architect and setup generator for Novel Stu
 
 # SKILL — novel-architect（全题材开局架构师专属手册 · Stage 0 筑基指南）
 
-> ⚡ **【总控派发契约 · 三子智能体接力流水线】**：
-> Stage 0 是全书物理与数据底座的奠基阶段。**总控（Director）必须严格分三次依次唤起 3 个独立的 Subagent 专职子智能体，执行工序接力，严禁单 Agent 大包大揽！**
+> ⚡ **【主控派发契约 · 三子智能体接力流水线】**：
+> Stage 0 是全书物理与数据底座的奠基阶段。**主控（Director）必须严格分三次依次唤起 3 个独立的 Subagent 专职子智能体，执行工序接力，严禁单 Agent 大包大揽！**
 > 1. **第一棒 ➔ Subagent 1 (Stage 0A: Architect-World)**：执行 `init` 初始化，填实 **`bible/` 设定圣经六表** 与 `project.json`；
 > 2. **第二棒 ➔ Subagent 2 (Stage 0B: Architect-Story)**：依据圣经交付 **MVU 六件套与双大纲**，全息通电 **`state/` 六表** 并添加首卷里程碑；
 > 3. **第三棒 ➔ Subagent 3 (Stage 0C: Architect-Inspector)**：独立沙盒运行 `check` 机器硬闸门与常识因果扫荡，确保 **0 errors** 闭环交付。
@@ -97,9 +97,9 @@ description: Universal worldbuilding architect and setup generator for Novel Stu
 
 ---
 
-## 📋 二、 总控标准派发令模板 (Director Orders)
+## 📋 二、 主控标准派发令模板 (Director Orders)
 
-总控（Director）派发时必须使用以下标准指令唤起对应的 Subagent：
+主控（Director）派发时必须使用以下标准指令唤起对应的 Subagent：
 
 ### 1. Stage 0A 派发令：
 ```text

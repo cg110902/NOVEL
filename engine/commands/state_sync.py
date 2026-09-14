@@ -184,7 +184,7 @@ def cmd_sync(args) -> int:
                 print(f" {note}")
         battery_items = battery.get("items") or []
         if battery_items:
-            print("—— Stage 5 机械对照候选（advisory · 不阻断，裁决归总控）——")
+            print("—— Stage 5 机械对照候选（advisory · 不阻断，裁决归主控）——")
             for it in battery_items:
                 mark = "⚠️" if it["sev"] == "warn" else "ℹ️"
                 print(f" {mark} [{it['code']}] {it['msg']}")
@@ -460,7 +460,7 @@ def _cmd_proposal_check(book: Path, ch: str, args) -> int:
             print(" 汇总：幂等重复（operation_id 已应用过，sync 会跳过）")
         else:
             print(" 汇总：结构通过（正式预演仍走 sync ch_XXX --dry-run）")
-        print(" 三方对照（事实，是否上账归总控）：")
+        print(" 三方对照（事实，是否上账归主控）：")
         if facts.get("amounts_in_final") is not None:
             amt = "、".join(f"{a['samples'][0]}×{a['count']}（{a['pool']}）" for a in facts["amounts_in_final"]) or "无"
             print(f"   final 金额表达: {amt} ｜ 提案 ledger 交易: {facts.get('ledger_tx_in_proposal', 0)} 笔")
@@ -477,12 +477,12 @@ def _cmd_proposal_check(book: Path, ch: str, args) -> int:
         if facts.get("kno_reveal_timing"):
             tm = "、".join(f"{x['id']}(计划 ch_{x['planned_ch']:03d}，本章 ch_{x['chapter']:03d}，"
                            f"{'提前' if x['early'] else '逾期'})" for x in facts["kno_reveal_timing"])
-            print(f"   知识线揭示时机与计划不符: {tm}（改不改归总控）")
+            print(f"   知识线揭示时机与计划不符: {tm}（改不改归主控）")
         if facts.get("resolve_cold_prereqs"):
             cp = "；".join(f"{x['id']}←前置{x['req']}《{x['req_label']}》"
                            + (f"已{x['gap']}章未见" if x.get("gap") is not None else "正文从未落笔")
                            for x in facts["resolve_cold_prereqs"])
-            print(f"   回收的前置依赖已冷却: {cp}（兑现前建议先回响锚定，改不改归总控）")
+            print(f"   回收的前置依赖已冷却: {cp}（兑现前建议先回响锚定，改不改归主控）")
         if facts.get("present_mentions") is not None:
             pm = facts["present_mentions"]
             pm_str = "、".join(f"{k}×{v}" for k, v in sorted(pm.items(), key=lambda x: -x[1])[:8]) or "无"
@@ -531,7 +531,7 @@ def _cmd_proposal_verify(book: Path, ch: str, args) -> int:
         print(json.dumps(payload, ensure_ascii=False, indent=2))
         return 0
     print("=" * 70)
-    print(f" 🔎 [Stage 5 机械对照] {ch}（{proposal_path.name}；0 token 机械对照——候选清单，裁决归总控）")
+    print(f" 🔎 [Stage 5 机械对照] {ch}（{proposal_path.name}；0 token 机械对照——候选清单，裁决归主控）")
     print("=" * 70)
     if common.find_chapter_files(book, "final", ch):
         print(f" 引文柔性接地：{'✅ 全部命中（或未携带）' if not quote_notes else f'🟡 {len(quote_notes)} 条提示（不阻断）'}")
@@ -1600,7 +1600,7 @@ def cmd_checkpoint(args) -> int:
     print(" 🧭 航向与偏离评估（Drift Assessment）：")
     for a in assessment:
         print(f"   {a}")
-    print(" 💡 总控调优指令（Next 5-Chapter Directives）：")
+    print(" 💡 主控调优指令（Next 5-Chapter Directives）：")
     for d in directives:
         print(f"   👉 {d}")
     print("=" * 70)

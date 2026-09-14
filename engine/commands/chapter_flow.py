@@ -395,7 +395,7 @@ def _render_review_md(d: dict) -> str:
     present_str = "、".join(d["present"]) if d["present"] else "（未声明）"
 
     L = [f"# {d['chapter']} 校对注记（四块事实结算单）", ""]
-    L += ["<!-- 骨架由 `studio review new` 生成：机器数据已预填，结果与证据由总控核定。",
+    L += ["<!-- 骨架由 `studio review new` 生成：机器数据已预填，结果与证据由主控核定。",
           "     每条结论要证据：正文引文片段，或 evidence/audit 输出（字段名+数值）——无证据打钩视为未审。",
           "     -->", ""]
 
@@ -472,7 +472,7 @@ def cmd_review(args) -> int:
     if getattr(args, "write", False):
         dest = book / "log" / "review" / f"{ch}.md"
         if dest.exists():
-            return _err(f"{dest} 已存在——注记是总控工件，拒绝覆盖（请手工编辑）",
+            return _err(f"{dest} 已存在——注记是主控工件，拒绝覆盖（请手工编辑）",
                         code=1, err_code="exists")
         dest.parent.mkdir(parents=True, exist_ok=True)
         dest.write_text(md, encoding="utf-8")
@@ -539,7 +539,7 @@ def _render_audit_md(payload: dict) -> str:
     lines.extend([
         "---",
         "",
-        "## 🟡 软性存疑（总控关注）",
+        "## 🟡 软性存疑（主控关注）",
     ])
     softs = [c for c in candidates if c.get("severity") == "candidate_soft"]
     if not softs:
@@ -945,10 +945,10 @@ def _consistency_section(book, n: int, cur: dict, ents: list[dict], lines_st: di
     except Exception as exc:  # 账本读不回来 ≠ 没有资源池，必须显式说出来
         res_st, ledger_err = {}, str(exc)
     pools = (res_st.get("pools", {}) if isinstance(res_st.get("pools", {}), dict) else {})
-    # 键形状小节已由 proposal auto 算法取代，Reader 已退役，不再注入 beats 增加总控负担
+    # 键形状小节已由 proposal auto 算法取代，Reader 已退役，不再注入 beats 增加主控负担
     if not roster and not kno_list and not locked_entries and not pools:
         return ""
-    out = ["## 本章一致性速查（引擎自动注入 · 总控可增删）", ""]
+    out = ["## 本章一致性速查（引擎自动注入 · 主控可增删）", ""]
     # 资源池合法键名 + LOCK 已用 ID 水位线：Reader 提案若引用未声明的池键或复用已用 ID，
     # Stage 5 会硬拒（ledger_pool_undeclared / locked_entry_id_reuse）——先给清单再让人写。
     if pools or locked_entries or ledger_err:
@@ -963,7 +963,7 @@ def _consistency_section(book, n: int, cur: dict, ents: list[dict], lines_st: di
                 unit = pools[pk].get("unit", "")
                 out.append(f"- 合法池键：`{pk}`（当前余额 {bal} {unit}）— 流水 `pool` 必须逐字等于此键")
         elif not ledger_err:
-            out.append("- ⚠️ 尚无已声明资源池：本章流水必须 `kind=\"set\"` 建立首个池键（新键名需总控批准）")
+            out.append("- ⚠️ 尚无已声明资源池：本章流水必须 `kind=\"set\"` 建立首个池键（新键名需主控批准）")
         _lock_ids = sorted(str(e.get("id", "")) for e in locked_entries if e.get("id"))
         try:
             _cog_raw = state.load_state(book, "cognition") or {}
@@ -1104,7 +1104,7 @@ def _proposal_shapes_section() -> str:
     lines.append("- 只写增量；每条尽量带 `\"quote\":\"本章 final 原句\"`（柔性接地，不逐字抠）。"
                  "`current` 缺省/空值＝不改；`locked[].note`、`lines[].target_ch`(plant) 必填。")
     lines.append("- 幂等：`operation_id` 全书唯一，同 id 换内容会被拒收——修正重提必须换新 id。")
-    lines.append("- 提案落盘即交卷、**不要**自己跑命令：结构预检由总控接收提案后执行"
+    lines.append("- 提案落盘即交卷、**不要**自己跑命令：结构预检由主控接收提案后执行"
                  "（0 Token 的 `python studio.py proposal check ch_XXX`），"
                  "报错会点名到 `entities[i] 含未知字段: xxx`，按名改再重提。")
     lines.append("")
@@ -1513,7 +1513,7 @@ def cmd_critic(args) -> int:
                              ensure_ascii=False))
         else:
             print(f"ℹ️ {tok} 尚未执行老白读者评测。")
-            print("   正道：总控在 Stage 4 派发子代理 `Role: 'Critic'` 并行评审（零脚本、盲审便签）。")
+            print("   正道：主控在 Stage 4 派发子代理 `Role: 'Critic'` 并行评审（零脚本、盲审便签）。")
             print(f"   引擎辅助：python studio.py critic {tok} --write 可落盘预填骨架（SKELETON，供子代理改写，不计完成）。")
         return 0
 
@@ -1624,7 +1624,7 @@ def _calendar_payload(book, span: int) -> dict:
     if clocks_overdue:
         out["overdue_clocks"] = clocks_overdue
     # 跨卷长线节：无到期章号的线此前在日历上完全不可见（排产盲区）——单列一节，
-    # 让总控在排产时看到「这些线没有 deadline，最容易被遗忘」。
+    # 让主控在排产时看到「这些线没有 deadline，最容易被遗忘」。
     longlines = []
     for arr, kind in (("foreshadows", "伏笔"), ("misunderstandings", "误会"), ("knowledge", "知识线")):
         for g in lines.get(arr, []):
@@ -1658,7 +1658,7 @@ def _calendar_payload(book, span: int) -> dict:
             row["clocks"] = clocks
         out["chapters"].append(row)
     out["notes"] = ["排产参考（advisory）：due_lines=预定本章结算的线；phase=卷阶段航标；"
-                  "longlines=跨卷长线（无到期，排产时顺手安排回响防遗忘）；兑付节奏归总控裁决。"]
+                  "longlines=跨卷长线（无到期，排产时顺手安排回响防遗忘）；兑付节奏归主控裁决。"]
     return out
 
 

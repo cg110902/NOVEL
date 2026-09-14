@@ -1,6 +1,6 @@
 """错误码注册表：Novel Studio 引擎全部体检错误码的机器可读说明书。
 
-定位：这些错误的最终消费者往往是 LLM Agent（总控拿到 `check --json` 后要自助修复），
+定位：这些错误的最终消费者往往是 LLM Agent（主控拿到 `check --json` 后要自助修复），
 因此每个码必须有：level（error/warning/info，决定投递到哪条通道）、
 description（一句话人话解释）、
 remedy（可执行的修复建议）。
@@ -153,7 +153,7 @@ REGISTRY: dict[str, ErrCode] = {c.code: c for c in (
          "核实道具充能数值，确保 charges <= max_charges。"),
     _reg("line_action_missing", "warning", "到期/逾期线未在细纲「线动作」栏登记",
          "该线已到/已过 target_ch 且仍未闭环，但 beats 未在「线动作」栏给出处理。"
-         "请在 beats 写明其动作（plant/advance/remind/reveal/resolve）或写明顺延理由，归总控 Stage 1 裁决。"),
+         "请在 beats 写明其动作（plant/advance/remind/reveal/resolve）或写明顺延理由，归主控 Stage 1 裁决。"),
     _reg("line_quota_exceeded", "warning", "活跃线索数量超出配额（主线被稀释）",
          "当前活跃线索过多，建议在后续章节逐步收网已成熟的伏笔，保持主线清爽。"),
     _reg("line_overdue", "warning", "线索已逾期（target_ch 小于已定稿章数，仍未收束）",
@@ -279,7 +279,7 @@ REGISTRY: dict[str, ErrCode] = {c.code: c for c in (
          "或修正 present_moods 的键名拼写。未登记的情绪注记不会被 pack 注入。"),
     _reg("mood_plan_actual_drift", "info", "已封存章的 beats 出厂情绪表与台账快照不一致",
          "计划（beats 表）与实际（present_moods）的人/词/烈度有出入：计划赶不上变化是常态，"
-         "本提示仅供总控复核——若为有意改写请忽略；若为提案漏登/总控笔误请补齐。"),
+         "本提示仅供主控复核——若为有意改写请忽略；若为提案漏登/主控笔误请补齐。"),
     _reg("alias_shadows_name", "warning", "别名与他实体法定名重名（寻址被遮蔽）",
          "该别名寻址永远命中法定名方：用 state set 改其中一方的别名/法定名；若只作文本计数用可忽略。"),
     _reg("cognition_truth_conflict", "warning", "角色认知与真相锚点冲突（穿帮/滞后）",

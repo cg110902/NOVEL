@@ -36,7 +36,7 @@ from .commands.state_sync import (cmd_checkpoint, cmd_ledger, cmd_milestone, cmd
 COMMAND_HELP = {
     "status": "进度总览 + 逐章流水线 + 下一步指向",
     "init": "创建/清理书工作区（脚手架+状态播种+模板槽位实例化）",
-    "cockpit": "总控态势驾驶舱：工作流导航 + 戏剧动力学 + 伏笔雷达 + 自愈处方 + 催更雷达",
+    "cockpit": "主控态势驾驶舱：工作流导航 + 戏剧动力学 + 伏笔雷达 + 自愈处方 + 催更雷达",
     "pack": "单章上下文三层装配（P0 热 / P1 别名触发 / P2 冷索引）",
     "ask": "全书事实检索机（只读取证：别名展开→十一表+final 原句双域，带章节出处；写细纲前先问书）",
     "pov": "角色视角包（档案/持有/关系/出场足迹/他知道与不知道的/未了线——由账本推导，advisory）",
@@ -48,7 +48,7 @@ COMMAND_HELP = {
     "checkpoint": "宏观航向校准点（每5章复盘分卷四分位里程碑与主线偏航）",
     "milestone": "主线里程碑管理：list ｜ add（Stage 0 播种主线里程碑与预期达成章节）",
     "state": "状态速查与手术刀纠偏：show ｜ get/set <表.字段> ｜ object <id/名>（对象包络）｜ at <章>（时点切面）｜ diff <章A> <章B> ｜ blame <表.路径>（溯源）｜ rollup <卷>（卷末态势摘要）｜ recompute（派生重算）",
-    "config": "书级参数手术刀：list|guide|suggest|get|set[--merge]|unset（总控供参通道，project.json；含 words_target/lines_cap 等项目级键）",
+    "config": "书级参数手术刀：list|guide|suggest|get|set[--merge]|unset（主控供参通道，project.json；含 words_target/lines_cap 等项目级键）",
     "sync": "提案合并 → 状态体检 → 快照（Stage 5 闭环，可 --dry-run）",
     "ledger": "账本手术刀：recompute（余额与 balance_after 按流水全量重算修复）",
     "snapshot": "快照 list / create NAME / rollback NAME [--clean-drafts]",
@@ -208,7 +208,7 @@ def _build_subparsers(sub: argparse._SubParsersAction) -> None:
     _add_common_opts(q)
     q.set_defaults(func=cmd_status)
 
-    q = sub.add_parser("cockpit", help="总控态势驾驶舱：工作流导航 + 戏剧动力学 + 自愈处方 + 催更雷达")
+    q = sub.add_parser("cockpit", help="主控态势驾驶舱：工作流导航 + 戏剧动力学 + 自愈处方 + 催更雷达")
     _add_common_opts(q)
     q.add_argument("chapter", nargs="?", help="目标章节（如 2 或 ch_002，缺省自动推断活跃章）")
     q.set_defaults(func=cmd_cockpit)
@@ -238,7 +238,7 @@ def _build_subparsers(sub: argparse._SubParsersAction) -> None:
     q.add_argument("--as", dest="as_role", default="drafter",
                    # 单一真源：直接取读权限网关的角色表，杜绝「choices 合法但网关不认」（P0-3）
                    choices=tuple(pack.ROLE_DENY),
-                   help="--open 的准读角色（默认 drafter=最严格；总控用 director/evolver 才有全量准读权）")
+                   help="--open 的准读角色（默认 drafter=最严格；主控用 director/evolver 才有全量准读权）")
     q.set_defaults(func=cmd_pack)
 
     q = sub.add_parser("ask", help="全书事实检索机（只读取证：十一表+final 原句双域，带章节出处）")
@@ -417,13 +417,13 @@ def _build_subparsers(sub: argparse._SubParsersAction) -> None:
     r.set_defaults(func=cmd_state)
     q.set_defaults(func=cmd_state)
 
-    q = sub.add_parser("config", help="书级参数手术刀：list(默认)|guide|suggest|get|set|unset（总控供参通道，含 words_target/lines_cap）")
+    q = sub.add_parser("config", help="书级参数手术刀：list(默认)|guide|suggest|get|set|unset（主控供参通道，含 words_target/lines_cap）")
     _add_common_opts(q)
     cf_sub = q.add_subparsers(dest="config_action")
     for _name, _hlp, _extra in (
             ("list", "列出全部参数键的配置状态与当前值", ()),
-            ("guide", "引擎可接受参数的型号单（形状+示例，总控照此供参）", ()),
-            ("suggest", "供参候选工作单（机械计数高频短别名/泛词，总控裁决采纳）", ()),
+            ("guide", "引擎可接受参数的型号单（形状+示例，主控照此供参）", ()),
+            ("suggest", "供参候选工作单（机械计数高频短别名/泛词，主控裁决采纳）", ()),
             ("get", "查看指定参数键（-w 书目录）", ("key",)),
             ("set", "设置参数（值为 JSON 字面量；[]/{}=明确关闭；--merge 并入现有值）", ("key", "value")),
             ("unset", "移除参数（回到未配置态；gap 键将恢复缺口提示）", ("key",))):

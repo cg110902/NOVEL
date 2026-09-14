@@ -1,7 +1,7 @@
 """evidence：机械证据（mentions|gaps|dup|style|words|file|candidates|prev；all 聚合）。
 
 原则 ：只数事实、零裁决——本模块输出里不允许出现「可疑/建议/达标」类语义词；
-判断属于总控与子代理。空结果 = 合法事实（退出码 0）。支持 jieba 词性标注提取高精度专名候选与关键词，坚决不做主观文学裁决。
+判断属于主控与子代理。空结果 = 合法事实（退出码 0）。支持 jieba 词性标注提取高精度专名候选与关键词，坚决不做主观文学裁决。
 """
 from __future__ import annotations
 
@@ -1291,11 +1291,11 @@ def ask(book: Path, query: str) -> dict:
     # 原实现只对 name/plan/secret/parties/... 做字面子串匹配，于是主角的
     # 全书驱动力线（如 GUN-003「娘的半缕残魂」——name 与 plan 里都没有主角名字）
     # 在 `ask 陆沉舟` 时整条漏掉；而 SKILL 的取证纪律是「凡要落笔一个旧数字且它不在
-    # 眼前 → 必须先 ask」，漏召回直接导致总控凭印象编数。现补一层反向索引：
+    # 眼前 → 必须先 ask」，漏召回直接导致主控凭印象编数。现补一层反向索引：
     #   a) holders 知情圈命中；
     #   b) 线所触章节（plant/update/escalate/remind/resolve/target）的定稿正文里
     #      出现过该实体名或别名 → 记为「同章在场」关联。
-    # 直接字面命中仍排在前面，间接命中带 via 说明，总控可自行判断权重。
+    # 直接字面命中仍排在前面，间接命中带 via 说明，主控可自行判断权重。
     try:
         lines = state.load_state(book, "lines")
     except (ValueError, FileNotFoundError):
@@ -1544,7 +1544,7 @@ def pov(book: Path, name: str) -> dict:
     从现有账本推导「该角色此刻知道什么 / 不知道什么」：
     - 已揭示知识（KNO Revealed）+ 其登场章节的编年史事件 = 他应知信息（公开/亲历）；
     - 未揭示知识（KNO Concealed）= 按账本他不知情（若正文另有交代，以正文为准）。
-    严禁据此硬写入正文——语义裁决归总控与起草员。
+    严禁据此硬写入正文——语义裁决归主控与起草员。
     """
     target = str(name or "").strip()
     out: dict = {"kind": "pov", "name": target}
@@ -1679,7 +1679,7 @@ def pov(book: Path, name: str) -> dict:
     if open_lines:
         out["open_lines"] = open_lines[:10]
     out["notes"] = [
-        "本命令由现有账本推导（advisory）；语义与写法裁决归总控/起草员。",
+        "本命令由现有账本推导（advisory）；语义与写法裁决归主控/起草员。",
         "knows.lived_events = 事件文本点到该角色，可当亲历；"
         "knows.same_chapter_events = 仅同章发生，不保证亲历（写对手戏严禁当作他知道）。",
     ]
@@ -1692,7 +1692,7 @@ def names(book: Path) -> dict:
     输出三类事实：
     - unregistered：跨章高频但未注册的专名候选（jieba NER，缺库退化为 n-gram）；
     - variant_clusters：候选间的近似簇（包含关系或编辑相似 ≥0.8）——同物异名风险；
-    - known_variants：疑似既有实体的变体写法（该挂别名还是建实体，归总控）。
+    - known_variants：疑似既有实体的变体写法（该挂别名还是建实体，归主控）。
     """
     finals = final_chapters(book)
     out: dict = {"kind": "names", "final_chapters": len(finals),
@@ -1795,5 +1795,5 @@ def names(book: Path) -> dict:
                            for w, t, chs in unregistered[:15]]
     out["variant_clusters"] = [cl for cl in clusters if len(cl["members"]) >= 2][:8]
     out["known_variants"] = known_variants[:10]
-    out["notes"] = ["只出数、零裁决：是否注册/挂别名/改名归总控；近似写法也可能是正文修辞。"]
+    out["notes"] = ["只出数、零裁决：是否注册/挂别名/改名归主控；近似写法也可能是正文修辞。"]
     return out

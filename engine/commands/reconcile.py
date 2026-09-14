@@ -4,7 +4,7 @@
 每卷末做一次**周期性维护**（如同数据库的 full rebuild）。本命令只做机械部分：
 全书不变量复扫、本卷 8 探针批量重跑、高危字段变更史、投影 diff 候选清单，
 产出 `log/review/reconcile_vol_XX.md` 工作单；LLM 重读对账是仪式不是代码
-（按 AGENTS 宪法由总控派发临时沙盒 Reader，对着清单裁决而非大海捞针）。
+（按 AGENTS 宪法由主控派发临时沙盒 Reader，对着清单裁决而非大海捞针）。
 """
 from __future__ import annotations
 
@@ -131,7 +131,7 @@ def render_reconcile_md(payload: dict, book_name: str) -> str:
     L.append("")
     L.append(f"> 范围：ch_{payload['lo']:03d} ~ ch_{payload['hi']:03d}"
              f"（{len(payload['chapters'])} 章） ｜ 生成：{datetime.datetime.now().isoformat(timespec='seconds')}")
-    L.append("> 本单由引擎机械生成（0 Token）；第五节的 LLM 对账仪式由总控派发，对着清单裁决。")
+    L.append("> 本单由引擎机械生成（0 Token）；第五节的 LLM 对账仪式由主控派发，对着清单裁决。")
     L.append("")
     L.append("## 一、全书不变量复扫")
     L.append(f"- verify_data errors：**{payload['verify_error_count']}**"
@@ -158,7 +158,7 @@ def render_reconcile_md(payload: dict, book_name: str) -> str:
         L.append(f"  - {h.get('ch')} [{h.get('source')}] {h.get('path')}: "
                  f"{_clip(h.get('before'))} → {_clip(h.get('after'))}")
     L.append("")
-    L.append("## 四、投影 diff 工位（正文 vs 十一表，总控裁决）")
+    L.append("## 四、投影 diff 工位（正文 vs 十一表，主控裁决）")
     L.append("### 4a. 正文出现但未登记的候选专名（本卷 ≥2 次）")
     if payload["unregistered"]:
         for u in payload["unregistered"]:
@@ -172,7 +172,7 @@ def render_reconcile_md(payload: dict, book_name: str) -> str:
     else:
         L.append("  - （无）")
     L.append("")
-    L.append("## 五、LLM 对账仪式（总控派发临时沙盒，引擎不管）")
+    L.append("## 五、LLM 对账仪式（主控派发临时沙盒，引擎不管）")
     L.append("- [ ] 派发临时沙盒 Reader 重读本卷全部 final，与十一表逐项对账（重点：第四节清单）")
     L.append("- [ ] 差异并入下一章在途提案（`state/inbox/ch_XXX.json`）随 sync 合并")
     L.append("- [ ] 对账后跑 `python studio.py ledger recompute` + `python studio.py check` 确认平账")

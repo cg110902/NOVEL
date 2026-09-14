@@ -40,7 +40,7 @@ python studio.py help --json
 | **Stage 1** | **Director** | `inherit` | 前瞻研判、细纲任务书编织与当章事实变更预期前置声明 | `outlines/vol_XX/beats/ch_XXX.md` |
 | **Stage 2** | **Drafter** | `inherit` | 100% 依据 pack 上下文展开，通俗大白话撰写高张力初稿毛坯（仅跑1次pack） | `manuscript/vol_XX/raw/ch_XXX_v1.md` |
 | **Stage 3** | **Editor** | `inherit` | 直读初稿通俗大白话重塑与脱水（纯读写【绝对零命令】） | `manuscript/vol_XX/raw/ch_XXX_v3.md` |
-| **Stage 4A** | **Auditor** | `inherit` | 常识与出戏审查，预制修补配方（总控预置探针骨架，纯读写【绝对零命令】） | `log/audit/ch_XXX.md` |
+| **Stage 4A** | **Auditor** | `inherit` | 常识与出戏审查，预制修补配方（主控预置探针骨架，纯读写【绝对零命令】） | `log/audit/ch_XXX.md` |
 | **Stage 4B** | **Critic** | `flash` | 资深老白读者纯盲审，评估阅读疲劳度与活人感，输出下章催更便签（【绝对零命令】） | `log/critic/ch_XXX.md` |
 | **Stage 5** | **Director / Engine** | `inherit` | 极速三连原子收口：`finalize` 自动定稿盖章 ➔ `proposal auto` 动态事实入账 ➔ `sync` 封存（≤0.5秒） | `final/ch_XXX.md`, `state/*.json` |
 | **低频巡检** | **Librarian** | `flash` | 每 10 章事实深层巡检打捞遗漏次要实体；卷末执行对账大修（纯Markdown对账单） | `log/review/` |
@@ -70,7 +70,7 @@ workspace/<书名>/
 ├── outlines/
 │   ├── main_plot.md          # 全书脊柱（故事引擎与宏观里程碑）
 │   └── vol_XX/
-│       ├── outline.md        # 分卷大纲（四分位阶段航标；总控可动态修纲）
+│       ├── outline.md        # 分卷大纲（四分位阶段航标；主控可动态修纲）
 │       └── beats/ch_XXX.md   # 当章细纲任务书（含法定事实与预期变更声明）
 ├── manuscript/vol_XX/
 │   ├── raw/
@@ -123,7 +123,7 @@ workspace/<书名>/
 | **上下文装配** | `python studio.py pack ch_XXX --full -w "workspace/<书名>"` | Drafter 起草专用装配包（预算上限 1.5W Token） |
 | **事实求证** | `python studio.py ask "<实体名/事件>" -w "workspace/<书名>"` | 全息问书机（穿透真值、正文与圣经，带出处） |
 | **排产日历** | `python studio.py calendar 3 -w "workspace/<书名>"` | 查看未来 3 章危机倒计时与伏笔线 |
-| **质量预审** | `python studio.py audit ch_XXX --write -w "workspace/<书名>"` | 总控派发 Stage 4A 前预置 8 大探针报告骨架 |
+| **质量预审** | `python studio.py audit ch_XXX --write -w "workspace/<书名>"` | 主控派发 Stage 4A 前预置 8 大探针报告骨架 |
 | **自动定稿** | `python studio.py finalize ch_XXX -w "workspace/<书名>"` | Stage 5 自动套用修补配方生成 final 并盖章放行 |
 | **事实提取** | `python studio.py proposal auto ch_XXX --write -w "workspace/<书名>"` | Stage 5 自动从定稿抽取增量事实写入提案 |
 | **状态同步** | `python studio.py sync ch_XXX -w "workspace/<书名>"` | Stage 5 原子封存快照与状态合账归档（≤0.5秒） |

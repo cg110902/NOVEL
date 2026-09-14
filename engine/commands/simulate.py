@@ -1,4 +1,4 @@
-"""simulate：Stage 1 总控（Director）剧情推演沙盒与参谋件。
+"""simulate：Stage 1 主控（Director）剧情推演沙盒与参谋件。
 
 两大核心能力：
 1. `simulate impact`：因果链影响测算（若角色死亡/道具损毁/机密揭露，有哪些伏笔、主线里程碑与人际关系将被波及）
@@ -284,9 +284,9 @@ def simulate_branch(book: Path, ch: str | None = None, count: int = 3, write: bo
         f"# {next_tok} 剧情推演沙盒（多分支假说参谋单）",
         "<!-- ⚠️ 参谋件属性说明：",
         "     本文件由 studio.py simulate branch 自动推演生成，放置于 log/branches/ 目录，",
-        "     纯供 Stage 1 总控（Director）作为发散构思与横向比较的参谋参考；",
+        "     纯供 Stage 1 主控（Director）作为发散构思与横向比较的参谋参考；",
         "     本文件的任何内容【绝不写入正史】、绝不影响 state/ 状态与 outlines/ 大纲；",
-        "     总控最终采纳其中一条走向后，请按常规工序将其提炼并写入 beats/ 细纲任务书。 -->",
+        "     主控最终采纳其中一条走向后，请按常规工序将其提炼并写入 beats/ 细纲任务书。 -->",
         "",
         f"## 📍 当前正史锚点 ({tok})",
         f"- **时地与在场**：{where_now}",
@@ -306,7 +306,7 @@ def simulate_branch(book: Path, ch: str | None = None, count: int = 3, write: bo
             f"- **信息与认知博弈**：{b['cognition_play']}",
             f"- **账目与道具损耗**：{b['resource_cost']}",
             f"- **潜在因果链风险**：{b['causal_risk']}",
-            f"- **总控采纳建议**：{b['recommendation']}",
+            f"- **主控采纳建议**：{b['recommendation']}",
             ""
         ]
 
@@ -424,7 +424,7 @@ def cmd_simulate(args) -> int:
 
         if to_write:
             print(f"✅ 剧情假说沙盘已写入: {payload['written']}")
-            print("   （纯参谋件，绝不污染正史；总控确定方案后提炼至 beats 即可）")
+            print("   （纯参谋件，绝不污染正史；主控确定方案后提炼至 beats 即可）")
             return 0
 
         if _HAS_RICH and console:

@@ -13,7 +13,7 @@ description: Universal content scanner and issue detector for Novel Studio (Stag
 
 ## 🎯 一、 你的唯一任务（干完就走）
 
-底层的 8 大机械探针已由总控预置生成初审报告骨架。你的唯一任务是：单次全读预定稿进行常识与出戏挑刺（现代出戏词、前后动作矛盾、时空瞬仪、常识硬伤），将具体问题与【TargetContent ➔ ReplacementContent】修补配方补充在 `log/audit/ch_XXX.md`，交由 Stage 5 引擎 `finalize` 算法自动吸纳定稿并盖章！
+底层的 8 大机械探针已由主控预置生成初审报告骨架。你的唯一任务是：单次全读预定稿进行常识与出戏挑刺（现代出戏词、前后动作矛盾、时空瞬仪、常识硬伤），将具体问题与【TargetContent ➔ ReplacementContent】修补配方补充在 `log/audit/ch_XXX.md`，交由 Stage 5 引擎 `finalize` 算法自动吸纳定稿并盖章！
 
 ⚠️ **【铁律禁令】绝对零命令！严禁修改正文，严禁运行任何命令！放行权归 Stage 5 引擎！**
 
@@ -22,7 +22,7 @@ description: Universal content scanner and issue detector for Novel Studio (Stag
 ## ⚡ 二、 极速两步工序（单线推进，绝不空转 · 绝对零命令）
 
 1. **步骤 1【单次全量阅读常识审查 · 严禁切片】**：
-   总控已在派发前运行探针预置好 `log/audit/ch_XXX.md` 报告骨架。
+   主控已在派发前运行探针预置好 `log/audit/ch_XXX.md` 报告骨架。
    起手调用 `view_file` **单次全读** `manuscript/vol_XX/raw/ch_XXX_v3.md` 与 `log/audit/ch_XXX.md`（**禁切片翻读**）；
    - 检查现代词汇出戏、前后动作打架、时空瞬移、人物严重降智等语义和逻辑问题。
 
@@ -50,7 +50,7 @@ description: Universal content scanner and issue detector for Novel Studio (Stag
 ## 🔒 三、 白名单与绝对红线
 
 - 📖 **准读文件**：`.agents/skills/auditor/SKILL.md`（首步锁定规范）、`raw_v3.md`、`log/audit/ch_XXX.md`；
-- 💻 **准跑命令**：**【绝对零命令】**（报告已由总控预置，无需运行任何命令，零终端操作，防一切脚本恐慌）；
+- 💻 **准跑命令**：**【绝对零命令】**（报告已由主控预置，无需运行任何命令，零终端操作，防一切脚本恐慌）；
 - ✍️ **准写工具（唯一）**：`replace_file_content` 修改 `log/audit/ch_XXX.md`；
 - 🚫 **绝对红线**：
   - 严禁运行任何终端命令或脚本（绝对零命令）；

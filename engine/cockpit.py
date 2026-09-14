@@ -1,10 +1,10 @@
-"""cockpit：总控态势驾驶舱与自愈雷达（专供 AI / 总控秒懂全链路态势与自愈决策）。
+"""cockpit：主控态势驾驶舱与自愈雷达（专供 AI / 主控秒懂全链路态势与自愈决策）。
 
 功能矩阵：
 1. workflow：精准定位当前章节与活跃工序 Stage，提供 0 歧义的下一步调度指令与标准派发参数。
 2. dramatic_momentum：计算戏剧动力学（承接余震 aftershock、悬顶危机 active_pressures、现场信息差机锋 dramatic_irony、两两张力网络 scene_tensions）。
 3. health_and_remedies：全书事实核验、确定性断言体检与具备可操作性的自愈处方（Remedies）。
-4. critic_radar：直接透视上一章读者催更便签（体感/连续性红旗/最想看/最怕踩），免去总控翻读外部文件。
+4. critic_radar：直接透视上一章读者催更便签（体感/连续性红旗/最想看/最怕踩），免去主控翻读外部文件。
 """
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ def _infer_active_chapter(book: Path) -> str:
      P1-4：口径与 `status` 的「下一章」统一——**连续推进，绝不跳章**。
     原实现取 beats/raw/final/inbox/synopsis 里出现过的最大章号，于是一份游离的
     未来章 beats（如手滑 `beats new ch_7`）会把工序指针劫持到 ch_007，而 `status`
-    仍说 ch_005；总控按 SKILL「严禁猜测工序，直接执行 next_action.command」就会跳过
+    仍说 ch_005；主控按 SKILL「严禁猜测工序，直接执行 next_action.command」就会跳过
     中间章。现改为：锚点 = max(最后定稿章, 最后封存章)，指针 = [1, 锚点+1] 里第一个
     尚未封存的章号。
     """
@@ -238,7 +238,7 @@ def _get_critic_radar(book: Path, ch_num: int) -> dict[str, str]:
     except OSError:
         pass  # 便签不可读：雷达字段留空（：不再吞全部异常）
 
-    # 便签存在但雷达字段全空 → 明示「格式疑似偏离模板」，不再让总控误读为「无反馈」
+    # 便签存在但雷达字段全空 → 明示「格式疑似偏离模板」，不再让主控误读为「无反馈」
     try:
         _text = critic_path.read_text(encoding="utf-8", errors="replace")
         _is_skeleton = "SKELETON" in _text[:400] or "（待评）" in _text[:1200]
@@ -539,7 +539,7 @@ def get_algorithmic_guidance(book: Path, current_ch: int) -> list[str]:
 
 
 def build_cockpit_briefing(book: Path, ch: str | None = None) -> dict[str, Any]:
-    """计算并构建总控态势驾驶舱完整数据模型。"""
+    """计算并构建主控态势驾驶舱完整数据模型。"""
     # NOVEL_STUDIO_DEBUG=1 时聚合各节耗时（briefing.debug_timing_ms + stderr）
     import time as _time
     timings: dict[str, float] = {}
@@ -735,7 +735,7 @@ def build_cockpit_briefing(book: Path, ch: str | None = None) -> dict[str, Any]:
         next_action = {
             "actor": "Director",
             "stage": "Stage 5",
-            "instruction": "总控核对提案，一键执行 sync 原子合并账目并封存快照"
+            "instruction": "主控核对提案，一键执行 sync 原子合并账目并封存快照"
                            "（存疑处可 `studio ask <关键词>` 只读取证后再裁决）",
             "command": f"python studio.py sync {ch_tok}",
             "target_file": f"state/snapshots/"
@@ -928,7 +928,7 @@ def render_cockpit_terminal(briefing: dict[str, Any]) -> None:
             f"[bold green]👉 下一步执行指令：[/bold green][bold white]{act['instruction']}[/bold white]\n"
             f"[dim]   建议操作/命令：{act['command']} ｜ 交付目标：{act['target_file']}[/dim]"
         )
-        # 游离的超前工件显式提示，避免总控误以为指针跳章
+        # 游离的超前工件显式提示，避免主控误以为指针跳章
         if wf.get("stray_ahead_artifacts"):
             wf_text += ("\n\n[bold yellow]⚠️ 游离超前工件（不参与指针推断）：[/bold yellow]"
                         + "、".join(wf["stray_ahead_artifacts"][:6])

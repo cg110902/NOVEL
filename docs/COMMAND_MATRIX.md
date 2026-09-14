@@ -11,13 +11,13 @@
 
 | 角色 (Agent) | 负责阶段 | 专属命令清单 | 核心场景与使用指南 |
 |---|---|---|---|
-| **总控 (Director)** | 全局统筹<br/>Stage 1 / 5 | `cockpit`<br/>`calendar [N]`<br/>`simulate branch`<br/>`graph path/neighbors`<br/>`lore compare/entity`<br/>`ask 2.1` / `pov`<br/>`recall`<br/>`beats new`<br/>`audit --write`<br/>`finalize`<br/>`proposal auto`<br/>`sync`<br/>`state rollup`<br/>`check --trend/--bisect` | **总制片人四大实战武器库**：<br/>1. 每章动笔前跑 `cockpit` 与 `calendar 3` 研判态势与危机时钟；<br/>2. 剧情卡点时跑 `simulate branch --write` 生成走向参谋单；<br/>3. 派发前仅跑 `audit --write` 为 Auditor 备好探针骨架；<br/>4. Stage 5 单行跑 `finalize ; proposal auto --write --force ; sync` 完成原子定稿与封存（≤0.5秒）。 |
+| **主控 (Director)** | 全局统筹<br/>Stage 1 / 5 | `cockpit`<br/>`calendar [N]`<br/>`simulate branch`<br/>`graph path/neighbors`<br/>`lore compare/entity`<br/>`ask 2.1` / `pov`<br/>`recall`<br/>`beats new`<br/>`audit --write`<br/>`finalize`<br/>`proposal auto`<br/>`sync`<br/>`state rollup`<br/>`check --trend/--bisect` | **总制片人四大实战武器库**：<br/>1. 每章动笔前跑 `cockpit` 与 `calendar 3` 研判态势与危机时钟；<br/>2. 剧情卡点时跑 `simulate branch --write` 生成走向参谋单；<br/>3. 派发前仅跑 `audit --write` 为 Auditor 备好探针骨架；<br/>4. Stage 5 单行跑 `finalize ; proposal auto --write --force ; sync` 完成原子定稿与封存（≤0.5秒）。 |
 | **架构师 (Architect)** | Stage 0A / 0B<br/>（仅开新书） | `init`<br/>`milestone add`<br/>`check` | **创世播种双门禁**：<br/>1. `init` 初始化脚手架与物理底座；<br/>2. `milestone add` 播种主线里程碑与达成章节；<br/>3. `check` 确保 Stage 0 结束时 0 errors 通电交卷。 |
 | **起草员 (Drafter)** | Stage 2 | `pack` (资料获取，唯一) | **100% 依靠装配包起草**：<br/>仅跑一行 `pack` 获取当章全部写作资料包。杜绝分心与心流打断，把 100% 算力倾注在初稿爆发上。 |
 | **精修师 (Editor)** | Stage 3<br/>(通俗大白话重塑) | **【绝对零命令】** | **全篇重塑与脱水（纯读写零终端）**：<br/>Editor 绝对零命令。单次全读 Drafter 初稿后依据脱水铁律全篇大白话重塑并直接落盘至 `raw_v3`，落盘即走。 |
-| **审查员 (Auditor)** | Stage 4A | **【绝对零命令】** | **客观出戏审查与预制配方（纯读写零终端）**：<br/>总控预置探针骨架，Auditor 绝对零命令。单次全读预定稿与报告，常识挑刺，预制修补配方写入报告，交由 Stage 5 引擎自动套用。 |
+| **审查员 (Auditor)** | Stage 4A | **【绝对零命令】** | **客观出戏审查与预制配方（纯读写零终端）**：<br/>主控预置探针骨架，Auditor 绝对零命令。单次全读预定稿与报告，常识挑刺，预制修补配方写入报告，交由 Stage 5 引擎自动套用。 |
 | **催更员 (Critic)** | Stage 4B | **【绝对零命令】** | **老白读者纯盲审（纯读写零终端）**：<br/>模拟坐在手机前追更的十年老白读者，纯读者视角盲审预定稿，给出 300~500 字追更心理便签，绝不上帝视角查库。 |
-| **终审封存交付 (Director/Engine)** | Stage 5 | `finalize`<br/>`proposal auto`<br/>`sync` | **极速三指令原子收口（算法秒级接管）**：<br/>总控单行运行 `finalize`（套用配方生成 final 并盖章）+ `proposal auto --write`（自动提取变动）+ `sync`（合账封存与快照），全过程 ≤0.5 秒。 |
+| **终审封存交付 (Director/Engine)** | Stage 5 | `finalize`<br/>`proposal auto`<br/>`sync` | **极速三指令原子收口（算法秒级接管）**：<br/>主控单行运行 `finalize`（套用配方生成 final 并盖章）+ `proposal auto --write`（自动提取变动）+ `sync`（合账封存与快照），全过程 ≤0.5 秒。 |
 | **图书管理员 (Librarian)** | 每10章巡检<br/>卷末对账 | `evidence candidates`<br/>`lore list`<br/>`reconcile vol_XX`<br/>`ledger recompute`<br/>`ask 2.1` | **长程实体打捞与大修平账**：<br/>1. 跑 `evidence candidates ch_XXX` 自动打捞频繁出场但未登记的活跃龙套与道具；<br/>2. 卷末跑 `reconcile vol_XX --write` 出具对账单（严禁手搓底层 JSON）；<br/>3. 账目存疑时跑 `ledger recompute` 一键修复。 |
 | **演进重构师 (Evolver)** | Stage Evolution<br/>（中途变更） | `simulate impact`<br/>`snapshot create/rollback`<br/>`state at/diff/blame`<br/>`ask 2.1`<br/>`check` | **剧情外科手术雷达**：<br/>1. 动刀前跑 `simulate impact --entity <实体> --action kill` 拓扑测算连锁因果波及；<br/>2. 动刀前跑 `snapshot create` 强制备份，遇阻用 `snapshot rollback` 一秒撤销；<br/>3. 用 `state at` 与 `state diff` 对校历史时点切面与改动前后差异。 |
 
@@ -28,7 +28,7 @@
 ### 分层 1：宏观大局、剧情排产与推演沙盒 (6)
 | 命令 | 完整调用范例 | 核心功能与参数说明 | 典型消费角色 |
 |---|---|---|---|
-| `cockpit` | `python studio.py cockpit -w "..." [--json]` | 总控态势驾驶舱：全剧工作流进度、大纲四分位航标、余震/危机时钟、伏笔雷达、催更雷达 | Director |
+| `cockpit` | `python studio.py cockpit -w "..." [--json]` | 主控态势驾驶舱：全剧工作流进度、大纲四分位航标、余震/危机时钟、伏笔雷达、催更雷达 | Director |
 | `calendar` | `python studio.py calendar [N] -w "..."` | 未来 N 章排产日历：预判未来 N 章的到期伏笔、危机倒计时与里程碑投影（Stage 1 动笔前必查） | Director |
 | `recall` | `python studio.py recall -w "..."` | 知乎残酷四问 0-Token 机械自证（主角知道什么/哪三条不能改/伏笔未兑现/下章红线），防平庸俗套 | Director |
 | `simulate` | `python studio.py simulate branch [ch_XXX] --write`<br/>`python studio.py simulate impact --entity <ID> --action kill` | 剧情推演沙盒：`branch` 自动推演 3 条分支假说并生成 `log/branches/` 参谋单；`impact` 测算实体死亡/改动的拓扑因果波及 | Director<br/>Evolver |

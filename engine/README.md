@@ -13,7 +13,7 @@
 | `models/` | 状态机领域对象与语义原子补丁强类型模型 | **Pydantic V2**（严格禁止未知键注入 `extra='forbid'`，支持 `SemanticEntityPatch`） |
 | `cli.py` | 31 命令名（30 个处理函数，`check`/`doctor` 共用 `cmd_check`）薄壳调度：参数解析 + help 目录 + `main`（命令实现下沉至 `commands/`） | argparse |
 | `commands/` | 命令实现层六模块：`book_setup`（init/status/cockpit/config/errcodes/lore）、`chapter_flow`（pack/beats/evidence/check/review/critic/graph/export/audit/index + ask/pov/calendar 只读取证）、`state_sync`（sync/proposal/snapshot/checkpoint/state/ledger/milestone）、`recall`（残酷四问自证）、`simulate`（剧情推演沙盒）、`reconcile`（卷末对账大修：机械复扫+探针重跑+投影diff）；共享助手在 `_shared` | **Rich**（高保真圆角面板、彩色 Markdown 渲染、老白读者评分卡与状态流） |
-| `cockpit.py` | 总控态势驾驶舱：工作流导航、戏剧动力学（余震/悬顶危机/信息差机锋）、伏笔暗线分类雷达、角色活跃度与自愈处方 | 确定性聚合（秒级出报） |
+| `cockpit.py` | 主控态势驾驶舱：工作流导航、戏剧动力学（余震/悬顶危机/信息差机锋）、伏笔暗线分类雷达、角色活跃度与自愈处方 | 确定性聚合（秒级出报） |
 | `audit.py` | 确定性机械审计探针：**8大探针**（不可逆事实违背/在场与死亡/道具充能/金额一致/知情差泄露/认知差冲突/别名漂移/称谓与修饰词对账 `address_mismatch`）；**轨 3 是 LLM 的活**——`audit --write` 生成的报告含 `## 🧠 语义逻辑与出戏审查` 骨架与 `logic: 0` 键，重跑时 `_merge_audit_report` 保留 🧠 正文与 `logic` 计数 | 确定性跨域比对算法（语义判断不在此列，故交 Auditor） |
 | `db.py` | SQLite3 双平面投影与 FTS5 检索加速：BM25 段落级语义召回与角色 POV 聚合（支持优雅降级）；R3 增量缓存：定稿指纹 finals_fp + 按章内容哈希 fts_ch_hash（改稿才重刷） | **sqlite3**（FTS5 全文索引）+ **jieba**（专名切词） |
 | `migrations.py` | 状态机版本化与迁移器：`state/state_schema.json` 版本戳；老书首次读取自动迁移（迁移前强制快照 + 闸门预验 + JSONL 审计日志 `state/migrations.log`）；只修结构不碰事实 | 快照回滚双保险 |
@@ -108,7 +108,7 @@
 
 ## 底层词典速查指令集 (studio lore CLI)
 
-`studio lore` 系列命令为人类作者与总控 (Director) / 架构师 (Architect) 提供零成本的秒级设定对账与事实检索能力：
+`studio lore` 系列命令为人类作者与主控 (Director) / 架构师 (Architect) 提供零成本的秒级设定对账与事实检索能力：
 
 ```bash
 python studio.py lore list [-w BOOK]                         # 全量查看已注册实体 ID、名称与卡片状态

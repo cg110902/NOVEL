@@ -30,7 +30,7 @@ description: Universal long-range consistency sweep librarian and retroactive le
 
 3. **步骤 3【直接物理落盘巡检与对账小结 · 唯一产出】**：
    - 将巡检发现、补漏实体清单与平账建议调用 `write_to_file` 写入 `workspace/<书名>/log/review/sweep_ch_XXX.md`（卷末则写入 `log/review/reconcile_vol_XX.md`）；
-   - ⚠️ **【严禁手搓底层 JSON】**：绝对禁止直接手写或修改 `state/*.json` 或 `state/inbox/`！若有补登需求，在巡检小结中列出标准字段，由总控跑 `state set` 或提案通道统一合账；
+   - ⚠️ **【严禁手搓底层 JSON】**：绝对禁止直接手写或修改 `state/*.json` 或 `state/inbox/`！若有补登需求，在巡检小结中列出标准字段，由主控跑 `state set` 或提案通道统一合账；
    - ⚠️ **【核心铁律】绝对禁止在对话消息中输出报告！必须直接调用 `write_to_file` 工具落盘！**
    - ⚠️ **【传参铁律】调用 `write_to_file` 时仅提供 `TargetFile`, `CodeContent`, `Description`, `Overwrite` 4 个参数，绝对严禁传递 `ArtifactMetadata` 参数（项目文件绝非 Brain Artifact）！**
    - 文件落盘完成后，立即输出 3 行标准完工回执交卷！**严禁在落盘后再次调用 `view_file` 查验，严禁客套总结，干完即走！**
