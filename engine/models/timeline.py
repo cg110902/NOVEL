@@ -74,7 +74,7 @@ class TimelineMilestone(BaseModel):
     target_ch: int = Field(..., ge=1, description="预定达成章节")
     status: Literal["pending", "achieved", "abandoned"] = Field(default="pending", description="状态")
     desc: Optional[str] = Field(None, description="里程碑意义与达成标准")
-    achieved_ch: Optional[str] = Field(None, description="实际达成章节 (如 ch_012)")
+    achieved_ch: Optional[str] = Field(None, description="实际达成章节 (如 ch_020)")
 
 
 class TimelineState(BaseModel):

@@ -2,116 +2,109 @@
 id: {{slot:char_id|p_002}}
 name: "{{slot:char_name|角色名}}"
 type: person
-role: {{slot:char_role|deuteragonist|主配角/女主/主要反派/忠实盟友}}
+role: {{slot:char_role|deuteragonist|主配角/女主/男配/主要反派/关键盟友}}
 tier_rank: {{slot:char_tier_rank|2}}
 tier_name: "{{slot:char_tier_name|当前实力层级/职级称号}}"
 power_benchmark: "{{slot:char_power_benchmark|核心破坏力与实物标尺}}"
-faction: "{{slot:char_faction|所属阵营/势力}}"
+faction: "{{slot:char_faction|所属阵营/机构/势力}}"
 sensory_anchor: "{{slot:char_sensory_anchor|容貌体态与标志性物象}}"
 status: active
 address_matrix:
-  "{{slot:protagonist|主角名}}": "{{slot:addr_to_mc|公子}}"
+  "{{slot:protagonist|主角名}}": "{{slot:addr_to_mc|对主角称呼}}"
 schema_version: novel-studio.character/v2
 ---
 
-<!-- 💡【Stage 0 架构师指南（填写后可删）】
-     本模板是除主角外的所有重要角色（核心配角、核心反派宿敌、忠诚副手、宗门巨擘）的标准模板。
-     复制本模板至 characters/<角色名>.md 并填实。
-     ★ 状态对齐：YAML Front-matter 中的 id, name, type, role, tier_rank (1-12), tier_name, power_benchmark, faction, sensory_anchor, status, address_matrix 均已与 实体四表（persons/items/factions/places） 法定 Schema 100% 闭环对齐！称谓矩阵填定即为全书常量，后置工序严禁吃书！
-     ★ 全题材适配：
-       - 玄幻/仙侠：宗门圣女/少谷主/魔宗巨擘，填境界位阶、极道体质、锁定称谓「公子/贼子」；
-       - 都市/商战：集团千金/刑侦队长/死对头操盘手，填职级资本、专属座驾风衣、锁定称谓「陆先生/林总」；
-       - 科幻/星际：护卫副官/行星总督/反抗军头领，填基因序列代差、外骨骼光刃、锁定称谓「长官/头儿」；
-       - 历史/权谋：相府千金/锦衣卫千户/敌国策士，填封诰官秩、佩刀服色、锁定称谓「侯爷/九爷」。 -->
+<!-- 💡【Stage 0 架构师通用指南（填写后可删除本注释）】
+     本模板是重要配角、关键搭档、女主角、对手或导师的标准模板。
+     复制至 characters/<角色名>.md 并填实。
+     ★ 规范：称谓与人物动机一旦确立保持前后一致，未定内容均可写“自行设定”。 -->
 
 # {{slot:char_name|角色名}}
 
-## 基础档案与外貌感官特征（Sensory Profile）
+---
 
-- **核心身份与社会地位**：
-  {{slot:char_identity|例如：水云圣宫圣女 / 焚天神谷少谷主 / 跨国财阀第一继承人 / 边关游击将军}}
+## 一、 基础档案与外貌感官特征（Sensory Profile）
+
+- **核心身份与社会定位**：
+  {{slot:char_identity|例如：主治医师 / 投行总监 / 宗门圣女 / 专案组核心探员（自行设定）}}
 - **初登场章节与情境**：
-  {{slot:char_first_appear|例如：第 1 章，身负重伤逃入荒古断魂洞 / 第 3 章，跨国并购拍卖会现场}}
-- **容貌体貌与辨识物象（Sensory Anchor）**：
-  {{slot:char_sensory_anchor|例如：容颜清绝出尘、身披冰蓝云纹罗裙、腰悬一枚冰晶玉佩，眉宇间带着清傲与戒备}}
+  {{slot:char_first_appear|例如：第 1 章，在开篇事件或特定工作场所与主角初识（自行设定）}}
+- **容貌体貌与标志性物象（Sensory Anchor）**：
+  {{slot:char_sensory_anchor|例如：身着干练浅色风衣、长发挽起、眼神敏锐沉静 / 标志性随身配饰（自行设定）}}
 
 ---
 
-## 核心欲望与心理机制（Psychological Engine）（仅为示例，灵活填写）
+## 二、 核心欲望与心理机制（Psychological Engine）
 
 - **Want（当前核心欲望与首要目标）**：
-  {{slot:char_want|化解体内剧毒/洗刷家族冤屈/肃清派系内奸/夺回被窃资产}}
-- **Need（深层真正灵魂渴求与心智成长）**：
-  {{slot:char_need|不再依附他人庇护、独当一面守护至亲或道统}}
+  {{slot:char_want|解决眼前危机 / 完成关键项目 / 探寻某个真相 / 守护重要事物（自行设定）}}
+- **Need（深层真正的心灵渴求与成长）**：
+  {{slot:char_need|获得真正的认可、解开内心束缚、找到志同道合的同行者（自行设定）}}
 - **Fear（心底最深恐惧与致命软肋）**：
-  {{slot:char_fear|宗门道统在自己手中覆灭/沦为他人玩物傀儡/再次遭到信任之人背叛}}
+  {{slot:char_fear|重蹈过去的失败覆辙、失去重要之人的信任（自行设定）}}
 - **核心动机（驱动其行动的内在火种）**：
-  {{slot:char_motive|对家族荣誉与道统的执念，在生死存亡边缘敢于孤注一掷的决绝骨气}}
-- **绝对逆鳞（不可逾越的底线/触之必死之雷区）**：
-  {{slot:char_redline|身边的生死同伴、至亲至爱与宗门最后底线绝不可辱，触者必受疯狂反扑！}}
+  {{slot:char_motive|强烈的责任感、对专业的执着、或对至亲的守护信念（自行设定）}}
+- **底线原则（不可逾越的红线）**：
+  {{slot:char_redline|职业道德底线、身边同伴的安全与人格尊严不可侵犯（自行设定）}}
 
 ---
 
-## 恒定称谓与人际矩阵（全书恒定防吃书 · 核心审校区）（仅为示例，灵活填写）
-
-<!-- ★ 规范：本表为 Auditor 仲裁与 Editor 审校的核心依据，任何正文违规称谓直接标红！ -->
+## 三、 恒定称谓与人际矩阵（全书称谓基准）
 
 - **自我称谓（自称）**：
-  - 私下 / 对主角时：{{slot:addr_self_private|「我」 / 「称谓」}}
-  - 对外 / 正式场合：{{slot:addr_self_public|「本圣女」 / 「本少主」 / 「在下」 / 「鄙人」}}
+  - 私下 / 对主角时：{{slot:addr_self_private|「我」}}
+  - 对外 / 正式场合：{{slot:addr_self_public|「我」 / 「在下」 / 「本人」}}
   
-- **对关键人物称谓（唯一指定 · 严禁擅改）**：
-  - 对{{slot:protagonist|主角名}}：「{{slot:addr_to_mc|公子}}」
-  - 对同门 / 下属：{{slot:addr_to_subordinates|平辈互称师兄妹，对下属从容令下}}
-  - 对死敌 / 背叛者：{{slot:addr_to_enemies|冷酷直呼其名，或斥为“叛徒”、“狂徒”}}
+- **对关键人物称谓（唯一指定）**：
+  - 对{{slot:protagonist|主角名}}：「{{slot:addr_to_mc|称谓（如：名字 / 职务 / 昵称）}}」
+  - 对同事 / 同门：{{slot:addr_to_subordinates|礼貌得体，直呼其名或职务}}
+  - 对竞争对手 / 敌对者：{{slot:addr_to_enemies|冷淡疏离，礼貌客套或直呼全名}}
   
 - **他人对本角色称谓（绝对锁定）**：
-  - {{slot:protagonist|主角名}}称呼本角色：「{{slot:mc_addr_to_char|李姑娘}}」
-  - 内部成员/同门称呼本角色：「{{slot:faction_addr_to_char|圣女殿下}}」
-  - 敌对势力称呼本角色：「{{slot:enemies_addr_to_char|水云圣女}}」
-  
-  **（更多补充）**
+  - {{slot:protagonist|主角名}}称呼本角色：「{{slot:mc_addr_to_char|主角对该角色的称呼}}」
+  - 同事/内部称呼本角色：「{{slot:faction_addr_to_char|职务称号或名字}}」
+  - 外部/对手称呼本角色：「{{slot:enemies_addr_to_char|职务称号或全名}}」
+
+<!-- （可按需自由补充更多称谓条目） -->
 
 ---
 
-## 性格特质与台词声线（仅为示例，灵活填写）
+## 四、 性格特质与言语声线（性格魅力）
 
 - **核心性格特质**：
-  {{slot:char_personality|外冷内热，骨子里极硬；危急时刻极具决断力；对真正认准之人死心塌地、敢作敢当}}
-- **说话口吻与台词声线**：
-  {{slot:char_voice|语调利落清爽，字句清晰，绝不说模棱两可的废话；在主角面前偶尔流露出微嗔与羞怯}}
+  {{slot:char_personality|外表沉着干练，内心细腻有温度；有决断力，重情义（自行设定）}}
+- **说话口吻与台词特点**：
+  {{slot:char_voice|语调清晰利落，条理分明；私下交流时自然温和（自行设定）}}
 
 ---
 
-## 习惯微动作与神态库（拒绝千人一面 · 去冷脸专属）（仅为示例，灵活填写）
+## 五、 习惯微动作与神态库（去脸谱化细节）
 
-<!-- Stylist 与 Editor 必须在此提取专属微动作，严禁全篇机械复读“神色淡然、面无表情”： -->
-
-- **害羞/慌乱时**：{{slot:char_act_shy|下意识微咬下唇，长睫微颤，视线快速避开}}
-- **戒备/拔剑时**：{{slot:char_act_alert|右手五指骤然扣住剑柄或掌心蓄力，周身气场骤冷}}
-- **动容/感激时**：{{slot:char_act_grateful|双手交叠欠身施礼，神色由紧绷彻底转为真诚托付}}
-- **（补充更多情景动作）**
+- **专注/思考时**：{{slot:char_act_shy|自行设定（如：下意识转动指尖的笔、神情沉静专注）}}
+- **警觉/面对挑战时**：{{slot:char_act_alert|自行设定（如：坐直身姿、眼神变得锐利笃定）}}
+- **动容/真诚沟通时**：{{slot:char_act_grateful|自行设定（如：目光柔和、流露出真挚微笑）}}
+<!-- （可按需自由补充更多情景动作） -->
 
 ---
 
-## 实力配置、物理标尺与关键道具
+## 六、 能力配置与关键道具
 
-- **实力层级（Tier Rank & Name）**：
-  {{slot:char_tier_name|实力层级或职级称号}}（Tier Rank: {{slot:char_tier_rank|2}}）
-- **破坏力/影响力实物标尺（Power Benchmark）**：
-  {{slot:char_power_benchmark|核心破坏力/业务影响力实物标尺}}
-- **特殊体质 / 核心技能机制**：
-  {{slot:char_special_power|例如：极道体质、特殊武学 / 顶级黑客技术 / 独家商业操盘网络}}
-- **随身武器与关键道具**：
-  {{slot:char_items|例如：核心装备、本命信物或专属资产（须在 entities/items 中有卡）}}
-- **战斗风格与局限**：
-  擅长特定领域攻伐或周旋，在特定弱点或盲区稍逊。
+- **实力层级 / 职级（Tier Rank & Name）**：
+  {{slot:char_tier_name|职级或实力称号}}（Tier Rank: {{slot:char_tier_rank|2}}）
+- **能力表现力实物标尺（Power Benchmark）**：
+  {{slot:char_power_benchmark|专业领域核心能力与实战/业务表现（自行设定）}}
+- **特殊技能 / 核心专长**：
+  {{slot:char_special_power|例如：顶尖刑侦推理 / 高端算法开发 / 独到商业洞察（自行设定）}}
+- **随身物品与信物**：
+  {{slot:char_items|例如：专属工作设备、随身信物或关键资料（自行设定）}}
+- **风格与优势领域**：
+  擅长特定领域的统筹与深度分析，与主角形成良好互补。
 
 ---
 
-## 与主角关系及不可逆演进轨迹
+## 七、 与主角关系及演进轨迹
 
 - **与主角核心关系定性**：
-  {{slot:char_relation_mc|命中注定的第一搭档 / 生死交付的商业合伙人 / 唯一能托付后背的副手}}
-- **不可逆重大里程碑记录**：
-  - [初始节点] 第 {{slot:char_init_ch|1}} 章：{{slot:char_init_event|开局危难或重大事件中与主角初次相遇，建立初始合作或羁绊契约}}；
+  {{slot:char_relation_mc|并肩作战的核心搭档 / 默契同行者 / 惺惺相惜的知己（自行设定）}}
+- **重要里程碑记录**：
+  - [初始节点] 第 {{slot:char_init_ch|1}} 章：{{slot:char_init_event|故事开局阶段初识，建立初步联系与合作基础（自行设定）}}；
