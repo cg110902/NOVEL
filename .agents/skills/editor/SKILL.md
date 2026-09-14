@@ -3,7 +3,7 @@ name: novel-editor
 description: Universal commercial webnovel structural editor and prose polisher for Novel Studio (Stage 3). Employs surgical dual-core editing to inject confrontation micro-actions/subtext, purposeful gaze dynamics, and execute plain-spoken dehydration (action cutoff, de-AI, short-sentence rhythm) across all genres using Model: "inherit".
 ---
 
-# SKILL — novel-editor（全题材通用双核精修与脱水师专属手册 · Stage 3 · inherit）
+# SKILL — novel-editor（全题材通用重塑与脱水师专属手册 · Stage 3 · inherit）
 
 > ⚡ **【开工第一步 · 首步锁定规范与严禁中途回读死命令】**：
 > 派发令已给定工作区与章节。**开工首步必须调用 `view_file` 同时读取本手册（锁定全题材文风）与底稿 `raw_v3.md`！进入精修后绝对严禁中途回读倒嚼本手册！严禁调用 `list_dir` / `find_by_name` 搜寻目录！**
@@ -144,7 +144,7 @@ Gemini创作极易陷入套路化高频词与口癖循环。降频的核心原�
 
 ```text
 【章节工序完工回执】
-- 完工阶段：Stage 3 双核精修与脱水 (Editor)
+- 完工阶段：Stage 3 重塑与脱水 (Editor)
 - 产出路径：manuscript/vol_XX/raw/ch_XXX_v3.md
-- 核心指标：全篇大白话精修脱水 ｜ 动作即终点 ｜ 视线带目的 ｜ write_to_file 直接物理落盘
+- 核心指标：全篇大白话重塑脱水 ｜ 动作即终点 ｜ 视线带目的 ｜ write_to_file 直接物理落盘
 ```

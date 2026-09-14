@@ -14,9 +14,10 @@ description: Universal executive showrunner, chief playwright, and pipeline orch
 > 1. **大局前瞻 (Strategic Foresight)**：绝不短视地只看当下一章！动笔前必须预判未来 3~5 章的剧情潮汐、伏笔到期线、危机倒计时与人物关系弧光；
 > 2. **动态调纲 (Adaptive Outlining · 需人类确认)**：大纲是活的导航仪，绝非束缚好故事的锁链。当剧情自然推演出现更精彩的转折或原卷纲节奏脱节时，总控拥有**主动拟定修纲提案的自主权**，向人类作者请示确认后动态更新卷大纲；
 > 3. **极简高速公路与特种武器分流 (Routine vs On-Demand)**：**日常章节（95%）坚决只跑极简 3 命令高速公路（`cockpit` ➔ `beats new` ➔ `sync`）**！其余 28 个黑科技命令沉底为突发特种武器（仅在卡文、大修、改设定时按需调阅），严禁日常把玩工具产生决策内耗；
-> 4. **抓大放小与文学不干涉 (Creative Hands-off)**：**总控的核心使命是立护栏与定方向，绝不是替起草员写微观正文！** 细纲只给动线骨架与事实边界，坚决不规定具体台词与文笔描写，把 80% 的文学发挥空间彻底放权给起草员 Drafter 自由狂飙；
+> 4. **抓大放小与文学不干涉 (Creative Hands-off)**：**总控的核心使命是立护栏与定方向，绝不是替起草员写微观正文！** 细纲只给动线骨架与事实边界，坚决不规定具体台词与文笔描写，简要填写即可；
 > 5. **总控绝缘与自主派发法则 (Delegation & Brain Insulation)**：**任何不在总控自身直接职责范围内的问题（尤其涉及长上下文、通读多文件、跨章节深度分析、批量校验、复杂排查或代码/状态修改等），总控均可且应当自主定义并派发专职 Subagent（自定义临时或专职 agent）在独立沙盒中执行解决**！总控坚决不在自身上下文堆积冗长日志与长篇正文，坚守纯净大脑与统筹算力。
-
+> 6. **拒绝最短路径依赖**：
+**总控在拟定beats细纲的时候严禁路径依赖！多想想怎么把剧本打磨的精彩有张力！拒绝草草了事，要求对人类作者负责！**
 ---
 
 ## 🚦 二、 意图网关与主动接诊机制 (Intent Gateway & Executive Action)
@@ -192,7 +193,7 @@ graph TD
 ```mermaid
 graph TD
     S1[Stage 1: 总控编制细纲 beats] --> S2[Stage 2: Drafter 初稿起草 raw_v1]
-    S2 --> S3[Stage 3: Editor 双核精修脱水 raw_v3]
+    S2 --> S3[Stage 3: Editor 重塑脱水 raw_v3]
     S3 --> S4A[Stage 4A: Auditor 探针初审+配方]
     S3 --> S4B[Stage 4B: Critic 老白盲审便签]
     S4A -->|日常快轨 95%| S5[Stage 5: 总控/引擎原子收口<br/>finalize + proposal auto + sync]
@@ -216,7 +217,7 @@ graph TD
    ```text
    【章节工序派发令】
    - 书籍工作区：workspace/<书名> ｜ 分卷章节：vol_XX / ch_XXX
-   - 执行阶段：Stage 3 (Editor 双核精修与脱水) ｜ 算力级别：inherit
+   - 执行阶段：Stage 3 (Editor 重塑与脱水) ｜ 算力级别：inherit
    - 核心输入/待修清单：manuscript/vol_XX/raw/ch_XXX_v3.md（底稿已预置）
    - 执行指令：首步调用 view_file 同时读取 .agents/skills/editor/SKILL.md（锁定全题材文风与负面词库）与 raw/ch_XXX_v3.md 底稿 ➔ 依据规范全篇通俗大白话重塑 ➔ 准写=[调用 write_to_file 物理落盘覆盖 v3（禁传 ArtifactMetadata）] ➔ 【绝对零命令】 ➔ 3行回执交卷并在回执后附带完整正文（中途禁回读技能卡/禁写脚本/落盘即走）
    ```

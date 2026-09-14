@@ -104,7 +104,7 @@ RECIPES = [
             "python studio.py beats new ch_XXX --write",
             "python studio.py pack ch_XXX",
             "# (Stage 2 Drafter 起草 raw/ch_XXX_v1.md)",
-            "# (Stage 3 Editor 双核精修与脱水 raw/ch_XXX_v3.md)",
+            "# (Stage 3 Editor 重塑与脱水 raw/ch_XXX_v3.md)",
             "# (Stage 4A/4B 并发：Auditor 常识质检 log/audit/ch_XXX.md ｜ Critic 便签 log/critic/ch_XXX.md)",
             "python studio.py finalize ch_XXX   # 自动吸纳配方定稿并盖章",
             "python studio.py proposal auto ch_XXX --write   # 0-Token 算法自动提取增量事实",

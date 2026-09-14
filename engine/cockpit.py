@@ -560,7 +560,7 @@ def build_cockpit_briefing(book: Path, ch: str | None = None) -> dict[str, Any]:
     # 1. 确定工作流与工序状态
     beats_files = common.find_chapter_files(book, "beats", ch_tok)
     raw_files = common.find_chapter_files(book, "raw", ch_tok)
-    # Stage 3（V3.4 流水线）：raw_v1 = Drafter 毛坯，raw_v3 = Editor 双核精修预定稿。
+    # Stage 3（V3.4 流水线）：raw_v1 = Drafter 毛坯，raw_v3 = Editor 重塑预定稿。
     raw_v1_files = [f for f in raw_files if common.chapter_version_from_name(f.name) < 2]
     raw_v3_files = [f for f in raw_files if common.chapter_version_from_name(f.name) >= 3]
     final_files = common.find_chapter_files(book, "final", ch_tok)
@@ -659,7 +659,7 @@ def build_cockpit_briefing(book: Path, ch: str | None = None) -> dict[str, Any]:
             "target_file": f"manuscript/{vol}/raw/{ch_tok}_v1.md"
         }
     elif not status["raw_v3"]:
-        curr_stage = "Stage 3 (双核精修与脱水)"
+        curr_stage = "Stage 3 (重塑与脱水)"
         next_action = {
             "actor": "Editor",
             "stage": "Stage 3",

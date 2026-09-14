@@ -1,10 +1,6 @@
 # AGENTS.md — Novel Studio 核心宪法（极速轻量通用版）
 
-Novel Studio 是通俗商业网文工业流水线框架：**大模型全权掌控创意脑洞、生动情节与通俗叙事；确定性引擎负责事实底座与数据台账；原生 Subagents 极速工序接力与闭环归档。**
-
-> 🏆 **【最高网文语感规范】**：
-> **绝不追求虚浮晦涩的所谓“纯文学质感”！读者是来读网文的，不是来啃生涩教材的！**
-> **全流程核心准则**：**通俗直白大白话、极度易读、无认知门槛、一口气读完停不下来！**
+Novel Studio 是通俗商业网文工业流水线框架：**大模型全权掌控创意脑洞、生动情节与通俗叙事；确定性引擎负责事实底座与数据台账；原生 Subagents 极速工序接力与闭环归档。除了Stage 0和Stage 5之外，总控严禁亲自下场替代子agent完成任务。**
 
 ---
 
@@ -24,7 +20,7 @@ Novel Studio 是通俗商业网文工业流水线框架：**大模型全权掌�
 |---|---|---|---|---|---|
 | **总控 Director**<br/>(Stage 1 / 5) | `inherit` | 全局状态、critic便签、cockpit | `outlines/vol_XX/beats/ch_XXX.md` | `cockpit`, `calendar`, `beats new`, `proposal auto`, `sync` | **总制片人**：剧情弧线把控，编制细纲，前置声明事实预期，派发前跑 `proposal auto` 备骨架，Stage 5 单步原子封存（禁写正文、章末正文零回读）。 |
 | **起草员 Drafter**<br/>(Stage 2) | `inherit` | **仅读 pack 输出**<br/>（严禁翻读beats） | `raw/ch_XXX_v1.md`<br/>(`write_to_file`) | `pack ch_XXX` | **剧情起草**：依据 pack 装配包展开 1500~2500 字初稿毛坯，pack 数据自完备且 Beats 置顶，严禁二次查验，直接起笔展开，落盘即走。 |
-| **精修师 Editor**<br/>(Stage 3) | `inherit` | `editor/SKILL.md`<br/>`raw/ch_XXX_v3.md` | `raw/ch_XXX_v3.md`<br/>(`write_to_file`) | **【绝对零命令】** | **全篇精修与脱水重塑**：总控派发前预置 v3，首步读取手册锁定文风与负面词库后依据脱水铁律调用 `write_to_file` 全篇大白话重写落盘（通俗脱水、去冷脸面瘫与高频词），纯读写零终端，落盘即走。 |
+| **精修师 Editor**<br/>(Stage 3) | `inherit` | `editor/SKILL.md`<br/>`raw/ch_XXX_v3.md` | `raw/ch_XXX_v3.md`<br/>(`write_to_file`) | **【绝对零命令】** | **全篇重塑与脱水**：总控派发前预置 v3，首步读取手册锁定文风与负面词库后依据脱水铁律调用 `write_to_file` 全篇大白话重写落盘（通俗脱水、去冷脸面瘫与高频词），纯读写零终端，落盘即走。 |
 | **审查员 Auditor**<br/>(Stage 4A) | `inherit` | `auditor/SKILL.md`<br/>`raw/ch_XXX_v3.md`<br/>`log/audit/ch_XXX.md` | `log/audit/ch_XXX.md`<br/>(`replace_file_content`) | **【绝对零命令】** | **客观安检**：总控派发前预置探针骨架，首步读取手册与底稿进行常识挑刺，预制修补配方写入报告，纯读写零终端，与 Critic 并发执行。 |
 | **催更员 Critic**<br/>(Stage 4B) | `flash` | `critic/SKILL.md`<br/>`raw/ch_XXX_v3.md`<br/>`current.json` | `log/critic/ch_XXX.md`<br/>(`write_to_file`) | **【绝对零命令】** | **老白盲审**：十年老白读者盲审，首步读取手册与底稿输出 300~500 字追更便签供下章细纲参考，纯读写零终端，与 Auditor 并发执行，落盘即走。 |
 | **终审封存交付**<br/>(Stage 5 总控/引擎) | `inherit` | 全局状态、成稿 | `final/ch_XXX.md`<br/>`state/inbox/ch_XXX.json` | `finalize`, `proposal auto`, `sync` | **极速三指令原子收口**：Auditor/Critic 并发完成后，总控秒级跑 `finalize`（自动吸纳配方生成 final 并盖章）+ `proposal auto --write`（自动提取变动）+ `sync`（合账封存与快照），彻底砍掉独立 Fixer 与 Reader 子代理（全过程 ≤0.5 秒；突发致命红旗由总控自主派发临时纯认知工排雷后收口）。 |
