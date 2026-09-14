@@ -57,7 +57,7 @@ description: Universal worldbuilding architect and setup generator for Novel Stu
 - **执行工序**：
   1. **MVU 六件套与大纲物理落盘**（消灭所有 `{{slot:}}` 与注释）：
      - `characters/protagonist.md`：主角专属卡（Front-matter 属性闭环、心理四维 Want/Need/Fear/Lie、微动作库、恒定称谓矩阵）；
-     - `characters/<搭档名>.md`：关键搭档/女主卡（独立动机与法定互称矩阵）；
+     - `characters/<搭档名>.md`：关键搭档/男/女主卡（独立动机与法定互称矩阵）；
      - `characters/<对手名>.md`：首卷核心对手卡（合理利益博弈动机与互称）；
      - `entities/items/<道具名>.md`：核心道具/信物卡（明确 `holder`、品阶与使用消耗）；
      - `entities/factions/<势力名>.md`：核心初始势力卡（掌权人 `leader`、总部 `headquarters`）；
@@ -72,7 +72,7 @@ description: Universal worldbuilding architect and setup generator for Novel Stu
      - `state/ledger.json`：在 `pools` 中声明本题材货币池（如灵石、银两或积分）；
      - 终端执行添加首卷破局里程碑：
        ```powershell
-       python studio.py milestone add --title "完成开局破局首战" --target-ch 5 --desc "粉碎开局危机，夺回核心主动权" -w "workspace/<书名>"
+       python studio.py milestone add --title "标题" --target-ch 5 --desc "描述" -w "workspace/<书名>"
        ```
 - **准跑命令**：`python studio.py milestone add`；
 - **准写工具**：`write_to_file` / `replace_file_content` 写入 `characters/`, `entities/`, `outlines/`, `state/`（**严禁传递 `ArtifactMetadata`**）；
@@ -91,10 +91,10 @@ description: Universal worldbuilding architect and setup generator for Novel Stu
        ```
      - 零容忍硬指标：未填槽位 `unfilled_slot` 必须为 0；未登记角色 `unregistered_character` 必须为 0；实体 ID 冲突必须为 0；`project.json` 必填项严禁留空；
   2. **第二轨【大模型七大语义理解与叙事逻辑深度推演】**（全权调用 LLM 认知与文学理解，逐项深度推演并输出深度分析）：
-     - ① **金手指与机制逻辑闭环**：深度审视核心脑洞（AI写功法/修为回流/Admin豁免），推演是否存在逻辑悖论（如：别人不练怎么办？全网回流如何平衡境界瓶颈？修士社死后的心理代偿与真香动机是否充分？）；
-     - ② **爽感张力与喜剧冲突推演**：功法离谱副作用与超模威力之间的喜剧反差是否鲜活？宗门内卷与装逼打脸的节奏是否自然可信？
-     - ③ **人物心理四维与独立活人感**：主角与配角（如林小鹿、赵霸天）是否具备真实独立诉求与性格软肋，绝不沦为提线木偶与降智工具人；
-     - ④ **长线叙事弧光与分卷大纲节奏**：主线三幕脊柱与首卷各阶段（破局 ➔ 推广 ➔ 决战）的篇幅与节奏是否张弛有度，伏笔（GUN/KNO/MIS）埋设是否精巧；
+     - ① **金手指（如有）与机制逻辑闭环**：深度审视核心脑洞，推演是否存在逻辑悖论（如：可能出现的意外情况？）；
+     - ② **爽感张力与冲突推演**：装逼打脸的节奏是否自然可信？
+     - ③ **人物心理四维与独立活人感**：主角与配角（如主角A、配角B）是否具备真实独立诉求与性格软肋，绝不沦为提线木偶与降智工具人；
+     - ④ **长线叙事弧光与分卷大纲节奏**：主线三幕脊柱与首卷各阶段的篇幅与节奏是否张弛有度，伏笔（GUN/KNO/MIS）埋设是否精巧；
      - ⑤ **因果与时空尺度自洽**：地理地缘（`bible/03`、`locations/`）与时间线跨度、行动耗时是否严密自洽；
      - ⑥ **经济与战力实物标尺**：货币购买力对账表（`bible/04`）、期初资产（`state/ledger.json`）与各阶层破坏力标尺（`bible/02`）是否稳定；
      - ⑦ **创作红线与偏离清单遵从**：核验全书设定是否严格遵守 `bible/06_deviations.md` 声明的创作红线。
