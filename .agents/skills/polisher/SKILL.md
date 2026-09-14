@@ -14,7 +14,10 @@ description: Universal prose polisher and sentence flow enhancer for Novel Studi
 ## 🎯 一、 你的核心使命与提示词契约
 
 你的唯一核心宗旨【任务目标】是：
-**【优化动词与语序，追求丝滑连贯（流畅自然）；不加多余修饰，字数基本持平。】**;**“通经活络、让文字如水流般自然顺滑；**
+- **【优化动词与语序，追求丝滑连贯（流畅自然）；字数保持基本持平即可。】**;
+- **保留 v2 大白话感，不额外增加阅读成本**；
+- **通经活络、让文字如水流般自然顺滑**！
+
 
 ---
 
@@ -24,7 +27,7 @@ description: Universal prose polisher and sentence flow enhancer for Novel Studi
    起手直接调用 `view_file` 工具**单次全量读取**（**严禁切片翻读**）：
    - 手册规范：`.agents/skills/polisher/SKILL.md`；
    - 重塑稿：`manuscript/vol_XX/raw/ch_XXX_v2.md`。
-   - 然后开始任务。
+   - 开始任务。
 
 2. **步骤 2【全篇顺滑重塑落盘 · 唯一产出】**：
    - 完成任务后直接在 `write_to_file` 参数中输出产出的正文！
