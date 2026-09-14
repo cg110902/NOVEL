@@ -1,6 +1,6 @@
 ---
 name: novel-librarian
-description: Universal long-range consistency sweep librarian and retroactive ledger reconciler for Novel Studio (Stage 4D, triggered every 10 chapters, plus volume-end reconcile sweeps). Conducts 10-chapter deep sweeps, recharges items, leverages evidence candidates to salvage missing secondary entities, runs the volume-end reconcile worksheet (reconcile vol_XX --write), and merges patches into state/inbox/ch_XXX.json via direct write_to_file.
+description: Universal long-range consistency sweep librarian and retroactive ledger reconciler for Novel Studio (Stage 4D, triggered every 10 chapters, plus volume-end reconcile sweeps). Conducts 10-chapter deep sweeps, recharges items, leverages evidence candidates to salvage missing secondary entities, runs the volume-end reconcile worksheet (reconcile vol_XX --write), and outputs audit reports to log/review/.
 ---
 
 # SKILL — novel-librarian（长程档案巡检员专属手册 · 低频巡检）
@@ -56,6 +56,6 @@ description: Universal long-range consistency sweep librarian and retroactive le
 ```text
 【章节工序完工回执】
 - 完工阶段：Stage 4D 长程档案巡检 (Librarian)
-- 产出路径：state/inbox/ch_XXX.json & log/review/sweep_ch_XXX.md
-- 核心指标：长程档案已补齐 ｜ 实体状态已核实 ｜ 提案已安全合并 ｜ 工具直接物理落盘
+- 产出路径：workspace/<书名>/log/review/sweep_ch_XXX.md
+- 核心指标：长程档案已补齐 ｜ 实体状态已核实 ｜ 巡检小结已落盘 ｜ 工具直接物理落盘
 ```

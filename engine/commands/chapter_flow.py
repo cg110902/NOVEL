@@ -863,7 +863,7 @@ def cmd_finalize(args: argparse.Namespace) -> int:
         print(f"   ✨ 无需正文修改（0 待修配方或已完美自洽），原样发布为 final")
     print(f"   🔏 审查盖章: 已完成 8 大探针终审并置 adjudicated: true 绿灯放行")
     print(f"\n👉 下一步单行收尾建议：")
-    print(f"   python studio.py proposal auto {tok} --write -w \"{book.name}\" && python studio.py sync {tok} -w \"{book.name}\"\n")
+    print(f"   python studio.py proposal auto {tok} --write -w \"{book.name}\" ; python studio.py sync {tok} -w \"{book.name}\"\n")
     return 0
 
 

@@ -11,10 +11,10 @@
 
 | 角色 (Agent) | 负责阶段 | 专属命令清单 | 核心场景与使用指南 |
 |---|---|---|---|
-| **总控 (Director)** | 全局统筹<br/>Stage 1 / 5 | `cockpit`<br/>`calendar [N]`<br/>`simulate branch`<br/>`graph path/neighbors`<br/>`lore compare/entity`<br/>`ask 2.1` / `pov`<br/>`recall`<br/>`beats new`<br/>`audit --write`<br/>`finalize`<br/>`proposal auto`<br/>`sync`<br/>`state rollup`<br/>`check --trend/--bisect` | **总制片人四大实战武器库**：<br/>1. 每章动笔前跑 `cockpit` 与 `calendar 3` 研判态势与危机时钟；<br/>2. 剧情卡点时跑 `simulate branch --write` 生成走向参谋单；<br/>3. 派发前预跑 `Copy-Item` 与 `audit --write` 为子代理备好骨架；<br/>4. Stage 5 单行跑 `finalize && proposal auto --write && sync` 完成原子定稿与封存（≤0.5秒）。 |
+| **总控 (Director)** | 全局统筹<br/>Stage 1 / 5 | `cockpit`<br/>`calendar [N]`<br/>`simulate branch`<br/>`graph path/neighbors`<br/>`lore compare/entity`<br/>`ask 2.1` / `pov`<br/>`recall`<br/>`beats new`<br/>`audit --write`<br/>`finalize`<br/>`proposal auto`<br/>`sync`<br/>`state rollup`<br/>`check --trend/--bisect` | **总制片人四大实战武器库**：<br/>1. 每章动笔前跑 `cockpit` 与 `calendar 3` 研判态势与危机时钟；<br/>2. 剧情卡点时跑 `simulate branch --write` 生成走向参谋单；<br/>3. 派发前仅跑 `audit --write` 为 Auditor 备好探针骨架；<br/>4. Stage 5 单行跑 `finalize ; proposal auto --write --force ; sync` 完成原子定稿与封存（≤0.5秒）。 |
 | **架构师 (Architect)** | Stage 0A / 0B<br/>（仅开新书） | `init`<br/>`milestone add`<br/>`check` | **创世播种双门禁**：<br/>1. `init` 初始化脚手架与物理底座；<br/>2. `milestone add` 播种主线里程碑与达成章节；<br/>3. `check` 确保 Stage 0 结束时 0 errors 通电交卷。 |
 | **起草员 (Drafter)** | Stage 2 | `pack` (资料获取，唯一) | **100% 依靠装配包起草**：<br/>仅跑一行 `pack` 获取当章全部写作资料包。杜绝分心与心流打断，把 100% 算力倾注在初稿爆发上。 |
-| **精修师 (Editor)** | Stage 3<br/>(加肉与脱水一体化) | **【绝对零命令】** | **双核手术刀精修与脱水（纯读写零终端）**：<br/>总控预置底稿，Editor 绝对零命令。单次全读后倒序对 5~7 处核心大块手术刀替换（通俗脱水、消除反刍总结与去冷脸面瘫词），落盘即走。 |
+| **精修师 (Editor)** | Stage 3<br/>(通俗大白话重塑) | **【绝对零命令】** | **全篇重塑与脱水（纯读写零终端）**：<br/>Editor 绝对零命令。单次全读 Drafter 初稿后依据脱水铁律全篇大白话重塑并直接落盘至 `raw_v3`，落盘即走。 |
 | **审查员 (Auditor)** | Stage 4A | **【绝对零命令】** | **客观出戏审查与预制配方（纯读写零终端）**：<br/>总控预置探针骨架，Auditor 绝对零命令。单次全读预定稿与报告，常识挑刺，预制修补配方写入报告，交由 Stage 5 引擎自动套用。 |
 | **催更员 (Critic)** | Stage 4B | **【绝对零命令】** | **老白读者纯盲审（纯读写零终端）**：<br/>模拟坐在手机前追更的十年老白读者，纯读者视角盲审预定稿，给出 300~500 字追更心理便签，绝不上帝视角查库。 |
 | **终审封存交付 (Director/Engine)** | Stage 5 | `finalize`<br/>`proposal auto`<br/>`sync` | **极速三指令原子收口（算法秒级接管）**：<br/>总控单行运行 `finalize`（套用配方生成 final 并盖章）+ `proposal auto --write`（自动提取变动）+ `sync`（合账封存与快照），全过程 ≤0.5 秒。 |

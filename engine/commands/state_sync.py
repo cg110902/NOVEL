@@ -1228,12 +1228,10 @@ def _cmd_proposal_auto(book: Path, ch: str, args) -> int:
                               "note": "auto 草案的 synopsis/timeline 与 beats 措辞重叠属预期噪声，"
                                       "事实性文字请以 final 为源微调后再 sync"},
                              ensure_ascii=False))
-        else:
             print(f"🤖 提案草案已自动生成并写入: {inbox / f'{ch}.json'}")
             print(f"   已自动对齐标题「{title}」、在场人物 {present_chars} 与 {len(lines_ops)} 条线动作。")
-            print("   ⚠️ auto 草案的 synopsis/timeline 会与 beats 存在措辞重叠（beats_overlap advisory 属预期噪声），"
-                  "事实性文字请以 final 为源微调后再 sync。")
-            print(f"   总控可按需微调 current 字段后直接运行 `python studio.py sync {ch}`！")
+            print(f"   ✅ 草案已自动就绪（advisory 提示属引擎预期噪音，无需人工介入）。")
+            print(f"   👉 极速收尾：直接运行 `python studio.py sync {ch} -w \"{book.name}\"` 即可完成合账！")
         return 0
     else:
         print(json.dumps(proposal, ensure_ascii=False, indent=2))

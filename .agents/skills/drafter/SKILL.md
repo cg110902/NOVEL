@@ -13,7 +13,7 @@ description: Universal plot drafting and creative narrative generator for Novel 
 
 ## 🎯 一、 你的唯一任务（干完就走）
 
-运行 `studio.py pack ch_XXX --full` 获取装配包（细纲与世界锚点已自完备），放飞顶级文学想象力与通俗叙事，撰写 1500~2500 字高张力初稿毛坯，直接调用 `write_to_file` 工具写入 `raw/ch_XXX_v1.md`！
+运行 `python studio.py pack ch_XXX -w "workspace/<书名>"` 获取装配包（细纲与世界锚点已自完备），放飞顶级文学想象力与通俗叙事，撰写 1500~2500 字情节饱满的初稿毛坯，直接调用 `write_to_file` 工具写入 `raw/ch_XXX_v1.md`！
 
 
 - 全流程核心准则：通俗直白大白话、极度易读、无认知门槛、一口气读完停不下来！不追求任何所谓的【质感】！
@@ -29,6 +29,19 @@ description: Universal plot drafting and creative narrative generator for Novel 
 3. **呼吸感（排版自然灵活）**：
    - 文风不等于死板排版！段落长短随叙事与戏剧节奏自然切换，保持舒适的阅读呼吸感与层次感，灵活生动，避免密不透风的沉闷大段即可。兼顾节奏感！
    
+4. **遣词造句（追求多样性，尽可能使用不同的表达方式）**。
+   
+5. **【全领域学术/专业/行业黑话-防滥用】**：
+   - 🎯 **核心宗旨**：网文是写给亿万大众读者的消遣故事！不要写的过于专业！不要增加认知门槛！
+   - 🚫 **全领域黑话清单（一律谨慎使用，涵盖但不限于以下全部学科与行业）**：
+     * **计算机与互联网黑话**：`Prompt`、`提示词`、`代码` 等；
+     * **自然科学与数理化生**：`能量守恒`、`离心力`、`谐振`等；
+     * **商科/金融/管理与大厂黑话**：`降维打击`、`边际成本`等；
+     * **哲学/心理学/社科与抽象概念**：`认知差`、`异化`、`潜意识`等；
+     * **文青装逼与生僻辞藻**：任何掉书袋、生僻学术词汇、故弄玄虚的论文式抽象概括。
+   - 💡 **万物皆可大白话·转译法则：生活化、身体化、动作化；相关概念可以转换为更为通俗的表达 **。
+
+   
 ---
 
 ## ⚡ 二、 极速三步工序（单线推进，绝不空转）
@@ -36,7 +49,7 @@ description: Universal plot drafting and creative narrative generator for Novel 
 1. **步骤 1【跑命令获取装配包 · 唯一输入】**：
    在终端运行命令获取当章细纲全文与核心锚点：
    ```bash
-   python studio.py pack ch_XXX --full -w "workspace/<书名>"
+   python studio.py pack ch_XXX -w "workspace/<书名>"
    ```
 
 2. **步骤 2【撰写并直接物理落盘 · 唯一产出】**：
@@ -54,12 +67,13 @@ description: Universal plot drafting and creative narrative generator for Novel 
 
 ---
 
-## 🔒 三、 白名单与绝对红线
+## 🔒 三、 白名单与注意事项
 
-- 💻 **准跑命令（唯一）**：`python studio.py pack ch_XXX --full -w "workspace/<书名>"`（装配包顶层 `=== beats ===` 即为核心细纲，单屏一目了然，严禁写脚本二次提取，起手直写！）；
+- 💻 **准跑命令（唯一）**：`python studio.py pack ch_XXX -w "workspace/<书名>"`（装配包顶层 `=== beats ===` 即为核心细纲，单屏一目了然，严禁写脚本二次提取，起手直写！）；
 - 📖 **准读输入（唯一）**：`pack` 命令返回的内容（pack 数据已完全自完备且 Beats 置顶，严禁二次查验，直接起笔；**绝对严禁调用 `view_file` 翻看 beats 细纲、外部卡片与历史章节**）；
 - ✍️ **准写工具（唯一）**：调用 `write_to_file` 写入 `manuscript/vol_XX/raw/ch_XXX_v1.md`（**严禁传递 `ArtifactMetadata`**）；
-- 🚫 **绝对红线**：
+- 🚫 **注意事项**：
+  - **谨慎在正文中使用任何学术、科学、理工、经管、哲学、医学等专业术语与行业黑话，避免带来认知门槛。**
   - 严禁调用 `view_file` 翻看 `outlines/` 下的 beats 任务书（所有必要细纲已由 `pack` 完整装配，额外翻读属严重违纪与算力浪费）；
   - 严禁在对话框发送正文文本；严禁调用 `ask`；
   - 严禁编写任何 PowerShell / Python 自查或字数统计脚本（字数大致在 1500~2500 字区间即可，绝不死抠精确字数）；
