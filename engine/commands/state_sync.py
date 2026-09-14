@@ -142,7 +142,7 @@ def cmd_sync(args) -> int:
 
     if not has_manuscript:
         return _fail(f"未找到 {ch} 的定稿（final），拒绝空同步（Stage 5 输入合同：beats/raw/final 齐）",
-                     hint=f"请先由 Stage 3 精修师 Editor 产出预定稿 raw/{ch}_v3.md，"
+                     hint=f"请先由 Stage 3A 精修师 Editor 产出预定稿 raw/{ch}_v3.md，"
                           f"再运行 `python studio.py finalize {ch}` 自动落盘法定定稿 manuscript/vol_XX/final/{ch}.md")
     if not has_proposal:
         # 非规范命名扫描：不按文件名前缀猜，直接看同章提案（chapter 字段 = ch）的

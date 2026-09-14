@@ -3,7 +3,7 @@ name: novel-auditor
 description: Universal content scanner and issue detector for Novel Studio (Stage 4A). Runs mechanical audit probes and semantic sanity checks, leverages targeted ask (strictly max 1 time) to verify character redlines and bible axioms, and outputs an objective issue checklist (log/audit/ch_XXX.md) without reading beats.
 ---
 
-# SKILL — novel-auditor（内容质检员专属手册 · Stage 4A · inherit）
+# SKILL — novel-auditor（内容质检员专属手册 · Stage 4A）
 
 > ⚡ **【开工第一步 · 首步锁定规范与严禁中途回读死命令】**：
 > 派发令已给定工作区与章节。**开工首步调用 `view_file` 同时读取本手册（若上下文未装载）与预定稿 `raw_v3.md` 及 `log/audit/ch_XXX.md` 报告骨架！进入审查后绝对严禁中途回读倒嚼本手册！严禁调用 `list_dir` / `find_by_name` 搜寻目录！**
@@ -28,19 +28,21 @@ description: Universal content scanner and issue detector for Novel Studio (Stag
 
 2. **步骤 2【顺手预制修补配方并交付回执 · 算法接力】**：
    - 若步骤 1 发现了语义出戏/常识硬伤：调用 `replace_file_content` 将条目补充在 `log/audit/ch_XXX.md` 的 `## 🧠 语义逻辑与出戏审查` 下，并将 front-matter 的 `logic: 0` 改为实际问题数；
-   - ⚡ **【预制修补配方（Stage 5 引擎秒级自动定稿唯一依据）】**：在报告中必须按标准格式给出待修片段与替换片段：
-     ```text
+   - ⚡ **【预制修补配方（Stage 5 引擎秒级自动定稿唯一依据 · 反引号务必闭合）】**：在报告中按标准格式给出待修片段与替换片段：
+````markdown
      - **预制修补配方**：
        - TargetContent:
-     ```text
-     正文原句
-     ```
+       ```text
+       正文原句
+       ```
        - ReplacementContent:
-     ```text
-     修改后的通俗正文原句
-     ```
-     - 理由: 一句话说明原因
-     ```
+       ```text
+       修改后的通俗正文原句
+       ```
+       - 理由: 一句话说明原因
+````
+     或采用行内反引号简化格式：
+     `- TargetContent: `正文原句` ｜ ReplacementContent: `修改后的通俗正文原句` ｜ 理由: 一句话说明原因`
      引擎 `studio.py finalize` 会在 Stage 5 自动抓取配方秒级实施内存替换并盖章放行！
    - 若无额外语义问题：保持原报告不变；
    - 立即输出 3 行标准完工回执交卷！**严禁在提交后再调用 `view_file` 查验报告，严禁客套总结，干完即走！**

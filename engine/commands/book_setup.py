@@ -296,7 +296,7 @@ def _next_actions(brief: dict | None) -> list[str]:
         acts.append(f"state/inbox 有 {len(brief['pending_proposals'])} 份待合并提案：python studio.py sync ch_XXX")
     nxt = brief["latest_finalized"] + 1
     acts.append(f"下一章 ch_{nxt:03d}：Stage 1 主控写 beats → Stage 2 Drafter 毛坯 raw_v1 → "
-                f"Stage 3 Editor 重塑预定稿 raw_v3 → "
+                f"Stage 3A Editor 重塑稿 raw_v2 → Stage 3B Polisher 润色预定稿 raw_v3 → "
                 f"Stage 4A/4B 并发（Auditor 常识质检 ‖ Critic 催更便签）→ "
                 f"Stage 5 finalize 自动定稿盖章 → proposal auto 提取提案 → sync 封存+快照")
     return acts

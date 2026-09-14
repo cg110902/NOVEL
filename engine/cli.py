@@ -104,7 +104,8 @@ RECIPES = [
             "python studio.py beats new ch_XXX --write",
             "python studio.py pack ch_XXX",
             "# (Stage 2 Drafter 起草 raw/ch_XXX_v1.md)",
-            "# (Stage 3 Editor 重塑与脱水 raw/ch_XXX_v3.md)",
+            "# (Stage 3A Editor 重塑与脱水 raw/ch_XXX_v2.md)",
+            "# (Stage 3B Polisher 抛光润色 raw/ch_XXX_v3.md)",
             "# (Stage 4A/4B 并发：Auditor 常识质检 log/audit/ch_XXX.md ｜ Critic 便签 log/critic/ch_XXX.md)",
             "python studio.py finalize ch_XXX   # 自动吸纳配方定稿并盖章",
             "python studio.py proposal auto ch_XXX --write   # 0-Token 算法自动提取增量事实",
@@ -233,6 +234,7 @@ def _build_subparsers(sub: argparse._SubParsersAction) -> None:
     q.add_argument("chapter", nargs="?", help="目标章节（如 7 或 ch_007）")
     q.add_argument("--lean", action="store_true", help="只给 P0")
     q.add_argument("--full", action="store_true", help="P1 命中实体附卡全文")
+    q.add_argument("--write", action="store_true", help="显式落盘至 pack.md（默认也会自动落盘）")
     q.add_argument("--open", dest="open_path",
                    help="取工作区内文件原文（相对路径）；受角色禁读网关约束，默认 --as drafter")
     q.add_argument("--as", dest="as_role", default="drafter",

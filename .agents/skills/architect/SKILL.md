@@ -39,9 +39,21 @@ description: Universal worldbuilding architect and setup generator for Novel Stu
 
 ---
 
-### 👤 子智能体 2：Stage 0B【冷启动 MVU 六件套与状态机通电 (Architect-Story)】
+### 👤 子智能体 2：Stage 0B【商业故事宇宙筑基与状态机通电 (Architect-Story)】
 
-- **核心职责**：以 `bible/` 设定为绝对真理，交付故事冷启动最小可用宇宙（MVU 六件套与双大纲），全息通电 `state/` 六表；
+- **核心职责**：以 `bible/` 设定为绝对真理，交付**高度商业化、高留存、高期待感**的最小可用宇宙（MVU 六件套与双大纲），全息通电 `state/` 六表；
+- **商业网文故事筑基四大硬核法则（注意事项）**：
+  1. 🎯 **一卷一绝活（核心商业卖点与读者承诺）**：
+     - 首卷必须确立明确的**核心爽点与脑洞兑现机制**（如：*反向薅修仙宗门羊毛/假装绝世高人靠脑补通关/全网剧透逼反派当保镖*）；
+     - 第一阶段（Phase 1）必须直接引爆核心爽点，**严禁慢热**！前三章必须让读者体验到第一次极具反常识的爽快破局。
+  2. ⚡ **拒绝流水账大纲 · 章节绑定【反常识戏眼 + 断章刀口】**：
+     - 在 `outlines/vol_01/outline.md` 的章节规划（Chapter Breakdown）中，**严禁写成“去某地买药”、“回宗门修炼”等无聊对账流水账**！
+     - 每一条章节规划必须标明：`ch_XXX：【核心行动推进/反常识骚操作/戏剧反差】+【章末悬念刀口（Cliffhanger）】`，确保每一章自带让读者欲罢不能的追读拉力！
+  3. 🎭 **对手与配角去工具化（利益独立与人情世故）**：
+     - 首卷对手绝不写单纯无脑嘲讽送经验的降智 NPC，其行动必须建立在真实的利益算计、宗门地位或自保本能之上；
+     - 关键搭档必须具备独立诉求与性格毛刺，绝非无脑倒贴的提线木偶。
+  4. 💣 **商业线索网高能布设（GUN / KNO / MIS）**：
+     - `state/lines.json` 中的首卷线索必须具备极高戏剧张力：`GUN-001`（迫在眉睫的危机倒计时或暴利资源）、`KNO-001`（足以致命的惊天信息差）、`MIS-001`（带来巨大反差感的外界认知偏差）。
 - **执行工序**：
   1. **MVU 六件套与大纲物理落盘**（消灭所有 `{{slot:}}` 与注释）：
      - `characters/protagonist.md`：主角专属卡（Front-matter 属性闭环、心理四维 Want/Need/Fear/Lie、微动作库、恒定称谓矩阵）；
@@ -51,11 +63,11 @@ description: Universal worldbuilding architect and setup generator for Novel Stu
      - `entities/factions/<势力名>.md`：核心初始势力卡（掌权人 `leader`、总部 `headquarters`）；
      - `entities/locations/<地名>.md`：开局场景卡（空间物象与环境法则）；
      - `outlines/main_plot.md`：全书主线三幕脊柱与长程里程碑；
-     - `outlines/vol_01/outline.md`：首卷分卷大纲与阶段自适应规划。
+     - `outlines/vol_01/outline.md`：首卷商业分卷大纲（明确商业卖点、阶段反常识破局与章末断章刀口）。
   2. **状态机六表全息通电**（卡片落盘后必须在同一轮写入 `state/`，严禁留空）：
      - `state/persons.json`, `items.json`, `factions.json`, `places.json`：注册对应实体；
      - `state/current.json`：填实开局第一现场（时间、地点、处境、主角状态、在场人、初始 loadout 四件套）；
-     - `state/lines.json`：埋设首卷长线 `GUN-001`、机密知情差 `KNO-001`、外界认知偏差 `MIS-001`；
+     - `state/lines.json`：埋设首卷高张力长线 `GUN-001`、机密知情差 `KNO-001`、外界认知偏差 `MIS-001`；
      - `state/locked.json`：登记不可逆既定事实 `LOCK-001`；
      - `state/ledger.json`：在 `pools` 中声明本题材货币池（如灵石、银两或积分）；
      - 终端执行添加首卷破局里程碑：
@@ -64,7 +76,7 @@ description: Universal worldbuilding architect and setup generator for Novel Stu
        ```
 - **准跑命令**：`python studio.py milestone add`；
 - **准写工具**：`write_to_file` / `replace_file_content` 写入 `characters/`, `entities/`, `outlines/`, `state/`（**严禁传递 `ArtifactMetadata`**）；
-- **完工标准**：MVU 六件套与双大纲落盘，状态机六表通电完毕，输出 3 行 0B 回执即刻交卷。
+- **完工标准**：商业大纲与 MVU 六件套落盘，状态机六表通电完毕，输出 3 行 0B 回执即刻交卷。
 
 ---
 
@@ -114,7 +126,7 @@ description: Universal worldbuilding architect and setup generator for Novel Stu
 【章节工序派发令】
 - 书籍工作区：workspace/<书名> ｜ 阶段：Stage 0B (Architect-Story)
 - 核心输入：bible/ 设定真值、主角名<主角名>
-- 执行指令：读取技能卡与 bible/ ➔ 交付 MVU 六件套与双大纲 ➔ 全息通电 state/ 六表 ➔ 运行 studio.py milestone add ➔ 物理直接落盘（禁传 ArtifactMetadata） ➔ 3 行回执交卷
+- 执行指令：读取技能卡与 bible/ ➔ 交付 MVU 六件套与商业高能双大纲（强化核心卖点、反常识破局与章末断章刀口） ➔ 全息通电 state/ 六表 ➔ 运行 studio.py milestone add ➔ 物理直接落盘（禁传 ArtifactMetadata） ➔ 3 行回执交卷
 ```
 
 ### 3. Stage 0C 派发令：

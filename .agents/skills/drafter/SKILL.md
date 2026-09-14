@@ -46,18 +46,20 @@ description: Universal plot drafting and creative narrative generator for Novel 
 
 ## ⚡ 二、 极速三步工序（单线推进，绝不空转）
 
-1. **步骤 1【跑命令获取装配包 · 唯一输入】**：
-   在终端运行命令获取当章细纲全文与核心锚点：
-   ```bash
-   python studio.py pack ch_XXX -w "workspace/<书名>"
-   ```
+1. **步骤 1【获取装配包并零截断阅读 · 唯一输入】**：
+   - 细纲与事实已由引擎 `pack` 全量无损落盘至 `workspace/<书名>/pack.md`（若主控未预置，则运行命令 `python studio.py pack ch_XXX -w "workspace/<书名>"` 自动落盘）；
+   - **⚡ 关键防截断核心指令**：由于 Agent 终端对超长 stdout（>50行）具有首部截断机制（易导致最上方的 beats 任务书丢失），**开工首步必须调用 `view_file` 工具单次读取 `workspace/<书名>/pack.md`**！
+   - `view_file` 单次支持 800 行、零截断、零乱码，可 100% 完整秒读细纲全文、上章余温与即时现场！
+   - ⚠️ **【严禁自写脚本】绝对严禁编写任何 Python / PowerShell 脚本去提取或解析 JSON！全量自完备内容已在 `pack.md` 中，直接 `view_file` 秒读！**
 
 2. **步骤 2【撰写并直接物理落盘 · 唯一产出】**：
-   100% 依据 pack 内容展开场景，撰写 1500~2500 字初稿正文，严格执行**【全题材通用 】作业规范**：
+   100% 依据 `pack.md` 展开场景，撰写 1500~2500 字初稿正文，严格执行**【全题材通用 】作业规范**：
    - 🔒 **绝对红线 · 严禁乱发挥**：
      1. **事实走向锁死（Facts Invariance）**：细纲声明的情节胜负结果、核心资源道具得失、能力位阶变动、重大信息揭露、在场与退场角色，**100% 忠实执行，严禁魔改因果或擅自增删未授权的主线设定！**
      2. **场景刀口锁死（Boundary Invariance）**：章末必须死死停在任务书指定的物理动作、悬念坠落或冲突爆发定格处，**严禁顺拐写出下一章剧情，严禁擅自提前兑现伏笔！**
      3. **严禁以写景开头**： 自行灵活使用其它的开头方式！
+     4. **初稿严禁调用 NPC“标准反应”模板**：起笔即写活人，严禁动辄写“倒吸一口凉气”、“嘴角勾起冷笑”、“神色如常”、“瞳孔骤缩”等廉价假人套路，情绪与动作紧扣切身利益与生理毛刺！
+     5. **章末死死定格在断章刀口**：严格执行细纲中的断章定格指令，绝不在章末泄气或总结，给读者留下强烈的追更悬念！
 
    - ⚠️ **【核心铁律】绝对禁止在对话聊天中输出小说正文！必须直接调用 `write_to_file` 工具写入 `manuscript/vol_XX/raw/ch_XXX_v1.md`！**
    - ⚠️ **【传参铁律】调用 `write_to_file` 时仅提供 `TargetFile`, `CodeContent`, `Description`, `Overwrite` 4 个参数，绝对严禁传递 `ArtifactMetadata` 参数！**
@@ -69,15 +71,16 @@ description: Universal plot drafting and creative narrative generator for Novel 
 
 ## 🔒 三、 白名单与注意事项
 
-- 💻 **准跑命令（唯一）**：`python studio.py pack ch_XXX -w "workspace/<书名>"`（装配包顶层 `=== beats ===` 即为核心细纲，单屏一目了然，严禁写脚本二次提取，起手直写！）；
-- 📖 **准读输入（唯一）**：`pack` 命令返回的内容（pack 数据已完全自完备且 Beats 置顶，严禁二次查验，直接起笔；**绝对严禁调用 `view_file` 翻看 beats 细纲、外部卡片与历史章节**）；
+- 📖 **准读输入（唯一）**：`workspace/<书名>/pack.md`（首步调用 `view_file` 单次全读，零截断看全 beats 细纲与现场事实；严禁写脚本、严禁二次查验）；
+- 💻 **准跑命令**：**【绝对零命令】**（若主控已预置 `pack.md`）或仅限 `python studio.py pack ch_XXX -w "workspace/<书名>"`（命令会自动将全量无损装配包落地为 `pack.md`）；
 - ✍️ **准写工具（唯一）**：调用 `write_to_file` 写入 `manuscript/vol_XX/raw/ch_XXX_v1.md`（**严禁传递 `ArtifactMetadata`**）；
 - 🚫 **注意事项**：
   - **谨慎在正文中使用任何学术、科学、理工、经管、哲学、医学等专业术语与行业黑话，避免带来认知门槛。**
-  - 严禁调用 `view_file` 翻看 `outlines/` 下的 beats 任务书（所有必要细纲已由 `pack` 完整装配，额外翻读属严重违纪与算力浪费）；
+  - **严禁编写任何 PowerShell / Python 自查、字数统计或 JSON 提取脚本！**
+  - 严禁调用 `view_file` 翻看 `outlines/` 下的 beats 任务书（所有必要细纲已由 `pack.md` 完整装配）；
   - 严禁在对话框发送正文文本；严禁调用 `ask`；
-  - 严禁编写任何 PowerShell / Python 自查或字数统计脚本（字数大致在 1500~2500 字区间即可，绝不死抠精确字数）；
   - 严禁调用 `check` / `doctor` 等全书体检命令；严禁阅读 `engine/` 源码；落盘后严禁留恋滞留。
+
 
 ---
 

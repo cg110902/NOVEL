@@ -67,6 +67,17 @@ def cmd_pack(args) -> int:
         return 1
     except ValueError as exc:
         return _err(str(exc), code=1, err_code="engine")
+    rendered = None
+    if ch is not None:
+        rendered = pack_mod.render_pack(payload)
+        try:
+            (book / "pack.md").write_text(rendered, encoding="utf-8")
+            pack_dir = book / ".pack"
+            pack_dir.mkdir(parents=True, exist_ok=True)
+            (pack_dir / f"{ch}.md").write_text(rendered, encoding="utf-8")
+        except Exception:
+            pass
+
     if js:
         print(json.dumps(payload, ensure_ascii=False, indent=2))
     else:
@@ -74,7 +85,7 @@ def cmd_pack(args) -> int:
             o = payload["opened"]
             print(f"📂 {o['path']}\n\n{o['text']}")
         else:
-            print(pack_mod.render_pack(payload))
+            print(rendered if rendered is not None else pack_mod.render_pack(payload))
     return 0
 
 

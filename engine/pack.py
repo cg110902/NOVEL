@@ -19,11 +19,11 @@ except ImportError:
     _HAS_NX = False
 
 PREV_TAIL_CHARS = 1000
-SPINE_CAP = 10
+SPINE_CAP = 3
 POINTER_WINDOW = 10
-# 装配预算：1.5W token 卡死。
-# 但 beats 全文、current、硬提醒、不可逆事实与钉住的世界锚点永不裁。
-PACK_TOKEN_CAP = 15000
+# 装配预算：1.0W token 卡死。
+# beats 全文、current、硬提醒与不可逆事实绝对置顶。
+PACK_TOKEN_CAP = 10000
 MAX_P1_ENTITIES = 12
 MAX_P1_INDIRECT = 5
 
@@ -132,11 +132,9 @@ def _deviation_lines(book: Path) -> list[str]:
 # world_refs 可钉节数上限：钉太多就等于回到恒给（收窄失去意义），也避免主控一次性把五档视图全列进来。
 MAX_WORLD_ANCHOR_REFS = 8
 
-# 世界锚点（world_anchors）预算帽：project.json.world_anchor_tokens 可调，缺省与上限同为 10000。
-# ⚠️ 设计口径（V3.3议题）：世界锚点不应「恒给全书」，而应按章取用——现阶段已支持
-# 用 beats front-matter 的 `world_refs` 钉住本章需要的节（见 _bible_core_anchors），
-# 未声明时回退为按关键词全量恒给（保持既有行为）。
-MAX_WORLD_ANCHOR_TOKENS = 10000
+# 世界锚点（world_anchors）预算帽：project.json.world_anchor_tokens 可调，缺省与上限同为 2000。
+# ⚠️ 彻底杜绝设定膨胀：按章取用必须服从预算帽，超出部分按相关度截断。
+MAX_WORLD_ANCHOR_TOKENS = 2000
 # 「基础世界节组」：按章取用模式下若整组缺席，多半是 world_refs 写漏而不是本章真用不上。
 # 引擎**不擅自扩大注入**（按章取用是契约），但必须在包里点名缺了哪组，让主控一条命令补上。
 # 关键词同时用于「池内是否本就存在该组」判定——书里没写这一组时不报，避免噪音。
@@ -154,7 +152,7 @@ _WORLD_ANCHOR_HINT = (
 
 
 def _world_anchor_budget(book: Path) -> int:
-    """世界锚点预算：project.json.world_anchor_tokens（非负整数），缺省 10000（即上限）。"""
+    """世界锚点预算：project.json.world_anchor_tokens（非负整数），缺省 2000（即上限）。"""
     try:
         proj = common.load_json(book / "project.json", default={}) or {}
     except (ValueError, OSError):
@@ -212,9 +210,9 @@ def _bible_core_anchors(book: Path, refs: list[str] | None = None) -> str:
             text = p.read_text(encoding="utf-8", errors="replace")
         except OSError:
             continue
-        has_h2 = bool(re.search(r"^##\s+", text, re.MULTILINE))
-        split_pattern = r"^##\s+(.*)$" if has_h2 else r"^(?:#{1,3})\s+(.*)$"
+        split_pattern = r"^(#{2,3})\s+(.*)$"
         current_title = None
+        current_level = 2
         current_lines = []
         for line in text.splitlines():
             m = re.match(split_pattern, line)
@@ -222,8 +220,10 @@ def _bible_core_anchors(book: Path, refs: list[str] | None = None) -> str:
                 if current_title and current_lines:
                     content = "\n".join(current_lines).strip()
                     if content:
-                        sections.append(f"### {current_title}\n{content}")
-                t = m.group(1).strip()
+                        prefix = "### " if current_level == 3 else "## "
+                        sections.append(f"{prefix}{current_title}\n{content}")
+                current_level = len(m.group(1))
+                t = m.group(2).strip()
                 if t.startswith("《") or "偏离" in t or "文风" in t:
                     current_title = None
                     current_lines = []
@@ -235,47 +235,62 @@ def _bible_core_anchors(book: Path, refs: list[str] | None = None) -> str:
         if current_title and current_lines:
             content = "\n".join(current_lines).strip()
             if content:
-                sections.append(f"### {current_title}\n{content}")
+                prefix = "### " if current_level == 3 else "## "
+                sections.append(f"{prefix}{current_title}\n{content}")
 
     if not sections:
         return ""
-    # 「按章取用」模式：refs 命中即钉住（不被预算截断），未命中回退恒给。
+    # 「按章取用」模式：精准相关度加权，服从预算帽，超出部分截断。
     dropped = [r.split(":", 1)[1] for r in (refs or []) if r.startswith("__dropped__:")]
     refs = [r for r in (refs or []) if not r.startswith("__dropped__:")]
     if refs:
         low = [r.lower() for r in refs]
-        pinned = [s for s in sections if any(k in s.lower() for k in low)]
-        if pinned:
+        scored_sections = []
+        for s in sections:
+            first_line = s.split("\n", 1)[0].lower()
+            body_text = s.lower()
+            title_hits = sum(1 for k in low if k in first_line)
+            content_hits = sum(min(body_text.count(k), 5) for k in low)
+            if title_hits > 0 or content_hits > 0:
+                score = title_hits * 10 + content_hits
+                scored_sections.append((score, s))
+
+        # 按相关度从高到低排序
+        scored_sections.sort(key=lambda x: -x[0])
+
+        if scored_sections:
+            pinned = []
+            used = 0
+            for score, s in scored_sections:
+                t = common.est_tokens(s)
+                # 预算硬顶：绝不让钉住设定穿透预算
+                if pinned and used + t > budget:
+                    break
+                pinned.append(s)
+                used += t
+
             out = "\n\n".join(pinned)
-            note = f"（按章取用：命中 {len(pinned)}/{len(sections)} 节 world_refs）"
+            note = f"（按章取用：命中 {len(pinned)}/{len(scored_sections)} 节相关设定，预算 {used}/{budget} tok）"
+            if len(pinned) < len(scored_sections):
+                note += " ｜ 其余超配额设定已截断，临时核对可用 `python studio.py lore` 取用"
             if dropped:
-                note += (f"｜⚠️ world_refs 超过 {MAX_WORLD_ANCHOR_REFS} 个上限，已忽略后面的：{dropped[0]}"
-                         "（钉太多＝恒给，收窄失去意义；确需多看几节请用 `lore` 系列零 Token 自取）")
-            # 基础组缺失诊断：只报「池子里本有、却被 refs 挡在门外」的组
+                note += f" ｜ 忽略超出上限的 refs：{dropped[0]}"
+
+            # 基础组缺失简要诊断
             low_pinned = [x.lower() for x in pinned]
             low_pool = [x.lower() for x in sections]
             missing = [g for g, kws in _ANCHOR_CORE_GROUPS
                        if not any(any(k in x for k in kws) for x in low_pinned)
                        and any(any(k in x for k in kws) for x in low_pool)]
             if missing:
-                out += ("\n\n⚠️ 本章 world_refs 未覆盖基础世界节组："
-                        + "、".join(f"「{g}」" for g in missing)
-                        + f"（池中另有 {len(sections) - len(pinned)} 节未注入）。"
-                        "凡正文涉及升级/交易/组织冲突或力量表现，请把对应关键词补进 beats 的 "
-                        "`world_refs:` 后重跑 pack；临时核对可用 `python studio.py lore scale` / "
-                        "`lore rules`（零 Token）。")
-            elif len(pinned) < len(sections):
-                out += ("\n\n未注入的世界节（基础组已覆盖）：可用 "
-                        "`python studio.py lore rules` / `lore scale` / `lore entity <名>` 按需取。")
+                note += f" ｜ 提示：未覆盖「{'、'.join(missing)}」（可按需补进 world_refs）"
             return out + "\n" + note
+
         # 一条都没命中：不静默降级为"没有世界观"，回退恒给 + 点名 world_refs 可能写错。
-        # 匹配是「refs 词 ⊆ 节标题或正文」的字面包含，所以必须用 bible 自己的措辞；
-        # 把可选节标题列出来（最多 6 条），主控照抄一次即可命中，不必回头翻文件。
         cands = "、".join(sec.split("\n", 1)[0].lstrip("#").strip()[:22] for sec in sections[:6])
         hint = f"可钉的节：{cands}" if cands else "（当前 bible 无可钉节）"
         fallback_note = (f"⚠️ beats 的 world_refs（{'、'.join(refs[:6])}）未命中任何 bible 节标题/正文，"
-                         f"已回退为恒给全量锚点——refs 需与设定原文用词一致，{hint}；"
-                         "或删掉本键沿用恒给。\n\n")
+                         f"已回退为恒给前置锚点（上限 {budget} tok）——refs 需与设定原文用词一致，{hint}；\n\n")
     else:
         fallback_note = ""
     # 逐节累加，超出预算即停（保留靠前节：bible 01/02 的世界公理与战力标尺最基础）
@@ -808,35 +823,39 @@ def build_pack(book: Path, ch: str, lean: bool = False, full: bool = False,
         # 「可用 --open 取原文」一起列给被禁读该目录的角色（drafter/reader/…），
         # 等于承诺一个必然被拒的动作——既白烧索引 token，又诱导子代理自行提权。
         # 现在被禁条目不列路径，只报数量，并把 open_hint 改成与该角色一致的口径。
-        if role and role in ROLE_DENY and ROLE_DENY[role]:
-            allowed, blocked = [], 0
-            for ent in p2["file_index"]:
-                if deny_reason(book, ent["path"], role) is None:
-                    allowed.append(ent)
-                else:
-                    blocked += 1
-            p2["file_index"] = allowed
-            if blocked:
-                p2["open_hint"] = (f"另有 {blocked} 份文件不在角色「{role}」的准读范围内，"
-                                   "请勿尝试 --open（会被禁读网关拒绝）；本包未装的一律视为"
-                                   "『你不需要知道』，确需原文请交主控判断后转述。")
-
-        finals = evidence.final_chapters(book)
-        window = [c for c in finals if c[1] < ch_num][-POINTER_WINDOW:]
-        # 首章（或前面还没有任何定稿）时窗口为空，此前一律渲染成「近10章未出现」——
-        # 把「尚无历史可比」说成「历史里查无此人」，是误导性的冷索引噪声。
-        if not window:
-            p2["old_chapter_pointers"].append(
-                f"（本章之前尚无已定稿章节，无历史出处可比；POINTER_WINDOW={POINTER_WINDOW} 自本章起累计）")
+        if role == "drafter":
+            # Drafter 是纯起草写手，实行【绝对零命令】与零外部准读，彻底剥离冷索引与词频指针噪音
+            p2["file_index"] = []
+            p2["old_chapter_pointers"] = []
+            p2["open_hint"] = ""
         else:
-            for name in sorted(hits):
-                marks = []
-                for tok, _, text in window:
-                    c = sum(evidence.count_aliases(text, lookup[name]).values())
-                    if c:
-                        marks.append(f"{tok}×{c}")
+            if role and role in ROLE_DENY and ROLE_DENY[role]:
+                allowed, blocked = [], 0
+                for ent in p2["file_index"]:
+                    if deny_reason(book, ent["path"], role) is None:
+                        allowed.append(ent)
+                    else:
+                        blocked += 1
+                p2["file_index"] = allowed
+                if blocked:
+                    p2["open_hint"] = (f"另有 {blocked} 份文件不在角色「{role}」的准读范围内，"
+                                       "请勿尝试 --open（会被禁读网关拒绝）；本包未装的一律视为"
+                                       "『你不需要知道』，确需原文请交主控判断后转述。")
+
+            finals = evidence.final_chapters(book)
+            window = [c for c in finals if c[1] < ch_num][-POINTER_WINDOW:]
+            if not window:
                 p2["old_chapter_pointers"].append(
-                    f"{name}: " + (", ".join(marks) if marks else f"近{len(window)}章未出现"))
+                    f"（本章之前尚无已定稿章节，无历史出处可比；POINTER_WINDOW={POINTER_WINDOW} 自本章起累计）")
+            else:
+                for name in sorted(hits):
+                    marks = []
+                    for tok, _, text in window:
+                        c = sum(evidence.count_aliases(text, lookup[name]).values())
+                        if c:
+                            marks.append(f"{tok}×{c}")
+                    p2["old_chapter_pointers"].append(
+                        f"{name}: " + (", ".join(marks) if marks else f"近{len(window)}章未出现"))
         payload["p2"] = p2
 
     texts = {layer: payload[layer] for layer in ("p0", "p1", "p2")}
@@ -966,6 +985,8 @@ def render_layer(name: str, obj, full: bool = False) -> str:
             lines += ["", "=== 上章余温 ===", obj["prev_tail"]]
         lines += ["", "=== 即时现场与人物状态 ==="]
         for k, v in obj["current"].items():
+            if k == "active_pressures":
+                continue
             if k == "loadout" and isinstance(v, dict):
                 friendly = {"cultivation": "主修", "movement": "身法", "attack": "杀招",
                             "trump_card": "底牌", "equipped_items": "装备"}
@@ -982,7 +1003,10 @@ def render_layer(name: str, obj, full: bool = False) -> str:
         if obj.get("hard_reminders"):
             lines += ["", "=== 硬提醒 ==="] + [f"- {m}" for m in obj["hard_reminders"]]
         if obj.get("aftershock"):
-            lines += ["", "=== 戏剧余震与开篇承接（首段必咬住） ===", f"- {obj['aftershock']}"]
+            cur_sit = str(obj.get("current", {}).get("situation", "")).strip()
+            aft = str(obj["aftershock"]).strip()
+            if aft and aft != cur_sit and aft not in cur_sit and cur_sit not in aft:
+                lines += ["", "=== 戏剧余震与开篇承接（首段必咬住） ===", f"- {aft}"]
         if obj.get("active_pressures"):
             lines += ["", "=== 悬顶危机倒计时（即时压迫） ==="] + [f"- {p}" for p in obj["active_pressures"]]
         if obj.get("scene_tensions"):
@@ -1038,20 +1062,28 @@ def render_layer(name: str, obj, full: bool = False) -> str:
         lines += [f"[间接] {s}" for s in obj["indirect"]]
         lines += ["--- 梗概脊柱 ---"] + obj["spine"]
         return "\n".join(lines)
-    lines = [f"{f['path']} (~{f['tokens']}tok) {f['desc']}" for f in obj["file_index"][:25]]
-    lines += ["--- 相关旧章指针 ---"] + obj["old_chapter_pointers"] + [obj["open_hint"]]
+    lines = []
+    if obj.get("file_index"):
+        lines += [f"{f['path']} (~{f['tokens']}tok) {f['desc']}" for f in obj["file_index"][:25]]
+    if obj.get("old_chapter_pointers"):
+        lines += ["--- 相关旧章指针 ---"] + obj["old_chapter_pointers"]
+    if obj.get("open_hint"):
+        lines.append(obj["open_hint"])
     return "\n".join(lines)
 
 
 def render_pack(payload: dict) -> str:
     b = payload["budget_report"]
-    out = [f"# pack {payload['chapter']}" + (" [lean]" if payload["lean"] else "")
-           + (" [full]" if payload["full"] else ""), "",
+    title = f"# pack {payload['chapter']}" + (" [lean]" if payload["lean"] else "") + (" [full]" if payload["full"] else "")
+    notice = "<!-- 💡 全量装配包已自动无损落盘至工作区 pack.md。为防 Agent 终端截断，推荐使用 view_file 直接阅读 pack.md -->"
+    out = [title, notice, "",
            "## 热层（恒给）", render_layer("p0", payload["p0"], full=payload["full"])]
     if payload["p1"] is not None:
         out += ["", "## 温层（别名触发）", render_layer("p1", payload["p1"], full=payload["full"])]
     if payload["p2"] is not None:
-        out += ["", "## 冷层（索引）", render_layer("p2", payload["p2"], full=payload["full"])]
+        p2_text = render_layer("p2", payload["p2"], full=payload["full"])
+        if p2_text.strip():
+            out += ["", "## 冷层（索引）", p2_text]
     out += ["", f"budget: p0={b['p0']} p1={b.get('p1', 0)} p2={b.get('p2', 0)} "
                 f"total={b['total']}/{b['cap']} tokens（超预算={b['over_budget']}）"]
     if b.get("trimmed_file_index"):

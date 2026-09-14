@@ -560,8 +560,9 @@ def build_cockpit_briefing(book: Path, ch: str | None = None) -> dict[str, Any]:
     # 1. 确定工作流与工序状态
     beats_files = common.find_chapter_files(book, "beats", ch_tok)
     raw_files = common.find_chapter_files(book, "raw", ch_tok)
-    # Stage 3（V3.4 流水线）：raw_v1 = Drafter 毛坯，raw_v3 = Editor 重塑预定稿。
+    # Stage 3A/3B（流水线）：raw_v1 = Drafter 毛坯，raw_v2 = Editor 重塑稿，raw_v3 = Polisher 润色预定稿。
     raw_v1_files = [f for f in raw_files if common.chapter_version_from_name(f.name) < 2]
+    raw_v2_files = [f for f in raw_files if common.chapter_version_from_name(f.name) == 2]
     raw_v3_files = [f for f in raw_files if common.chapter_version_from_name(f.name) >= 3]
     final_files = common.find_chapter_files(book, "final", ch_tok)
     inbox_normal = (book / "state" / "inbox" / f"{ch_tok}.json").is_file()
@@ -611,6 +612,7 @@ def build_cockpit_briefing(book: Path, ch: str | None = None) -> dict[str, Any]:
     status = {
         "beats": bool(beats_files),
         "raw": bool(raw_v1_files),
+        "raw_v2": bool(raw_v2_files),
         "raw_v3": bool(raw_v3_files),
         # Stage 4A 的交付物（问题清单）与 Stage 5 闸门报告是**两份不同工件**：
         # issues_*.md 由 Auditor 子代理产出、是 Stage 4C 定稿师的输入；ch_*.md 由引擎
@@ -658,13 +660,22 @@ def build_cockpit_briefing(book: Path, ch: str | None = None) -> dict[str, Any]:
             "command": f"python studio.py pack {ch_tok} --full",
             "target_file": f"manuscript/{vol}/raw/{ch_tok}_v1.md"
         }
-    elif not status["raw_v3"]:
-        curr_stage = "Stage 3 (重塑与脱水)"
+    elif not status["raw_v2"]:
+        curr_stage = "Stage 3A (重塑与脱水)"
         next_action = {
             "actor": "Editor",
-            "stage": "Stage 3",
-            "instruction": "向精修师 Editor 下达 Stage 3 标准工序派发令：双核加肉与大白话脱水，产出脱水预定稿 raw_v3",
+            "stage": "Stage 3A",
+            "instruction": "向精修师 Editor 下达 Stage 3A 标准工序派发令：通俗大白话重塑与脱水，产出重塑稿 raw_v2",
             "command": f"view_file manuscript/{vol}/raw/{ch_tok}_v1.md",
+            "target_file": f"manuscript/{vol}/raw/{ch_tok}_v2.md"
+        }
+    elif not status["raw_v3"]:
+        curr_stage = "Stage 3B (抛光润色)"
+        next_action = {
+            "actor": "Polisher",
+            "stage": "Stage 3B",
+            "instruction": "向润色师 Polisher 下达 Stage 3B 标准工序派发令：优化动词与语序，追求丝滑连贯，产出预定稿 raw_v3",
+            "command": f"view_file manuscript/{vol}/raw/{ch_tok}_v2.md",
             "target_file": f"manuscript/{vol}/raw/{ch_tok}_v3.md"
         }
     elif not status["critic"] or not status["issues"]:
@@ -901,6 +912,7 @@ def render_cockpit_terminal(briefing: dict[str, Any]) -> None:
         # 1. 工作流看板
         st_beats = "✅" if st["beats"] else "⭕"
         st_raw = "✅" if st["raw"] else "⭕"
+        st_raw2 = "✅" if st.get("raw_v2") else "⭕"
         st_raw3 = "✅" if st.get("raw_v3") else "⭕"
         st_issues = "✅" if st.get("issues") else "⭕"
         st_final = "✅" if st["final"] else "⭕"
@@ -914,10 +926,10 @@ def render_cockpit_terminal(briefing: dict[str, Any]) -> None:
                         "off": "➖ 已关闭 (audit_mode=off)"}.get(_ast, "⭕ 缺报告")
         st_sync = "✅" if st["synced"] else "⭕"
 
-        # 工序状态按真实依赖链排列：1 → 2 → 3 → 4A/4B → 5 (finalize → proposal auto → sync)
+        # 工序状态按真实依赖链排列：1 → 2 → 3A → 3B → 4A/4B → 5 (finalize → proposal auto → sync)
         status_line = (
             f"细纲 beats: {st_beats}  毛坯 raw_v1: {st_raw}  "
-            f"精修 raw_v3: {st_raw3}\n"
+            f"重塑 raw_v2: {st_raw2}  润色 raw_v3: {st_raw3}\n"
             f"审查配方(4A): {st_issues}  催更便签(4B): {st_crit}  "
             f"定稿盖章(5A): {st_final}  事实提取(5B): {st_prop}  快照同步(5C): {st_sync}"
         )
