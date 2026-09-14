@@ -9,8 +9,6 @@ description: Universal plot drafting and creative narrative generator for Novel 
 > 派发令已给定工作区与章节。**若未在上下文装载本手册仅限首步读取 1 次，进入正文生产后绝对严禁回读倒嚼本手册！严禁调用 `list_dir` / `find_by_name` 搜寻工程！**
 > 起手**必须直接执行步骤 1 跑 pack 取包！pack 数据已完全自完备，严禁二次查验，直接起笔！** 撰写正文后直接调用 `write_to_file` 落盘（**严禁附带 `ArtifactMetadata`**），输出 3 行回执即刻交卷退出，绝不滞留！
 
-
-
 ---
 
 ## 🎯 一、 你的唯一任务（干完就走）

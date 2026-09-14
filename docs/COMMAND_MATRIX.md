@@ -17,7 +17,7 @@
 | **精修师 (Editor)** | Stage 3<br/>(加肉与脱水一体化) | **【绝对零命令】** | **双核手术刀精修与脱水（纯读写零终端）**：<br/>总控预置底稿，Editor 绝对零命令。单次全读后倒序对 5~7 处核心大块手术刀替换（通俗脱水、消除反刍总结与去冷脸面瘫词），落盘即走。 |
 | **审查员 (Auditor)** | Stage 4A | **【绝对零命令】** | **客观出戏审查与预制配方（纯读写零终端）**：<br/>总控预置探针骨架，Auditor 绝对零命令。单次全读预定稿与报告，常识挑刺，预制修补配方写入报告，交由 Stage 5 引擎自动套用。 |
 | **催更员 (Critic)** | Stage 4B | **【绝对零命令】** | **老白读者纯盲审（纯读写零终端）**：<br/>模拟坐在手机前追更的十年老白读者，纯读者视角盲审预定稿，给出 300~500 字追更心理便签，绝不上帝视角查库。 |
-| **终审封存交付 (Director/Engine)** | Stage 5 | `finalize`<br/>`proposal auto`<br/>`sync` | **极速三指令原子收口（算法秒级接管）**：<br/>彻底取代传统 Fixer 与 Reader 子代理！总控单行运行 `finalize`（套用配方生成 final 并盖章）+ `proposal auto --write`（自动提取变动）+ `sync`（合账封存与快照），全过程 ≤0.5 秒。 |
+| **终审封存交付 (Director/Engine)** | Stage 5 | `finalize`<br/>`proposal auto`<br/>`sync` | **极速三指令原子收口（算法秒级接管）**：<br/>总控单行运行 `finalize`（套用配方生成 final 并盖章）+ `proposal auto --write`（自动提取变动）+ `sync`（合账封存与快照），全过程 ≤0.5 秒。 |
 | **图书管理员 (Librarian)** | 每10章巡检<br/>卷末对账 | `evidence candidates`<br/>`lore list`<br/>`reconcile vol_XX`<br/>`ledger recompute`<br/>`ask 2.1` | **长程实体打捞与大修平账**：<br/>1. 跑 `evidence candidates ch_XXX` 自动打捞频繁出场但未登记的活跃龙套与道具；<br/>2. 卷末跑 `reconcile vol_XX --write` 出具对账单（严禁手搓底层 JSON）；<br/>3. 账目存疑时跑 `ledger recompute` 一键修复。 |
 | **演进重构师 (Evolver)** | Stage Evolution<br/>（中途变更） | `simulate impact`<br/>`snapshot create/rollback`<br/>`state at/diff/blame`<br/>`ask 2.1`<br/>`check` | **剧情外科手术雷达**：<br/>1. 动刀前跑 `simulate impact --entity <实体> --action kill` 拓扑测算连锁因果波及；<br/>2. 动刀前跑 `snapshot create` 强制备份，遇阻用 `snapshot rollback` 一秒撤销；<br/>3. 用 `state at` 与 `state diff` 对校历史时点切面与改动前后差异。 |
 

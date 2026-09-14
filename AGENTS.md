@@ -1,6 +1,7 @@
 # AGENTS.md — Novel Studio 核心宪法（极速轻量通用版）
 
-Novel Studio 是通俗商业网文工业流水线框架：**大模型全权掌控创意脑洞、生动情节与通俗叙事；确定性引擎负责事实底座与数据台账；原生 Subagents 极速工序接力与闭环归档。除了Stage 0和Stage 5之外，总控严禁亲自下场替代子agent完成任务。**
+Novel Studio 是通俗商业网文工业流水线框架：**大模型全权掌控创意脑洞、生动情节与通俗叙事；确定性引擎负责事实底座与数据台账；原生 Subagents 极速工序接力与闭环归档。**
+**除了Stage 0和Stage 5之外，总控严禁亲自下场替代子agent完成任务。总控严禁亲笔撰写或修改小说正文与审查报告！**
 
 ---
 
@@ -23,7 +24,7 @@ Novel Studio 是通俗商业网文工业流水线框架：**大模型全权掌�
 | **精修师 Editor**<br/>(Stage 3) | `inherit` | `editor/SKILL.md`<br/>`raw/ch_XXX_v3.md` | `raw/ch_XXX_v3.md`<br/>(`write_to_file`) | **【绝对零命令】** | **全篇重塑与脱水**：总控派发前预置 v3，首步读取手册锁定文风与负面词库后依据脱水铁律调用 `write_to_file` 全篇大白话重写落盘（通俗脱水、去冷脸面瘫与高频词），纯读写零终端，落盘即走。 |
 | **审查员 Auditor**<br/>(Stage 4A) | `inherit` | `auditor/SKILL.md`<br/>`raw/ch_XXX_v3.md`<br/>`log/audit/ch_XXX.md` | `log/audit/ch_XXX.md`<br/>(`replace_file_content`) | **【绝对零命令】** | **客观安检**：总控派发前预置探针骨架，首步读取手册与底稿进行常识挑刺，预制修补配方写入报告，纯读写零终端，与 Critic 并发执行。 |
 | **催更员 Critic**<br/>(Stage 4B) | `flash` | `critic/SKILL.md`<br/>`raw/ch_XXX_v3.md`<br/>`current.json` | `log/critic/ch_XXX.md`<br/>(`write_to_file`) | **【绝对零命令】** | **老白盲审**：十年老白读者盲审，首步读取手册与底稿输出 300~500 字追更便签供下章细纲参考，纯读写零终端，与 Auditor 并发执行，落盘即走。 |
-| **终审封存交付**<br/>(Stage 5 总控/引擎) | `inherit` | 全局状态、成稿 | `final/ch_XXX.md`<br/>`state/inbox/ch_XXX.json` | `finalize`, `proposal auto`, `sync` | **极速三指令原子收口**：Auditor/Critic 并发完成后，总控秒级跑 `finalize`（自动吸纳配方生成 final 并盖章）+ `proposal auto --write`（自动提取变动）+ `sync`（合账封存与快照），彻底砍掉独立 Fixer 与 Reader 子代理（全过程 ≤0.5 秒；突发致命红旗由总控自主派发临时纯认知工排雷后收口）。 |
+| **终审封存交付**<br/>(Stage 5 总控/引擎) | `inherit` | 全局状态、成稿 | `final/ch_XXX.md`<br/>`state/inbox/ch_XXX.json` | `finalize`, `proposal auto`, `sync` | **极速三指令原子收口**：Auditor/Critic 并发完成后，总控秒级跑 `finalize`（自动吸纳配方生成 final 并盖章）+ `proposal auto --write`（自动提取变动）+ `sync`（合账封存与快照）（全过程 ≤0.5 秒；突发致命红旗由总控自主派发临时纯认知工排雷后收口）。 |
 
 *(注：Stage 0 架构师 Architect、Stage Evolution 重构师 Evolver、长程巡检 Librarian 详见各自 SKILL.md，日常章节无需载入。)*
 
@@ -58,8 +59,8 @@ Novel Studio 是通俗商业网文工业流水线框架：**大模型全权掌�
 5. **专职边界与免多余回读铁律**：
    - **Drafter**：运行 `pack` 获取自完备上下文（Beats 置顶一目了然）后**起手直写**，严禁写脚本、严禁二次查验，直接落盘；
    - **Editor**：单次全读 `raw_v3` 后，依据脱水铁律确定重写策略，调用 `write_to_file` 全篇大白话重写落盘，纯读写零终端，落盘即走；
-   - **Fixer 与 Reader 全面算法化**：彻底砍掉独立 Fixer 与 Reader 子代理！由总控在 Stage 5 直接运行 `finalize` 自动吸纳修补配方生成 final，再由 `proposal auto --write` 自动提取入库，彻底免除任何大模型手写或调试的内耗。
-6. **总控物理写屏障与 Stage 5 原子收尾铁律**：总控写入权限严格仅限 Stage 1 细纲（`beats/ch_XXX.md`）与卷大纲微调；**总控绝对禁止亲笔撰写或修改小说正文与审查报告**！Stage 5 必须且只能执行三连命令 `python studio.py finalize ch_XXX -w "..." && python studio.py proposal auto ch_XXX --write -w "..." && python studio.py sync ch_XXX -w "..."`，正文绝对零回读，封存完毕即交付。
+   - **Director**：总控在 Stage 5 直接运行 `finalize` 自动吸纳修补配方生成 final，再由 `proposal auto --write` 自动提取入库。
+6. **总控物理写屏障与 Stage 5 原子收尾铁律**：总控写入权限严格仅限 Stage 1 细纲（`beats/ch_XXX.md`）与卷大纲微调；**Stage 5 必须且只能执行三连命令 `python studio.py finalize ch_XXX -w "..." && python studio.py proposal auto ch_XXX --write -w "..." && python studio.py sync ch_XXX -w "..."`，正文绝对零回读，封存完毕即交付。
 
 ---
 
@@ -70,4 +71,3 @@ Novel Studio 是通俗商业网文工业流水线框架：**大模型全权掌�
 - 骨肉精修：`.agents/skills/editor/SKILL.md` ｜ 审查质检：`.agents/skills/auditor/SKILL.md`
 - 读者催更：`.agents/skills/critic/SKILL.md` ｜ 演进重构：`.agents/skills/evolution/SKILL.md`
 - 宏观架构：`.agents/skills/architect/SKILL.md` ｜ 长程平账：`.agents/skills/librarian/SKILL.md`
-*(注：原 Fixer 终审与 Reader 审计已全面引擎算法化为 `finalize` 与 `proposal auto`，免除独立代理)*
