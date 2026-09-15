@@ -16,7 +16,7 @@ description: Universal prose polisher and sentence flow enhancer for Novel Studi
 你的唯一核心宗旨【任务目标】是：
 - **【优化动词与语序，追求丝滑连贯（流畅自然）；字数保持基本持平即可。】**;
 - **保留 v2 大白话感，不额外增加阅读成本**；
-- **通经活络、让文字如水流般自然顺滑**！
+- **通经活络、让文字如水流般自然顺滑、兼顾自然的情感表达**！
 
 
 ---
