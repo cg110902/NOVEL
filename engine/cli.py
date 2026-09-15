@@ -25,6 +25,8 @@ from .commands.reconcile import cmd_reconcile
 from .commands.simulate import cmd_simulate
 from .commands.state_sync import (cmd_checkpoint, cmd_ledger, cmd_milestone, cmd_proposal, cmd_snapshot,
                                   cmd_state, cmd_sync)
+from .commands.autopilot import (cmd_novel, cmd_one, cmd_create, cmd_write, cmd_auto, cmd_run)
+from .healer import heal_book
 
 
 # ---------------------------------------------------------------------------
@@ -34,6 +36,15 @@ from .commands.state_sync import (cmd_checkpoint, cmd_ledger, cmd_milestone, cmd
 # help
 # ---------------------------------------------------------------------------
 COMMAND_HELP = {
+    # --- 4.0 一键成书（超级命令） ---
+    "novel": "🚀【4.0 一键成书】从零到成书一条命令：novel \"书名\" -g 玄幻 -p 主角 --idea 脑洞 --chapters 10",
+    "one": "🚀 novel 的别名：一条命令从零到成书",
+    "create": "📚 极简开书：create \"书名\" -g 玄幻 -p 主角 --idea 脑洞（自动生成 bible/角色/大纲）",
+    "write": "✍️ 单章全自动：write ch_001 -w 书目录（beats→pack→v1→v2→v3→audit→critic→final→sync 全自动）",
+    "auto": "🤖 批量全自动：auto -w 书目录 --chapters 5（自动续写 N 章）",
+    "run": "🧠 智能运行：run -t 书名 -g 玄幻 --chapters 5（自动判断新书/续写）",
+    "heal": "🛠️ 一键自愈：heal -w 书目录（自动修复派生表/账本/索引/孤立提案）",
+    # --- 原有命令 ---
     "status": "进度总览 + 逐章流水线 + 下一步指向",
     "init": "创建/清理书工作区（脚手架+状态播种+模板槽位实例化）",
     "cockpit": "主控态势驾驶舱：工作流导航 + 戏剧动力学 + 伏笔雷达 + 自愈处方 + 催更雷达",
@@ -69,6 +80,11 @@ COMMAND_HELP = {
 }
 
 STAGE_MAP = {
+    "🚀 4.0 一键成书 (One-Command)": {
+        "role": "Autopilot 4.0",
+        "description": "一条命令从零到成书：novel \"书名\" -g 玄幻 -p 主角 --idea 脑洞 --chapters 10，极简开书 create，单章全自动 write，批量 auto，智能 run，自愈 heal",
+        "commands": ["novel", "one", "create", "write", "auto", "run", "heal"],
+    },
     "Stage 0 (设定构想)": {
         "role": "Architect 0A/B",
         "description": "确立世界观法则、人物卡、分卷大纲与词表供参等等",
@@ -98,7 +114,27 @@ STAGE_MAP = {
 
 RECIPES = [
     {
-        "name": "推进新章标准流水线",
+        "name": "🚀 4.0 一键成书（超级配方，一条命令）",
+        "stage_flow": "One-Command",
+        "steps": [
+            "python studio.py novel \"我的新书\" -g 玄幻 -p 林牧 --idea \"废柴逆袭，以智破局\" --chapters 10   # 从零到10章成书",
+            "python studio.py one \"我的新书\" -g 都市 -p 陈凡 --chapters 5   # one 是 novel 别名",
+            "python studio.py create \"我的新书\" -g 科幻 -p 苏远 --idea \"星际废土求生\"   # 极简开书",
+            "python studio.py run -t \"我的新书\" -g 玄幻 -p 林牧 --chapters 10   # 智能运行（新书/续写自动判断）",
+        ],
+    },
+    {
+        "name": "🤖 4.0 全自动续写（批量）",
+        "stage_flow": "Auto Batch",
+        "steps": [
+            "python studio.py auto -w workspace/我的新书 --chapters 5   # 批量续写5章",
+            "python studio.py write ch_006 -w workspace/我的新书   # 单章全自动",
+            "python studio.py auto ch_006:ch_010 -w workspace/我的新书   # 指定区间",
+            "python studio.py run -w workspace/我的新书 --chapters 10   # 智能续写",
+        ],
+    },
+    {
+        "name": "推进新章标准流水线（3.x 兼容）",
         "stage_flow": "Stage 1 -> Stage 5",
         "steps": [
             "python studio.py beats new ch_XXX --write",
@@ -156,6 +192,26 @@ RECIPES = [
         ],
     },
 ]
+
+
+
+def cmd_heal(args) -> int:
+    """4.0 自愈引擎"""
+    from .commands._shared import ws_gate, ws_gate_code
+    book = ws_gate(args)
+    if book is None:
+        return ws_gate_code()
+    deep = bool(getattr(args, "deep", False))
+    res = heal_book(book, deep=deep)
+    if getattr(args, "json", False):
+        import json
+        print(json.dumps(res, ensure_ascii=False, indent=2))
+    else:
+        print(f"🛠️ 自愈完成: {book}")
+        for log in res.get("logs", []):
+            print(f"  {log}")
+        print(f"  修复数: {res.get('fixed',0)}")
+    return 0
 
 
 def cmd_help(args) -> int:
@@ -671,6 +727,89 @@ def _build_subparsers(sub: argparse._SubParsersAction) -> None:
     r.set_defaults(func=cmd_lore)
 
     q.set_defaults(func=cmd_lore)
+
+    # ==================== 4.0 一键成书超级命令 ====================
+    # novel / one
+    q = sub.add_parser("novel", help="🚀【4.0 一键成书】从零到成书一条命令：novel \"书名\" -g 玄幻 -p 主角 --idea 脑洞 --chapters 10")
+    q.add_argument("title", nargs="?", help="书名（也可通过 -t 指定）")
+    q.add_argument("-t", "--title", dest="title_opt", help="书名（与位置参数二选一）")
+    q.add_argument("-g", "--genre", default="玄幻", help="题材：玄幻/都市/科幻/悬疑/历史等（默认 玄幻）")
+    q.add_argument("-p", "--protagonist", default="林牧", help="主角名（默认 林牧）")
+    q.add_argument("--idea", default="", help="一句话脑洞/核心设定（例如：废柴逆袭，以智破局）")
+    q.add_argument("--chapters", type=int, default=3, help="要写的章数（默认 3，单次上限 50）")
+    q.add_argument("-w", "--workspace", help="书工作区目录（默认 workspace/<书名>）")
+    q.add_argument("--force", action="store_true", help="若已存在则强制覆盖")
+    q.add_argument("--llm", default="auto", help="LLM 后端：auto/openai/anthropic/mock（默认 auto）")
+    q.add_argument("--json", action="store_true", help="JSON 输出")
+    q.set_defaults(func=cmd_novel)
+
+    q = sub.add_parser("one", help="🚀 novel 别名：一条命令从零到成书")
+    q.add_argument("title", nargs="?", help="书名")
+    q.add_argument("-t", "--title", dest="title_opt", help="书名")
+    q.add_argument("-g", "--genre", default="玄幻", help="题材")
+    q.add_argument("-p", "--protagonist", default="林牧", help="主角名")
+    q.add_argument("--idea", default="", help="一句话脑洞")
+    q.add_argument("--chapters", type=int, default=3, help="章数")
+    q.add_argument("-w", "--workspace", help="书工作区")
+    q.add_argument("--force", action="store_true", help="强制覆盖")
+    q.add_argument("--llm", default="auto", help="LLM 后端")
+    q.add_argument("--json", action="store_true", help="JSON 输出")
+    q.set_defaults(func=cmd_one)
+
+    # create
+    q = sub.add_parser("create", help="📚 极简开书：create \"书名\" -g 玄幻 -p 主角 --idea 脑洞")
+    q.add_argument("title", nargs="?", help="书名")
+    q.add_argument("-t", "--title", dest="title_opt", help="书名")
+    q.add_argument("-g", "--genre", default="玄幻", help="题材")
+    q.add_argument("-p", "--protagonist", default="林牧", help="主角名")
+    q.add_argument("--idea", default="", help="脑洞")
+    q.add_argument("-w", "--workspace", help="工作区")
+    q.add_argument("--force", action="store_true", help="强制覆盖")
+    q.add_argument("--llm", default="auto", help="LLM 后端")
+    q.add_argument("--json", action="store_true", help="JSON 输出")
+    q.set_defaults(func=cmd_create)
+
+    # write
+    q = sub.add_parser("write", help="✍️ 单章全自动：write ch_001 -w 书目录")
+    _add_common_opts(q)
+    q.add_argument("chapter", nargs="?", default=None, help="章节号（如 ch_001 或 1，缺省自动下一章）")
+    q.add_argument("--chapters", type=int, default=1, help=argparse.SUPPRESS)
+    q.add_argument("--llm", default="auto", help="LLM 后端")
+    q.set_defaults(func=cmd_write)
+
+    # auto
+    q = sub.add_parser("auto", help="🤖 批量全自动：auto -w 书目录 --chapters 5")
+    _add_common_opts(q)
+    q.add_argument("chapter", nargs="?", default=None, help="起始章节或区间（如 ch_006:ch_010）")
+    q.add_argument("--chapters", type=int, default=3, help="批量章数（默认 3）")
+    q.add_argument("--start", help=argparse.SUPPRESS)
+    q.add_argument("-t", "--title", help="若工作区不存在，用此标题一键新书（转调 novel）")
+    q.add_argument("-g", "--genre", default="玄幻", help="题材（配合 -t 新书时）")
+    q.add_argument("-p", "--protagonist", default="林牧", help="主角（配合 -t 新书时）")
+    q.add_argument("--idea", default="", help="脑洞（配合 -t 新书时）")
+    q.add_argument("--force", action="store_true", help="强制覆盖（配合 -t 新书时）")
+    q.add_argument("--llm", default="auto", help="LLM 后端")
+    q.set_defaults(func=cmd_auto)
+
+    # run
+    q = sub.add_parser("run", help="🧠 智能运行：run -t 书名 --chapters 5（自动判断新书/续写）")
+    _add_common_opts(q)
+    q.add_argument("title", nargs="?", help="书名（新书时）")
+    q.add_argument("-t", "--title", dest="title_opt", help="书名")
+    q.add_argument("-g", "--genre", default="玄幻", help="题材")
+    q.add_argument("-p", "--protagonist", default="林牧", help="主角名")
+    q.add_argument("--idea", default="", help="脑洞")
+    q.add_argument("--chapters", type=int, default=3, help="章数")
+    q.add_argument("--force", action="store_true", help="强制覆盖")
+    q.add_argument("--llm", default="auto", help="LLM 后端")
+    q.set_defaults(func=cmd_run)
+
+    # heal
+    q = sub.add_parser("heal", help="🛠️ 一键自愈：heal -w 书目录（自动修复派生表/账本/索引/孤立提案）")
+    _add_common_opts(q)
+    q.add_argument("--deep", action="store_true", help="深度自愈（创建基线快照等）")
+    q.set_defaults(func=cmd_heal)
+
 
 
 def _wants_json(args: argparse.Namespace) -> bool:

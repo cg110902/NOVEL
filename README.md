@@ -1,159 +1,207 @@
-# Novel Studio 3.3
+# Novel Studio 4.0 — 一键成书全自动引擎
 
-Antigravity 原生多智能体中文网络小说创作工坊：**确定性 Python 引擎**（`engine/`，黑盒）+ **多智能体角色矩阵**（`AGENTS.md` 与 `.agents/skills/*/SKILL.md`）+ **全题材脚手架模板**（`templates/`）。
+Antigravity 原生多智能体中文网络小说创作工坊 **4.0 全面升级**：
+**确定性 Python 超级引擎**（`engine/`，4.0 含 autopilot / generator / llm / healer / super_engine）+ **多智能体角色矩阵**（`AGENTS.md` 与 `.agents/skills/*/SKILL.md`）+ **全题材脚手架模板**（`templates/`）。
 
-架构哲学：**大模型全权掌控创意脑洞、生动情节与通俗叙事；确定性引擎负责事实底座与数据台账；原生 Subagents 实现高效工序接力与闭环归档。**
+架构哲学 4.0：**一条命令从零到成书；引擎负责事实底座、自愈与数据台账；生成器负责创意脑洞与通俗叙事；全流程零人工干预。**
+
+> 🎯 **核心升级**：3.x 需要 7 步手动接力（beats → pack → draft → edit → polish → audit → finalize → proposal → sync），4.0 只需 **1 条命令**。
 
 ---
 
-## 一、 三十秒极速上手
+## 🚀 一、 三十秒极速上手（4.0 一键成书）
 
 ```bash
 # 1. 安装依赖（Python >= 3.10）
 python -m pip install -r requirements.txt
 
-# 2. 开建新书（书目录位于 workspace/ 下）
-python studio.py init -w "workspace/我的新书" -t "我的新书" -g "玄幻" -p "林牧"
+# 2. 【超级命令】一条命令从零到成书 10 章（全自动）
+python studio.py novel "我的新书" -g 玄幻 -p 林牧 --idea "废柴逆袭，以智破局" --chapters 10
 
-# 3. 态势驾驶舱：查看当前工序指针、下一步该派谁与态势自检
+# 3. 【极简开书】只开书不写（自动生成 bible/角色/大纲）
+python studio.py create "我的新书" -g 都市 -p 陈凡 --idea "都市异能，扮猪吃虎"
+
+# 4. 【单章全自动】已有书，单章全流程全自动
+python studio.py write ch_001 -w "workspace/我的新书"
+
+# 5. 【批量全自动】已有书，批量续写 N 章
+python studio.py auto -w "workspace/我的新书" --chapters 5
+
+# 6. 【智能运行】自动判断新书/续写
+python studio.py run -t "我的新书" -g 玄幻 -p 林牧 --chapters 5
+python studio.py run -w "workspace/我的新书" --chapters 5
+
+# 7. 【零参数向导】直接双击或无参启动
+python studio.py
+# -> 进入交互式向导，问你书名/题材/主角/脑洞，确认后一键成书
+
+# 8. 态势与体检（4.0 兼容 3.x 全量命令）
+python studio.py status -w "workspace/我的新书"
 python studio.py cockpit -w "workspace/我的新书"
-
-# 4. 事实体检：全息一致性扫描（退出码 0 为绿灯）
 python studio.py check -w "workspace/我的新书"
-
-# 5. CLI 帮助与阶段配方查阅唯一入口
-python studio.py help --json
+python studio.py heal -w "workspace/我的新书"   # 一键自愈
+python studio.py help --json   # 全部命令 JSON
 ```
 
-> 💡 **工作区约定**：书目录默认位于 `<repo>/workspace/<书名>` 下。所有 CLI 均使用 `-w "workspace/<书名>"` 指定目标书籍。
+> 💡 **工作区约定**：书目录默认 `workspace/<书名>`。4.0 的 `novel`/`one`/`create`/`run` 会自动创建；`status` 单本书时可省略 `-w`。
 
 ---
 
-## 二、 创作工序流水线一图流
+## 🧠 二、 4.0 超级引擎架构
 
-全流程实行**标准工业流水线**，各角色分工明确、单步物理落盘、极速咬合：
+### 新增核心模块（engine/）
 
-| 阶段 | 角色 | 核心职责 | 终端权限与产出物 |
+| 模块 | 职责 | 技术 |
+|---|---|---|
+| `autopilot.py` | 全自动驾驶：smart_init + run_chapter + run_batch + one_command，失败自愈重试 | 确定性编排 + 自愈 |
+| `generator.py` | 智能内容生成器：6 题材 bible 模板、角色卡、大纲、细纲、正文 v1/v2/v3、audit/critic | 模板 + LLM 双轨 |
+| `llm.py` | 可插拔 LLM 后端：auto 检测 OPENAI/ANTHROPIC，缺失则 Mock 离线生成，保证全流程可跑 | OpenAI / Anthropic / Mock |
+| `healer.py` | 自愈引擎：派生表重算、账本校验、孤立提案清理、索引刷新、快照保护 | 零 Token 纯确定性 |
+| `super_engine.py` | 超级引擎聚合：SuperEngine 类统一入口，one_command/auto_write/heal/status/export | Facade 模式 |
+| `commands/autopilot.py` | 4.0 CLI 命令：novel/one/create/write/auto/run | CLI 层 |
+
+### 4.0 命令全景（新增 7 个超级命令）
+
+```text
+🚀 4.0 一键成书
+  novel "书名" -g 玄幻 -p 主角 --idea 脑洞 --chapters 10   # 从零到成书
+  one   同 novel 别名
+  create "书名" -g 玄幻 -p 主角 --idea 脑洞                # 极简开书
+  write ch_001 -w 书目录                                    # 单章全自动
+  auto -w 书目录 --chapters 5                               # 批量全自动
+  run -t 书名 -g 玄幻 --chapters 5                          # 智能运行
+  heal -w 书目录 --deep                                     # 一键自愈
+```
+
+### 3.x 兼容命令（31 个原有命令 100% 保留）
+
+`status` / `init` / `cockpit` / `pack` / `ask` / `pov` / `calendar` / `evidence` / `index` / `check` / `doctor` / `checkpoint` / `state` / `config` / `sync` / `snapshot` / `export` / `proposal` / `review` / `beats` / `critic` / `graph` / `errcodes` / `help` / `audit` / `finalize` / `recall` / `simulate` / `milestone` / `lore` / `reconcile`
+
+---
+
+## 📖 三、 创作流水线（4.0 双模式）
+
+### 模式 A：4.0 一键成书（推荐，新手）
+
+```mermaid
+flowchart LR
+    User[一句话] --> Novel[python studio.py novel 书名 --chapters 10]
+    Novel --> Init[smart_init: bible+角色+大纲]
+    Init --> Loop[run_batch: 批量全自动]
+    Loop --> Beats[beats 自动]
+    Beats --> Pack[pack 自动]
+    Pack --> Draft[draft v1/v2/v3 自动]
+    Draft --> Audit[audit+critic 自动]
+    Audit --> Final[finalize+proposal+sync 自动]
+    Final --> Export[export 自动]
+    Export --> Done[成书]
+```
+
+**全程 1 条命令，中间零人工干预，失败自愈重试。**
+
+### 模式 B：3.x 精雕流水线（兼容，专家）
+
+| 阶段 | 角色 | 职责 | 产出 |
 |---|---|---|---|
-| **Stage 0** | **Architect** | 开局世界公理与初始地缘筑基 (0A)、人物大纲与状态通电 (0B) 与全息双轨深审 (0C) | 调 CLI 筑基；产出 `bible/`, `entities/`, `characters/`, `outlines/`, `state/` |
-| **Stage 1** | **Director** | 前瞻研判、细纲落地与 pack 预装配落盘（防终端截断） | 跑 `beats new` 与 `pack --write`；产出细纲与 `pack.md` |
-| **Stage 2** | **Drafter** | 依据 pack 上下文起草高张力正文毛坯（1500~2500字） | **【绝对零命令】**；产出 `raw/ch_XXX_v1.md` |
-| **Stage 3A** | **Editor** | 结构脱水与通俗重塑，去除冗余描写，禁止私增实体 | **【绝对零命令】**；产出 `raw/ch_XXX_v2.md` |
-| **Stage 3B** | **Polisher** | 优化动词与语序，追求丝滑连贯；不加多余修饰，字数基本持平 | **【绝对零命令】**；产出 `raw/ch_XXX_v3.md` |
-| **Stage 4A** | **Auditor** | 常识与出戏质检，预制修补配方（主控预置探针骨架） | **【绝对零命令】**；落盘 `log/audit/ch_XXX.md` |
-| **Stage 4B** | **Critic** | 读者视角盲审，评估阅读疲劳与活人感，撰写追更便签 | **【绝对零命令】**；落盘 `log/critic/ch_XXX.md` |
-| **Stage 5** | **Director / Engine** | PowerShell 安全短路原子收口：自动定稿盖章 ➔ 事实入账 ➔ 封存归档 | 单行 `finalize ; proposal auto ; sync`（全流程 ≤0.5 秒） |
-| **低频巡检** | **Librarian** | 每 10 章事实深层巡检打捞遗漏次要实体；卷末执行对账大修 | 调只读 CLI；产出 `log/review/` 对账单 |
-| **演进重构** | **Evolver** | 中途随时接诊作者变更诉求（改设定/人设/历史正文），快照先行平账 | 独立沙盒受控平账 |
-
-> ⚡ **双并发与零命令铁律**：Stage 4A (Auditor) 与 Stage 4B (Critic) 由主控在同轮次单次调起双并发执行；Stage 2 ~ 4 核心编写与质检子代理全线实行【绝对零命令】，严禁在正文阶段读写终端，全部上下文均通过物理文件总线无损交付。
+| Stage 0 | Architect | 筑基 | bible/, characters/, outlines/, state/ |
+| Stage 1 | Director | 细纲 | beats + pack.md |
+| Stage 2 | Drafter | 毛坯 | raw v1 |
+| Stage 3A | Editor | 脱水 | raw v2 |
+| Stage 3B | Polisher | 抛光 | raw v3 |
+| Stage 4A/4B | Auditor/Critic | 双并发质检 | audit + critic |
+| Stage 5 | Director/Engine | 原子收口 | final + proposal + sync + 快照 |
 
 ---
 
-## 三、 工作区文件地图 (`workspace/<书名>/`)
+## 🗂️ 四、 工作区文件地图
 
 ```text
 workspace/<书名>/
-├── project.json              # 书级配置：题材/主角/字数带/敏感词与启发词/线索配额
-├── pack.md                   # 主控 Stage 1 预装配上下文（文件总线防截断，供 Drafter 直读）
-├── bible/                    # 设定真理圣经（模块化物理底座，支持 SHA-256 漂移自检）
-│   ├── 01_world_axioms.md    # 世界运转公理与空间/金手指法则
-│   ├── 02_power_system.md    # 实力/位阶层级与物理破坏力标尺
-│   ├── 03_factions_geography.md # 地缘政治分布与核心势力拓扑
-│   ├── 04_economy_items.md   # 货币购买力锚点与消耗品分级法则
-│   ├── 05_special_mechanics.md  # 题材专属机制/体质/血脉/阵营相克
-│   └── 06_deviations.md      # 本书绝对偏离清单（严禁触碰的套路红线）
-├── characters/               # 核心人物档案（闭环称谓对校矩阵、微动作、Want/Fear）
-│   ├── protagonist.md        # 主角终极档案 (ID: p_001)
-│   └── <角色名>.md           # 重要配角/女主/男配/反派标准卡
-├── entities/                 # 核心三态实体账册（支持 CLI 穿透寻路与对账）
-│   ├── items/                # 法宝/装备/重器卡（损耗/充能/权属生命周期）
-│   ├── factions/             # 宗门/组织/集团卡（核心资产/外交敌友态势）
-│   └── locations/            # 关节点/据点/场景卡（感官锚点/运转律则/足迹）
+├── project.json              # 含 idea 字段（4.0 新增）
+├── pack.md
+├── bible/                    # 6 份，4.0 按题材智能生成
+├── characters/               # 3+ 份，含 Want/Fear/微动作
+├── entities/
 ├── outlines/
-│   ├── main_plot.md          # 全书脊柱（故事引擎与宏观里程碑）
-│   └── vol_XX/
-│       ├── outline.md        # 分卷大纲（四分位阶段航标；主控可动态修纲）
-│       └── beats/ch_XXX.md   # 当章细纲任务书（含法定事实与预期变更声明）
+│   ├── main_plot.md
+│   └── vol_XX/outline.md + beats/ch_XXX.md（4.0 自动生成）
 ├── manuscript/vol_XX/
-│   ├── raw/
-│   │   ├── ch_XXX_v1.md      # 初稿毛坯（Stage 2 Drafter 产出）
-│   │   ├── ch_XXX_v2.md      # 通俗重塑与脱水稿（Stage 3A Editor 产出）
-│   │   └── ch_XXX_v3.md      # 抛光润色预定稿（Stage 3B Polisher 产出）
-│   └── final/ch_XXX.md        # 终局法定定稿（Stage 5 finalize 自动定稿并盖章）
-├── state/                    # 十一表真值（含 locked/cognition） + inbox/ 提案收件箱 + snapshots/ 快照
-│   ├── rollups/              # 卷级态势折叠（vol_XX.json，供跨卷装配）
-│   └── inbox/ch_XXX.json     # 章节增量提案（Stage 5 proposal auto 自动提取）
-├── log/
-│   ├── audit/ch_XXX.md       # 质检报告与修补配方（Stage 4A 产出，Stage 5 finalize 自动吸纳）
-│   ├── critic/ch_XXX.md      # 追更便签（Stage 4B Critic 产出，供下章前瞻参考）
-│   ├── branches/ch_XXX.md    # 分支推演单（可选）
-│   └── review/               # 校对注记 + Librarian 长程巡检报告
-└── export/                   # 全书编译产物（--txt / --views 状态视图）
+│   ├── raw/ch_XXX_v1/v2/v3.md
+│   └── final/ch_XXX.md
+├── state/                    # 十一表 + 快照
+├── log/audit/ + critic/
+└── export/<书名>.txt         # 4.0 自动导出
 ```
 
 ---
 
-## 四、 核心原则与状态写入口
+## ⚙️ 五、 4.0 核心原则
 
-1. **事实与创作分离**：
-   - 创作可以脑补，事实必须对账。
-   - **事实唯一源头** = `final/ch_XXX.md` 定稿正文。
-   - **状态唯一真值** = `state/` 十一表真值（current, persons, items, factions, places, lines, timeline, ledger, synopsis, locked, cognition）。
-2. **章节事实增量的唯一写入口是提案**：
-   - Stage 5 运行 `python studio.py proposal auto ch_XXX --write --force` 自动抽取增量事实；
-   - 运行 `python studio.py sync ch_XXX` 完成原子封存与快照归档。
-3. **双键唯一物理 ID 体系**：
-   - 角色：`p_001`（主角恒定为 `p_001`）、`p_002`...
-   - 物品：`it_001`... ｜ 势力：`fac_001`... ｜ 地点：`loc_001`...
-   - 双键合并优先按 `id` 寻址，就地更新属性，绝不分裂实体。
-4. **质检闭环与终审定稿**：
-   - Stage 4A Auditor 全读生成出戏清单与修补配方（纯认知审查，绝对零命令）；
-   - Stage 5 运行 `studio.py finalize ch_XXX` 自动在内存中吸纳配方生成 `final` 并盖章放行；
-   - 紧接着单行链式执行 `proposal auto` 提取事实并 `sync` 封存，全过程 ≤0.5 秒。
-5. **两种创作推进模式**：
-   - **单章精雕模式（默认）**：走完单章 Stage 1~5 流程，封存后输出交付卡停机待命；
-   - **无人值守巡航模式**：指令包含【无人值守】时启动，严格按 $Target = \min(N + K, M)$ 边界串行连写（上限 10 章或卷末即停），中途仅发单行心跳日志，终点达成后输出批次报告停机。
+1. **一条命令成书**：`novel`/`one`/`run` 从零到成书，无需手动 beats/pack/finalize。
+2. **功能强大，使用简单**：引擎内部自愈、重算、索引、导出全自动；外部接口极简。
+3. **离线可用，LLM 可插拔**：无 API Key 时 Mock 生成器保证跑通；有 OPENAI_API_KEY 自动升级文笔。
+4. **事实与创作分离**：final 为源头，state 为真值，提案为唯一写入口，双键 ID 防分裂。
+5. **自愈与自检**：`heal` 一键修复派生表/账本/索引/孤立提案；`check` 0 errors 放行。
 
 ---
 
-## 五、 常用核心命令速查 (Cheat Sheet)
+## 📚 六、 命令速查（Cheat Sheet 4.0）
 
-详细命令矩阵与子代理权限映射见 [`docs/COMMAND_MATRIX.md`](file:///c:/Users/cg110902/Desktop/NOVEL/docs/COMMAND_MATRIX.md)。
-
-| 场景 | 命令示例 | 核心用途 |
+| 场景 | 4.0 命令 | 说明 |
 |---|---|---|
-| **工序与态势** | `python studio.py cockpit -w "workspace/<书名>"` | 驾驶舱：查看工序指针与下步行动 |
-| **状态体检** | `python studio.py check -w "workspace/<书名>"` | 全息双核体检（0 errors 为绿灯） |
-| **消音确认** | `python studio.py check --accept <fp> -w "workspace/<书名>"` | 对已知良性 warning 留痕消音备案 |
-| **细纲脚手架** | `python studio.py beats new ch_XXX --write -w "workspace/<书名>"` | 生成细纲任务书模板与资源池速查 |
-| **上下文装配** | `python studio.py pack ch_XXX --write -w "workspace/<书名>"` | 自动装配并落盘至 pack.md（主控预装配，供 Drafter 直读） |
-| **事实求证** | `python studio.py ask "<实体名/事件>" -w "workspace/<书名>"` | 全息问书机（穿透真值、正文与圣经，带出处） |
-| **排产日历** | `python studio.py calendar 3 -w "workspace/<书名>"` | 查看未来 3 章危机倒计时与伏笔线 |
-| **质量预审** | `python studio.py audit ch_XXX --write -w "workspace/<书名>"` | 主控派发 Stage 4 前预置 8 大探针报告骨架 |
-| **自动定稿** | `python studio.py finalize ch_XXX -w "workspace/<书名>"` | Stage 5 自动吸纳修补配方生成 final 并盖章放行 |
-| **事实提取** | `python studio.py proposal auto ch_XXX --write --force -w "workspace/<书名>"` | Stage 5 自动从定稿抽取增量事实写入提案 |
-| **状态同步** | `python studio.py sync ch_XXX -w "workspace/<书名>"` | Stage 5 原子封存快照与状态合账归档（≤0.5秒） |
-| **原子收口三连** | `python studio.py finalize ch_XXX -w "..." ; if ($LASTEXITCODE -eq 0) { python studio.py proposal auto ch_XXX --write --force -w "..." } ; if ($LASTEXITCODE -eq 0) { python studio.py sync ch_XXX -w "..." }` | PowerShell 安全短路原子收口命令（前步失败自动熔断） |
-| **派生重算** | `python studio.py state recompute -w "workspace/<书名>"` | 刷新线温与派生表（消除 derived_stale） |
-| **卷末态势** | `python studio.py state rollup vol_XX -w "workspace/<书名>"` | 卷末态势摘要生成（跨卷装配前情源） |
-| **全卷对账** | `python studio.py reconcile vol_XX --write -w "workspace/<书名>"` | 卷末全量对账大修（Librarian 承办） |
-| **备份回滚** | `python studio.py snapshot create/rollback <名> -w "workspace/<书名>"` | 状态与稿件快照备份与一键回滚 |
+| 一键成书 | `novel "书名" -g 玄幻 -p 林牧 --idea "脑洞" --chapters 10` | 从零到 10 章 |
+| 极简开书 | `create "书名" -g 都市 -p 陈凡 --idea "异能"` | 只筑基 |
+| 单章全自动 | `write ch_001 -w workspace/书名` | 单章全流程 |
+| 批量续写 | `auto -w workspace/书名 --chapters 5` | 批量 N 章 |
+| 智能运行 | `run -t "书名" -g 玄幻 --chapters 5` | 自动判断 |
+| 零参数向导 | `python studio.py` | 交互式 |
+| 自愈 | `heal -w workspace/书名 --deep` | 一键修复 |
+| 状态 | `status -w workspace/书名` | 进度总览 |
+| 驾驶舱 | `cockpit -w workspace/书名` | 态势 + 伏笔 |
+| 体检 | `check -w workspace/书名` | 0 errors 放行 |
+| 问书 | `ask "关键词" -w workspace/书名` | 事实检索 |
+| 导出 | `export --txt -w workspace/书名` | 导出 txt |
+
+3.x 全量命令见 `docs/COMMAND_MATRIX.md`，实战配方见 `python studio.py help`。
 
 ---
 
-## 六、 退出码契约
+## 🔧 七、 LLM 配置（可选）
 
-CLI 命令设计为确定性机械闸门，退出码具有严格机器语义：
-- `0`：正常通过；
-- `1`：业务阻断（如 `check` 检出 errors、`sync` 仲裁未放行等）；
-- `2`：命令行参数或语法用法错误；
-- `3`：环境缺失依赖库（系统会打印缺失库与安装命令）。
+```bash
+# OpenAI（自动检测）
+export OPENAI_API_KEY=sk-...
+export OPENAI_MODEL=gpt-4o-mini   # 可选
 
-实战避坑、环境配置与故障自愈处方详见 [`docs/TROUBLESHOOTING.md`](file:///c:/Users/cg110902/Desktop/NOVEL/docs/TROUBLESHOOTING.md)。
+# Anthropic
+export ANTHROPIC_API_KEY=...
+
+# 无 Key 时自动 Mock，离线可跑
+python studio.py novel "测试书" --chapters 2   # Mock 也能成书
+```
 
 ---
 
-## 七、 开源许可协议 (License)
+## 🛡️ 八、 退出码契约
 
-本项目采用 [MIT License](file:///c:/Users/cg110902/Desktop/NOVEL/LICENSE) 开源协议，欢迎自由使用、修改与分享。
+- `0` 正常通过
+- `1` 业务阻断（check errors / sync 失败 / 成书未完全）
+- `2` 用法错误
+- `3` 环境缺依赖
+
+---
+
+## 📄 九、 许可
+
+MIT License，见 LICENSE。
+
+---
+
+## 🎉 十、 4.0 升级亮点总结
+
+- **从 7 步到 1 步**：`novel` 一条命令完成 init + bible + 角色 + 大纲 + N 章正文 + 导出
+- **从手动到全自动**：beats/pack/draft/edit/polish/audit/critic/finalize/proposal/sync 全自动
+- **从易错到自愈**：heal 自动修复，batch 失败自动重试
+- **从单一到全题材**：玄幻/都市/科幻/悬疑/历史/仙侠 6 套模板
+- **从在线到离线**：Mock 离线可跑，LLM 在线升级
+- **从复杂到极简**：`python studio.py` 零参数向导，小白也能成书
