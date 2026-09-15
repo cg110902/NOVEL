@@ -122,7 +122,7 @@ workspace/<书名>/
 | **状态体检** | `python studio.py check -w "workspace/<书名>"` | 全息双核体检（0 errors 为绿灯） |
 | **消音确认** | `python studio.py check --accept <fp> -w "workspace/<书名>"` | 对已知良性 warning 留痕消音备案 |
 | **细纲脚手架** | `python studio.py beats new ch_XXX --write -w "workspace/<书名>"` | 生成细纲任务书模板与资源池速查 |
-| **上下文装配** | `python studio.py pack ch_XXX --full -w "workspace/<书名>"` | Drafter 起草专用装配包（预算上限 1.5W Token） |
+| **上下文装配** | `python studio.py pack ch_XXX --write -w "workspace/<书名>"` | 自动装配并落盘至 pack.md（文件总线防截断，Drafter 专用） |
 | **事实求证** | `python studio.py ask "<实体名/事件>" -w "workspace/<书名>"` | 全息问书机（穿透真值、正文与圣经，带出处） |
 | **排产日历** | `python studio.py calendar 3 -w "workspace/<书名>"` | 查看未来 3 章危机倒计时与伏笔线 |
 | **质量预审** | `python studio.py audit ch_XXX --write -w "workspace/<书名>"` | 主控派发 Stage 4A 前预置 8 大探针报告骨架 |

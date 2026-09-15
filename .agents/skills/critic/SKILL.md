@@ -5,8 +5,8 @@ description: Universal commercial webnovel reader feedback and next-chapter anti
 
 # SKILL — novel-critic（老白读者催更便签专属手册 · Stage 4B）
 
-> ⚡ **【开工第一步 · 首步锁定规范与严禁中途回读死命令】**：
-> 派发令已给定工作区与章节。**开工首步调用 `view_file` 同时读取本手册（若上下文未装载）与预定稿 `raw_v3.md` 及 `state/current.json`！进入便签撰写后绝对严禁中途回读倒嚼本手册！严禁调用 `list_dir` / `find_by_name` 搜寻目录！**
+> ⚡ **【开工第一步 · 防发呆零内耗死命令】**：
+> 派发令已给定工作区与章节。**起手直接调用 `view_file` 读取预定稿 `raw_v3.md` 及 `state/current.json`！评判规范已在技能中锁定，绝对严禁开工调用 `view_file` 回读倒嚼本手册！严禁调用 `list_dir` / `find_by_name` 搜寻目录！**
 > 写完便签直接调用 `write_to_file` 物理落盘（**绝对严禁传递 `ArtifactMetadata`**），输出 3 行回执即刻交卷退出，绝不滞留！
 
 ---
@@ -20,7 +20,7 @@ description: Universal commercial webnovel reader feedback and next-chapter anti
 ## ⚡ 二、 极速三步工序（单线推进，绝不空转）
 
 1. **步骤 1【单次全量读稿与现场 · 唯二输入】**：
-   调用 `view_file` 工具**单次全量读取**（**严禁切片翻读**）：
+   起手直接调用 `view_file` 工具**单次全量读取**（**严禁切片翻读，严禁回读手册**）：
    - 预定稿：`workspace/<书名>/manuscript/vol_XX/raw/ch_XXX_v3.md`；
    - 现场态势：`workspace/<书名>/state/current.json`；
 
@@ -55,7 +55,7 @@ description: Universal commercial webnovel reader feedback and next-chapter anti
 
 ## 🔒 四、 白名单与绝对红线
 
-- 📖 **准读文件**：`.agents/skills/critic/SKILL.md`（首步锁定规范）、`raw_v3.md`（单次全读，禁切片）、`state/current.json`；
+- 📖 **准读文件**：`workspace/<书名>/manuscript/vol_XX/raw/ch_XXX_v3.md`（单次全读，禁切片）、`workspace/<书名>/state/current.json`（严禁回读手册）；
 - 💻 **准跑命令**：**绝对零命令**（纯读者体验，不跑任何命令）；
 - ✍️ **准写工具（唯一）**：调用 `write_to_file` 写入 `log/critic/ch_XXX.md`（**严禁传递 `ArtifactMetadata`**）；
 - 🚫 **绝对红线**：

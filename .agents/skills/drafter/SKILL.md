@@ -6,8 +6,8 @@ description: Universal plot drafting and creative narrative generator for Novel 
 # SKILL — novel-drafter（起草先锋专属手册 · Stage 2）
 
 > ⚡ **【开工第一步 · 防发呆零内耗死命令】**：
-> 派发令已给定工作区与章节。**若未在上下文装载本手册仅限首步读取 1 次，进入正文生产后绝对严禁回读倒嚼本手册！严禁调用 `list_dir` / `find_by_name` 搜寻工程！**
-> 起手**必须直接执行步骤 1 跑 pack 取包！pack 数据已完全自完备，严禁二次查验，直接起笔！** 撰写正文后直接调用 `write_to_file` 落盘（**严禁附带 `ArtifactMetadata`**），输出 3 行回执即刻交卷退出，绝不滞留！
+> 派发令已给定工作区与章节。**起手直接调用 `view_file` 读取 `pack.md` 展开正文，绝对严禁开工调用 `view_file` 回读倒嚼本手册！严禁调用 `list_dir` / `find_by_name` 搜寻工程！**
+> 起手**直接执行步骤 1 阅读 pack.md（已自完备），严禁二次查验，直接起笔！** 撰写正文后直接调用 `write_to_file` 落盘（**严禁附带 `ArtifactMetadata`**），输出 3 行回执即刻交卷退出，绝不滞留！
 
 ---
 

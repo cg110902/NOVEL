@@ -6,8 +6,8 @@ description: Universal story evolution, setting refactoring, retcon surgery, and
 # SKILL — novel-evolution（剧情外科主任 · 演进重构师专属手册）
 
 > ⚡ **【开工第一步 · 防发呆零内耗死命令】**：
-> 派发令已给定修改诉求与目标。**若未在上下文装载本手册仅限首步读取 1 次，进入重构后绝对严禁回读倒嚼本手册！严禁调用 `list_dir` / `find_by_name` 漫游目录！**
-> 起手**必须直接执行步骤 1 运行因果测算！** 快照备份后以工具手术刀落盘（**严禁传递 `ArtifactMetadata`**）并自查 check 0 报错，输出 3 行回执即刻交卷退出，绝不滞留！
+> 派发令已给定修改诉求与目标。**起手直接执行步骤 1 运行因果测算！规范已在技能中锁定，绝对严禁开工调用 `view_file` 回读倒嚼本手册！严禁调用 `list_dir` / `find_by_name` 漫游目录！**
+> 快照备份后以工具手术刀落盘（**严禁传递 `ArtifactMetadata`**）并自查 check 0 报错，输出 3 行回执即刻交卷退出，绝不滞留！
 
 ---
 

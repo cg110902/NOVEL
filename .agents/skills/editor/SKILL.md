@@ -5,8 +5,8 @@ description: Universal commercial webnovel structural editor and prose polisher 
 
 # SKILL — novel-editor（全题材通用重塑与脱水师专属手册 · Stage 3A）
 
-> ⚡ **【开工第一步 · 首步锁定规范与严禁中途回读死命令】**：
-> 派发令已给定工作区与章节。**开工首步必须调用 `view_file` 同时读取本手册（锁定全题材文风）与初稿 `manuscript/vol_XX/raw/ch_XXX_v1.md`！进入精修后绝对严禁中途回读倒嚼本手册！严禁调用 `list_dir` / `find_by_name` 搜寻目录！**
+> ⚡ **【开工第一步 · 防发呆零内耗死命令】**：
+> 派发令已给定工作区与章节。**起手直接调用 `view_file` 读取初稿 `manuscript/vol_XX/raw/ch_XXX_v1.md`！文风规范已在技能中锁定，绝对严禁开工调用 `view_file` 回读倒嚼本手册！严禁调用 `list_dir` / `find_by_name` 搜寻目录！**
 > 全篇通俗大白话重塑完成后，直接调用 `write_to_file` 物理落盘至 `manuscript/vol_XX/raw/ch_XXX_v2.md`（**绝对严禁传递 `ArtifactMetadata`**），输出 3 行标准完工回执即刻交卷退出（**绝对严禁在对话框发送正文**），交由 Stage 3B Polisher 进一步抛光润色，绝不滞留！
 
 ---
@@ -137,7 +137,7 @@ Gemini创作极易陷入套路化高频词与口癖循环。降频的核心原�
 ## ⚡ 三、 极速两步工序（单线推进，绝不空转 · 绝对零命令）
 
 1. **步骤 1【单次全量阅读 · 确立“取长补短”重写策略】**：
-   起手直接调用 `view_file` 工具**同时单次全量读取**本手册（锁定全题材文风规范与负面词库）与 `manuscript/vol_XX/raw/ch_XXX_v1.md` 初稿（**严禁传 StartLine/EndLine 切片翻读**）。
+   起手直接调用 `view_file` 工具单次全量读取 `manuscript/vol_XX/raw/ch_XXX_v1.md` 初稿（**严禁传 StartLine/EndLine 切片翻读**；文风规范与负面词库已锁定，严禁回读手册）。
    🎯 **重写策略核心心法：【取长补短 · 绝非盲目剪枝】**：
    - **取其长（保护初稿的金子）**：初稿里写得有张力、有画面的地方，可以考虑是否保留，最终决定由你拍板；
    - **补其短（置换虚浮杂质）**：初稿写得烂的地方（包括但不限于：虚浮堆砌、中二装逼句式、上帝视角说教、说明书反刍、面瘫冷脸），**绝不能只删不补图省事，需要采用合理等量信息做置换，保证其连贯性和顺滑度**！
@@ -152,7 +152,7 @@ Gemini创作极易陷入套路化高频词与口癖循环。降频的核心原�
 
 ## 🔒 四、 白名单与绝对红线
 
-- 📖 **准读文件**：`.agents/skills/editor/SKILL.md`（首步锁定规范）与 `manuscript/vol_XX/raw/ch_XXX_v1.md`（单次全量秒读，禁切片）；
+- 📖 **准读文件**：`manuscript/vol_XX/raw/ch_XXX_v1.md`（单次全量秒读，禁切片；严禁回读手册）；
 - 💻 **准跑命令**：**【绝对零命令】**（无需运行任何命令，零终端操作，防一切脚本恐慌）；
 - ✍️ **准写工具（唯一）**：`write_to_file` 写入 `manuscript/vol_XX/raw/ch_XXX_v2.md`（⚠️ **严禁传递 `ArtifactMetadata`**）；
 - 🚫 **绝对红线**：

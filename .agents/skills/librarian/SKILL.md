@@ -6,8 +6,8 @@ description: Universal long-range consistency sweep librarian and retroactive le
 # SKILL — novel-librarian（长程档案巡检员专属手册 · 低频巡检）
 
 > ⚡ **【开工第一步 · 防发呆零内耗死命令】**：
-> 派发令已给定工作区与章节。**若未在上下文装载本手册仅限首步读取 1 次，进入巡检后绝对严禁回读倒嚼本手册！严禁调用 `list_dir` / `find_by_name` 搜寻目录！**
-> 起手**必须直接执行步骤 1 跑证据打捞/对账命令！** 补丁合并落盘（**严禁传递 `ArtifactMetadata`**）后输出 3 行回执即刻交卷退出，绝不滞留！
+> 派发令已给定工作区与章节。**起手直接执行步骤 1 跑证据打捞/对账命令！规范已在技能中锁定，绝对严禁开工调用 `view_file` 回读倒嚼本手册！严禁调用 `list_dir` / `find_by_name` 搜寻目录！**
+> 补丁合并落盘（**严禁传递 `ArtifactMetadata`**）后输出 3 行回执即刻交卷退出，绝不滞留！
 
 ---
 

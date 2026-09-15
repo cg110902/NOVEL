@@ -39,7 +39,7 @@
 ### 分层 2：实体拓扑、全息知识与角色认知 (4)
 | 命令 | 完整调用范例 | 核心功能与参数说明 | 典型消费角色 |
 |---|---|---|---|
-| `ask` | `python studio.py ask "<关键词/实体/线索>" -w "..."` | 全书事实问书机 (2.1)：覆盖十一表真值、定稿正文原句、角色全息卡（Want/Fear/逆鳞/微动作）、世界圣经，带精确出处 | Director / Auditor<br/>Librarian / Evolver |
+| `ask` | `python studio.py ask "<关键词/实体/线索>" -w "..."` | 全书事实问书机 (2.1)：覆盖十一表真值、定稿正文原句、角色全息卡（Want/Fear/逆鳞/微动作）、世界圣经，带精确出处 | Director<br/>Librarian / Evolver |
 | `lore` | `python studio.py lore list`<br/>`python studio.py lore entity <ID/名>`<br/>`python studio.py lore compare <A> <B>` | 底层词典与实体对账：`list` 列出全书 ID；`entity` 穿透 36 字段全息档案；`compare` 比对两角色位阶差距与法定互称 | Director<br/>Librarian |
 | `graph` | `python studio.py graph path <A> <B>`<br/>`python studio.py graph neighbors <实体>`<br/>`python studio.py graph centrality` | 实体拓扑与叙事中介寻路：计算两人间最短人脉中介链路、宗门外交敌友网络、世界核心权力枢纽 | Director |
 | `pov` | `python studio.py pov "<角色名>" -w "..."` | 角色视角包：调阅该角色持有法宝、人际关系、他知道与不知道的信息（知情边界，防透视开挂） | Director |

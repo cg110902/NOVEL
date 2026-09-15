@@ -11,7 +11,7 @@ description: Universal worldbuilding architect and setup generator for Novel Stu
 > 2. **第二棒 ➔ Subagent 2 (Stage 0B: Architect-Story)**：依据圣经交付 **MVU 六件套与双大纲**，全息通电 **`state/` 六表** 并添加首卷里程碑；
 > 3. **第三棒 ➔ Subagent 3 (Stage 0C: Architect-Inspector)**：独立沙盒运行 `check` 机器硬闸门与常识因果扫荡，确保 **0 errors** 闭环交付。
 >
-> ⚡ **【子代理开工死命令】**：读取本手册仅限首步 1 次，严禁反复回读！起手必须直接调用工具物理落盘（**严禁传递 `ArtifactMetadata`**），交卷即走，绝不滞留！
+> ⚡ **【子代理开工死命令】**：规范已在技能中锁定，绝对严禁开工调用 `view_file` 回读倒嚼本手册！起手必须直接调用工具物理落盘（**严禁传递 `ArtifactMetadata`**），交卷即走，绝不滞留！
 
 ---
 
