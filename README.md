@@ -1,7 +1,6 @@
 # Novel Studio 3.3
 
-Antigravity 原生多智能体中文网络小说创作工坊：**确定性 Python 引擎**（`engine/`，黑盒）
-+ **多智能体角色矩阵**（`AGENTS.md` 与 `.agents/skills/*/SKILL.md`）+ **全题材脚手架模板**（`templates/`）。
+Antigravity 原生多智能体中文网络小说创作工坊：**确定性 Python 引擎**（`engine/`，黑盒）+ **多智能体角色矩阵**（`AGENTS.md` 与 `.agents/skills/*/SKILL.md`）+ **全题材脚手架模板**（`templates/`）。
 
 架构哲学：**大模型全权掌控创意脑洞、生动情节与通俗叙事；确定性引擎负责事实底座与数据台账；原生 Subagents 实现高效工序接力与闭环归档。**
 
@@ -32,20 +31,22 @@ python studio.py help --json
 
 ## 二、 创作工序流水线一图流
 
-全流程实行**极简工业流水线**，各角色分工明确、单步物理落盘、极速咬合：
+全流程实行**标准工业流水线**，各角色分工明确、单步物理落盘、极速咬合：
 
-| 阶段 | 角色 | 核心职责 | 产出物 |
+| 阶段 | 角色 | 核心职责 | 终端权限与产出物 |
 |---|---|---|---|
-| **Stage 0** | **Architect** | 开局世界公理筑基 (0A)、人物大纲通电 (0B) 与全息对账 (0C) | `bible/`, `characters/`, `outlines/`, `state/` |
-| **Stage 1** | **Director** | 前瞻研判、细纲任务书编织与当章事实变更预期前置声明 | `outlines/vol_XX/beats/ch_XXX.md` |
-| **Stage 2** | **Drafter** | 100% 依据 pack 上下文展开，通俗大白话撰写高张力初稿毛坯（仅跑1次pack） | `manuscript/vol_XX/raw/ch_XXX_v1.md` |
-| **Stage 3A** | **Editor** | 直读初稿通俗大白话重塑与脱水，专杀NPC标准反应（纯读写【绝对零命令】） | `manuscript/vol_XX/raw/ch_XXX_v2.md` |
-| **Stage 3B**| **Polisher** | 优化动词与语序，追求丝滑连贯；不加多余修饰，字数基本持平（【绝对零命令】） | `manuscript/vol_XX/raw/ch_XXX_v3.md` |
-| **Stage 4A** | **Auditor** | 常识与出戏审查，预制修补配方（主控预置探针骨架，纯读写【绝对零命令】） | `log/audit/ch_XXX.md` |
-| **Stage 4B** | **Critic** | 资深老白读者纯盲审，评估阅读疲劳度与活人感，输出下章催更便签（【绝对零命令】） | `log/critic/ch_XXX.md` |
-| **Stage 5** | **Director / Engine** | 极速三连原子收口：`finalize` 自动定稿盖章 ➔ `proposal auto` 动态事实入账 ➔ `sync` 封存（≤0.5秒） | `final/ch_XXX.md`, `state/*.json` |
-| **低频巡检** | **Librarian** | 每 10 章事实深层巡检打捞遗漏次要实体；卷末执行对账大修（纯Markdown对账单） | `log/review/` |
-| **演进重构** | **Evolver** | 中途随时接诊人类作者变更诉求（改设定/人设/历史正文），快照先行平账 | 全局受控范围 |
+| **Stage 0** | **Architect** | 开局世界公理与初始地缘筑基 (0A)、人物大纲与状态通电 (0B) 与全息双轨深审 (0C) | 调 CLI 筑基；产出 `bible/`, `entities/`, `characters/`, `outlines/`, `state/` |
+| **Stage 1** | **Director** | 前瞻研判、细纲落地与 pack 预装配落盘（防终端截断） | 跑 `beats new` 与 `pack --write`；产出细纲与 `pack.md` |
+| **Stage 2** | **Drafter** | 依据 pack 上下文起草高张力正文毛坯（1500~2500字） | **【绝对零命令】**；产出 `raw/ch_XXX_v1.md` |
+| **Stage 3A** | **Editor** | 结构脱水与通俗重塑，去除冗余描写，禁止私增实体 | **【绝对零命令】**；产出 `raw/ch_XXX_v2.md` |
+| **Stage 3B** | **Polisher** | 优化动词与语序，追求丝滑连贯；不加多余修饰，字数基本持平 | **【绝对零命令】**；产出 `raw/ch_XXX_v3.md` |
+| **Stage 4A** | **Auditor** | 常识与出戏质检，预制修补配方（主控预置探针骨架） | **【绝对零命令】**；落盘 `log/audit/ch_XXX.md` |
+| **Stage 4B** | **Critic** | 读者视角盲审，评估阅读疲劳与活人感，撰写追更便签 | **【绝对零命令】**；落盘 `log/critic/ch_XXX.md` |
+| **Stage 5** | **Director / Engine** | PowerShell 安全短路原子收口：自动定稿盖章 ➔ 事实入账 ➔ 封存归档 | 单行 `finalize ; proposal auto ; sync`（全流程 ≤0.5 秒） |
+| **低频巡检** | **Librarian** | 每 10 章事实深层巡检打捞遗漏次要实体；卷末执行对账大修 | 调只读 CLI；产出 `log/review/` 对账单 |
+| **演进重构** | **Evolver** | 中途随时接诊作者变更诉求（改设定/人设/历史正文），快照先行平账 | 独立沙盒受控平账 |
+
+> ⚡ **双并发与零命令铁律**：Stage 4A (Auditor) 与 Stage 4B (Critic) 由主控在同轮次单次调起双并发执行；Stage 2 ~ 4 核心编写与质检子代理全线实行【绝对零命令】，严禁在正文阶段读写终端，全部上下文均通过物理文件总线无损交付。
 
 ---
 
@@ -54,6 +55,7 @@ python studio.py help --json
 ```text
 workspace/<书名>/
 ├── project.json              # 书级配置：题材/主角/字数带/敏感词与启发词/线索配额
+├── pack.md                   # 主控 Stage 1 预装配上下文（文件总线防截断，供 Drafter 直读）
 ├── bible/                    # 设定真理圣经（模块化物理底座，支持 SHA-256 漂移自检）
 │   ├── 01_world_axioms.md    # 世界运转公理与空间/金手指法则
 │   ├── 02_power_system.md    # 实力/位阶层级与物理破坏力标尺
@@ -76,17 +78,17 @@ workspace/<书名>/
 ├── manuscript/vol_XX/
 │   ├── raw/
 │   │   ├── ch_XXX_v1.md      # 初稿毛坯（Stage 2 Drafter 产出）
-│   │   ├── ch_XXX_v2.md      # 通俗重塑与脱水稿（Stage 3A Editor 产出，专杀NPC标准反应）
-│   │   └── ch_XXX_v3.md      # 抛光润色预定稿（Stage 3B Polisher 产出，动词语序丝滑通畅）
+│   │   ├── ch_XXX_v2.md      # 通俗重塑与脱水稿（Stage 3A Editor 产出）
+│   │   └── ch_XXX_v3.md      # 抛光润色预定稿（Stage 3B Polisher 产出）
 │   └── final/ch_XXX.md        # 终局法定定稿（Stage 5 finalize 自动定稿并盖章）
 ├── state/                    # 十一表真值（含 locked/cognition） + inbox/ 提案收件箱 + snapshots/ 快照
 │   ├── rollups/              # 卷级态势折叠（vol_XX.json，供跨卷装配）
 │   └── inbox/ch_XXX.json     # 章节增量提案（Stage 5 proposal auto 自动提取）
 ├── log/
-│   ├── audit/ch_XXX.md       # 质检仲裁报告（Stage 4A 初评，Stage 5 finalize 自动套用盖章）
-│   ├── critic/ch_XXX.md      # 老白催更便签（Stage 4B Critic 产出，供下章细纲参考）
-│   ├── branches/ch_XXX.md    # 分支参谋单（可选）
-│   └── review/               # 校对注记 + Librarian 长程巡检报告 sweep_ch_XXX.md
+│   ├── audit/ch_XXX.md       # 质检报告与修补配方（Stage 4A 产出，Stage 5 finalize 自动吸纳）
+│   ├── critic/ch_XXX.md      # 追更便签（Stage 4B Critic 产出，供下章前瞻参考）
+│   ├── branches/ch_XXX.md    # 分支推演单（可选）
+│   └── review/               # 校对注记 + Librarian 长程巡检报告
 └── export/                   # 全书编译产物（--txt / --views 状态视图）
 ```
 
@@ -99,16 +101,19 @@ workspace/<书名>/
    - **事实唯一源头** = `final/ch_XXX.md` 定稿正文。
    - **状态唯一真值** = `state/` 十一表真值（current, persons, items, factions, places, lines, timeline, ledger, synopsis, locked, cognition）。
 2. **章节事实增量的唯一写入口是提案**：
-   - Stage 5 运行 `python studio.py proposal auto ch_XXX --write` 自动抽取增量事实；
+   - Stage 5 运行 `python studio.py proposal auto ch_XXX --write --force` 自动抽取增量事实；
    - 运行 `python studio.py sync ch_XXX` 完成原子封存与快照归档。
 3. **双键唯一物理 ID 体系**：
    - 角色：`p_001`（主角恒定为 `p_001`）、`p_002`...
    - 物品：`it_001`... ｜ 势力：`fac_001`... ｜ 地点：`loc_001`...
    - 双键合并优先按 `id` 寻址，就地更新属性，绝不分裂实体。
 4. **质检闭环与终审定稿**：
-   - Stage 4A Auditor 单次全读生成出戏清单与修补配方（纯认知审查，绝对零命令）；
-   - Stage 5 运行 `studio.py finalize ch_XXX` 自动在内存中套用配方生成 `final` 并盖章放行；
-   - 紧接着单行链式执行 `proposal auto` 提取事实并 `sync` 封存，全过程 <0.5 秒。
+   - Stage 4A Auditor 全读生成出戏清单与修补配方（纯认知审查，绝对零命令）；
+   - Stage 5 运行 `studio.py finalize ch_XXX` 自动在内存中吸纳配方生成 `final` 并盖章放行；
+   - 紧接着单行链式执行 `proposal auto` 提取事实并 `sync` 封存，全过程 ≤0.5 秒。
+5. **两种创作推进模式**：
+   - **单章精雕模式（默认）**：走完单章 Stage 1~5 流程，封存后输出交付卡停机待命；
+   - **无人值守巡航模式**：指令包含【无人值守】时启动，严格按 $Target = \min(N + K, M)$ 边界串行连写（上限 10 章或卷末即停），中途仅发单行心跳日志，终点达成后输出批次报告停机。
 
 ---
 
@@ -122,17 +127,18 @@ workspace/<书名>/
 | **状态体检** | `python studio.py check -w "workspace/<书名>"` | 全息双核体检（0 errors 为绿灯） |
 | **消音确认** | `python studio.py check --accept <fp> -w "workspace/<书名>"` | 对已知良性 warning 留痕消音备案 |
 | **细纲脚手架** | `python studio.py beats new ch_XXX --write -w "workspace/<书名>"` | 生成细纲任务书模板与资源池速查 |
-| **上下文装配** | `python studio.py pack ch_XXX --write -w "workspace/<书名>"` | 自动装配并落盘至 pack.md（文件总线防截断，Drafter 专用） |
+| **上下文装配** | `python studio.py pack ch_XXX --write -w "workspace/<书名>"` | 自动装配并落盘至 pack.md（主控预装配，供 Drafter 直读） |
 | **事实求证** | `python studio.py ask "<实体名/事件>" -w "workspace/<书名>"` | 全息问书机（穿透真值、正文与圣经，带出处） |
 | **排产日历** | `python studio.py calendar 3 -w "workspace/<书名>"` | 查看未来 3 章危机倒计时与伏笔线 |
-| **质量预审** | `python studio.py audit ch_XXX --write -w "workspace/<书名>"` | 主控派发 Stage 4A 前预置 8 大探针报告骨架 |
-| **自动定稿** | `python studio.py finalize ch_XXX -w "workspace/<书名>"` | Stage 5 自动套用修补配方生成 final 并盖章放行 |
-| **事实提取** | `python studio.py proposal auto ch_XXX --write -w "workspace/<书名>"` | Stage 5 自动从定稿抽取增量事实写入提案 |
+| **质量预审** | `python studio.py audit ch_XXX --write -w "workspace/<书名>"` | 主控派发 Stage 4 前预置 8 大探针报告骨架 |
+| **自动定稿** | `python studio.py finalize ch_XXX -w "workspace/<书名>"` | Stage 5 自动吸纳修补配方生成 final 并盖章放行 |
+| **事实提取** | `python studio.py proposal auto ch_XXX --write --force -w "workspace/<书名>"` | Stage 5 自动从定稿抽取增量事实写入提案 |
 | **状态同步** | `python studio.py sync ch_XXX -w "workspace/<书名>"` | Stage 5 原子封存快照与状态合账归档（≤0.5秒） |
+| **原子收口三连** | `python studio.py finalize ch_XXX -w "..." ; if ($LASTEXITCODE -eq 0) { python studio.py proposal auto ch_XXX --write --force -w "..." } ; if ($LASTEXITCODE -eq 0) { python studio.py sync ch_XXX -w "..." }` | PowerShell 安全短路原子收口命令（前步失败自动熔断） |
 | **派生重算** | `python studio.py state recompute -w "workspace/<书名>"` | 刷新线温与派生表（消除 derived_stale） |
 | **卷末态势** | `python studio.py state rollup vol_XX -w "workspace/<书名>"` | 卷末态势摘要生成（跨卷装配前情源） |
+| **全卷对账** | `python studio.py reconcile vol_XX --write -w "workspace/<书名>"` | 卷末全量对账大修（Librarian 承办） |
 | **备份回滚** | `python studio.py snapshot create/rollback <名> -w "workspace/<书名>"` | 状态与稿件快照备份与一键回滚 |
-
 
 ---
 
@@ -144,3 +150,10 @@ CLI 命令设计为确定性机械闸门，退出码具有严格机器语义：
 - `2`：命令行参数或语法用法错误；
 - `3`：环境缺失依赖库（系统会打印缺失库与安装命令）。
 
+实战避坑、环境配置与故障自愈处方详见 [`docs/TROUBLESHOOTING.md`](file:///c:/Users/cg110902/Desktop/NOVEL/docs/TROUBLESHOOTING.md)。
+
+---
+
+## 七、 开源许可协议 (License)
+
+本项目采用 [MIT License](file:///c:/Users/cg110902/Desktop/NOVEL/LICENSE) 开源协议，欢迎自由使用、修改与分享。

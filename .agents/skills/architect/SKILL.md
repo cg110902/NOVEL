@@ -7,8 +7,8 @@ description: Universal worldbuilding architect and setup generator for Novel Stu
 
 > ⚡ **【主控派发契约 · 三子智能体接力流水线】**：
 > Stage 0 是全书物理与数据底座的奠基阶段。**主控（Director）必须严格分三次依次唤起 3 个独立的 Subagent 专职子智能体，执行工序接力，严禁单 Agent 大包大揽！**
-> 1. **第一棒 ➔ Subagent 1 (Stage 0A: Architect-World)**：执行 `init` 初始化，填实 **`bible/` 设定圣经六表** 与 `project.json`；
-> 2. **第二棒 ➔ Subagent 2 (Stage 0B: Architect-Story)**：依据圣经交付 **MVU 六件套与双大纲**，全息通电 **`state/` 六表** 并添加首卷里程碑；
+> 1. **第一棒 ➔ Subagent 1 (Stage 0A: Architect-World)**：执行 `init` 初始化，填实 **`bible/` 设定圣经六表**、`project.json` 与开局两大静态实体卡（初始势力卡与地标场景卡）；
+> 2. **第二棒 ➔ Subagent 2 (Stage 0B: Architect-Story)**：依据设定交付 **MVU 核心人物（主角/搭档/对手）、核心道具与双大纲**，全息通电 **`state/` 六表** 并添加首卷里程碑；
 > 3. **第三棒 ➔ Subagent 3 (Stage 0C: Architect-Inspector)**：独立沙盒运行 `check` 机器硬闸门与常识因果扫荡，确保 **0 errors** 闭环交付。
 >
 > ⚡ **【子代理开工死命令】**：规范已在技能中锁定，绝对严禁开工调用 `view_file` 回读倒嚼本手册！起手必须直接调用工具物理落盘（**严禁传递 `ArtifactMetadata`**），交卷即走，绝不滞留！
@@ -19,7 +19,7 @@ description: Universal worldbuilding architect and setup generator for Novel Stu
 
 ### 🛠️ 子智能体 1：Stage 0A【世界观公理与设定筑基 (Architect-World)】
 
-- **核心职责**：初始化书籍工作区，依据作者给定的书名、题材与核心脑洞，填实设定真理底座；
+- **核心职责**：初始化书籍工作区，依据作者给定的书名、题材与核心脑洞，填实设定真理底座，并顺带建立开局初始势力与地标场景两张静态实体卡；
 - **执行工序**：
   1. 终端执行初始化命令：
      ```powershell
@@ -33,15 +33,18 @@ description: Universal worldbuilding architect and setup generator for Novel Stu
      - `bible/05_special_mechanics.md`：题材专属特异机制、专长/体质相生相克矩阵、负荷代偿法则；
      - `bible/06_deviations.md`：本书反套路偏离清单与核心创作红线；
      - `project.json`：配置书级参数与题材专属词表。
+  3. **顺带建立两大开局静态实体卡**（消灭所有 `{{slot:}}` 占位符）：
+     - `entities/factions/<初始宗门/阵营名>.md`：开局初始势力卡（明确掌权人 `leader`、总部 `headquarters` 与核心资产）；
+     - `entities/locations/<开局地标场景名>.md`：开局新手村地标场景卡（空间物象、环境特征与感知锚点）。
 - **准跑命令**：`python studio.py init`；
-- **准写工具**：`write_to_file` / `replace_file_content` 写入 `bible/*.md` 与 `project.json`（**严禁传递 `ArtifactMetadata`**）；
-- **完工标准**：`bible/` 六表与 `project.json` 槽位消除率 100%，输出 3 行 0A 回执即刻交卷。
+- **准写工具**：`write_to_file` / `replace_file_content` 写入 `bible/*.md`、`project.json` 与 `entities/`（**严禁传递 `ArtifactMetadata`**）；
+- **完工标准**：`bible/` 六表、`project.json` 与开局势力/场景卡槽位消除率 100%，输出 3 行 0A 回执即刻交卷。
 
 ---
 
 ### 👤 子智能体 2：Stage 0B【商业故事宇宙筑基与状态机通电 (Architect-Story)】
 
-- **核心职责**：以 `bible/` 设定为绝对真理，交付**高度商业化、高留存、高期待感**的最小可用宇宙（MVU 六件套与双大纲），全息通电 `state/` 六表；
+- **核心职责**：以 `bible/` 设定与 0A 交付的静态地缘为依托，专注交付**核心人物档案（主角/搭档/对手）、核心道具与首卷 25~30 章商业大纲**，全息通电 `state/` 六表；
 - **商业网文故事筑基四大硬核法则（注意事项）**：
   1. 🎯 **一卷一绝活（核心商业卖点与读者承诺）**：
      - 首卷必须确立明确的**核心爽点与脑洞兑现机制**（如：*反向薅修仙宗门羊毛/假装绝世高人靠脑补通关/全网剧透逼反派当保镖*）；
@@ -55,13 +58,11 @@ description: Universal worldbuilding architect and setup generator for Novel Stu
   4. 💣 **商业线索网高能布设（GUN / KNO / MIS）**：
      - `state/lines.json` 中的首卷线索必须具备极高戏剧张力：`GUN-001`（迫在眉睫的危机倒计时或暴利资源）、`KNO-001`（足以致命的惊天信息差）、`MIS-001`（带来巨大反差感的外界认知偏差）。
 - **执行工序**：
-  1. **MVU 六件套与大纲物理落盘**（消灭所有 `{{slot:}}` 与注释）：
+  1. **MVU 核心人物/道具与大纲物理落盘**（消灭所有 `{{slot:}}` 与注释）：
      - `characters/protagonist.md`：主角专属卡（Front-matter 属性闭环、心理四维 Want/Need/Fear/Lie、微动作库、恒定称谓矩阵）；
      - `characters/<搭档名>.md`：关键搭档/男/女主卡（独立动机与法定互称矩阵）；
      - `characters/<对手名>.md`：首卷核心对手卡（合理利益博弈动机与互称）；
      - `entities/items/<道具名>.md`：核心道具/信物卡（明确 `holder`、品阶与使用消耗）；
-     - `entities/factions/<势力名>.md`：核心初始势力卡（掌权人 `leader`、总部 `headquarters`）；
-     - `entities/locations/<地名>.md`：开局场景卡（空间物象与环境法则）；
      - `outlines/main_plot.md`：全书主线三幕脊柱与长程里程碑；
      - `outlines/vol_01/outline.md`：首卷商业分卷大纲（明确商业卖点、阶段反常识破局与章末断章刀口）。
   2. **状态机六表全息通电**（卡片落盘后必须在同一轮写入 `state/`，严禁留空）：
@@ -75,8 +76,8 @@ description: Universal worldbuilding architect and setup generator for Novel Stu
        python studio.py milestone add --title "标题" --target-ch 5 --desc "描述" -w "workspace/<书名>"
        ```
 - **准跑命令**：`python studio.py milestone add`；
-- **准写工具**：`write_to_file` / `replace_file_content` 写入 `characters/`, `entities/`, `outlines/`, `state/`（**严禁传递 `ArtifactMetadata`**）；
-- **完工标准**：商业大纲与 MVU 六件套落盘，状态机六表通电完毕，输出 3 行 0B 回执即刻交卷。
+- **准写工具**：`write_to_file` / `replace_file_content` 写入 `characters/`, `entities/items/`, `outlines/`, `state/`（**严禁传递 `ArtifactMetadata`**）；
+- **完工标准**：商业大纲与人物/道具落盘，状态机六表通电完毕，输出 3 行 0B 回执即刻交卷。
 
 ---
 

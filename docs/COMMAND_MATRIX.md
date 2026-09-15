@@ -12,8 +12,8 @@
 | 角色 (Agent) | 负责阶段 | 专属命令清单 | 核心场景与使用指南 |
 |---|---|---|---|
 | **主控 (Director)** | 全局统筹<br/>Stage 1 / 5 | `cockpit`<br/>`calendar [N]`<br/>`simulate branch`<br/>`graph path/neighbors`<br/>`lore compare/entity`<br/>`ask 2.1` / `pov`<br/>`recall`<br/>`beats new`<br/>`audit --write`<br/>`finalize`<br/>`proposal auto`<br/>`sync`<br/>`state rollup`<br/>`check --trend/--bisect` | **总制片人四大实战武器库**：<br/>1. 每章动笔前跑 `cockpit` 与 `calendar 3` 研判态势与危机时钟；<br/>2. 剧情卡点时跑 `simulate branch --write` 生成走向参谋单；<br/>3. 派发前仅跑 `audit --write` 为 Auditor 备好探针骨架；<br/>4. Stage 5 单行跑 `finalize ; proposal auto --write --force ; sync` 完成原子定稿与封存（≤0.5秒）。 |
-| **架构师 (Architect)** | Stage 0A / 0B<br/>（仅开新书） | `init`<br/>`milestone add`<br/>`check` | **创世播种双门禁**：<br/>1. `init` 初始化脚手架与物理底座；<br/>2. `milestone add` 播种主线里程碑与达成章节；<br/>3. `check` 确保 Stage 0 结束时 0 errors 通电交卷。 |
-| **起草员 (Drafter)** | Stage 2 | `pack` (资料获取，唯一) | **100% 依靠装配包起草**：<br/>仅跑一行 `pack` 获取当章全部写作资料包。杜绝分心与心流打断，把 100% 算力倾注在初稿爆发上。 |
+| **架构师 (Architect)** | Stage 0A / 0B / 0C<br/>（仅开新书） | `init`<br/>`milestone add`<br/>`check` | **创世筑基三步走**：<br/>1. 0A 跑 `init` 初始化底座，填实 `bible/`、`project.json` 与开局初始势力/地标场景卡；<br/>2. 0B 交付核心人物(主角/搭档/对手)、核心道具与首卷大纲，通电 `state/` 并跑 `milestone add`；<br/>3. 0C 跑 `check` 双轨审查，确保 0 errors 闭环交卷。 |
+| **起草员 (Drafter)** | Stage 2 | **【绝对零命令】** | **100% 依靠装配包起草（纯读写零终端）**：<br/>由主控在 Stage 1 预装配落盘至 pack.md，Drafter 绝对零命令。直读 pack.md 展开正文起草，杜绝分心与终端截断，把 100% 算力倾注在初稿爆发上。 |
 | **精修师 (Editor)** | Stage 3A<br/>(通俗大白话重塑) | **【绝对零命令】** | **全篇重塑与脱水（纯读写零终端）**：<br/>Editor 绝对零命令。单次全读 Drafter 初稿后依据脱水铁律全篇大白话重塑并直接落盘至 `raw_v2`，落盘即走。 |
 | **润色师 (Polisher)** | Stage 3B<br/>(动词语序抛光) | **【绝对零命令】** | **抛光润色与丝滑衔接（纯读写零终端）**：<br/>Polisher 绝对零命令。单次全读 Editor 重塑稿后优化动词与语序，追求丝滑连贯且不加多余修饰，落盘至 `raw_v3`，落盘即走。 |
 | **审查员 (Auditor)** | Stage 4A | **【绝对零命令】** | **客观出戏审查与预制配方（纯读写零终端）**：<br/>主控预置探针骨架，Auditor 绝对零命令。单次全读预定稿与报告，常识挑刺，预制修补配方写入报告，交由 Stage 5 引擎自动套用。 |
@@ -48,9 +48,9 @@
 | 命令 | 完整调用范例 | 核心功能与参数说明 | 典型消费角色 |
 |---|---|---|---|
 | `beats` | `python studio.py beats new ch_XXX --write -w "..."` | Stage 1 细纲任务书脚手架生成（智能注入字数预算与情绪蓄水槽） | Director |
-| `pack` | `python studio.py pack ch_XXX -w "..."` | 单章上下文三层装配（P0 现场 / P1 别名触发 / P2 冷索引），为 Drafter 生成写作上下文包 | Director (或自动触发) |
-| `audit` | `python studio.py audit ch_XXX --write -w "..."`<br/>`python studio.py audit ch_XXX --write --adjudicate -w "..."` | 8 大确定性机械探针（在场/充能/金额/KNO/不可逆/认知差/别名漂移/称谓对账），生成问题清单骨架；修复后带 `--adjudicate` 盖章放行 | Auditor (初审)<br/>Engine finalize (定稿盖章) |
-| `proposal` | `python studio.py proposal check ch_XXX -w "..."`<br/>`python studio.py proposal auto ch_XXX --write` | 提案工具：`auto` 为 0-Token 算法自动提取增量事实；`check` 为 0-Token 纯只读预检 | Director / 引擎 |
+| `pack` | `python studio.py pack ch_XXX --write -w "..."` | 单章上下文装配并落盘至 `pack.md`（文件总线防截断，供 Drafter 直读） | Director (Stage 1 预装配) |
+| `audit` | `python studio.py audit ch_XXX --write -w "..."` | 8 大确定性机械探针（在场/充能/金额/KNO/不可逆/认知差/别名漂移/称谓对账），预置探针报告骨架 | Director (Stage 4 派发前预置) |
+| `proposal` | `python studio.py proposal check ch_XXX -w "..."`<br/>`python studio.py proposal auto ch_XXX --write --force -w "..."` | 提案工具：`auto` 为算法自动提取增量事实写入 inbox；`check` 为只读预检 | Director (Stage 5 收口) |
 | `sync` | `python studio.py sync ch_XXX -w "..."` | Stage 5 状态原子封存：提案合并 → 状态体检 → 快照归档（全书推进核心写咽喉） | Director |
 
 ### 分层 4：演进重构、长程巡检与账本维护 (6)
